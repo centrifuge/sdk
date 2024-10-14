@@ -16,6 +16,7 @@ export default [
       'no-param-reassign': 'error',
       'object-shorthand': 'error',
       'prefer-template': 'error',
+      '@typescript-eslint/no-explicit-any': 'off',
     },
   },
 ]

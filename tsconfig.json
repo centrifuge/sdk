@@ -2,7 +2,7 @@
   "compilerOptions": {
     "moduleDetection": "force",
     "module": "NodeNext",
-    "target": "es2022",
+    "target": "es2023",
     // "moduleResolution": "NodeNext",
     // "esModuleInterop": true,
     "verbatimModuleSyntax": true,
@@ -16,7 +16,7 @@
     "declarationMap": true,
     "noUncheckedIndexedAccess": true,
     "noImplicitOverride": true,
-    "lib": ["es2022"], // , "dom", "dom.iterable"
+    "lib": ["es2023"], // , "dom", "dom.iterable"
     // "importHelpers": true,
     // "rootDir": "./src",
     "outDir": "dist"
