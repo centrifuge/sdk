@@ -1,0 +1,19 @@
+*.log
+.DS_Store
+node_modules
+dist
+.next
+.idea/
+.vscode
+.DS_Store
+node_modules
+out
+dist
+
+# Yarn
+yarn-error.log
+.yarn
+!.yarn/releases
+!.yarn/plugins
+!.yarn/sdks
+!.yarn/versions
