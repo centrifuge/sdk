@@ -16,7 +16,7 @@
     "declarationMap": true,
     "noUncheckedIndexedAccess": true,
     "noImplicitOverride": true,
-    "lib": ["es2023"], // , "dom", "dom.iterable"
+    "lib": ["es2023", "dom", "dom.iterable"],
     // "importHelpers": true,
     // "rootDir": "./src",
     "outDir": "dist"

@@ -1,0 +1,5 @@
+[
+  "function estimate(bytes) view returns (uint256)",
+  "function _transferTrancheTokens(address,uint8,uint64,address,uint128,uint256) external payable returns (bool)",
+  "function transferTrancheTokens(address,uint8,uint64,bytes32,uint128,uint256) public payable returns (bool)"
+]
