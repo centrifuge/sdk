@@ -1,5 +1,0 @@
-[
-  "function pools(uint64) view returns (uint64, uint256)",
-  "function deployTranche(uint64, bytes16) public",
-  "function deployVault(uint64, bytes16, address) public"
-]

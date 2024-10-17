@@ -1,12 +1,11 @@
 import { catchError, combineLatest, map, of, switchMap, timeout } from 'rxjs'
 import type { Centrifuge } from './Centrifuge.js'
+import { Entity } from './Entity.js'
 import { PoolDomain } from './PoolDomain.js'
-import type { QueryFn } from './types/query.js'
 
-export class Pool {
-  private _query: QueryFn
-  constructor(private _root: Centrifuge, public id: string) {
-    this._query = this._root._makeQuery(['pool', this.id])
+export class Pool extends Entity {
+  constructor(_root: Centrifuge, public id: string) {
+    super(_root, ['pool', id])
   }
 
   domains() {
@@ -17,6 +16,49 @@ export class Pool {
         })
       )
     })
+  }
+
+  // return this._query(['tranches'], () => {
+  //   return this._root
+  //     ._getSubqueryObservable<{ pool: { tranches: { nodes: { trancheId: string }[] } } }>(
+  //       `query($poolId: String!) {
+  //         pool(id: $poolId) {
+  //           tranches {
+  //             nodes {
+  //               trancheId
+  //             }
+  //           }
+  //         }
+  //       }`,
+  //       {
+  //         poolId: this.id,
+  //       }
+  //     )
+  //     .pipe(
+  //       map((data) => {
+  //         return data.pool.tranches.nodes.map((node) => node.trancheId)
+  //       })
+  //     )
+  // })
+  tranches() {
+    return this._root._querySubquery<{ pool: { tranches: { nodes: { trancheId: string }[] } } }>(
+      ['tranches', this.id],
+      `query($poolId: String!) {
+      pool(id: $poolId) {
+        tranches {
+          nodes {
+            trancheId
+          }
+        }
+      }
+    }`,
+      {
+        poolId: this.id,
+      },
+      (data) => {
+        return data.pool.tranches.nodes.map((node) => node.trancheId)
+      }
+    )
   }
 
   activeDomains() {

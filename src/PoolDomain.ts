@@ -1,16 +1,16 @@
-import { defer, switchMap, tap } from 'rxjs'
+import { defer, of, switchMap, tap } from 'rxjs'
 import { getContract } from 'viem'
-import { ABI } from './abi/liquidityPools/index.js'
+import { ABI } from './abi/index.js'
 import type { Centrifuge } from './Centrifuge.js'
 import { lpConfig } from './config/lp.js'
+import { Entity } from './Entity.js'
 import type { Pool } from './Pool.js'
 import type { HexString } from './types/index.js'
-import type { QueryFn } from './types/query.js'
+import { repeatOnEvents } from './utils/rx.js'
 
-export class PoolDomain {
-  private _query: QueryFn
-  constructor(private _root: Centrifuge, public pool: Pool, public chainId: number) {
-    this._query = this._root._makeQuery(['pool', this.pool.id, 'domain', this.chainId])
+export class PoolDomain extends Entity {
+  constructor(centrifuge: Centrifuge, public pool: Pool, public chainId: number) {
+    super(centrifuge, ['pool', pool.id, 'domain', chainId])
   }
 
   manager() {
@@ -26,7 +26,7 @@ export class PoolDomain {
           console.log('managerAddress', managerAddress)
           return managerAddress as HexString
         }),
-      { cacheTime: Infinity }
+      { observableCacheTime: Infinity }
     )
   }
 
@@ -44,24 +44,38 @@ export class PoolDomain {
           }),
           tap((poolManager) => console.log('poolManager', poolManager))
         ),
-      { cacheTime: Infinity }
+      { observableCacheTime: Infinity }
     )
   }
 
   isActive() {
-    return this._query(
-      ['isActive'],
-      () =>
-        this.poolManager().pipe(
-          switchMap((manager) => {
-            return getContract({
+    return this._query(['isActive'], () =>
+      this.poolManager().pipe(
+        switchMap((manager) => {
+          return of(
+            getContract({
               address: manager,
               abi: ABI.PoolManager,
               client: this._root.getClient(this.chainId)!,
             }).read.isPoolActive!([this.pool.id]) as Promise<boolean>
-          })
-        ),
-      { cacheTime: Infinity }
+          ).pipe(
+            repeatOnEvents(
+              this._root,
+              {
+                address: manager,
+                abi: ABI.PoolManager,
+                eventName: 'AddPool',
+                filter: (events) => {
+                  return events.some((event) => {
+                    return event.args.poolId === this.pool.id
+                  })
+                },
+              },
+              this.chainId
+            )
+          )
+        })
+      )
     )
   }
 }
