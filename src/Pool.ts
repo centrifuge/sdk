@@ -41,17 +41,17 @@ export class Pool extends Entity {
   //     )
   // })
   tranches() {
-    return this._root._querySubquery<{ pool: { tranches: { nodes: { trancheId: string }[] } } }>(
+    return this._root._querySubquery<{ pool: { tranches: { nodes: { trancheId: string }[] } } }, string[]>(
       ['tranches', this.id],
       `query($poolId: String!) {
-      pool(id: $poolId) {
-        tranches {
-          nodes {
-            trancheId
+        pool(id: $poolId) {
+          tranches {
+            nodes {
+              trancheId
+            }
           }
         }
-      }
-    }`,
+      }`,
       {
         poolId: this.id,
       },

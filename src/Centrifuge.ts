@@ -141,7 +141,7 @@ export class Centrifuge {
     )
   }
 
-  _getSubqueryObservable<T = any>(query: string, variables?: any) {
+  _getSubqueryObservable<T = any>(query: string, variables?: Record<string, any>) {
     return fromFetch<T>(this.config.subqueryUrl, {
       method: 'POST',
       headers: {
@@ -159,24 +159,12 @@ export class Centrifuge {
     })
   }
 
-  _querySubquery<Result, Return>(
+  _querySubquery<Result, Return = Result>(
     keys: (string | number)[] | null,
     query: string,
-    variables: any,
-    postProcess: (val: Result) => Return
-  ): Query<Return>
-  _querySubquery<Result>(
-    keys: (string | number)[] | null,
-    query: string,
-    variables?: any,
-    postProcess?: undefined
-  ): Query<Result>
-  _querySubquery<Result, Return = any>(
-    keys: (string | number)[] | null,
-    query: string,
-    variables?: any,
-    postProcess?: (val: Result) => Return
-  ) {
+    variables?: Record<string, any>,
+    postProcess?: (data: Result) => Return
+  ): typeof postProcess extends undefined ? Query<Result> : Query<Return> {
     return this._query(keys, () => this._getSubqueryObservable(query, variables).pipe(map(postProcess ?? identity)), {
       valueCacheTime: 300,
     })
