@@ -34,6 +34,7 @@ import { shareReplayWithDelayedReset } from './utils/rx.js'
 
 export type Config = {
   environment: 'mainnet' | 'demo' | 'dev'
+  rpcUrl: string
   subqueryUrl: string
 }
 type DerivedConfig = Config & {
@@ -48,18 +49,21 @@ const envConfig = {
     subqueryUrl: 'https://api.subquery.network/sq/centrifuge/pools-demo-multichain',
     alchemyKey: 'KNR-1LZhNqWOxZS2AN8AFeaiESBV10qZ',
     infuraKey: '8ed99a9a115349bbbc01dcf3a24edc96',
+    rpcUrl: 'https://eth-mainnet.g.alchemy.com/v2/8ed99a9a115349bbbc01dcf3a24edc96',
     defaultChain: 1,
   },
   demo: {
     subqueryUrl: 'https://api.subquery.network/sq/centrifuge/pools-demo-multichain',
     alchemyKey: 'KNR-1LZhNqWOxZS2AN8AFeaiESBV10qZ',
     infuraKey: '8cd8e043ee8d4001b97a1c37e08fd9dd',
+    rpcUrl: 'https://eth-sepolia.g.alchemy.com/v2/8cd8e043ee8d4001b97a1c37e08fd9dd',
     defaultChain: 11155111,
   },
   dev: {
     subqueryUrl: 'https://api.subquery.network/sq/centrifuge/pools-demo-multichain',
     alchemyKey: 'KNR-1LZhNqWOxZS2AN8AFeaiESBV10qZ',
     infuraKey: '8cd8e043ee8d4001b97a1c37e08fd9dd',
+    rpcUrl: 'https://eth-sepolia.g.alchemy.com/v2/8cd8e043ee8d4001b97a1c37e08fd9dd',
     defaultChain: 11155111,
   },
 }
@@ -100,13 +104,14 @@ export class Centrifuge {
       ...defaultConfig,
       subqueryUrl: defaultConfigForEnv.subqueryUrl,
       defaultChain: defaultConfigForEnv.defaultChain,
+      rpcUrl: defaultConfigForEnv.rpcUrl,
       ...config,
     }
     Object.freeze(this.#config)
     chains
       .filter((chain) => (this.#config.environment === 'mainnet' ? !chain.testnet : chain.testnet))
       .forEach((chain) => {
-        this.#clients.set(chain.id, createPublicClient({ chain, transport: http(), batch: { multicall: true } }))
+        this.#clients.set(chain.id, createPublicClient({ chain, transport: http(this.#config.rpcUrl ?? undefined), batch: { multicall: true } }))
       })
   }
 
