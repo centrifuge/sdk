@@ -1,15 +1,28 @@
 import { expect } from 'chai';
-import { Centrifuge } from '../Centrifuge.js';
+import  { Centrifuge } from '../Centrifuge.js';
 
 describe('Centrifuge', () => {
-  it('should be able to fetch account and balances', async () => {
-    const centrifuge = new Centrifuge({
-      environment: 'mainnet',
-      rpcUrl: 'https://virtual.mainnet.rpc.tenderly.co/43639f5a-b12a-489b-aa15-45aba1d060c4',
+  let centrifuge: Centrifuge
+
+  before(async () => {
+    centrifuge = new Centrifuge({
+      environment: 'demo',
+      rpcUrl: 'https://virtual.sepolia.rpc.tenderly.co/ce7949c5-e956-4913-93bf-83b171163bdb',
     });
+  });
+  it("should be connected to mainnet", async () => {
+    const client = centrifuge.getClient();
+    expect(client?.chain.id).to.equal(11155111);
+    const chains = centrifuge.chains
+    expect(chains).to.include(11155111);
+  });
+  it('should fetch account and balances', async () => {
     const account = await centrifuge.account('0x423420Ae467df6e90291fd0252c0A8a637C1e03f');
     const balances = await account.balances();
-    console.log('balances', balances);
     expect(balances).to.exist;
+  });
+  it('should fetch a pool by id', async () => {
+    const pool = await centrifuge.pool('4139607887');
+    expect(pool).to.exist;
   });
 });
