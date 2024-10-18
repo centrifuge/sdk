@@ -1,5 +1,6 @@
 import type { Observable } from 'rxjs'
 import {
+  concatWith,
   defaultIfEmpty,
   defer,
   filter,
@@ -10,16 +11,18 @@ import {
   mergeMap,
   of,
   Subject,
-  tap,
   using,
 } from 'rxjs'
 import { fromFetch } from 'rxjs/fetch'
 import {
   createPublicClient,
+  createWalletClient,
+  custom,
   http,
   parseEventLogs,
   type Abi,
   type PublicClient,
+  type WalletClient,
   type WatchEventOnLogsParameter,
 } from 'viem'
 import { Account } from './Account.js'
@@ -37,6 +40,8 @@ type DerivedConfig = Config & {
   defaultChain: number
 }
 export type UserProvidedConfig = Partial<Config>
+
+type Provider = { request(...args: any): Promise<any> }
 
 const envConfig = {
   mainnet: {
@@ -75,6 +80,18 @@ export class Centrifuge {
   }
   get chains() {
     return [...this.#clients.keys()]
+  }
+
+  #signer: WalletClient<any, any> | null = null
+  setSigner(provider: Provider | null) {
+    if (!provider) {
+      this.#signer = null
+      return
+    }
+    this.#signer = createWalletClient({ transport: custom(provider) })
+  }
+  get signer() {
+    return this.#signer
   }
 
   constructor(config: UserProvidedConfig = {}) {
@@ -118,7 +135,7 @@ export class Centrifuge {
             }
           },
           ({ subject }: any) => subject as Subject<WatchEventOnLogsParameter>
-        ).pipe(tap((logs) => console.log('logs', logs))),
+        ),
       { cache: false } // Only emit new events
     ).pipe(filter((logs) => logs.length > 0))
   }
@@ -150,6 +167,7 @@ export class Centrifuge {
       },
       body: JSON.stringify({ query, variables }),
       selector: async (res) => {
+        console.log('fetched subquery')
         const { data, errors } = await res.json()
         if (errors?.length) {
           throw errors
@@ -159,14 +177,25 @@ export class Centrifuge {
     })
   }
 
+  _querySubquery<Result>(
+    keys: (string | number)[] | null,
+    query: string,
+    variables?: Record<string, any>
+  ): Query<Result>
+  _querySubquery<Result, Return>(
+    keys: (string | number)[] | null,
+    query: string,
+    variables: Record<string, any>,
+    postProcess: (data: Result) => Return
+  ): Query<Return>
   _querySubquery<Result, Return = Result>(
     keys: (string | number)[] | null,
     query: string,
     variables?: Record<string, any>,
     postProcess?: (data: Result) => Return
-  ): typeof postProcess extends undefined ? Query<Result> : Query<Return> {
+  ) {
     return this._query(keys, () => this._getSubqueryObservable(query, variables).pipe(map(postProcess ?? identity)), {
-      valueCacheTime: 300,
+      valueCacheTime: 2,
     })
   }
 
@@ -187,8 +216,10 @@ export class Centrifuge {
     options?: CentrifugeQueryOptions
   ): Query<T> {
     function get() {
+      const sharedSubject = new Subject<Observable<T>>()
       function createShared() {
-        return observableCallback().pipe(
+        console.log('createShared', keys)
+        const $shared = observableCallback().pipe(
           keys
             ? shareReplayWithDelayedReset({
                 bufferSize: options?.cache ?? true ? 1 : 0,
@@ -197,12 +228,16 @@ export class Centrifuge {
               })
             : identity
         )
+        sharedSubject.next($shared)
+        return $shared
       }
 
-      // Create shared observable. Recreate it if the previously shared observable has completed
-      // and no longer has a cached value, which can happen with a finite `valueCacheTime`.
       const $query = createShared().pipe(
+        // For new subscribers, recreate the shared observable if the previously shared observable has completed
+        // and no longer has a cached value, which can happen with a finite `valueCacheTime`.
         defaultIfEmpty(defer(createShared)),
+        // For existing subscribers, merge any newly created shared observable.
+        concatWith(sharedSubject),
         mergeMap((d) => (isObservable(d) ? d : of(d)))
       )
 
@@ -210,14 +245,14 @@ export class Centrifuge {
         then(onfulfilled: (value: T) => any, onrejected: (reason: any) => any) {
           return firstValueFrom($query).then(onfulfilled, onrejected)
         },
+        toPromise() {
+          return firstValueFrom($query)
+        },
       })
       return thenableQuery
     }
     return keys ? this.#memoizeWith(keys, get) : get()
   }
 
-  _makeQuery(baseKeys: (string | number)[]) {
-    return <T>(keys: (string | number)[] | null, cb: () => Observable<any>, options?: CentrifugeQueryOptions) =>
-      this._query<T>(keys ? [...baseKeys, ...keys] : null, cb, options)
-  }
+  _transaction() {}
 }
