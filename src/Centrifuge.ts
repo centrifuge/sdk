@@ -21,8 +21,8 @@ import {
   http,
   parseEventLogs,
   type Abi,
+  type Chain,
   type PublicClient,
-  type WalletClient,
   type WatchEventOnLogsParameter,
 } from 'viem'
 import { Account } from './Account.js'
@@ -30,7 +30,9 @@ import { chains } from './config/chains.js'
 import { Pool } from './Pool.js'
 import type { HexString } from './types/index.js'
 import type { CentrifugeQueryOptions, Query } from './types/query.js'
-import { shareReplayWithDelayedReset } from './utils/rx.js'
+import type { OperationStatus, Signer, TransactionCallbackParams } from './types/transaction.js'
+import { makeThenable, shareReplayWithDelayedReset } from './utils/rx.js'
+import { doTransaction } from './utils/transaction.js'
 
 export type Config = {
   environment: 'mainnet' | 'demo' | 'dev'
@@ -40,8 +42,6 @@ type DerivedConfig = Config & {
   defaultChain: number
 }
 export type UserProvidedConfig = Partial<Config>
-
-type Provider = { request(...args: any): Promise<any> }
 
 const envConfig = {
   mainnet: {
@@ -74,21 +74,20 @@ export class Centrifuge {
     return this.#config
   }
 
-  #clients = new Map<number, PublicClient<any, any>>()
+  #clients = new Map<number, PublicClient<any, Chain>>()
   getClient(chainId?: number) {
     return this.#clients.get(chainId ?? this.config.defaultChain)
   }
   get chains() {
     return [...this.#clients.keys()]
   }
+  getChainConfig(chainId?: number) {
+    return this.getClient(chainId ?? this.config.defaultChain)!.chain
+  }
 
-  #signer: WalletClient<any, any> | null = null
-  setSigner(provider: Provider | null) {
-    if (!provider) {
-      this.#signer = null
-      return
-    }
-    this.#signer = createWalletClient({ transport: custom(provider) })
+  #signer: Signer | null = null
+  setSigner(signer: Signer | null) {
+    this.#signer = signer
   }
   get signer() {
     return this.#signer
@@ -106,7 +105,10 @@ export class Centrifuge {
     chains
       .filter((chain) => (this.#config.environment === 'mainnet' ? !chain.testnet : chain.testnet))
       .forEach((chain) => {
-        this.#clients.set(chain.id, createPublicClient({ chain, transport: http(), batch: { multicall: true } }))
+        this.#clients.set(
+          chain.id,
+          createPublicClient<any, Chain>({ chain, transport: http(), batch: { multicall: true } })
+        )
       })
   }
 
@@ -222,7 +224,7 @@ export class Centrifuge {
         const $shared = observableCallback().pipe(
           keys
             ? shareReplayWithDelayedReset({
-                bufferSize: options?.cache ?? true ? 1 : 0,
+                bufferSize: (options?.cache ?? true) ? 1 : 0,
                 resetDelay: (options?.observableCacheTime ?? 60) * 1000,
                 windowTime: (options?.valueCacheTime ?? Infinity) * 1000,
               })
@@ -240,19 +242,73 @@ export class Centrifuge {
         concatWith(sharedSubject),
         mergeMap((d) => (isObservable(d) ? d : of(d)))
       )
-
-      const thenableQuery: Query<T> = Object.assign($query, {
-        then(onfulfilled: (value: T) => any, onrejected: (reason: any) => any) {
-          return firstValueFrom($query).then(onfulfilled, onrejected)
-        },
-        toPromise() {
-          return firstValueFrom($query)
-        },
-      })
-      return thenableQuery
+      return makeThenable($query)
     }
     return keys ? this.#memoizeWith(keys, get) : get()
   }
 
-  _transaction() {}
+  _transact(
+    title: string,
+    transactionCallback: (params: TransactionCallbackParams) => Promise<HexString> | Observable<HexString>,
+    chainId?: number
+  ): Query<OperationStatus>
+  _transact(
+    transactionCallback: (
+      params: TransactionCallbackParams
+    ) => AsyncGenerator<OperationStatus> | Observable<OperationStatus>,
+    chainId?: number
+  ): Query<OperationStatus>
+  _transact(...args: any[]) {
+    const isSimple = typeof args[0] === 'string'
+    const title = isSimple ? args[0] : undefined
+    const callback = (isSimple ? args[1] : args[0]) as (
+      params: TransactionCallbackParams
+    ) => Promise<HexString> | Observable<HexString | OperationStatus> | AsyncGenerator<OperationStatus>
+    const chainId = (isSimple ? args[2] : args[1]) as number
+    const targetChainId = chainId ?? this.config.defaultChain
+
+    const self = this
+    async function* transact() {
+      const { signer } = self
+      if (!signer) throw new Error('Signer not set')
+
+      const publicClient = self.getClient(targetChainId)!
+      const bareWalletClient = createWalletClient({ transport: custom(signer) })
+
+      const [address] = await bareWalletClient.getAddresses()
+      if (!address) throw new Error('No account selected')
+
+      const chain = self.getChainConfig(targetChainId)
+      const selectedChain = await bareWalletClient.getChainId()
+      if (selectedChain !== targetChainId) {
+        yield { type: 'SwitchingChain', chainId: targetChainId }
+        await bareWalletClient.switchChain({ id: targetChainId })
+      }
+
+      // Recreate the wallet client with the account and chain
+      const walletClient = createWalletClient({ account: address, chain, transport: custom(signer) })
+
+      const transaction = callback({
+        signingAddress: address,
+        chain,
+        chainId: targetChainId,
+        publicClient,
+        walletClient,
+        signer,
+      })
+      if (isSimple) {
+        yield* doTransaction(title, publicClient, () =>
+          'then' in transaction ? transaction : firstValueFrom(transaction as Observable<HexString>)
+        )
+      } else if (Symbol.asyncIterator in transaction) {
+        yield* transaction
+      } else if (isObservable(transaction)) {
+        yield transaction as Observable<OperationStatus>
+      } else {
+        throw new Error('Invalid arguments')
+      }
+    }
+    const $tx = defer(transact).pipe(mergeMap((d) => (isObservable(d) ? d : of(d))))
+    return makeThenable($tx, true)
+  }
 }

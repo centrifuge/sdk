@@ -1,7 +1,8 @@
-import type { MonoTypeOperatorFunction } from 'rxjs'
-import { filter, repeat, ReplaySubject, share, Subject, timer } from 'rxjs'
+import type { MonoTypeOperatorFunction, Observable } from 'rxjs'
+import { filter, firstValueFrom, lastValueFrom, repeat, ReplaySubject, share, Subject, timer } from 'rxjs'
 import type { Abi, Log } from 'viem'
 import type { Centrifuge } from '../Centrifuge.js'
+import type { Query } from '../types/query.js'
 
 export function shareReplayWithDelayedReset<T>(config?: {
   bufferSize?: number
@@ -35,4 +36,16 @@ export function repeatOnEvents<T>(
         })
       ),
   })
+}
+
+export function makeThenable<T>($query: Observable<T>, exhaust = false) {
+  const thenableQuery: Query<T> = Object.assign($query, {
+    then(onfulfilled: (value: T) => any, onrejected: (reason: any) => any) {
+      return (exhaust ? lastValueFrom : firstValueFrom)($query).then(onfulfilled, onrejected)
+    },
+    toPromise() {
+      return (exhaust ? lastValueFrom : firstValueFrom)($query)
+    },
+  })
+  return thenableQuery
 }
