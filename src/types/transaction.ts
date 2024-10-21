@@ -1,4 +1,4 @@
-import type { Account, Chain, PublicClient, TransactionReceipt, WalletClient } from 'viem'
+import type { Account, Chain, LocalAccount, PublicClient, TransactionReceipt, WalletClient } from 'viem'
 import type { HexString } from './index.js'
 
 export type OperationStatusType =
@@ -51,7 +51,7 @@ export type EIP1193ProviderLike = {
   // deprecated, but neccessary for eth-permit
   send(...args: any): Promise<any>
 }
-export type Signer = EIP1193ProviderLike
+export type Signer = EIP1193ProviderLike | LocalAccount
 
 export type TransactionCallbackParams = {
   signingAddress: HexString

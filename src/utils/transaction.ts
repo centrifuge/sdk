@@ -1,5 +1,5 @@
 import { signERC2612Permit } from 'eth-permit'
-import type { Account, Chain, PublicClient, WalletClient } from 'viem'
+import type { Account, Chain, LocalAccount, PublicClient, WalletClient } from 'viem'
 import type { HexString } from '../types/index.js'
 import type { OperationStatus, Signer } from '../types/transaction.js'
 
@@ -61,4 +61,8 @@ export async function signPermit(
   const deadline = Math.floor(Date.now() / 1000) + 3600 // 1 hour
   const permit = await signERC2612Permit(signer, domainOrCurrency, signingAddress, spender, amount.toString(), deadline)
   return permit as Permit
+}
+
+export function isLocalAccount(signer: Signer): signer is LocalAccount {
+  return 'type' in signer && signer.type === 'local'
 }

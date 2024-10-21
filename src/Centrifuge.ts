@@ -21,8 +21,10 @@ import {
   http,
   parseEventLogs,
   type Abi,
+  type Account as AccountType,
   type Chain,
   type PublicClient,
+  type WalletClient,
   type WatchEventOnLogsParameter,
 } from 'viem'
 import { Account } from './Account.js'
@@ -32,7 +34,7 @@ import type { HexString } from './types/index.js'
 import type { CentrifugeQueryOptions, Query } from './types/query.js'
 import type { OperationStatus, Signer, TransactionCallbackParams } from './types/transaction.js'
 import { makeThenable, shareReplayWithDelayedReset } from './utils/rx.js'
-import { doTransaction } from './utils/transaction.js'
+import { doTransaction, isLocalAccount } from './utils/transaction.js'
 
 export type Config = {
   environment: 'mainnet' | 'demo' | 'dev'
@@ -120,6 +122,9 @@ export class Centrifuge {
     return this._query(null, () => of(new Account(this, address, chainId ?? this.config.defaultChain)))
   }
 
+  /**
+   * Returns an observable of all events on a given chain.
+   */
   events(chainId?: number) {
     const cid = chainId ?? this.config.defaultChain
     return this._query(
@@ -142,6 +147,9 @@ export class Centrifuge {
     ).pipe(filter((logs) => logs.length > 0))
   }
 
+  /**
+   * Returns an observable of events on a given chain, filtered by name(s) and address(es).
+   */
   filteredEvents(address: string | string[], abi: Abi | Abi[], eventName: string | string[], chainId?: number) {
     const addresses = (Array.isArray(address) ? address : [address]).map((a) => a.toLowerCase())
     const eventNames = Array.isArray(eventName) ? eventName : [eventName]
@@ -169,7 +177,6 @@ export class Centrifuge {
       },
       body: JSON.stringify({ query, variables }),
       selector: async (res) => {
-        console.log('fetched subquery')
         const { data, errors } = await res.json()
         if (errors?.length) {
           throw errors
@@ -220,7 +227,6 @@ export class Centrifuge {
     function get() {
       const sharedSubject = new Subject<Observable<T>>()
       function createShared() {
-        console.log('createShared', keys)
         const $shared = observableCallback().pipe(
           keys
             ? shareReplayWithDelayedReset({
@@ -273,20 +279,24 @@ export class Centrifuge {
       if (!signer) throw new Error('Signer not set')
 
       const publicClient = self.getClient(targetChainId)!
-      const bareWalletClient = createWalletClient({ transport: custom(signer) })
-
-      const [address] = await bareWalletClient.getAddresses()
-      if (!address) throw new Error('No account selected')
-
       const chain = self.getChainConfig(targetChainId)
-      const selectedChain = await bareWalletClient.getChainId()
-      if (selectedChain !== targetChainId) {
-        yield { type: 'SwitchingChain', chainId: targetChainId }
-        await bareWalletClient.switchChain({ id: targetChainId })
+      const walletClient = (
+        isLocalAccount(signer)
+          ? createWalletClient({ account: signer, chain, transport: http() })
+          : createWalletClient({ chain, transport: custom(signer) })
+      ) as WalletClient<any, Chain, AccountType>
+
+      const [address] = await walletClient.getAddresses()
+      if (!address) throw new Error('No account selected')
+      if (!walletClient.account) {
+        walletClient.account = { address, type: 'json-rpc' }
       }
 
-      // Recreate the wallet client with the account and chain
-      const walletClient = createWalletClient({ account: address, chain, transport: custom(signer) })
+      const selectedChain = await walletClient.getChainId()
+      if (selectedChain !== targetChainId) {
+        yield { type: 'SwitchingChain', chainId: targetChainId }
+        await walletClient.switchChain({ id: targetChainId })
+      }
 
       const transaction = callback({
         signingAddress: address,
