@@ -21,6 +21,8 @@ import {
   http,
   parseEventLogs,
   type Abi,
+  type Account as AccountType,
+  type Chain,
   type PublicClient,
   type WalletClient,
   type WatchEventOnLogsParameter,
@@ -30,7 +32,9 @@ import { chains } from './config/chains.js'
 import { Pool } from './Pool.js'
 import type { HexString } from './types/index.js'
 import type { CentrifugeQueryOptions, Query } from './types/query.js'
-import { shareReplayWithDelayedReset } from './utils/rx.js'
+import type { OperationStatus, Signer, TransactionCallbackParams } from './types/transaction.js'
+import { makeThenable, shareReplayWithDelayedReset } from './utils/rx.js'
+import { doTransaction, isLocalAccount } from './utils/transaction.js'
 
 export type Config = {
   environment: 'mainnet' | 'demo' | 'dev'
@@ -41,8 +45,6 @@ type DerivedConfig = Config & {
   defaultChain: number
 }
 export type UserProvidedConfig = Partial<Config>
-
-type Provider = { request(...args: any): Promise<any> }
 
 const envConfig = {
   mainnet: {
@@ -78,21 +80,20 @@ export class Centrifuge {
     return this.#config
   }
 
-  #clients = new Map<number, PublicClient<any, any>>()
+  #clients = new Map<number, PublicClient<any, Chain>>()
   getClient(chainId?: number) {
     return this.#clients.get(chainId ?? this.config.defaultChain)
   }
   get chains() {
     return [...this.#clients.keys()]
   }
+  getChainConfig(chainId?: number) {
+    return this.getClient(chainId ?? this.config.defaultChain)!.chain
+  }
 
-  #signer: WalletClient<any, any> | null = null
-  setSigner(provider: Provider | null) {
-    if (!provider) {
-      this.#signer = null
-      return
-    }
-    this.#signer = createWalletClient({ transport: custom(provider) })
+  #signer: Signer | null = null
+  setSigner(signer: Signer | null) {
+    this.#signer = signer
   }
   get signer() {
     return this.#signer
@@ -111,7 +112,10 @@ export class Centrifuge {
     chains
       .filter((chain) => (this.#config.environment === 'mainnet' ? !chain.testnet : chain.testnet))
       .forEach((chain) => {
-        this.#clients.set(chain.id, createPublicClient({ chain, transport: http(this.#config.rpcUrl ?? undefined), batch: { multicall: true } }))
+        this.#clients.set(
+          chain.id,
+          createPublicClient<any, Chain>({ chain, transport: http(this.#config.rpcUrl ?? undefined), batch: { multicall: true } })
+        )
       })
   }
 
@@ -123,6 +127,9 @@ export class Centrifuge {
     return this._query(null, () => of(new Account(this, address, chainId ?? this.config.defaultChain)))
   }
 
+  /**
+   * Returns an observable of all events on a given chain.
+   */
   events(chainId?: number) {
     const cid = chainId ?? this.config.defaultChain
     return this._query(
@@ -145,6 +152,9 @@ export class Centrifuge {
     ).pipe(filter((logs) => logs.length > 0))
   }
 
+  /**
+   * Returns an observable of events on a given chain, filtered by name(s) and address(es).
+   */
   filteredEvents(address: string | string[], abi: Abi | Abi[], eventName: string | string[], chainId?: number) {
     const addresses = (Array.isArray(address) ? address : [address]).map((a) => a.toLowerCase())
     const eventNames = Array.isArray(eventName) ? eventName : [eventName]
@@ -172,7 +182,6 @@ export class Centrifuge {
       },
       body: JSON.stringify({ query, variables }),
       selector: async (res) => {
-        console.log('fetched subquery')
         const { data, errors } = await res.json()
         if (errors?.length) {
           throw errors
@@ -223,12 +232,11 @@ export class Centrifuge {
     function get() {
       const sharedSubject = new Subject<Observable<T>>()
       function createShared() {
-        console.log('createShared', keys)
         const $shared = observableCallback().pipe(
           keys
             ? shareReplayWithDelayedReset({
-                bufferSize: options?.cache ?? true ? 1 : 0,
-                resetDelay: (options?.observableCacheTime ?? 60) * 1000,
+                bufferSize: (options?.cache ?? true) ? 1 : 0,
+                resetDelay: (options?.cache === false ? 0 : (options?.observableCacheTime ?? 60)) * 1000,
                 windowTime: (options?.valueCacheTime ?? Infinity) * 1000,
               })
             : identity
@@ -245,19 +253,136 @@ export class Centrifuge {
         concatWith(sharedSubject),
         mergeMap((d) => (isObservable(d) ? d : of(d)))
       )
-
-      const thenableQuery: Query<T> = Object.assign($query, {
-        then(onfulfilled: (value: T) => any, onrejected: (reason: any) => any) {
-          return firstValueFrom($query).then(onfulfilled, onrejected)
-        },
-        toPromise() {
-          return firstValueFrom($query)
-        },
-      })
-      return thenableQuery
+      return makeThenable($query)
     }
     return keys ? this.#memoizeWith(keys, get) : get()
   }
 
-  _transaction() {}
+  /**
+   * Executes one or more transactions on a given chain.
+   * When subscribed to, it emits status updates as it progresses.
+   * When awaited, it returns the final confirmed if successful.
+   * Will additionally prompt the user to switch chains if they're not on the correct chain.
+   *
+   * @example
+   *
+   * Execute a single transaction
+   *
+   * ```ts
+   * const tx = this._transact(
+   *   'Transfer',
+   *   ({ walletClient }) =>
+   *     walletClient.writeContract({
+   *       address: '0xabc...123',
+   *       abi: ABI.Currency,
+   *       functionName: 'transfer',
+   *       args: ['0xdef...456', 1000000n],
+   *     }),
+   *   1
+   * )
+   * tx.subscribe(status => console.log(status))
+   *
+   * // Results in something like the following values being emitted (assuming the user wasn't connected to mainnet):
+   * // { type: 'SwitchingChain', chainId: 1 }
+   * // { type: 'SigningTransaction', title: 'Transfer' }
+   * // { type: 'TransactionPending', title: 'Transfer', hash: '0x123...abc' }
+   * // { type: 'TransactionConfirmed', title: 'Transfer', hash: '0x123...abc', receipt: { ... } }
+   * ```
+   *
+   * Execute multiple transactions
+   *
+   * ```ts
+   * const tx = this._transact(async function* ({ walletClient, publicClient, chainId, signingAddress, signer }) {
+   *   const permit = yield* doSignMessage('Sign Permit', () => {
+   *     return signPermit(walletClient, signer, chainId, signingAddress, '0xabc...123', '0xdef...456', 1000000n)
+   *   })
+   *   yield* doTransaction('Invest', publicClient, () =>
+   *     walletClient.writeContract({
+   *       address: '0xdef...456',
+   *       abi: ABI.LiquidityPool,
+   *       functionName: 'requestDepositWithPermit',
+   *       args: [1000000n, permit],
+   *     })
+   *   )
+   * }, 1)
+   * tx.subscribe(status => console.log(status))
+   *
+   * // Results in something like the following values being emitted (assuming the user was on the right chain):
+   * // { type: 'SigningMessage', title: 'Sign Permit' }
+   * // { type: 'SignedMessage', title: 'Sign Permit', signed: { ... } }
+   * // { type: 'SigningTransaction', title: 'Invest' }
+   * // { type: 'TransactionPending', title: 'Invest', hash: '0x123...abc' }
+   * // { type: 'TransactionConfirmed', title: 'Invest', hash: '0x123...abc', receipt: { ... } }
+   *
+   * @internal
+   */
+  _transact(
+    title: string,
+    transactionCallback: (params: TransactionCallbackParams) => Promise<HexString> | Observable<HexString>,
+    chainId?: number
+  ): Query<OperationStatus>
+  _transact(
+    transactionCallback: (
+      params: TransactionCallbackParams
+    ) => AsyncGenerator<OperationStatus> | Observable<OperationStatus>,
+    chainId?: number
+  ): Query<OperationStatus>
+  _transact(...args: any[]) {
+    const isSimple = typeof args[0] === 'string'
+    const title = isSimple ? args[0] : undefined
+    const callback = (isSimple ? args[1] : args[0]) as (
+      params: TransactionCallbackParams
+    ) => Promise<HexString> | Observable<HexString | OperationStatus> | AsyncGenerator<OperationStatus>
+    const chainId = (isSimple ? args[2] : args[1]) as number
+    const targetChainId = chainId ?? this.config.defaultChain
+
+    const self = this
+    async function* transact() {
+      const { signer } = self
+      if (!signer) throw new Error('Signer not set')
+
+      const publicClient = self.getClient(targetChainId)!
+      const chain = self.getChainConfig(targetChainId)
+      const bareWalletClient = isLocalAccount(signer)
+        ? createWalletClient({ account: signer, chain, transport: http() })
+        : createWalletClient({ transport: custom(signer) })
+
+      const [address] = await bareWalletClient.getAddresses()
+      if (!address) throw new Error('No account selected')
+
+      const selectedChain = await bareWalletClient.getChainId()
+      if (selectedChain !== targetChainId) {
+        yield { type: 'SwitchingChain', chainId: targetChainId }
+        await bareWalletClient.switchChain({ id: targetChainId })
+      }
+
+      // Re-create the wallet client with the correct chain and account
+      // Saves having to pass `account` and `chain` to every `writeContract` call
+      const walletClient = isLocalAccount(signer)
+        ? (bareWalletClient as WalletClient<any, Chain, AccountType>)
+        : createWalletClient({ account: address, chain, transport: custom(signer) })
+
+      const transaction = callback({
+        signingAddress: address,
+        chain,
+        chainId: targetChainId,
+        publicClient,
+        walletClient,
+        signer,
+      })
+      if (isSimple) {
+        yield* doTransaction(title, publicClient, () =>
+          'then' in transaction ? transaction : firstValueFrom(transaction as Observable<HexString>)
+        )
+      } else if (Symbol.asyncIterator in transaction) {
+        yield* transaction
+      } else if (isObservable(transaction)) {
+        yield transaction as Observable<OperationStatus>
+      } else {
+        throw new Error('Invalid arguments')
+      }
+    }
+    const $tx = defer(transact).pipe(mergeMap((d) => (isObservable(d) ? d : of(d))))
+    return makeThenable($tx, true)
+  }
 }
