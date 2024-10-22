@@ -1,4 +1,5 @@
 import { signERC2612Permit } from 'eth-permit'
+import { concatWith, defer, Observable, of } from 'rxjs'
 import type { Account, Chain, LocalAccount, PublicClient, WalletClient } from 'viem'
 import type { HexString } from '../types/index.js'
 import type { OperationStatus, Signer } from '../types/transaction.js'
@@ -10,7 +11,32 @@ export async function* doTransaction(
 ): AsyncGenerator<OperationStatus> {
   yield { type: 'SigningTransaction', title }
   const hash = await transactionCallback()
-  yield* waitForTransaction(title, publicClient, hash)
+  yield { type: 'TransactionPending', title, hash }
+  const receipt = await publicClient.waitForTransactionReceipt({ hash })
+  yield { type: 'TransactionConfirmed', title, hash, receipt }
+}
+
+export function getTransactionObservable(
+  title: string,
+  publicClient: PublicClient,
+  transactionCallback: () => Promise<HexString>
+): Observable<OperationStatus> {
+  let hash: HexString | null = null
+  let receipt: any = null
+  return of({ type: 'SigningTransaction', title } as const).pipe(
+    concatWith(
+      defer(async () => {
+        hash = await transactionCallback()
+        return { type: 'TransactionPending', title, hash: hash! } as const
+      })
+    ),
+    concatWith(
+      defer(async () => {
+        receipt = await publicClient.waitForTransactionReceipt({ hash: hash! })
+        return { type: 'TransactionConfirmed', title, hash: hash!, receipt } as const
+      })
+    )
+  )
 }
 
 export async function* doSignMessage(
@@ -23,15 +49,6 @@ export async function* doSignMessage(
   return message
 }
 
-export async function* waitForTransaction(
-  title: string,
-  publicClient: PublicClient,
-  hash: HexString
-): AsyncGenerator<OperationStatus> {
-  yield { type: 'TransactionPending', title, hash }
-  const receipt = await publicClient.waitForTransactionReceipt({ hash })
-  yield { type: 'TransactionConfirmed', title, hash, receipt }
-}
 
 export type Permit = {
   deadline: number | string

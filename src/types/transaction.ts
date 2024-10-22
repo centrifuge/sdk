@@ -48,8 +48,6 @@ export type OperationStatus =
 
 export type EIP1193ProviderLike = {
   request(...args: any): Promise<any>
-  // deprecated, but neccessary for eth-permit
-  send(...args: any): Promise<any>
 }
 export type Signer = EIP1193ProviderLike | LocalAccount
 

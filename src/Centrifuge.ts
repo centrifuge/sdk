@@ -231,7 +231,7 @@ export class Centrifuge {
           keys
             ? shareReplayWithDelayedReset({
                 bufferSize: (options?.cache ?? true) ? 1 : 0,
-                resetDelay: (options?.observableCacheTime ?? 60) * 1000,
+                resetDelay: (options?.cache === false ? 0 : (options?.observableCacheTime ?? 60)) * 1000,
                 windowTime: (options?.valueCacheTime ?? Infinity) * 1000,
               })
             : identity
@@ -253,6 +253,64 @@ export class Centrifuge {
     return keys ? this.#memoizeWith(keys, get) : get()
   }
 
+  /**
+   * Executes one or more transactions on a given chain.
+   * When subscribed to, it emits status updates as it progresses.
+   * When awaited, it returns the final confirmed if successful.
+   * Will additionally prompt the user to switch chains if they're not on the correct chain.
+   *
+   * @example
+   *
+   * Execute a single transaction
+   *
+   * ```ts
+   * const tx = this._transact(
+   *   'Transfer',
+   *   ({ walletClient }) =>
+   *     walletClient.writeContract({
+   *       address: '0xabc...123',
+   *       abi: ABI.Currency,
+   *       functionName: 'transfer',
+   *       args: ['0xdef...456', 1000000n],
+   *     }),
+   *   1
+   * )
+   * tx.subscribe(status => console.log(status))
+   *
+   * // Results in something like the following values being emitted (assuming the user wasn't connected to mainnet):
+   * // { type: 'SwitchingChain', chainId: 1 }
+   * // { type: 'SigningTransaction', title: 'Transfer' }
+   * // { type: 'TransactionPending', title: 'Transfer', hash: '0x123...abc' }
+   * // { type: 'TransactionConfirmed', title: 'Transfer', hash: '0x123...abc', receipt: { ... } }
+   * ```
+   *
+   * Execute multiple transactions
+   *
+   * ```ts
+   * const tx = this._transact(async function* ({ walletClient, publicClient, chainId, signingAddress, signer }) {
+   *   const permit = yield* doSignMessage('Sign Permit', () => {
+   *     return signPermit(walletClient, signer, chainId, signingAddress, '0xabc...123', '0xdef...456', 1000000n)
+   *   })
+   *   yield* doTransaction('Invest', publicClient, () =>
+   *     walletClient.writeContract({
+   *       address: '0xdef...456',
+   *       abi: ABI.LiquidityPool,
+   *       functionName: 'requestDepositWithPermit',
+   *       args: [1000000n, permit],
+   *     })
+   *   )
+   * }, 1)
+   * tx.subscribe(status => console.log(status))
+   *
+   * // Results in something like the following values being emitted (assuming the user was on the right chain):
+   * // { type: 'SigningMessage', title: 'Sign Permit' }
+   * // { type: 'SignedMessage', title: 'Sign Permit', signed: { ... } }
+   * // { type: 'SigningTransaction', title: 'Invest' }
+   * // { type: 'TransactionPending', title: 'Invest', hash: '0x123...abc' }
+   * // { type: 'TransactionConfirmed', title: 'Invest', hash: '0x123...abc', receipt: { ... } }
+   *
+   * @internal
+   */
   _transact(
     title: string,
     transactionCallback: (params: TransactionCallbackParams) => Promise<HexString> | Observable<HexString>,
@@ -280,23 +338,24 @@ export class Centrifuge {
 
       const publicClient = self.getClient(targetChainId)!
       const chain = self.getChainConfig(targetChainId)
-      const walletClient = (
-        isLocalAccount(signer)
-          ? createWalletClient({ account: signer, chain, transport: http() })
-          : createWalletClient({ chain, transport: custom(signer) })
-      ) as WalletClient<any, Chain, AccountType>
+      const bareWalletClient = isLocalAccount(signer)
+        ? createWalletClient({ account: signer, chain, transport: http() })
+        : createWalletClient({ transport: custom(signer) })
 
-      const [address] = await walletClient.getAddresses()
+      const [address] = await bareWalletClient.getAddresses()
       if (!address) throw new Error('No account selected')
-      if (!walletClient.account) {
-        walletClient.account = { address, type: 'json-rpc' }
-      }
 
-      const selectedChain = await walletClient.getChainId()
+      const selectedChain = await bareWalletClient.getChainId()
       if (selectedChain !== targetChainId) {
         yield { type: 'SwitchingChain', chainId: targetChainId }
-        await walletClient.switchChain({ id: targetChainId })
+        await bareWalletClient.switchChain({ id: targetChainId })
       }
+
+      // Re-create the wallet client with the correct chain and account
+      // Saves having to pass `account` and `chain` to every `writeContract` call
+      const walletClient = isLocalAccount(signer)
+        ? (bareWalletClient as WalletClient<any, Chain, AccountType>)
+        : createWalletClient({ account: address, chain, transport: custom(signer) })
 
       const transaction = callback({
         signingAddress: address,

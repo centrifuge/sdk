@@ -61,7 +61,7 @@ centrifuge.setSigner(signer)
 With this you can call transaction methods. Similar to queries they can be awaited to get their final result, or subscribed to get get status updates.
 
 ```js
-const pool = centrifuge.pool('1')
+const pool = await centrifuge.pool('1')
 try {
   const status = await pool.closeEpoch()
   console.log(status)
@@ -71,7 +71,7 @@ try {
 ```
 
 ```js
-const pool = centrifuge.pool('1')
+const pool = await centrifuge.pool('1')
 const subscription = pool.closeEpoch().subscribe(
   (status) => console.log(pool),
   (error) => console.error(error),

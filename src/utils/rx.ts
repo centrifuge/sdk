@@ -14,7 +14,7 @@ export function shareReplayWithDelayedReset<T>(config?: {
     connector: () => (bufferSize === 0 ? new Subject() : new ReplaySubject(bufferSize, windowTime)),
     resetOnError: true,
     resetOnComplete: false,
-    resetOnRefCountZero: isFinite(resetDelay) ? () => timer(resetDelay) : false,
+    resetOnRefCountZero: resetDelay === 0 ? true : isFinite(resetDelay) ? () => timer(resetDelay) : false,
   })
 }
 
