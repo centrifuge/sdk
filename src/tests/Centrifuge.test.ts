@@ -7,10 +7,12 @@ describe('Centrifuge', () => {
   before(async () => {
     centrifuge = new Centrifuge({
       environment: 'demo',
-      rpcUrl: 'https://virtual.sepolia.rpc.tenderly.co/ce7949c5-e956-4913-93bf-83b171163bdb',
+      rpcUrls: {
+        11155111: 'https://virtual.sepolia.rpc.tenderly.co/ce7949c5-e956-4913-93bf-83b171163bdb',
+      },
     });
   });
-  it("should be connected to mainnet", async () => {
+  it("should be connected to sepolia", async () => {
     const client = centrifuge.getClient();
     expect(client?.chain.id).to.equal(11155111);
     const chains = centrifuge.chains
