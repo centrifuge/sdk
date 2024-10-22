@@ -1,15 +1,14 @@
 import { expect } from 'chai'
 import { Centrifuge } from '../Centrifuge.js'
-import { forkTenderlyNetwork, deleteTenderlyRpcEndpoint } from './tenderly.js'
+import { TenderlyFork } from './tenderly.js'
 
 describe('Centrifuge', () => {
   let centrifuge: Centrifuge
-  let vnetId: string
+  let tenderlyFork: TenderlyFork
 
   before(async () => {
-    const fork = await forkTenderlyNetwork(11155111)
-    vnetId = fork.vnetId
-    console.log('Created tenderly fork with id', vnetId)
+    tenderlyFork = new TenderlyFork(11155111)
+    const fork = await tenderlyFork.forkTenderlyNetwork()
     centrifuge = new Centrifuge({
       environment: 'demo',
       rpcUrls: {
@@ -18,11 +17,11 @@ describe('Centrifuge', () => {
     })
   })
   after(async () => {
-    const deleted = await deleteTenderlyRpcEndpoint(vnetId)
+    const deleted = await tenderlyFork.deleteTenderlyRpcEndpoint()
     if (deleted) {
-      console.log('deleted tenderly rpc endpoint with id', vnetId)
+      console.log('deleted tenderly rpc endpoint with id', tenderlyFork.vnetId)
     } else {
-      console.log('failed to delete tenderly rpc endpoint with id', vnetId)
+      console.log('failed to delete tenderly rpc endpoint with id', tenderlyFork.vnetId)
     }
   })
   it('should be connected to sepolia', async () => {
