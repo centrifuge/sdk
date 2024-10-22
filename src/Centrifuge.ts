@@ -40,7 +40,6 @@ export type Config = {
   environment: 'mainnet' | 'demo' | 'dev'
   rpcUrls?: Record<number | string, string>
   subqueryUrl: string
-
 }
 type DerivedConfig = Config & {
   defaultChain: number
@@ -110,7 +109,7 @@ export class Centrifuge {
       .filter((chain) => (this.#config.environment === 'mainnet' ? !chain.testnet : chain.testnet))
       .forEach((chain) => {
         const rpcUrl = this.#config.rpcUrls?.[`${chain.id}`] ?? undefined
-        if (!rpcUrl) {  
+        if (!rpcUrl) {
           console.warn(`No rpcUrl defined for chain ${chain.id}. Using public RPC endpoint.`)
         }
         this.#clients.set(
