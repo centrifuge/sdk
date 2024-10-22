@@ -25,8 +25,7 @@
     "dev": "tsc -w --importHelpers",
     "build": "tsc --importHelpers",
     "prepare": "yarn build",
-    "test": "mocha --loader=ts-node/esm --exit 'src/**/*.test.ts'",
-    "anvil": "viem-anvil"
+    "test": "mocha --loader=ts-node/esm --exit 'src/**/*.test.ts'"
   },
   "dependencies": {
     "eth-permit": "^0.2.3",
@@ -36,7 +35,6 @@
     "@types/chai": "^5.0.0",
     "@types/mocha": "^10.0.9",
     "@types/node": "^22.7.8",
-    "@viem/anvil": "^0.0.10",
     "chai": "^5.1.1",
     "dotenv": "^16.4.5",
     "eslint": "^9.12.0",
