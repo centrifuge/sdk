@@ -40,7 +40,6 @@ const TENDERLY_ACCESS_KEY = process.env.TENDERLY_ACCESS_KEY as string
 export class TenderlyFork {
   #chainId: number
   vnetId?: string
-  rpcUrl?: string
   constructor(chainId: number) {
     this.#chainId = chainId
   }
