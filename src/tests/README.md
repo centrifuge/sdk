@@ -23,3 +23,30 @@ Run the tests:
 ```bash
 yarn test
 ```
+
+### Usage
+
+```ts
+// create a new fork
+const tenderlyFork = await TenderlyFork.create(sepolia)
+
+// or use an existing fork
+const tenderlyFork = new TenderlyFork(sepolia, '<vnet-id>')
+
+// connect to centrifuge
+const centrifuge = new Centrifuge({
+  environment: 'demo',
+  rpcUrls: {
+    11155111: tenderlyFork.rpcUrl,
+  },
+})
+
+// set the tenderly signer as the signer for centrifuge
+centrifuge.setSigner(tenderlyFork.signer)
+
+// fund the signer's account on the fork
+await tenderlyFork.fundAccountEth(tenderlyFork.account.address, parseEther('100'))
+
+// fund the signer's account with USDt ERC20 tokens
+await tenderlyFork.fundAccountERC20(tenderlyFork.account.address, parseEther('100'))
+```
