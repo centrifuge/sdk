@@ -124,8 +124,10 @@ export class Centrifuge {
 
   /**
    * Returns an observable of all events on a given chain.
+   *
+   * @internal
    */
-  events(chainId?: number) {
+  _events(chainId?: number) {
     const cid = chainId ?? this.config.defaultChain
     return this._query(
       ['events', cid],
@@ -149,11 +151,13 @@ export class Centrifuge {
 
   /**
    * Returns an observable of events on a given chain, filtered by name(s) and address(es).
+   *
+   * @internal
    */
-  filteredEvents(address: string | string[], abi: Abi | Abi[], eventName: string | string[], chainId?: number) {
+  _filteredEvents(address: string | string[], abi: Abi | Abi[], eventName: string | string[], chainId?: number) {
     const addresses = (Array.isArray(address) ? address : [address]).map((a) => a.toLowerCase())
     const eventNames = Array.isArray(eventName) ? eventName : [eventName]
-    return this.events(chainId).pipe(
+    return this._events(chainId).pipe(
       map((logs) => {
         const parsed = parseEventLogs({
           abi: abi.flat(),
@@ -168,6 +172,9 @@ export class Centrifuge {
     )
   }
 
+  /**
+   * @internal
+   */
   _getSubqueryObservable<T = any>(query: string, variables?: Record<string, any>) {
     return fromFetch<T>(this.config.subqueryUrl, {
       method: 'POST',
@@ -186,6 +193,9 @@ export class Centrifuge {
     })
   }
 
+  /**
+   * @internal
+   */
   _querySubquery<Result>(
     keys: (string | number)[] | null,
     query: string,
@@ -204,7 +214,7 @@ export class Centrifuge {
     postProcess?: (data: Result) => Return
   ) {
     return this._query(keys, () => this._getSubqueryObservable(query, variables).pipe(map(postProcess ?? identity)), {
-      valueCacheTime: 2,
+      valueCacheTime: 300,
     })
   }
 
@@ -219,6 +229,87 @@ export class Centrifuge {
     return result
   }
 
+  /**
+   * Wraps an observable, memoizing the result based on the keys provided.
+   * If keys are provided, the observable will be memoized, multicasted, and the last emitted value cached.
+   * Additional options can be provided to control the caching behavior.
+   * By default, the observable will keep the last emitted value and pass it immediately to new subscribers.
+   * When there are no subscribers, the observable resets after a short timeout and purges the cached value.
+   *
+   * @example
+   *
+   * ```ts
+   * const address = '0xabc...123'
+   * const tUSD = '0x456...def'
+   * const chainId = 1
+   *
+   * // Wrap an observable that continuously emits values
+   * const query = this._query(['balance', address, tUSD, chainId], () => {
+   *   return defer(() => fetchBalance(address, tUSD, chainId))
+   *   .pipe(
+   *     repeatOnEvents(
+   *       this,
+   *       {
+   *         address: tUSD,
+   *         abi: ABI.Currency,
+   *         eventName: 'Transfer',
+   *       },
+   *       chainId
+   *     )
+   *   )
+   * })
+   *
+   * // Logs the current balance and updated balances whenever a transfer event is emitted
+   * const obs1 = query.subscribe(balance => console.log(balance))
+   *
+   * // Subscribing twice only fetches the balance once and will emit the same value to both subscribers
+   * const obs2 = query.subscribe(balance => console.log(balance))
+   *
+   * // ... sometime later
+   *
+   * // Later subscribers will receive the last emitted value immediately
+   * const obs3 = query.subscribe(balance => console.log(balance))
+   *
+   * // Awaiting the query will also immediately return the last emitted value or wait for the next value
+   * const balance = await query
+   *
+   * obs1.unsubscribe()
+   * obs2.unsubscribe()
+   * obs3.unsubscribe()
+   * ```
+   *
+   * ```ts
+   * const address = '0xabc...123'
+   * const tUSD = '0x456...def'
+   * const chainId = 1
+   *
+   * // Wrap an observable that only emits one value and then completes
+   * //
+   * const query = this._query(['balance', address, tUSD, chainId], () => {
+   *   return defer(() => fetchBalance(address, tUSD, chainId))
+   * }, { valueCacheTime: 60 })
+   *
+   * // Logs the current balance and updated balances whenever a new
+   * const obs1 = query.subscribe(balance => console.log(balance))
+   *
+   * // Subscribing twice only fetches the balance once and will emit the same value to both subscribers
+   * const obs2 = query.subscribe(balance => console.log(balance))
+   *
+   * // ... sometime later
+   *
+   * // Later subscribers will receive the last emitted value immediately
+   * const obs3 = query.subscribe(balance => console.log(balance))
+   *
+   * // Awaiting the query will also immediately return the last emitted value or wait for the next value
+   * const balance = await query
+   *
+   * obs1.unsubscribe()
+   * obs2.unsubscribe()
+   * obs3.unsubscribe()
+   * ```
+   *
+   * @internal
+   */
   _query<T>(
     keys: (string | number)[] | null,
     observableCallback: () => Observable<T>,
@@ -254,14 +345,12 @@ export class Centrifuge {
   }
 
   /**
-   * Executes one or more transactions on a given chain.
+   * Executes a transaction on a given chain.
    * When subscribed to, it emits status updates as it progresses.
    * When awaited, it returns the final confirmed if successful.
    * Will additionally prompt the user to switch chains if they're not on the correct chain.
    *
    * @example
-   *
-   * Execute a single transaction
    *
    * ```ts
    * const tx = this._transact(
@@ -284,7 +373,33 @@ export class Centrifuge {
    * // { type: 'TransactionConfirmed', title: 'Transfer', hash: '0x123...abc', receipt: { ... } }
    * ```
    *
-   * Execute multiple transactions
+   * ```ts
+   * const finalResult = await this._transact(...)
+   * console.log(finalResult) // { type: 'TransactionConfirmed', title: 'Transfer', hash: '0x123...abc', receipt: { ... } }
+   * ```
+   *
+   * @internal
+   */
+  _transact(
+    title: string,
+    transactionCallback: (params: TransactionCallbackParams) => Promise<HexString> | Observable<HexString>,
+    chainId?: number
+  ): Query<OperationStatus> {
+    return this._transactSequence(async function* (params) {
+      const transaction = transactionCallback(params)
+      yield* doTransaction(title, params.publicClient, () =>
+        'then' in transaction ? transaction : firstValueFrom(transaction)
+      )
+    }, chainId)
+  }
+
+  /**
+   * Executes a sequence of transactions on a given chain.
+   * When subscribed to, it emits status updates as it progresses.
+   * When awaited, it returns the final confirmed if successful.
+   * Will additionally prompt the user to switch chains if they're not on the correct chain.
+   *
+   * @example
    *
    * ```ts
    * const tx = this._transact(async function* ({ walletClient, publicClient, chainId, signingAddress, signer }) {
@@ -311,26 +426,13 @@ export class Centrifuge {
    *
    * @internal
    */
-  _transact(
-    title: string,
-    transactionCallback: (params: TransactionCallbackParams) => Promise<HexString> | Observable<HexString>,
-    chainId?: number
-  ): Query<OperationStatus>
-  _transact(
+  _transactSequence(
     transactionCallback: (
       params: TransactionCallbackParams
     ) => AsyncGenerator<OperationStatus> | Observable<OperationStatus>,
     chainId?: number
-  ): Query<OperationStatus>
-  _transact(...args: any[]) {
-    const isSimple = typeof args[0] === 'string'
-    const title = isSimple ? args[0] : undefined
-    const callback = (isSimple ? args[1] : args[0]) as (
-      params: TransactionCallbackParams
-    ) => Promise<HexString> | Observable<HexString | OperationStatus> | AsyncGenerator<OperationStatus>
-    const chainId = (isSimple ? args[2] : args[1]) as number
+  ): Query<OperationStatus> {
     const targetChainId = chainId ?? this.config.defaultChain
-
     const self = this
     async function* transact() {
       const { signer } = self
@@ -347,7 +449,7 @@ export class Centrifuge {
 
       const selectedChain = await bareWalletClient.getChainId()
       if (selectedChain !== targetChainId) {
-        yield { type: 'SwitchingChain', chainId: targetChainId }
+        yield { type: 'SwitchingChain', chainId: targetChainId } as const
         await bareWalletClient.switchChain({ id: targetChainId })
       }
 
@@ -357,7 +459,7 @@ export class Centrifuge {
         ? (bareWalletClient as WalletClient<any, Chain, AccountType>)
         : createWalletClient({ account: address, chain, transport: custom(signer) })
 
-      const transaction = callback({
+      const transaction = transactionCallback({
         signingAddress: address,
         chain,
         chainId: targetChainId,
@@ -365,14 +467,10 @@ export class Centrifuge {
         walletClient,
         signer,
       })
-      if (isSimple) {
-        yield* doTransaction(title, publicClient, () =>
-          'then' in transaction ? transaction : firstValueFrom(transaction as Observable<HexString>)
-        )
-      } else if (Symbol.asyncIterator in transaction) {
+      if (Symbol.asyncIterator in transaction) {
         yield* transaction
       } else if (isObservable(transaction)) {
-        yield transaction as Observable<OperationStatus>
+        yield transaction
       } else {
         throw new Error('Invalid arguments')
       }

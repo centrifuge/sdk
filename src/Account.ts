@@ -62,6 +62,27 @@ export class Account extends Entity {
     )
   }
 
+  transfer1b(to: HexString, amount: bigint) {
+    return this._transactSequence(async function* ({ walletClient, publicClient }) {
+      yield* doTransaction('Transfer', publicClient, () =>
+        walletClient.writeContract({
+          address: tUSD,
+          abi: ABI.Currency,
+          functionName: 'transfer',
+          args: [to, amount],
+        })
+      )
+      yield* doTransaction('Transfer2', publicClient, () =>
+        walletClient.writeContract({
+          address: tUSD,
+          abi: ABI.Currency,
+          functionName: 'transfer',
+          args: [to, amount],
+        })
+      )
+    }, this.chainId)
+  }
+
   transfer2(to: HexString, amount: bigint) {
     return this._transact(
       'Transfer',
@@ -82,7 +103,7 @@ export class Account extends Entity {
   }
 
   transfer3(to: HexString, amount: bigint) {
-    return this._transact(
+    return this._transactSequence(
       ({ walletClient, publicClient }) =>
         this.balances().pipe(
           first(),
@@ -118,7 +139,7 @@ export class Account extends Entity {
   }
 
   transfer4(to: HexString, amount: bigint) {
-    return this._transact(
+    return this._transactSequence(
       ({ walletClient, publicClient }) =>
         this.balances().pipe(
           first(),
@@ -151,7 +172,7 @@ export class Account extends Entity {
   }
 
   transfer5(to: HexString, amount: bigint) {
-    return this._transact(
+    return this._transactSequence(
       ({ walletClient, publicClient, signer, chainId, signingAddress }) =>
         this.balances().pipe(
           first(),
@@ -208,7 +229,7 @@ export class Account extends Entity {
   }
 
   transfer6(to: HexString, amount: bigint) {
-    return this._transact(
+    return this._transactSequence(
       ({ walletClient, publicClient, signer, chainId, signingAddress }) =>
         this.balances().pipe(
           first(),
@@ -258,4 +279,41 @@ export class Account extends Entity {
       this.chainId
     )
   }
+
+  // transfer3(to: HexString, amount: bigint) {
+  //   return this._transact(async function* ({ walletClient, publicClient, chainId, signingAddress, signer }) {
+  //     const permit = yield* doSignMessage('Sign Permit', () => {
+  //       return signPermit(walletClient, signer, chainId, signingAddress, tUSD, NULL_ADDRESS, amount)
+  //     })
+  //     console.log('permit', permit)
+  //     yield* doTransaction('Transfer', publicClient, () =>
+  //       walletClient.writeContract({
+  //         address: tUSD,
+  //         abi: ABI.Currency,
+  //         functionName: 'transfer',
+  //         args: [to, amount],
+  //       })
+  //     )
+  //   }, this.chainId)
+  // }
+
+  // transfer4(to: HexString, amount: bigint) {
+  //   return this._transact(
+  //     ({ walletClient, publicClient }) =>
+  //       this.balances().pipe(
+  //         switchMap(async function* (balance) {
+  //           console.log('balance', balance)
+  //           yield* doTransaction('Transfer', publicClient, () =>
+  //             walletClient.writeContract({
+  //               address: tUSD,
+  //               abi: ABI.Currency,
+  //               functionName: 'transfer',
+  //               args: [to, amount],
+  //             })
+  //           )
+  //         })
+  //       ),
+  //     this.chainId
+  //   )
+  // }
 }

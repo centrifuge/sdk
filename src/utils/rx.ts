@@ -30,7 +30,7 @@ export function repeatOnEvents<T>(
 ): MonoTypeOperatorFunction<T> {
   return repeat({
     delay: () =>
-      centrifuge.filteredEvents(opts.address || [], opts.abi, opts.eventName, chainId).pipe(
+      centrifuge._filteredEvents(opts.address || [], opts.abi, opts.eventName, chainId).pipe(
         filter((events) => {
           return opts.filter ? opts.filter(events) : true
         })
