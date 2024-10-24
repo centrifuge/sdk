@@ -4,7 +4,6 @@ import {
   createWalletClient,
   http,
   rpcSchema,
-  testActions,
   toHex,
   type Account,
   type Address,
@@ -15,7 +14,6 @@ import {
   type WalletClient,
 } from 'viem'
 import { generatePrivateKey, privateKeyToAccount } from 'viem/accounts'
-import { mainnet, sepolia } from 'viem/chains'
 dotenv.config({ path: './src/tests/.env' })
 
 type TenderlyVirtualNetwork = {
@@ -67,65 +65,79 @@ type CustomRpcSchema = [
 
 const tUSD = '0x8503b4452Bf6238cC76CdbEE223b46d7196b1c93'
 
-const TENDERLY_API = 'https://api.tenderly.co/api/v1'
+const TENDERLY_API_URL = 'https://api.tenderly.co/api/v1'
+const TENDERLY_VNET_URL = 'https://virtual.sepolia.rpc.tenderly.co'
 const PROJECT_SLUG = process.env.PROJECT_SLUG
 const ACCOUNT_SLUG = process.env.ACCOUNT_SLUG
 const TENDERLY_ACCESS_KEY = process.env.TENDERLY_ACCESS_KEY as string
 
 export class TenderlyFork {
-  chainId: number
+  chain: Chain
   vnetId?: string
+  _rpcUrl?: string
+  forkedNetwork?: TenderlyVirtualNetwork
+  get rpcUrl(): string {
+    if (!this._rpcUrl) {
+      throw new Error('RPC URL is not initialized. Ensure forkNetwork() or TenderlyFork.create() has been called.')
+    }
+    return this._rpcUrl
+  }
   private _publicClient?: PublicClient<Transport, Chain, Account, CustomRpcSchema>
   get publicClient(): PublicClient<Transport, Chain, Account, CustomRpcSchema> {
-    if (!this._publicClient) {
-      this.setPublicClient()
-    }
-    return this._publicClient!
+    return this._publicClient ?? this.setPublicClient()
   }
   private _signer?: WalletClient
   get signer(): WalletClient {
-    if (!this._signer) {
-      this.setSigner()
-    }
-    return this._signer!
+    return this._signer ?? this.setSigner()
   }
   /**
-   * @returns the account, if no account is set, it will create one
-   * alternatively, this.acount can set be set with `createAccount` and can receive a private key
+   * if no account is set, one will be created randomly
+   * alternatively, this.account can set be set with `createAccount(privateKey)`
    */
   private _account?: Account
   get account(): Account {
-    if (!this._account) {
-      this.createAccount()
-    }
-    return this._account!
+    return this._account ?? this.createAccount()
   }
 
-  constructor(chainId: number, vnetId?: string) {
-    this.chainId = chainId
+  constructor(chain: Chain, vnetId?: string, rpcUrl?: string) {
+    this.chain = chain
     this.vnetId = vnetId
+    this._rpcUrl = rpcUrl
   }
 
-  private setPublicClient<T extends CustomRpcSchema>() {
-    const { url, chain } = this.getForkedChains(this.chainId)
+  public static async create(chain: Chain, vnetId?: string): Promise<TenderlyFork> {
+    let rpcUrl: string
+    if (vnetId) {
+      rpcUrl = `${TENDERLY_VNET_URL}/${vnetId}`
+      return new TenderlyFork(chain, vnetId, rpcUrl)
+    } else {
+      const instance = new TenderlyFork(chain)
+      const { vnetId, url } = await instance.forkNetwork()
+      return new TenderlyFork(chain, vnetId, url)
+    }
+  }
+
+  private setPublicClient<T extends CustomRpcSchema>(): PublicClient<Transport, Chain, Account, CustomRpcSchema> {
     this._publicClient =
       this._publicClient ??
       createPublicClient({
-        chain,
-        transport: http(url),
+        chain: this.chain,
+        transport: http(this.rpcUrl),
         rpcSchema: rpcSchema<T>(),
       })
+    return this._publicClient!
   }
 
-  private setSigner(walletAccount?: Account): void {
-    const { url, chain } = this.getForkedChains(this.chainId)
+  private setSigner(): WalletClient {
+    const walletAccount = this.account
     this._signer =
       this._signer ??
       createWalletClient({
         account: walletAccount,
-        transport: http(url),
-        chain,
+        transport: http(this.rpcUrl),
+        chain: this.chain,
       })
+    return this._signer!
   }
 
   createAccount(privateKey?: Hex) {
@@ -135,20 +147,9 @@ export class TenderlyFork {
     return walletAccount
   }
 
-  getForkedChains(chainId: number): { url: string; chain: Chain } {
-    if (!this.vnetId) {
-      throw new Error('Tenderly RPC endpoint not found')
-    }
-    const forks = {
-      11155111: { url: `https://virtual.sepolia.rpc.tenderly.co/${this.vnetId}`, chain: sepolia },
-      1: { url: `https://virtual.mainnet.rpc.tenderly.co/${this.vnetId}`, chain: mainnet },
-    }
-    return forks[chainId as keyof typeof forks]
-  }
-
   async forkNetwork() {
     try {
-      const tenderlyApi = `${TENDERLY_API}/account/${ACCOUNT_SLUG}/project/${PROJECT_SLUG}/vnets`
+      const tenderlyApi = `${TENDERLY_API_URL}/account/${ACCOUNT_SLUG}/project/${PROJECT_SLUG}/vnets`
       const timestamp = Date.now()
       const response = await fetch(tenderlyApi, {
         method: 'POST',
@@ -159,12 +160,12 @@ export class TenderlyFork {
           slug: `centrifuge-sepolia-fork-${timestamp}`,
           display_name: `Centrifuge Sepolia Fork ${timestamp}`,
           fork_config: {
-            network_id: this.chainId,
+            network_id: this.chain.id,
             block_number: '6924285',
           },
           virtual_network_config: {
             chain_config: {
-              chain_id: this.chainId,
+              chain_id: this.chain.id,
             },
           },
           sync_state_config: {
@@ -181,13 +182,15 @@ export class TenderlyFork {
       if ('error' in virtualNetwork) {
         throw new Error(JSON.stringify(virtualNetwork.error))
       }
-      const forkedRpcUrl = virtualNetwork.rpcs.find((rpc) => rpc.name === 'Public RPC')?.url
-      if (!forkedRpcUrl) {
+      const forkedRpc = virtualNetwork.rpcs.find((rpc) => rpc.name === 'Admin RPC')
+      if (!forkedRpc?.url) {
         throw new Error('Failed to find forked RPC URL')
       }
       console.log('Created Tenderly RPC endpoint', virtualNetwork.id)
+      this.forkedNetwork = virtualNetwork
       this.vnetId = virtualNetwork.id
-      return { url: forkedRpcUrl }
+      this._rpcUrl = forkedRpc.url
+      return { url: forkedRpc.url, vnetId: virtualNetwork.id }
     } catch (error) {
       throw error
     }
@@ -195,7 +198,7 @@ export class TenderlyFork {
 
   async deleteTenderlyRpcEndpoint() {
     try {
-      const tenderlyApi = `${TENDERLY_API}/account/${ACCOUNT_SLUG}/project/${PROJECT_SLUG}/vnets/${this.vnetId}`
+      const tenderlyApi = `${TENDERLY_API_URL}/account/${ACCOUNT_SLUG}/project/${PROJECT_SLUG}/vnets/${this.vnetId}`
       const response = await fetch(tenderlyApi, {
         method: 'DELETE',
         headers: {
@@ -215,24 +218,32 @@ export class TenderlyFork {
   }
 
   async fundAccountEth(address: string, amount: bigint) {
-    const ethResult = await this.publicClient.request({
-      jsonrpc: '2.0',
-      method: 'tenderly_setBalance',
-      params: [address, toHex(amount)],
-      id: '1234',
-    })
+    try {
+      const ethResult = await this.publicClient.request({
+        jsonrpc: '2.0',
+        method: 'tenderly_setBalance',
+        params: [address, toHex(amount)],
+        id: '1234',
+      })
 
-    return ethResult
+      return ethResult
+    } catch (error) {
+      throw error
+    }
   }
 
   async fundAccountERC20(address: string, amount: bigint) {
-    const erc20Result = await this.publicClient.request({
-      jsonrpc: '2.0',
-      method: 'tenderly_setErc20Balance',
-      params: [tUSD, address, toHex(amount)],
-      id: '1234',
-    })
+    try {
+      const erc20Result = await this.publicClient.request({
+        jsonrpc: '2.0',
+        method: 'tenderly_setErc20Balance',
+        params: [tUSD, address, toHex(amount)],
+        id: '1234',
+      })
 
-    return erc20Result
+      return erc20Result
+    } catch (error) {
+      throw error
+    }
   }
 }
