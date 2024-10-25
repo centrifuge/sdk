@@ -5,7 +5,7 @@ import { NULL_ADDRESS } from './constants.js'
 import { Entity } from './Entity.js'
 import type { HexString } from './types/index.js'
 import { repeatOnEvents } from './utils/rx.js'
-import { doSignMessage, doTransaction, getTransactionObservable, signPermit } from './utils/transaction.js'
+import { doSignMessage, doTransaction, signPermit } from './utils/transaction.js'
 
 const tUSD = '0x8503b4452Bf6238cC76CdbEE223b46d7196b1c93'
 
@@ -63,7 +63,9 @@ export class Account extends Entity {
   }
 
   transfer1b(to: HexString, amount: bigint) {
+    const self = this
     return this._transactSequence(async function* ({ walletClient, publicClient }) {
+      const balance = await self.balances()
       yield* doTransaction('Transfer', publicClient, () =>
         walletClient.writeContract({
           address: tUSD,
@@ -112,7 +114,7 @@ export class Account extends Entity {
 
             let $approval: ObservableInput<any> | null = null
             if (needsApproval) {
-              $approval = getTransactionObservable('Approve', publicClient, () =>
+              $approval = doTransaction('Approve', publicClient, () =>
                 walletClient.writeContract({
                   address: tUSD,
                   abi: ABI.Currency,
@@ -122,7 +124,7 @@ export class Account extends Entity {
               )
             }
 
-            const $transfer = getTransactionObservable('Transfer', publicClient, () =>
+            const $transfer = doTransaction('Transfer', publicClient, () =>
               walletClient.writeContract({
                 address: tUSD,
                 abi: ABI.Currency,
