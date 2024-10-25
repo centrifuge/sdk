@@ -1,5 +1,4 @@
 import { signERC2612Permit } from 'eth-permit'
-import { concatWith, defer, Observable, of } from 'rxjs'
 import type { Account, Chain, LocalAccount, PublicClient, WalletClient } from 'viem'
 import type { HexString } from '../types/index.js'
 import type { OperationStatus, Signer } from '../types/transaction.js'
@@ -16,29 +15,6 @@ export async function* doTransaction(
   yield { type: 'TransactionConfirmed', title, hash, receipt }
 }
 
-export function getTransactionObservable(
-  title: string,
-  publicClient: PublicClient,
-  transactionCallback: () => Promise<HexString>
-): Observable<OperationStatus> {
-  let hash: HexString | null = null
-  let receipt: any = null
-  return of({ type: 'SigningTransaction', title } as const).pipe(
-    concatWith(
-      defer(async () => {
-        hash = await transactionCallback()
-        return { type: 'TransactionPending', title, hash: hash! } as const
-      })
-    ),
-    concatWith(
-      defer(async () => {
-        receipt = await publicClient.waitForTransactionReceipt({ hash: hash! })
-        return { type: 'TransactionConfirmed', title, hash: hash!, receipt } as const
-      })
-    )
-  )
-}
-
 export async function* doSignMessage(
   title: string,
   transactionCallback: () => Promise<any>
@@ -48,7 +24,6 @@ export async function* doSignMessage(
   yield { type: 'SignedMessage', title, signed: message }
   return message
 }
-
 
 export type Permit = {
   deadline: number | string

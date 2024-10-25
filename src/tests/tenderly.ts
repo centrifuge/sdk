@@ -6,9 +6,9 @@ import {
   rpcSchema,
   toHex,
   type Account,
-  type Address,
   type Chain,
   type Hex,
+  type LocalAccount,
   type PublicClient,
   type Transport,
   type WalletClient,
@@ -94,8 +94,8 @@ export class TenderlyFork {
    * if no account is set, one will be created randomly
    * alternatively, this.account can set be set with `createAccount(privateKey)`
    */
-  private _account?: Account
-  get account(): Account {
+  private _account?: LocalAccount
+  get account(): LocalAccount {
     return this._account ?? this.createAccount()
   }
 
@@ -110,11 +110,10 @@ export class TenderlyFork {
     if (vnetId) {
       rpcUrl = `${TENDERLY_VNET_URL}/${vnetId}`
       return new TenderlyFork(chain, vnetId, rpcUrl)
-    } else {
-      const instance = new TenderlyFork(chain)
-      const { vnetId, url } = await instance.forkNetwork()
-      return new TenderlyFork(chain, vnetId, url)
     }
+    const instance = new TenderlyFork(chain)
+    const { vnetId: _vnetId, url } = await instance.forkNetwork()
+    return new TenderlyFork(chain, _vnetId, url)
   }
 
   private setPublicClient<T extends CustomRpcSchema>(): PublicClient<Transport, Chain, Account, CustomRpcSchema> {

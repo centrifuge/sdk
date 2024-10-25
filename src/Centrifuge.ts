@@ -108,7 +108,7 @@ export class Centrifuge {
     chains
       .filter((chain) => (this.#config.environment === 'mainnet' ? !chain.testnet : chain.testnet))
       .forEach((chain) => {
-        const rpcUrl = this.#config.rpcUrls?.[`${chain.id}`] ?? undefined
+        const rpcUrl = this.#config.rpcUrls?.[chain.id] ?? undefined
         if (!rpcUrl) {
           console.warn(`No rpcUrl defined for chain ${chain.id}. Using public RPC endpoint.`)
         }
@@ -446,7 +446,7 @@ export class Centrifuge {
       const publicClient = self.getClient(targetChainId)!
       const chain = self.getChainConfig(targetChainId)
       const bareWalletClient = isLocalAccount(signer)
-        ? createWalletClient({ account: signer, chain, transport: http() })
+        ? createWalletClient({ account: signer, chain, transport: http(self.#config.rpcUrls?.[chain.id]) })
         : createWalletClient({ transport: custom(signer) })
 
       const [address] = await bareWalletClient.getAddresses()
