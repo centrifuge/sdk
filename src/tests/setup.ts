@@ -13,6 +13,7 @@ declare global {
 class TestContext {
   public centrifuge!: Centrifuge
   public tenderlyFork!: TenderlyFork
+  public allTestsSucceeded = true
 
   async initialize() {
     this.tenderlyFork = await TenderlyFork.create(sepolia)
@@ -26,9 +27,10 @@ class TestContext {
   }
 
   async cleanup() {
-    if (this.tenderlyFork) {
+    if (this.tenderlyFork && this.allTestsSucceeded) {
       await this.tenderlyFork.deleteTenderlyRpcEndpoint()
     }
+    console.log('A test has failed, RPC endpoint will not be deleted', this.tenderlyFork.rpcUrl)
   }
 }
 
@@ -46,7 +48,12 @@ export const mochaHooks = {
     await testContext.initialize()
     this.context = testContext as TestContext
   },
-
+  afterEach: async function (this: Mocha.Context & TestContext) {
+    // TODO: only keep the vn alive if a test involving a query/tx has failed
+    if (this.currentTest?.state === 'failed') {
+      this.context.allTestsSucceeded = false
+    }
+  },
   afterAll: async function (this: Mocha.Context & TestContext) {
     await testContext.cleanup()
   },
