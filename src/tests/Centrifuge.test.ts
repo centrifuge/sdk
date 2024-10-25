@@ -1,72 +1,66 @@
 import { expect } from 'chai'
 import { combineLatest, filter, firstValueFrom, last, Observable } from 'rxjs'
 import { parseEther } from 'viem'
-import { sepolia } from 'viem/chains'
-import { Centrifuge } from '../Centrifuge.js'
 import type { OperationConfirmedStatus } from '../types/transaction.js'
-import { TenderlyFork } from './tenderly.js'
+import { withContext } from './setup.js'
 
 describe('Centrifuge', () => {
-  let centrifuge: Centrifuge
-  let tenderlyFork: TenderlyFork
-
-  before(async () => {
-    tenderlyFork = await TenderlyFork.create(sepolia)
-    centrifuge = new Centrifuge({
-      environment: 'demo',
-      rpcUrls: {
-        11155111: tenderlyFork.rpcUrl,
-      },
+  it(
+    'should be connected to sepolia',
+    withContext(async function () {
+      const client = this.context.centrifuge.getClient()
+      expect(client?.chain.id).to.equal(11155111)
+      const chains = this.context.centrifuge.chains
+      expect(chains).to.include(11155111)
     })
-    centrifuge.setSigner(tenderlyFork.account)
-  })
-  // TODO: don't remove if any test fails
-  after(async () => {
-    return await tenderlyFork.deleteTenderlyRpcEndpoint()
-  })
-  it('should be connected to sepolia', async () => {
-    const client = centrifuge.getClient()
-    expect(client?.chain.id).to.equal(11155111)
-    const chains = centrifuge.chains
-    expect(chains).to.include(11155111)
-  })
-  it('should fetch account and balances', async () => {
-    const account = await centrifuge.account('0x423420Ae467df6e90291fd0252c0A8a637C1e03f')
-    const balances = await account.balances()
-    expect(balances).to.exist
-  })
+  )
 
-  it('should make a transfer', async () => {
-    const fromAddress = tenderlyFork.account.address
-    const destAddress = '0x423420Ae467df6e90291fd0252c0A8a637C1e03f'
-    const transferAmount = 10_000_000n
+  it(
+    'should fetch account and balances',
+    withContext(async function () {
+      const account = await this.context.centrifuge.account('0x423420Ae467df6e90291fd0252c0A8a637C1e03f')
+      const balances = await account.balances()
+      expect(balances).to.exist
+    })
+  )
 
-    await Promise.all([
-      tenderlyFork.fundAccountEth(fromAddress, parseEther('100')),
-      tenderlyFork.fundAccountERC20(fromAddress, 100_000_000n),
-    ])
-    const fromAccount = await centrifuge.account(fromAddress)
-    const destAccount = await centrifuge.account(destAddress)
-    const fromBalanceInitial = await fromAccount.balances()
-    const destBalanceInitial = await destAccount.balances()
+  it(
+    'should make a transfer',
+    withContext(async function () {
+      const fromAddress = this.context.tenderlyFork.account.address
+      const destAddress = '0x423420Ae467df6e90291fd0252c0A8a637C1e03f'
+      const transferAmount = 10_000_000n
 
-    const [transfer, fromBalanceFinal, destBalanceFinal] = await firstValueFrom(
-      combineLatest([
-        fromAccount.transfer(destAddress, transferAmount).pipe(last()) as Observable<OperationConfirmedStatus>,
-        fromAccount.balances().pipe(filter((balance) => balance !== fromBalanceInitial)),
-        destAccount.balances().pipe(filter((balance) => balance !== destBalanceInitial)),
+      await Promise.all([
+        this.context.tenderlyFork.fundAccountEth(fromAddress, parseEther('100')),
+        this.context.tenderlyFork.fundAccountERC20(fromAddress, 100_000_000n),
       ])
-    )
+      const fromAccount = await this.context.centrifuge.account(fromAddress)
+      const destAccount = await this.context.centrifuge.account(destAddress)
+      const fromBalanceInitial = await fromAccount.balances()
+      const destBalanceInitial = await destAccount.balances()
 
-    expect(transfer.type).to.equal('TransactionConfirmed')
-    expect(transfer.title).to.equal('Transfer')
-    expect(transfer.receipt.status).to.equal('success')
-    expect(fromBalanceFinal).to.equal(fromBalanceInitial - transferAmount)
-    expect(destBalanceFinal).to.equal(destBalanceInitial + transferAmount)
-  })
+      const [transfer, fromBalanceFinal, destBalanceFinal] = await firstValueFrom(
+        combineLatest([
+          fromAccount.transfer(destAddress, transferAmount).pipe(last()) as Observable<OperationConfirmedStatus>,
+          fromAccount.balances().pipe(filter((balance) => balance !== fromBalanceInitial)),
+          destAccount.balances().pipe(filter((balance) => balance !== destBalanceInitial)),
+        ])
+      )
 
-  it('should fetch a pool by id', async () => {
-    const pool = await centrifuge.pool('4139607887')
-    expect(pool).to.exist
-  })
+      expect(transfer.type).to.equal('TransactionConfirmed')
+      expect(transfer.title).to.equal('Transfer')
+      expect(transfer.receipt.status).to.equal('success')
+      expect(fromBalanceFinal).to.equal(fromBalanceInitial - transferAmount)
+      expect(destBalanceFinal).to.equal(destBalanceInitial + transferAmount)
+    })
+  )
+
+  it(
+    'should fetch a pool by id',
+    withContext(async function () {
+      const pool = await this.context.centrifuge.pool('4139607887')
+      expect(pool).to.exist
+    })
+  )
 })
