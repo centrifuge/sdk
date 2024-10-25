@@ -38,6 +38,7 @@ import { doTransaction, isLocalAccount } from './utils/transaction.js'
 
 export type Config = {
   environment: 'mainnet' | 'demo' | 'dev'
+  rpcUrls?: Record<number | string, string>
   subqueryUrl: string
 }
 type DerivedConfig = Config & {
@@ -107,9 +108,13 @@ export class Centrifuge {
     chains
       .filter((chain) => (this.#config.environment === 'mainnet' ? !chain.testnet : chain.testnet))
       .forEach((chain) => {
+        const rpcUrl = this.#config.rpcUrls?.[`${chain.id}`] ?? undefined
+        if (!rpcUrl) {
+          console.warn(`No rpcUrl defined for chain ${chain.id}. Using public RPC endpoint.`)
+        }
         this.#clients.set(
           chain.id,
-          createPublicClient<any, Chain>({ chain, transport: http(), batch: { multicall: true } })
+          createPublicClient<any, Chain>({ chain, transport: http(rpcUrl), batch: { multicall: true } })
         )
       })
   }

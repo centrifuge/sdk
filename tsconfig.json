@@ -3,8 +3,8 @@
     "moduleDetection": "force",
     "module": "NodeNext",
     "target": "es2023",
-    // "moduleResolution": "NodeNext",
-    // "esModuleInterop": true,
+    "moduleResolution": "NodeNext",
+    "esModuleInterop": true,
     "verbatimModuleSyntax": true,
     "strict": true,
     "isolatedModules": true,
@@ -16,7 +16,11 @@
     "declarationMap": true,
     "noUncheckedIndexedAccess": true,
     "noImplicitOverride": true,
-    "lib": ["es2023", "dom", "dom.iterable"],
+    "lib": [
+      "es2023",
+      "dom",
+      "dom.iterable"
+    ],
     // "importHelpers": true,
     // "rootDir": "./src",
     "outDir": "dist"
@@ -28,5 +32,8 @@
     // "noUnusedLocals": true,
     // "noUnusedParameters": true,
   },
-  "include": ["src", "types"]
+  "include": [
+    "src",
+    "types"
+  ]
 }
