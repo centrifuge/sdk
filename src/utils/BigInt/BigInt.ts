@@ -12,12 +12,10 @@ export function Dec(value: Numeric) {
   return new Decimal(value)
 }
 
-type NumericInput = Numeric | bigint
-
 abstract class BigIntWrapper {
   protected value: bigint
 
-  constructor(value: NumericInput) {
+  constructor(value: Numeric | bigint) {
     if (typeof value === 'bigint') {
       this.value = value
     } else if (value instanceof Decimal) {
@@ -41,7 +39,7 @@ abstract class BigIntWrapper {
 class DecimalWrapper extends BigIntWrapper {
   protected decimals: number
 
-  constructor(value: NumericInput, decimals: number) {
+  constructor(value: Numeric | bigint, decimals: number) {
     super(value)
     this.decimals = decimals
   }
@@ -146,16 +144,6 @@ export class Rate extends DecimalWrapper {
     return this.fromApr(Dec(apr.toString()).div(100))
   }
 
-  static fractionFromApr(apr: Numeric) {
-    const i = Dec(apr.toString())
-    const rate = i.div(secondsPerYear)
-    return Rate.fromFloat(rate)
-  }
-
-  static fractionFromAprPercent(apr: Numeric) {
-    return this.fractionFromApr(Dec(apr.toString()).div(100))
-  }
-
   toPercent() {
     return this.toDecimal().mul(100)
   }
@@ -170,18 +158,6 @@ export class Rate extends DecimalWrapper {
 
   toAprPercent() {
     return this.toApr().mul(100)
-  }
-
-  fractionToApr() {
-    const rate = this.toDecimal()
-    if (rate.isZero()) {
-      return rate
-    }
-    return rate.times(secondsPerYear)
-  }
-
-  fractionToAprPercent() {
-    return this.fractionToApr().mul(100)
   }
 }
 

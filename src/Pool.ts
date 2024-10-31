@@ -2,10 +2,18 @@ import { catchError, combineLatest, map, of, switchMap, timeout } from 'rxjs'
 import type { Centrifuge } from './Centrifuge.js'
 import { Entity } from './Entity.js'
 import { PoolDomain } from './PoolDomain.js'
+import { Reports } from './Reports.js'
 
 export class Pool extends Entity {
-  constructor(_root: Centrifuge, public id: string) {
+  constructor(
+    _root: Centrifuge,
+    public id: string
+  ) {
     super(_root, ['pool', id])
+  }
+
+  reports() {
+    return new Reports(this._root, this.id)
   }
 
   domains() {
