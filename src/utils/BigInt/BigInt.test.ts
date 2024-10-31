@@ -1,0 +1,61 @@
+import { expect } from 'chai'
+import { Currency, Rate, Token } from './BigInt.js'
+
+describe('BN', () => {
+  it('should convert float/number to Currency', () => {
+    const balance = Currency.fromFloat(1000, 6)
+    expect(balance.toDecimal().toString()).to.be.equal('1000')
+    expect(balance.toFloat()).to.be.equal(1000)
+    expect(balance.toBigInt()).to.be.equal(1000000000n)
+    expect(balance.toString()).to.be.equal('1000000000')
+  })
+  it('should convert string to Currency', () => {
+    const balance = Currency.fromFloat('1000', 6)
+    expect(balance.toDecimal().toString()).to.be.equal('1000')
+    expect(balance.toFloat()).to.be.equal(1000)
+    expect(balance.toBigInt()).to.be.equal(1000000000n)
+    expect(balance.toString()).to.be.equal('1000000000')
+  })
+  it('should convert BigInt to Currency', () => {
+    const balance = new Currency(1000n, 6)
+    expect(balance.toBigInt()).to.be.equal(1000n)
+    expect(balance.toDecimal().toFixed()).to.be.equal('0.001')
+    expect(balance.toFloat()).to.be.equal(0.001)
+  })
+  it('should convert float to Token', () => {
+    const token = Token.fromFloat(1000, 6)
+    expect(token.toDecimal().toString()).to.be.equal('1000')
+    expect(token.toFloat()).to.be.equal(1000)
+    expect(token.toBigInt()).to.be.equal(1000000000n)
+    expect(token.toString()).to.be.equal('1000000000')
+    const a = token.add(1000n)
+    expect(a.toDecimal().toString()).to.be.equal('1000.001')
+    const b = token.sub(500n)
+    expect(b.toString()).to.be.equal('999999500')
+    const c = token.mul(BigInt(2))
+    expect(c.toDecimal().toString()).to.be.equal('2000')
+  })
+  it('should convert float to Rate', () => {
+    const rate = Rate.fromFloat(0.9)
+    expect(rate.toDecimal().toString()).to.be.equal('0.9')
+    expect(rate.toString()).to.be.equal('900000000000000000000000000')
+    // TODO: check if these are correct
+    expect(rate.toAprPercent().toString()).to.be.equal('-315360000')
+    expect(rate.toApr().toString()).to.be.equal('-3153600')
+    expect(rate.toAprPercent().toString()).to.be.equal('-315360000')
+  })
+  it('should perform arithmetic operations on Currency', () => {
+    const a = new Currency(1000n, 6)
+    const b = a.add(1000n)
+    expect(b.toBigInt()).to.be.equal(2000n)
+    expect(b.toFloat()).to.be.equal(0.002)
+    const c = a.add(1000n)
+    expect(c.toDecimal().toString()).to.be.equal('0.002')
+    const d = a.sub(1500n)
+    expect(d.toBigInt()).to.be.equal(-500n)
+    const e = a.mul(2n)
+    expect(e.toString()).to.be.equal('2000')
+    // const f = a.div(2n)
+    // expect(f.toDecimal().toString()).to.be.equal('0.005')
+  })
+})

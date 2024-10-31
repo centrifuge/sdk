@@ -20,6 +20,7 @@ __metadata:
     "@types/mocha": "npm:^10.0.9"
     "@types/node": "npm:^22.7.8"
     chai: "npm:^5.1.2"
+    decimal.js-light: "npm:^2.5.1"
     dotenv: "npm:^16.4.5"
     eslint: "npm:^9.12.0"
     eth-permit: "npm:^0.2.3"
@@ -964,6 +965,13 @@ __metadata:
   version: 4.0.0
   resolution: "decamelize@npm:4.0.0"
   checksum: 10c0/e06da03fc05333e8cd2778c1487da67ffbea5b84e03ca80449519b8fa61f888714bbc6f459ea963d5641b4aa98832130eb5cd193d90ae9f0a27eee14be8e278d
+  languageName: node
+  linkType: hard
+
+"decimal.js-light@npm:^2.5.1":
+  version: 2.5.1
+  resolution: "decimal.js-light@npm:2.5.1"
+  checksum: 10c0/4fd33f535aac9e5bd832796831b65d9ec7914ad129c7437b3ab991b0c2eaaa5a57e654e6174c4a17f1b3895ea366f0c1ab4955cdcdf7cfdcf3ad5a58b456c020
   languageName: node
   linkType: hard
 
