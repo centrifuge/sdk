@@ -35,6 +35,7 @@ query($poolId: String!, $from: Datetime!, $to: Datetime!) {
       sumUnrealizedProfitAtNotional
       sumUnrealizedProfitByPeriod
       pool {
+        id
         currency {
           decimals
         }
@@ -72,6 +73,7 @@ export type SubqueryPoolSnapshot = {
       sumUnrealizedProfitAtNotional: string
       sumUnrealizedProfitByPeriod: string
       pool: {
+        id: string
         currency: {
           decimals: number
         }
@@ -83,6 +85,7 @@ export type SubqueryPoolSnapshot = {
 export type PoolSnapshot =
   | {
       id: string
+      poolId: string
       netAssetValue: Currency
       totalReserve: Currency
       offchainCashValue: Currency
@@ -120,6 +123,7 @@ export function poolSnapshotsPostProcess(data: SubqueryPoolSnapshot): PoolSnapsh
       const snapshotToday = snapshotByDay.get(timestamp)
       const poolState = {
         id: state.id,
+        poolId: state.pool.id,
         poolCurrency,
         netAssetValue: new Currency(state.netAssetValue, poolCurrency.decimals),
         totalReserve: new Currency(state.totalReserve, poolCurrency.decimals),
