@@ -1,4 +1,4 @@
-import { Currency } from '../../utils/BigInt/BigInt.js'
+import { Currency } from '../../utils/BigInt.js'
 
 export const poolSnapshotsQuery = `
 query($poolId: String!, $from: Datetime!, $to: Datetime!) {
