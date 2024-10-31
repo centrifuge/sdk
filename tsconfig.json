@@ -1,11 +1,10 @@
 {
   "compilerOptions": {
-    "moduleDetection": "force",
-    "module": "NodeNext",
+    "module": "esnext",
     "target": "es2023",
+    "moduleResolution": "node",
     // "moduleResolution": "NodeNext",
-    // "esModuleInterop": true,
-    "verbatimModuleSyntax": true,
+    "esModuleInterop": true,
     "strict": true,
     "isolatedModules": true,
     "resolveJsonModule": true,
@@ -16,18 +15,27 @@
     "declarationMap": true,
     "noUncheckedIndexedAccess": true,
     "noImplicitOverride": true,
-    "lib": ["es2023", "dom", "dom.iterable"],
+    "lib": [
+      "es2023",
+      "dom",
+      "dom.iterable"
+    ],
     // "importHelpers": true,
     // "rootDir": "./src",
-    "outDir": "dist"
+    "outDir": "dist",
+    "allowSyntheticDefaultImports": true
     // "forceConsistentCasingInFileNames": true,
-    // "allowSyntheticDefaultImports": true,
     // "noImplicitAny": true,
     // "strictNullChecks": true,
     // "noImplicitReturns": true,
     // "noUnusedLocals": true,
     // "noUnusedParameters": true,
   },
-  "include": ["src", "src/**/*.d.ts"],
-  "exclude": ["**/*.test.ts"]
+  "include": [
+    "src",
+    "src/**/*.d.ts"
+  ],
+  "exclude": [
+    "**/*.test.ts"
+  ]
 }
