@@ -1,17 +1,14 @@
-import Decimal, { type Config, type Numeric } from 'decimal.js-light'
+import type { Decimal as DecimalType, Config, Numeric } from 'decimal.js-light'
+import Decimal from 'decimal.js-light'
 
-const config: Config = {
+Decimal.set({
   precision: 30,
   toExpNeg: -7,
   toExpPos: 29,
-  rounding: 1, // ROUND_HALF_CEIL is 1
-}
-
-// @ts-ignore TODO: fix this
-Decimal.set(config)
+  rounding: Decimal.ROUND_HALF_CEIL, // ROUND_HALF_CEIL is 1
+})
 
 export function Dec(value: Numeric) {
-  // @ts-ignore
   return new Decimal(value)
 }
 
@@ -23,7 +20,7 @@ abstract class BigIntWrapper {
   constructor(value: NumericInput) {
     if (typeof value === 'bigint') {
       this.value = value
-    } else if (value instanceof Decimal.Decimal) {
+    } else if (value instanceof Decimal) {
       this.value = BigInt(value.toFixed(0))
     } else if (typeof value === 'number') {
       this.value = BigInt(Math.floor(value))
@@ -75,9 +72,10 @@ class DecimalWrapper extends BigIntWrapper {
   }
 
   _div<T>(value: bigint): T {
-    console.log('🚀 ~ value:', value.toString(), this.decimals)
-    // TODO: fix division
-    return this._mul<T>(BigInt(Dec(1).div(value.toString()).toString()))
+    if (value === 0n) {
+      throw new Error('Division by zero')
+    }
+    return new (this.constructor as any)(this.value / value, this.decimals)
   }
 }
 
