@@ -123,6 +123,9 @@ export class Token extends Currency {
 }
 
 const secondsPerYear = Dec(60 * 60 * 24 * 365)
+/**
+ * @deprecated
+ */
 export class Rate extends DecimalWrapper {
   static decimals = 27
 
@@ -161,6 +164,9 @@ export class Rate extends DecimalWrapper {
   }
 }
 
+/**
+ * @deprecated
+ */
 export class Price extends DecimalWrapper {
   static decimals = 18
 
@@ -169,6 +175,9 @@ export class Price extends DecimalWrapper {
   }
 }
 
+/**
+ * @deprecated
+ */
 export class Perquintill extends DecimalWrapper {
   static decimals = 18
 
