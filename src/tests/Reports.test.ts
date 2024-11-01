@@ -1,3 +1,4 @@
+import { expect } from 'chai'
 import { Centrifuge } from '../Centrifuge.js'
 
 describe('Reports', () => {
@@ -13,6 +14,6 @@ describe('Reports', () => {
   it('should get balance sheet report', async () => {
     const pool = await centrifuge.pool('1615768079')
     const balanceSheetReport = await pool.reports().balanceSheet()
-    console.log('🚀 ~ balanceSheetReport:', balanceSheetReport)
+    expect(balanceSheetReport.length).to.be.greaterThan(0)
   })
 })

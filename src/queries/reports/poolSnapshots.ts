@@ -82,37 +82,35 @@ export type SubqueryPoolSnapshot = {
   }
 }
 
-export type PoolSnapshot =
-  | {
-      id: string
-      poolId: string
-      netAssetValue: Currency
-      totalReserve: Currency
-      offchainCashValue: Currency
-      portfolioValuation: Currency
-      sumPoolFeesChargedAmountByPeriod: Currency
-      sumPoolFeesAccruedAmountByPeriod: Currency
-      sumPoolFeesPaidAmountByPeriod: Currency
-      sumBorrowedAmountByPeriod: Currency
-      sumPrincipalRepaidAmountByPeriod: Currency
-      sumInterestRepaidAmountByPeriod: Currency
-      sumUnscheduledRepaidAmountByPeriod: Currency
-      sumRepaidAmountByPeriod: Currency
-      sumInvestedAmountByPeriod: Currency
-      sumRedeemedAmountByPeriod: Currency
-      sumPoolFeesPendingAmount: Currency
-      sumDebtWrittenOffByPeriod: Currency
-      sumInterestAccruedByPeriod: Currency
-      sumRealizedProfitFifoByPeriod: Currency
-      sumUnrealizedProfitAtMarketPrice: Currency
-      sumUnrealizedProfitAtNotional: Currency
-      sumUnrealizedProfitByPeriod: Currency
-      poolValue: Currency
-      poolCurrency: {
-        decimals: number
-      }
-    }
-  | []
+export type PoolSnapshot = {
+  id: string
+  poolId: string
+  netAssetValue: Currency
+  totalReserve: Currency
+  offchainCashValue: Currency
+  portfolioValuation: Currency
+  sumPoolFeesChargedAmountByPeriod: Currency
+  sumPoolFeesAccruedAmountByPeriod: Currency
+  sumPoolFeesPaidAmountByPeriod: Currency
+  sumBorrowedAmountByPeriod: Currency
+  sumPrincipalRepaidAmountByPeriod: Currency
+  sumInterestRepaidAmountByPeriod: Currency
+  sumUnscheduledRepaidAmountByPeriod: Currency
+  sumRepaidAmountByPeriod: Currency
+  sumInvestedAmountByPeriod: Currency
+  sumRedeemedAmountByPeriod: Currency
+  sumPoolFeesPendingAmount: Currency
+  sumDebtWrittenOffByPeriod: Currency
+  sumInterestAccruedByPeriod: Currency
+  sumRealizedProfitFifoByPeriod: Currency
+  sumUnrealizedProfitAtMarketPrice: Currency
+  sumUnrealizedProfitAtNotional: Currency
+  sumUnrealizedProfitByPeriod: Currency
+  poolValue: Currency
+  poolCurrency: {
+    decimals: number
+  }
+}
 
 export function poolSnapshotsPostProcess(data: SubqueryPoolSnapshot): PoolSnapshot[] {
   const snapshotByDay = new Map<string, any>()
