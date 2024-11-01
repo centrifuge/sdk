@@ -10,11 +10,12 @@ export function shareReplayWithDelayedReset<T>(config?: {
   resetDelay?: number
 }): MonoTypeOperatorFunction<T> {
   const { bufferSize = Infinity, windowTime = Infinity, resetDelay = 1000 } = config ?? {}
+  const reset = resetDelay === 0 ? true : isFinite(resetDelay) ? () => timer(resetDelay) : false
   return share<T>({
     connector: () => (bufferSize === 0 ? new Subject() : new ReplaySubject(bufferSize, windowTime)),
     resetOnError: true,
     resetOnComplete: false,
-    resetOnRefCountZero: resetDelay === 0 ? true : isFinite(resetDelay) ? () => timer(resetDelay) : false,
+    resetOnRefCountZero: reset,
   })
 }
 
