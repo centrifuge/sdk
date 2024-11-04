@@ -49,4 +49,8 @@ await tenderlyFork.fundAccountEth(tenderlyFork.account.address, parseEther('100'
 
 // fund the signer's account with USDt ERC20 tokens
 await tenderlyFork.fundAccountERC20(tenderlyFork.account.address, parseEther('100'))
+
+// impersonate an address to send a transaction from that address
+tenderlyFork.impersonateAddress = '0x...'
+centrifuge.setSigner(tenderlyFork.signer) // setSigner must be called (again) after impersonateAddress is set
 ```
