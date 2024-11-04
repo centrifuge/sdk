@@ -63,6 +63,7 @@ describe('Account', () => {
       ])
     )
 
+    expect(transfer.receipt.from.toLowerCase()).to.equal(impersonatedAddress.toLowerCase())
     expect(transfer.type).to.equal('TransactionConfirmed')
     expect(transfer.title).to.equal('Transfer')
     expect(transfer.receipt.status).to.equal('success')
