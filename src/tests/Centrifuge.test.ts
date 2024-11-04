@@ -4,7 +4,9 @@ import sinon from 'sinon'
 import { parseEther } from 'viem'
 import { Centrifuge } from '../Centrifuge.js'
 import type { OperationConfirmedStatus } from '../types/transaction.js'
+import { context } from './setup.js'
 import { TenderlyFork } from './tenderly.js'
+import { sepolia } from 'viem/chains'
 
 describe('Centrifuge', () => {
   let centrifuge: Centrifuge
@@ -37,26 +39,27 @@ describe('Centrifuge', () => {
   xit('should be connected to sepolia', async () => {
     const client = centrifuge.getClient()
     expect(client?.chain.id).to.equal(11155111)
-    const chains = centrifuge.chains
+    const chains = context.centrifuge.chains
     expect(chains).to.include(11155111)
   })
-  it('should fetch account and balances', async () => {
-    const account = await centrifuge.account('0x423420Ae467df6e90291fd0252c0A8a637C1e03f')
+
+  it('should fetch account and balances', async function () {
+    const account = await context.centrifuge.account('0x423420Ae467df6e90291fd0252c0A8a637C1e03f')
     const balances = await account.balances()
     expect(balances).to.exist
   })
 
-  it('should make a transfer', async () => {
-    const fromAddress = tenderlyFork.account.address
+  it('should make a transfer', async function () {
+    const fromAddress = this.context.tenderlyFork.account.address
     const destAddress = '0x423420Ae467df6e90291fd0252c0A8a637C1e03f'
     const transferAmount = 10_000_000n
 
     await Promise.all([
-      tenderlyFork.fundAccountEth(fromAddress, parseEther('100')),
-      tenderlyFork.fundAccountERC20(fromAddress, 100_000_000n),
+      context.tenderlyFork.fundAccountEth(fromAddress, parseEther('100')),
+      context.tenderlyFork.fundAccountERC20(fromAddress, 100_000_000n),
     ])
-    const fromAccount = await centrifuge.account(fromAddress)
-    const destAccount = await centrifuge.account(destAddress)
+    const fromAccount = await context.centrifuge.account(fromAddress)
+    const destAccount = await context.centrifuge.account(destAddress)
     const fromBalanceInitial = await fromAccount.balances()
     const destBalanceInitial = await destAccount.balances()
 
@@ -75,8 +78,8 @@ describe('Centrifuge', () => {
     expect(destBalanceFinal).to.equal(destBalanceInitial + transferAmount)
   })
 
-  it('should fetch a pool by id', async () => {
-    const pool = await centrifuge.pool('4139607887')
+  it('should fetch a pool by id', async function () {
+    const pool = await context.centrifuge.pool('4139607887')
     expect(pool).to.exist
   })
 

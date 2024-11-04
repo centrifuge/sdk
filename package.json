@@ -25,7 +25,7 @@
     "dev": "tsc -w --importHelpers",
     "build": "tsc --importHelpers",
     "prepare": "yarn build",
-    "test": "mocha --loader=ts-node/esm --exit --timeout 60000 'src/**/*.test.ts'"
+    "test": "mocha --loader=ts-node/esm --require $(pwd)/src/tests/setup.ts --exit --timeout 60000 'src/**/*.test.ts'"
   },
   "dependencies": {
     "eth-permit": "^0.2.3",

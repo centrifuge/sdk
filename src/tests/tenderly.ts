@@ -1,4 +1,3 @@
-import dotenv from 'dotenv'
 import {
   createPublicClient,
   createWalletClient,
@@ -14,6 +13,7 @@ import {
   type WalletClient,
 } from 'viem'
 import { generatePrivateKey, privateKeyToAccount } from 'viem/accounts'
+import dotenv from 'dotenv'
 dotenv.config({ path: './src/tests/.env' })
 
 type TenderlyVirtualNetwork = {
