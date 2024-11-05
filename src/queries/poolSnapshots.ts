@@ -1,4 +1,4 @@
-import { Currency } from '../../utils/BigInt.js'
+import { Currency } from '../utils/BigInt.js'
 
 export const poolSnapshotsQuery = `
 query($poolId: String!, $from: Datetime!, $to: Datetime!) {
@@ -85,6 +85,7 @@ export type SubqueryPoolSnapshot = {
 export type PoolSnapshot = {
   id: string
   poolId: string
+  timestamp: string
   netAssetValue: Currency
   totalReserve: Currency
   offchainCashValue: Currency
@@ -121,6 +122,7 @@ export function poolSnapshotsPostProcess(data: SubqueryPoolSnapshot): PoolSnapsh
       const snapshotToday = snapshotByDay.get(timestamp)
       const poolState = {
         id: state.id,
+        timestamp,
         poolId: state.pool.id,
         poolCurrency,
         netAssetValue: new Currency(state.netAssetValue, poolCurrency.decimals),
