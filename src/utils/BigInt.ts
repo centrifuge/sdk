@@ -164,14 +164,31 @@ export class Rate extends DecimalWrapper {
   }
 }
 
-/**
- * @deprecated
- */
 export class Price extends DecimalWrapper {
   static decimals = 18
 
+  constructor(value: Numeric | bigint) {
+    super(value, 18)
+  }
+
   static fromFloat(number: Numeric) {
     return Price._fromFloat<Price>(number, this.decimals)
+  }
+
+  override _add<T>(value: bigint): T {
+    return this._add<T>(value)
+  }
+
+  override _sub<T>(value: bigint): T {
+    return this._sub<T>(value)
+  }
+
+  override _mul<T>(value: bigint): T {
+    return this._mul<T>(value)
+  }
+
+  override _div<T>(value: bigint): T {
+    return this._div<T>(value)
   }
 }
 
@@ -180,6 +197,10 @@ export class Price extends DecimalWrapper {
  */
 export class Perquintill extends DecimalWrapper {
   static decimals = 18
+
+  constructor(value: Numeric | bigint) {
+    super(value, 18)
+  }
 
   static fromFloat(number: Numeric) {
     return Perquintill._fromFloat<Perquintill>(number, this.decimals)
