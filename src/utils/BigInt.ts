@@ -57,23 +57,29 @@ class DecimalWrapper extends BigIntWrapper {
     return this.toDecimal().toNumber()
   }
 
-  _add<T>(value: bigint): T {
-    return new (this.constructor as any)(this.value + value, this.decimals)
+  _add<T>(value: bigint | (T extends BigIntWrapper ? T : never)): T {
+    const val = typeof value === 'bigint' ? value : value.toBigInt()
+    return new (this.constructor as any)(this.value + val, this.decimals)
   }
 
-  _sub<T>(value: bigint): T {
-    return this._add<T>(-value)
+  _sub<T>(value: bigint | (T extends BigIntWrapper ? T : never)): T {
+    const val = typeof value === 'bigint' ? value : value.toBigInt()
+    return this._add<T>(-val)
   }
 
-  _mul<T>(value: bigint): T {
-    return new (this.constructor as any)(this.value * value, this.decimals)
+  _mul<T>(value: bigint | (T extends BigIntWrapper ? T : never)): T {
+    const val = typeof value === 'bigint' ? value : value.toBigInt()
+    // divide by 10^decimals to avoid floating point precision issues
+    return new (this.constructor as any)((this.value * val) / BigInt(10 ** this.decimals), this.decimals)
   }
 
-  _div<T>(value: bigint): T {
-    if (value === 0n) {
+  _div<T>(value: bigint | (T extends BigIntWrapper ? T : never)): T {
+    const val = typeof value === 'bigint' ? value : value.toBigInt()
+    if (val === 0n) {
       throw new Error('Division by zero')
     }
-    return new (this.constructor as any)(this.value / value, this.decimals)
+    // multiply by 10^decimals to avoid floating point precision issues
+    return new (this.constructor as any)((this.value * BigInt(10 ** this.decimals)) / val, this.decimals)
   }
 }
 
@@ -82,19 +88,19 @@ export class Currency extends DecimalWrapper {
     return Currency._fromFloat<Currency>(num, decimals)
   }
 
-  add(value: bigint) {
+  add(value: bigint | Currency) {
     return this._add<Currency>(value)
   }
 
-  sub(value: bigint) {
+  sub(value: bigint | Currency) {
     return this._sub<Currency>(value)
   }
 
-  mul(value: bigint) {
+  mul(value: bigint | Currency) {
     return this._mul<Currency>(value)
   }
 
-  div(value: bigint) {
+  div(value: bigint | Currency) {
     return this._div<Currency>(value)
   }
 }
@@ -105,19 +111,19 @@ export class Token extends Currency {
     return new Token(n, decimals)
   }
 
-  override add(value: bigint) {
+  override add(value: bigint | Token) {
     return this._add<Token>(value)
   }
 
-  override sub(value: bigint) {
+  override sub(value: bigint | Token) {
     return this._sub<Token>(value)
   }
 
-  override mul(value: bigint) {
+  override mul(value: bigint | Token) {
     return this._mul<Token>(value)
   }
 
-  override div(value: bigint) {
+  override div(value: bigint | Token) {
     return this._div<Token>(value)
   }
 }
@@ -175,20 +181,20 @@ export class Price extends DecimalWrapper {
     return Price._fromFloat<Price>(number, this.decimals)
   }
 
-  override _add<T>(value: bigint): T {
-    return this._add<T>(value)
+  add(value: bigint | Price) {
+    return this._add<Price>(value)
   }
 
-  override _sub<T>(value: bigint): T {
-    return this._sub<T>(value)
+  sub(value: bigint | Price) {
+    return this._sub<Price>(value)
   }
 
-  override _mul<T>(value: bigint): T {
-    return this._mul<T>(value)
+  mul(value: bigint | Price) {
+    return this._mul<Price>(value)
   }
 
-  override _div<T>(value: bigint): T {
-    return this._div<T>(value)
+  div(value: bigint | Price) {
+    return this._div<Price>(value)
   }
 }
 
