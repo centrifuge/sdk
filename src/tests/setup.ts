@@ -1,6 +1,6 @@
+import { sepolia } from 'viem/chains'
 import { Centrifuge } from '../Centrifuge.js'
 import { TenderlyFork } from './tenderly.js'
-import { sepolia } from 'viem/chains'
 
 class TestContext {
   public centrifuge!: Centrifuge
@@ -33,12 +33,12 @@ class TestContext {
 export const context = new TestContext()
 
 export const mochaHooks = {
-  beforeAll: async function (this: Mocha.Context & TestContext) {
+  async beforeAll(this: Mocha.Context & TestContext) {
     this.timeout(30000) // Increase timeout for setup
     await context.initialize()
     this.context = context as TestContext
   },
-  afterAll: async function (this: Mocha.Context & TestContext) {
+  async afterAll(this: Mocha.Context & TestContext) {
     await context.cleanup()
   },
 }

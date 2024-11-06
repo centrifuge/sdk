@@ -322,7 +322,7 @@ export class Centrifuge {
   ): Query<T> {
     function get() {
       const sharedSubject = new Subject<Observable<T>>()
-      function createShared() {
+      function createShared(): Observable<T> {
         const $shared = observableCallback().pipe(
           shareReplayWithDelayedReset({
             bufferSize: (options?.cache ?? true) ? 1 : 0,
@@ -334,10 +334,25 @@ export class Centrifuge {
         return $shared
       }
 
+      /*
+      SCENARIO 1:
+      When the shared inner completes, the inner is reset
+      When a new subscriber subscribes after the shared inner completes, the shared inner is not re-created
+      Instead, it re-subscribes to the shared inner, which restarts
+      This causes existing subscribers to not receive the new values, because `createShared` is not called and thus `sharedSubject.next($shared)` is not called
+      
+      SCENARIO 2:
+      When the shared inner completes, the inner is not reset
+      In which case, it relies on the `valueCacheTime` to invalidate the cache which is infinite by default
+
+
+      What we want is a an Infinite valueCacheTime for infinite observables and a finite cache time for finite observables
+
+      */
+
       const $query = createShared().pipe(
         // For new subscribers, recreate the shared observable if the previously shared observable has completed
-        // and no longer has a cached value, which can happen with a a long `observableCacheTime`
-        // and a finite `valueCacheTime`.
+        // and no longer has a cached value, which can happen with a finite `valueCacheTime`.
         defaultIfEmpty(defer(createShared)),
         // For existing subscribers, merge any newly created shared observable.
         concatWith(sharedSubject),
