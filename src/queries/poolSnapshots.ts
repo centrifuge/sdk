@@ -114,7 +114,6 @@ export type PoolSnapshot = {
 }
 
 export function poolSnapshotsPostProcess(data: SubqueryPoolSnapshot): PoolSnapshot[] {
-  console.log('🚀 ~ data:', data.poolSnapshots.nodes.length)
   const snapshotByDay = new Map<string, Omit<PoolSnapshot, 'poolValue'>>()
   return (
     data?.poolSnapshots.nodes.flatMap((state) => {
