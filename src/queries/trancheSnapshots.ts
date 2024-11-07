@@ -1,10 +1,7 @@
 import { Currency, Perquintill, Price, Token } from '../utils/BigInt.js'
+import {} from '../utils/date.js'
 
-export type TrancheSnapshotFilter = {
-  filter: {
-    poolId?: { equalTo: string }
-  }
-}
+export type TrancheSnapshotFilter = Partial<Record<keyof SubqueryTrancheSnapshot['trancheSnapshots']['nodes'][0], any>>
 
 export const trancheSnapshotsQuery = `
 query($filter: TrancheSnapshotFilter) {
@@ -81,7 +78,8 @@ export type TrancheSnapshot = {
   id: string
   price: Price | null
   timestamp: string
-  trancheId: string // poolId-trancheId
+  trancheId: string
+  poolId: string
   tokenSupply: Token
   pool: {
     currency: {
@@ -93,26 +91,31 @@ export type TrancheSnapshot = {
   outstandingRedeemOrders: Currency
   fulfilledInvestOrders: Currency
   fulfilledRedeemOrders: Currency
-  yield7DaysAnnualized: Perquintill
-  yield30DaysAnnualized: Perquintill
-  yield90DaysAnnualized: Perquintill
+  yield7DaysAnnualized: Perquintill | null
+  yield30DaysAnnualized: Perquintill | null
+  yield90DaysAnnualized: Perquintill | null
   yieldSinceInception: Perquintill
-  yieldMTD: Perquintill
-  yieldQTD: Perquintill
-  yieldYTD: Perquintill
-  yieldSinceLastPeriod: Perquintill
+  yieldMTD: Perquintill | null
+  yieldQTD: Perquintill | null
+  yieldYTD: Perquintill | null
+  yieldSinceLastPeriod: Perquintill | null
+}
+
+export type GroupedTrancheSnapshots = {
+  [timestamp: string]: TrancheSnapshot[]
 }
 
 export function trancheSnapshotsPostProcess(data: SubqueryTrancheSnapshot): TrancheSnapshot[] {
-  // const trancheSnapshotsToday = data?.trancheSnapshots.nodes.filter((t) => t.timestamp.slice(0, 10) === timestamp)
-  // if (!trancheSnapshotsToday?.length) return []
-  const tranches: { [trancheId: string]: TrancheSnapshot } = {}
+  const tranches: { [key: string]: TrancheSnapshot } = {}
   data.trancheSnapshots.nodes.forEach((tranche) => {
     const tid = tranche.tranche.trancheId
+    const date = tranche.timestamp.slice(0, 10)
+    const key = `${date}-${tid}`
     const poolCurrency = tranche.tranche.pool.currency
-    tranches[tid] = {
+    tranches[key] = {
       id: tranche.trancheId,
       timestamp: tranche.timestamp,
+      poolId: tranche.tranche.poolId,
       trancheId: tid,
       pool: {
         currency: {
@@ -126,24 +129,14 @@ export function trancheSnapshotsPostProcess(data: SubqueryTrancheSnapshot): Tran
       fulfilledRedeemOrders: new Currency(tranche.sumFulfilledRedeemOrdersByPeriod, poolCurrency.decimals),
       outstandingInvestOrders: new Currency(tranche.sumOutstandingInvestOrdersByPeriod, poolCurrency.decimals),
       outstandingRedeemOrders: new Currency(tranche.sumOutstandingRedeemOrdersByPeriod, poolCurrency.decimals),
-      yield7DaysAnnualized: tranche.yield7DaysAnnualized
-        ? new Perquintill(tranche.yield7DaysAnnualized)
-        : new Perquintill(0),
-      yield30DaysAnnualized: tranche.yield30DaysAnnualized
-        ? new Perquintill(tranche.yield30DaysAnnualized)
-        : new Perquintill(0),
-      yield90DaysAnnualized: tranche.yield90DaysAnnualized
-        ? new Perquintill(tranche.yield90DaysAnnualized)
-        : new Perquintill(0),
-      yieldSinceInception: tranche.yieldSinceInception
-        ? new Perquintill(tranche.yieldSinceInception)
-        : new Perquintill(0),
-      yieldMTD: tranche.yieldMTD ? new Perquintill(tranche.yieldMTD) : new Perquintill(0),
-      yieldQTD: tranche.yieldQTD ? new Perquintill(tranche.yieldQTD) : new Perquintill(0),
-      yieldYTD: tranche.yieldYTD ? new Perquintill(tranche.yieldYTD) : new Perquintill(0),
-      yieldSinceLastPeriod: tranche.yieldSinceLastPeriod
-        ? new Perquintill(tranche.yieldSinceLastPeriod)
-        : new Perquintill(0),
+      yield7DaysAnnualized: new Perquintill(tranche.yield7DaysAnnualized ?? 0),
+      yield30DaysAnnualized: new Perquintill(tranche.yield30DaysAnnualized ?? 0),
+      yield90DaysAnnualized: new Perquintill(tranche.yield90DaysAnnualized ?? 0),
+      yieldSinceInception: new Perquintill(tranche.yieldSinceInception ?? 0),
+      yieldMTD: new Perquintill(tranche.yieldMTD ?? 0),
+      yieldQTD: new Perquintill(tranche.yieldQTD ?? 0),
+      yieldYTD: new Perquintill(tranche.yieldYTD ?? 0),
+      yieldSinceLastPeriod: new Perquintill(tranche.yieldSinceLastPeriod ?? 0),
     }
   })
   return Object.values(tranches)
