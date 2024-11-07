@@ -37,6 +37,7 @@ export class Account extends Entity {
             abi: ABI.Currency,
             eventName: 'Transfer',
             filter: (events) => {
+              console.log('Transfer Event')
               return events.some((event) => {
                 return event.args.from === this.accountId || event.args.to === this.accountId
               })
