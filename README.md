@@ -22,9 +22,14 @@ const centrifuge = new Centrifuge()
 
 The following config options can be passed on initilization of CentrifugeSDK:
 
-#### `TDB`
-
-Default value:
+- `environment: 'mainnet' | 'demo' | 'dev'`
+  - Optional
+  - Default value: `mainnet`
+- `rpcUrls: Record<number, string>`
+  - Optional
+  - A object mapping chain ids to RPC URLs
+- `subqueryUrl: string`
+  - Optional
 
 ## Queries
 
