@@ -19,7 +19,7 @@ describe('Reports', () => {
       to: '2024-11-06T22:11:29.776Z',
       groupBy: 'day',
     })
-    expect(balanceSheetReport.length).to.be.eql(2)
-    expect(balanceSheetReport?.[0]?.tranches?.length ?? 0).to.be.greaterThan(1)
+    expect(balanceSheetReport.length).to.be.eql(3)
+    expect(balanceSheetReport?.[0]?.tranches?.length ?? 0).to.be.eql(2) // ns3 has 2 tranches
   })
 })
