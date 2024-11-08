@@ -1,15 +1,15 @@
 import type { Decimal as DecimalType, Config, Numeric } from 'decimal.js-light'
 import Decimal from 'decimal.js-light'
 
-Decimal.set({
+Decimal.default.set({
   precision: 30,
   toExpNeg: -7,
   toExpPos: 29,
-  rounding: Decimal.ROUND_HALF_CEIL, // ROUND_HALF_CEIL is 1
+  rounding: Decimal.default.ROUND_HALF_CEIL, // ROUND_HALF_CEIL is 1
 })
 
 export function Dec(value: Numeric) {
-  return new Decimal(value)
+  return new Decimal.default(value)
 }
 
 abstract class BigIntWrapper {
@@ -18,7 +18,7 @@ abstract class BigIntWrapper {
   constructor(value: Numeric | bigint) {
     if (typeof value === 'bigint') {
       this.value = value
-    } else if (value instanceof Decimal) {
+    } else if (value instanceof Decimal.default) {
       this.value = BigInt(value.toFixed(0))
     } else if (typeof value === 'number') {
       this.value = BigInt(Math.floor(value))

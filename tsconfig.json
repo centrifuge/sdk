@@ -1,9 +1,8 @@
 {
   "compilerOptions": {
-    "module": "esnext",
+    "module": "nodenext",
     "target": "es2023",
-    "moduleResolution": "node",
-    // "moduleResolution": "NodeNext",
+    "moduleResolution": "nodenext",
     "esModuleInterop": true,
     "strict": true,
     "isolatedModules": true,
@@ -20,16 +19,8 @@
       "dom",
       "dom.iterable"
     ],
-    // "importHelpers": true,
-    // "rootDir": "./src",
     "outDir": "dist",
     "allowSyntheticDefaultImports": true
-    // "forceConsistentCasingInFileNames": true,
-    // "noImplicitAny": true,
-    // "strictNullChecks": true,
-    // "noImplicitReturns": true,
-    // "noUnusedLocals": true,
-    // "noUnusedParameters": true,
   },
   "include": [
     "src",
