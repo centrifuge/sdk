@@ -2,46 +2,36 @@ import { Currency } from '../utils/BigInt.js'
 
 export type PoolSnapshotFilter = Partial<Record<keyof SubqueryPoolSnapshot['poolSnapshots']['nodes'][0], any>>
 
-export const poolSnapshotsQuery = `
-query($filter: PoolSnapshotFilter) {
-  poolSnapshots(
-    orderBy: BLOCK_NUMBER_ASC
-    filter: $filter 
-  ) {
-    nodes {
-      id
-      timestamp
-      netAssetValue
-      totalReserve
-      offchainCashValue
-      portfolioValuation
-      blockNumber
-      sumPoolFeesChargedAmountByPeriod
-      sumPoolFeesAccruedAmountByPeriod
-      sumPoolFeesPaidAmountByPeriod
-      sumPoolFeesPendingAmount
-      sumBorrowedAmountByPeriod
-      sumRepaidAmountByPeriod
-      sumInvestedAmountByPeriod
-      sumRedeemedAmountByPeriod
-      sumPrincipalRepaidAmountByPeriod
-      sumInterestRepaidAmountByPeriod
-      sumUnscheduledRepaidAmountByPeriod
-      sumInterestAccruedByPeriod
-      sumDebtWrittenOffByPeriod
-      sumRealizedProfitFifoByPeriod
-      sumUnrealizedProfitAtMarketPrice
-      sumUnrealizedProfitAtNotional
-      sumUnrealizedProfitByPeriod
-      pool {
-        id
-        currency {
-          decimals
-        }
-      }
-    }
+export type PoolSnapshot = {
+  id: string
+  poolId: string
+  timestamp: string
+  netAssetValue: Currency
+  totalReserve: Currency
+  offchainCashValue: Currency
+  portfolioValuation: Currency
+  sumPoolFeesChargedAmountByPeriod: Currency
+  sumPoolFeesAccruedAmountByPeriod: Currency
+  sumPoolFeesPaidAmountByPeriod: Currency
+  sumBorrowedAmountByPeriod: Currency
+  sumPrincipalRepaidAmountByPeriod: Currency
+  sumInterestRepaidAmountByPeriod: Currency
+  sumUnscheduledRepaidAmountByPeriod: Currency
+  sumRepaidAmountByPeriod: Currency
+  sumInvestedAmountByPeriod: Currency
+  sumRedeemedAmountByPeriod: Currency
+  sumPoolFeesPendingAmount: Currency
+  sumDebtWrittenOffByPeriod: Currency
+  sumInterestAccruedByPeriod: Currency
+  sumRealizedProfitFifoByPeriod: Currency
+  sumUnrealizedProfitAtMarketPrice: Currency
+  sumUnrealizedProfitAtNotional: Currency
+  sumUnrealizedProfitByPeriod: Currency
+  poolValue: Currency
+  poolCurrency: {
+    decimals: number
   }
-}`
+}
 
 export type SubqueryPoolSnapshot = {
   poolSnapshots: {
@@ -82,36 +72,46 @@ export type SubqueryPoolSnapshot = {
   }
 }
 
-export type PoolSnapshot = {
-  id: string
-  poolId: string
-  timestamp: string
-  netAssetValue: Currency
-  totalReserve: Currency
-  offchainCashValue: Currency
-  portfolioValuation: Currency
-  sumPoolFeesChargedAmountByPeriod: Currency
-  sumPoolFeesAccruedAmountByPeriod: Currency
-  sumPoolFeesPaidAmountByPeriod: Currency
-  sumBorrowedAmountByPeriod: Currency
-  sumPrincipalRepaidAmountByPeriod: Currency
-  sumInterestRepaidAmountByPeriod: Currency
-  sumUnscheduledRepaidAmountByPeriod: Currency
-  sumRepaidAmountByPeriod: Currency
-  sumInvestedAmountByPeriod: Currency
-  sumRedeemedAmountByPeriod: Currency
-  sumPoolFeesPendingAmount: Currency
-  sumDebtWrittenOffByPeriod: Currency
-  sumInterestAccruedByPeriod: Currency
-  sumRealizedProfitFifoByPeriod: Currency
-  sumUnrealizedProfitAtMarketPrice: Currency
-  sumUnrealizedProfitAtNotional: Currency
-  sumUnrealizedProfitByPeriod: Currency
-  poolValue: Currency
-  poolCurrency: {
-    decimals: number
+export const poolSnapshotsQuery = `
+query($filter: PoolSnapshotFilter) {
+  poolSnapshots(
+    orderBy: BLOCK_NUMBER_ASC
+    filter: $filter 
+  ) {
+    nodes {
+      id
+      timestamp
+      netAssetValue
+      totalReserve
+      offchainCashValue
+      portfolioValuation
+      blockNumber
+      sumPoolFeesChargedAmountByPeriod
+      sumPoolFeesAccruedAmountByPeriod
+      sumPoolFeesPaidAmountByPeriod
+      sumPoolFeesPendingAmount
+      sumBorrowedAmountByPeriod
+      sumRepaidAmountByPeriod
+      sumInvestedAmountByPeriod
+      sumRedeemedAmountByPeriod
+      sumPrincipalRepaidAmountByPeriod
+      sumInterestRepaidAmountByPeriod
+      sumUnscheduledRepaidAmountByPeriod
+      sumInterestAccruedByPeriod
+      sumDebtWrittenOffByPeriod
+      sumRealizedProfitFifoByPeriod
+      sumUnrealizedProfitAtMarketPrice
+      sumUnrealizedProfitAtNotional
+      sumUnrealizedProfitByPeriod
+      pool {
+        id
+        currency {
+          decimals
+        }
+      }
+    }
   }
-}
+}`
 
 export function poolSnapshotsPostProcess(data: SubqueryPoolSnapshot): PoolSnapshot[] {
   const snapshotByDay = new Map<string, Omit<PoolSnapshot, 'poolValue'>>()

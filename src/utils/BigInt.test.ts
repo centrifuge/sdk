@@ -1,5 +1,5 @@
 import { expect } from 'chai'
-import { Currency, Rate, Token } from '../utils/BigInt.js'
+import { Currency, Rate, Token } from './BigInt.js'
 
 describe('utils/BigInt', () => {
   it('should convert float/string/bigint to Currency', () => {

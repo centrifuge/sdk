@@ -35,7 +35,6 @@ import type { CentrifugeQueryOptions, Query } from './types/query.js'
 import type { OperationStatus, Signer, TransactionCallbackParams } from './types/transaction.js'
 import { makeThenable, shareReplayWithDelayedReset } from './utils/rx.js'
 import { doTransaction, isLocalAccount } from './utils/transaction.js'
-import { Reports } from './Reports.js'
 
 export type Config = {
   environment: 'mainnet' | 'demo' | 'dev'
@@ -126,10 +125,6 @@ export class Centrifuge {
 
   account(address: HexString, chainId?: number) {
     return this._query(null, () => of(new Account(this, address, chainId ?? this.config.defaultChain)))
-  }
-
-  reports(poolId: string) {
-    return this._query(null, () => of(new Reports(this, poolId)))
   }
 
   /**

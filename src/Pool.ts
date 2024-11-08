@@ -2,7 +2,7 @@ import { catchError, combineLatest, map, of, switchMap, timeout } from 'rxjs'
 import type { Centrifuge } from './Centrifuge.js'
 import { Entity } from './Entity.js'
 import { PoolDomain } from './PoolDomain.js'
-import { Reports } from './Reports.js'
+import { Reports } from './Reports/index.js'
 
 export class Pool extends Entity {
   constructor(
