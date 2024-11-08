@@ -1,22 +1,14 @@
-import { Centrifuge } from '../Centrifuge.js'
 import { Entity } from '../Entity.js'
+import { Centrifuge } from '../Centrifuge.js'
+import { processors } from './processors/index.js'
+import { ReportFilter } from './types.js'
+import { ReportService } from './ReportService.js'
+import { PoolSnapshotFilter, poolSnapshotsPostProcess, poolSnapshotsQuery } from '../queries/poolSnapshots.js'
 import {
-  PoolSnapshot,
-  PoolSnapshotFilter,
-  poolSnapshotsPostProcess,
-  poolSnapshotsQuery,
-  SubqueryPoolSnapshot,
-} from '../queries/poolSnapshots.js'
-import {
-  TrancheSnapshot,
   TrancheSnapshotFilter,
   trancheSnapshotsPostProcess,
   trancheSnapshotsQuery,
-  SubqueryTrancheSnapshot,
 } from '../queries/trancheSnapshots.js'
-import { getDateYearsFromNow } from '../utils/date.js'
-import { BalanceSheetFilter, BalanceSheetProcessor, BalanceSheetItem } from './BalanceSheetProcessor.js'
-import { Cache } from './Cache.js'
 
 export class Reports extends Entity {
   constructor(
@@ -26,45 +18,7 @@ export class Reports extends Entity {
     super(centrifuge, ['reports', poolId])
   }
 
-  async poolSnapshots(filter?: PoolSnapshotFilter) {
-    const defaultFilter: PoolSnapshotFilter = {
-      timestamp: {
-        greaterThan: getDateYearsFromNow(-1).toISOString(),
-        lessThan: new Date().toISOString(),
-      },
-      poolId: { equalTo: this.poolId },
-    }
-
-    return this._root._querySubquery<SubqueryPoolSnapshot, PoolSnapshot[]>(
-      ['poolSnapshots'],
-      poolSnapshotsQuery,
-      { filter: { ...defaultFilter, ...filter } },
-      poolSnapshotsPostProcess
-    )
-  }
-
-  async trancheSnapshots(filter?: TrancheSnapshotFilter) {
-    const defaultFilter: TrancheSnapshotFilter = {
-      timestamp: {
-        greaterThan: getDateYearsFromNow(-1).toISOString(),
-        lessThan: new Date().toISOString(),
-      },
-      tranche: { poolId: { equalTo: this.poolId } },
-    }
-
-    return this._root._querySubquery<SubqueryTrancheSnapshot, TrancheSnapshot[]>(
-      ['trancheSnapshots'],
-      trancheSnapshotsQuery,
-      { filter: { ...defaultFilter, ...filter } },
-      trancheSnapshotsPostProcess
-    )
-  }
-
-  async balanceSheet(filter?: BalanceSheetFilter): Promise<BalanceSheetItem[]> {
-    const cacheKey = Cache.generateKey(['balanceSheet', this.poolId, ...Object.values(filter ?? {})])
-    const cached = Cache.get<BalanceSheetItem[]>(cacheKey)
-    if (cached) return cached
-
+  async balanceSheet(filter?: ReportFilter) {
     const dateFilter = {
       timestamp: {
         greaterThan: filter?.from,
@@ -83,8 +37,19 @@ export class Reports extends Entity {
       }),
     ])
 
-    const result = BalanceSheetProcessor.processSnapshots(poolSnapshots, trancheSnapshots, filter?.groupBy)
-    Cache.set(cacheKey, result)
-    return result
+    return ReportService.generate(processors.balanceSheet, this.poolId, { poolSnapshots, trancheSnapshots }, filter)
+  }
+
+  async poolSnapshots(filter?: PoolSnapshotFilter) {
+    return this._root._querySubquery(['poolSnapshots'], poolSnapshotsQuery, { filter }, poolSnapshotsPostProcess)
+  }
+
+  async trancheSnapshots(filter?: TrancheSnapshotFilter) {
+    return this._root._querySubquery(
+      ['trancheSnapshots'],
+      trancheSnapshotsQuery,
+      { filter },
+      trancheSnapshotsPostProcess
+    )
   }
 }
