@@ -1,6 +1,8 @@
+import type { HexString } from '../types/index.js'
+
 type LPConfig = {
-  centrifugeRouter: `0x${string}`
-  router: `0x${string}`
+  centrifugeRouter: HexString
+  router: HexString
 }
 export const lpConfig: Record<number, LPConfig> = {
   // Testnet

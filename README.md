@@ -28,7 +28,7 @@ The following config options can be passed on initilization of CentrifugeSDK:
 - `rpcUrls: Record<number, string>`
   - Optional
   - A object mapping chain ids to RPC URLs
-- `subqueryUrl: string`
+- `centrifugeApiUrl: string`
   - Optional
 
 ## Queries

@@ -5,7 +5,6 @@ import { TenderlyFork } from './tenderly.js'
 class TestContext {
   public centrifuge!: Centrifuge
   public tenderlyFork!: TenderlyFork
-  public allTestsSucceeded = true
 
   async initialize() {
     this.tenderlyFork = await TenderlyFork.create(sepolia)
@@ -15,7 +14,7 @@ class TestContext {
         11155111: this.tenderlyFork.rpcUrl,
       },
     })
-    this.centrifuge.setSigner(this.tenderlyFork.account)
+    this.centrifuge.setSigner(this.tenderlyFork.signer)
   }
 
   async cleanup() {
@@ -23,10 +22,9 @@ class TestContext {
       console.log('DEBUG is true, RPC endpoint will not be deleted', this.tenderlyFork.rpcUrl)
       return
     }
-    if (this.tenderlyFork && this.allTestsSucceeded) {
+    if (this.tenderlyFork) {
       return this.tenderlyFork.deleteTenderlyRpcEndpoint()
     }
-    console.log('A test has failed, RPC endpoint will not be deleted', this.tenderlyFork.rpcUrl)
   }
 }
 
