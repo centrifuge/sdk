@@ -116,7 +116,7 @@ query($filter: PoolSnapshotFilter) {
 export function poolSnapshotsPostProcess(data: SubqueryPoolSnapshot): PoolSnapshot[] {
   const snapshotByDay = new Map<string, Omit<PoolSnapshot, 'poolValue'>>()
   return (
-    data?.poolSnapshots.nodes.flatMap((state) => {
+    data?.poolSnapshots?.nodes.flatMap((state) => {
       const timestamp = state.timestamp.slice(0, 10)
       const poolCurrencyDecimals = state.pool.currency.decimals
       // point in time snapshot used to aggregate snapshots by day (there can be multiple snapshots per day)

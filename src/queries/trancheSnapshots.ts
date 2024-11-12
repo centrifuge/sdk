@@ -107,7 +107,7 @@ export type GroupedTrancheSnapshots = {
 
 export function trancheSnapshotsPostProcess(data: SubqueryTrancheSnapshot): TrancheSnapshot[] {
   const tranches: { [key: string]: TrancheSnapshot } = {}
-  data.trancheSnapshots.nodes.forEach((tranche) => {
+  data?.trancheSnapshots?.nodes?.forEach((tranche) => {
     const tid = tranche.tranche.trancheId
     const date = tranche.timestamp.slice(0, 10)
     const key = `${date}-${tid}`
