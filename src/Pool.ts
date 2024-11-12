@@ -4,7 +4,10 @@ import { Entity } from './Entity.js'
 import { PoolDomain } from './PoolDomain.js'
 
 export class Pool extends Entity {
-  constructor(_root: Centrifuge, public id: string) {
+  constructor(
+    _root: Centrifuge,
+    public id: string
+  ) {
     super(_root, ['pool', id])
   }
 
@@ -18,28 +21,6 @@ export class Pool extends Entity {
     })
   }
 
-  // return this._query(['tranches'], () => {
-  //   return this._root
-  //     ._getSubqueryObservable<{ pool: { tranches: { nodes: { trancheId: string }[] } } }>(
-  //       `query($poolId: String!) {
-  //         pool(id: $poolId) {
-  //           tranches {
-  //             nodes {
-  //               trancheId
-  //             }
-  //           }
-  //         }
-  //       }`,
-  //       {
-  //         poolId: this.id,
-  //       }
-  //     )
-  //     .pipe(
-  //       map((data) => {
-  //         return data.pool.tranches.nodes.map((node) => node.trancheId)
-  //       })
-  //     )
-  // })
   tranches() {
     return this._root._querySubquery(
       ['tranches', this.id],
@@ -74,11 +55,7 @@ export class Pool extends Entity {
                 })
               )
             )
-          ).pipe(
-            map((isActive) => {
-              return domains.filter((_, index) => isActive[index])
-            })
-          )
+          ).pipe(map((isActive) => domains.filter((_, index) => isActive[index])))
         })
       )
     })

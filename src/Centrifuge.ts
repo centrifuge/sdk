@@ -123,8 +123,8 @@ export class Centrifuge {
     return this._query(null, () => of(new Pool(this, id)))
   }
 
-  account(address: HexString, chainId?: number) {
-    return this._query(null, () => of(new Account(this, address, chainId ?? this.config.defaultChain)))
+  account(address: string, chainId?: number) {
+    return this._query(null, () => of(new Account(this, address as any, chainId ?? this.config.defaultChain)))
   }
 
   /**
