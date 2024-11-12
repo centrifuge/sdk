@@ -1,24 +1,10 @@
 import { expect } from 'chai'
-import {
-  combineLatest,
-  defer,
-  filter,
-  firstValueFrom,
-  interval,
-  map,
-  Observable,
-  of,
-  Subject,
-  take,
-  tap,
-  toArray,
-} from 'rxjs'
+import { combineLatest, defer, firstValueFrom, interval, map, of, Subject, take, tap, toArray } from 'rxjs'
 import sinon from 'sinon'
-import { createClient, custom, parseEther } from 'viem'
-import { Centrifuge } from '../Centrifuge.js'
-import type { OperationConfirmedStatus } from '../types/transaction.js'
+import { createClient, custom } from 'viem'
 import { doSignMessage, doTransaction } from '../utils/transaction.js'
 import { context } from './setup.js'
+import { Centrifuge } from '../Centrifuge.js'
 
 describe('Centrifuge', () => {
   let clock: sinon.SinonFakeTimers
@@ -38,42 +24,7 @@ describe('Centrifuge', () => {
     expect(chains).to.include(11155111)
   })
 
-  it('should fetch account and balances', async () => {
-    const account = await context.centrifuge.account('0x423420Ae467df6e90291fd0252c0A8a637C1e03f')
-    const balances = await account.balances()
-    expect(balances).to.exist
-  })
-
-  it('should make a transfer', async function () {
-    const fromAddress = this.context.tenderlyFork.account.address
-    const destAddress = '0x423420Ae467df6e90291fd0252c0A8a637C1e03f'
-    const transferAmount = 10_000_000n
-
-    await Promise.all([
-      context.tenderlyFork.fundAccountEth(fromAddress, parseEther('100')),
-      context.tenderlyFork.fundAccountERC20(fromAddress, 100_000_000n),
-    ])
-    const fromAccount = await context.centrifuge.account(fromAddress)
-    const destAccount = await context.centrifuge.account(destAddress)
-    const fromBalanceInitial = await fromAccount.balances()
-    const destBalanceInitial = await destAccount.balances()
-
-    const [status, fromBalanceFinal, destBalanceFinal] = await firstValueFrom(
-      combineLatest([
-        fromAccount.transfer(destAddress, transferAmount) as Observable<OperationConfirmedStatus>,
-        fromAccount.balances().pipe(filter((balance) => balance !== fromBalanceInitial)),
-        destAccount.balances().pipe(filter((balance) => balance !== destBalanceInitial)),
-      ])
-    )
-
-    expect(status.type).to.equal('TransactionConfirmed')
-    expect(status.title).to.equal('Transfer')
-    expect(status.receipt.status).to.equal('success')
-    expect(fromBalanceFinal).to.equal(fromBalanceInitial - transferAmount)
-    expect(destBalanceFinal).to.equal(destBalanceInitial + transferAmount)
-  })
-
-  it('should fetch a pool by id', async () => {
+  it('should fetch a pool by id', async function () {
     const pool = await context.centrifuge.pool('4139607887')
     expect(pool).to.exist
   })

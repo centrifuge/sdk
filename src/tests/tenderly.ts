@@ -75,6 +75,10 @@ export class TenderlyFork {
   chain: Chain
   vnetId?: string
   _rpcUrl?: string
+  /**
+   * after impersonateAddress is set, centrifuge.setSigner() must be called again to update the signer
+   */
+  impersonateAddress?: `0x${string}`
   forkedNetwork?: TenderlyVirtualNetwork
   get rpcUrl(): string {
     if (!this._rpcUrl) {
@@ -92,17 +96,20 @@ export class TenderlyFork {
   }
   /**
    * if no account is set, one will be created randomly
-   * alternatively, this.account can set be set with `createAccount(privateKey)`
+   * if an impersonated address is set, a custom account will be created with that address which will override the fromAddress parameter in calls
    */
   private _account?: LocalAccount
   get account(): LocalAccount {
-    return this._account ?? this.createAccount()
+    if (this.impersonateAddress) return this.createCustomAccount(this.impersonateAddress)
+    if (this._account) return this._account
+    return this.createAccount()
   }
 
-  constructor(chain: Chain, vnetId?: string, rpcUrl?: string) {
+  constructor(chain: Chain, vnetId?: string, rpcUrl?: string, impersonateAddress?: `0x${string}`) {
     this.chain = chain
     this.vnetId = vnetId
     this._rpcUrl = rpcUrl
+    this.impersonateAddress = impersonateAddress
   }
 
   public static async create(chain: Chain, vnetId?: string): Promise<TenderlyFork> {
@@ -128,22 +135,48 @@ export class TenderlyFork {
   }
 
   private setSigner(): WalletClient {
-    const walletAccount = this.account
-    this._signer =
-      this._signer ??
-      createWalletClient({
-        account: walletAccount,
-        transport: http(this.rpcUrl),
-        chain: this.chain,
-      })
-    return this._signer!
+    if (this._signer) return this._signer
+    const client = createWalletClient({
+      account: this.account,
+      transport: http(this.rpcUrl),
+      chain: this.chain,
+      rpcSchema: rpcSchema<CustomRpcSchema>(),
+    })
+
+    const signer: ReturnType<typeof createWalletClient> = {
+      ...client,
+      // Override the request method to use override from address with impersonated account
+      request: async (args) => {
+        if (args.method === 'eth_sendTransaction') {
+          // @ts-expect-error
+          const impersonatedParams = args.params.map((arg: any) => ({ ...arg, from: this.account.address }))
+          return client.request({ method: args.method, params: impersonatedParams })
+        }
+        // @ts-expect-error
+        return client.request(args)
+      },
+    } as WalletClient
+    this._signer = signer
+    return signer
   }
 
-  createAccount(privateKey?: Hex) {
+  createAccount(privateKey?: Hex): LocalAccount {
     const key = privateKey ?? generatePrivateKey()
     const walletAccount = privateKeyToAccount(key)
     this._account = walletAccount
     return walletAccount
+  }
+
+  createCustomAccount(address: `0x${string}`): LocalAccount {
+    return {
+      address,
+      type: 'local',
+      source: 'custom',
+      signMessage: async ({ message }) => '0x' as `0x${string}`,
+      signTransaction: async (tx) => '0x' as `0x${string}`,
+      signTypedData: async (typedData) => '0x' as `0x${string}`,
+      publicKey: '0x' as `0x${string}`,
+    }
   }
 
   async forkNetwork() {
