@@ -42,7 +42,8 @@ export async function signPermit(
   amount: bigint
 ) {
   let domainOrCurrency: any = currencyAddress
-  if (currencyAddress.toLowerCase() === '0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48') {
+  const USDC = '0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48'
+  if (currencyAddress.toLowerCase() === USDC) {
     // USDC has custom version
     domainOrCurrency = { name: 'USD Coin', version: '2', chainId, verifyingContract: currencyAddress }
   } else if (chainId === 5 || chainId === 84531 || chainId === 421613 || chainId === 11155111) {
