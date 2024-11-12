@@ -48,7 +48,7 @@ export type UserProvidedConfig = Partial<Config>
 
 const envConfig = {
   mainnet: {
-    subqueryUrl: 'https://api.subquery.network/sq/centrifuge/pools-demo-multichain',
+    subqueryUrl: 'https://subql.embrio.tech/',
     alchemyKey: 'KNR-1LZhNqWOxZS2AN8AFeaiESBV10qZ',
     infuraKey: '8ed99a9a115349bbbc01dcf3a24edc96',
     defaultChain: 1,
