@@ -1,5 +1,6 @@
 import type { Account, Chain, LocalAccount, PublicClient, TransactionReceipt, WalletClient } from 'viem'
 import type { HexString } from './index.js'
+import type { Query } from './query.js'
 
 export type OperationStatusType =
   | 'SwitchingChain'
@@ -59,3 +60,5 @@ export type TransactionCallbackParams = {
   walletClient: WalletClient<any, Chain, Account>
   signer: Signer
 }
+
+export type Transaction = Query<OperationStatus>

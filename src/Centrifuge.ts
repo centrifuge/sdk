@@ -48,19 +48,19 @@ export type UserProvidedConfig = Partial<Config>
 
 const envConfig = {
   mainnet: {
-    subqueryUrl: 'https://subql.embrio.tech/',
+    centrifugeApiUrl: 'https://subql.embrio.tech/',
     alchemyKey: 'KNR-1LZhNqWOxZS2AN8AFeaiESBV10qZ',
     infuraKey: '8ed99a9a115349bbbc01dcf3a24edc96',
     defaultChain: 1,
   },
   demo: {
-    subqueryUrl: 'https://api.subquery.network/sq/centrifuge/pools-demo-multichain',
+    centrifugeApiUrl: 'https://api.subquery.network/sq/centrifuge/pools-demo-multichain',
     alchemyKey: 'KNR-1LZhNqWOxZS2AN8AFeaiESBV10qZ',
     infuraKey: '8cd8e043ee8d4001b97a1c37e08fd9dd',
     defaultChain: 11155111,
   },
   dev: {
-    subqueryUrl: 'https://api.subquery.network/sq/centrifuge/pools-demo-multichain',
+    centrifugeApiUrl: 'https://api.subquery.network/sq/centrifuge/pools-demo-multichain',
     alchemyKey: 'KNR-1LZhNqWOxZS2AN8AFeaiESBV10qZ',
     infuraKey: '8cd8e043ee8d4001b97a1c37e08fd9dd',
     defaultChain: 11155111,
@@ -100,7 +100,7 @@ export class Centrifuge {
     const defaultConfigForEnv = envConfig[config?.environment ?? 'mainnet']
     this.#config = {
       ...defaultConfig,
-      subqueryUrl: defaultConfigForEnv.subqueryUrl,
+      centrifugeApiUrl: defaultConfigForEnv.centrifugeApiUrl,
       defaultChain: defaultConfigForEnv.defaultChain,
       ...config,
     }
@@ -180,8 +180,8 @@ export class Centrifuge {
   /**
    * @internal
    */
-  _getSubqueryObservable<T = any>(query: string, variables?: Record<string, any>) {
-    return fromFetch<T>(this.config.subqueryUrl, {
+  _getCentrifugeApiObservable<T = any>(query: string, variables?: Record<string, any>) {
+    return fromFetch<T>(this.config.centrifugeApiUrl, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -201,26 +201,30 @@ export class Centrifuge {
   /**
    * @internal
    */
-  _querySubquery<Result>(
+  _queryCentrifugeApi<Result>(
     keys: (string | number)[] | null,
     query: string,
     variables?: Record<string, any>
   ): Query<Result>
-  _querySubquery<Result, Return>(
+  _queryCentrifugeApi<Result, Return>(
     keys: (string | number)[] | null,
     query: string,
     variables: Record<string, any>,
     postProcess: (data: Result) => Return
   ): Query<Return>
-  _querySubquery<Result, Return = Result>(
+  _queryCentrifugeApi<Result, Return = Result>(
     keys: (string | number)[] | null,
     query: string,
     variables?: Record<string, any>,
     postProcess?: (data: Result) => Return
   ) {
-    return this._query(keys, () => this._getSubqueryObservable(query, variables).pipe(map(postProcess ?? identity)), {
-      valueCacheTime: 300,
-    })
+    return this._query(
+      keys,
+      () => this._getCentrifugeApiObservable(query, variables).pipe(map(postProcess ?? identity)),
+      {
+        valueCacheTime: 300,
+      }
+    )
   }
 
   #memoized = new Map<string, any>()
@@ -334,22 +338,6 @@ export class Centrifuge {
         return $shared
       }
 
-      /*
-      SCENARIO 1:
-      When the shared inner completes, the inner is reset
-      When a new subscriber subscribes after the shared inner completes, the shared inner is not re-created
-      Instead, it re-subscribes to the shared inner, which restarts
-      This causes existing subscribers to not receive the new values, because `createShared` is not called and thus `sharedSubject.next($shared)` is not called
-      
-      SCENARIO 2:
-      When the shared inner completes, the inner is not reset
-      In which case, it relies on the `valueCacheTime` to invalidate the cache which is infinite by default
-
-
-      What we want is a an Infinite valueCacheTime for infinite observables and a finite cache time for finite observables
-
-      */
-
       const $query = createShared().pipe(
         // For new subscribers, recreate the shared observable if the previously shared observable has completed
         // and no longer has a cached value, which can happen with a finite `valueCacheTime`.
@@ -403,7 +391,7 @@ export class Centrifuge {
     title: string,
     transactionCallback: (params: TransactionCallbackParams) => Promise<HexString> | Observable<HexString>,
     chainId?: number
-  ): Query<OperationStatus> {
+  ): Transaction {
     return this._transactSequence(async function* (params) {
       const transaction = transactionCallback(params)
       yield* doTransaction(title, params.publicClient, () =>
@@ -450,7 +438,7 @@ export class Centrifuge {
       params: TransactionCallbackParams
     ) => AsyncGenerator<OperationStatus> | Observable<OperationStatus>,
     chainId?: number
-  ): Query<OperationStatus> {
+  ): Transaction {
     const targetChainId = chainId ?? this.config.defaultChain
     const self = this
     async function* transact() {

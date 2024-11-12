@@ -1,7 +1,7 @@
 import { catchError, combineLatest, map, of, switchMap, timeout } from 'rxjs'
 import type { Centrifuge } from './Centrifuge.js'
 import { Entity } from './Entity.js'
-import { PoolDomain } from './PoolDomain.js'
+import { PoolNetwork } from './PoolNetwork.js'
 
 export class Pool extends Entity {
   constructor(
@@ -11,18 +11,18 @@ export class Pool extends Entity {
     super(_root, ['pool', id])
   }
 
-  domains() {
+  networks() {
     return this._query(null, () => {
       return of(
         this._root.chains.map((chainId) => {
-          return new PoolDomain(this._root, this, chainId)
+          return new PoolNetwork(this._root, this, chainId)
         })
       )
     })
   }
 
   tranches() {
-    return this._root._querySubquery(
+    return this._root._queryCentrifugeApi(
       ['tranches', this.id],
       `query($poolId: String!) {
         pool(id: $poolId) {
@@ -42,20 +42,20 @@ export class Pool extends Entity {
     )
   }
 
-  activeDomains() {
+  activenetworks() {
     return this._query(null, () => {
-      return this.domains().pipe(
-        switchMap((domains) => {
+      return this.networks().pipe(
+        switchMap((networks) => {
           return combineLatest(
-            domains.map((domain) =>
-              domain.isActive().pipe(
+            networks.map((network) =>
+              network.isActive().pipe(
                 timeout(8000),
                 catchError(() => {
                   return of(false)
                 })
               )
             )
-          ).pipe(map((isActive) => domains.filter((_, index) => isActive[index])))
+          ).pipe(map((isActive) => networks.filter((_, index) => isActive[index])))
         })
       )
     })
