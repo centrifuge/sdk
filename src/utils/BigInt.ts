@@ -1,5 +1,4 @@
-import type { Decimal as DecimalType, Config, Numeric } from 'decimal.js-light'
-import Decimal from 'decimal.js-light'
+import Decimal, { type Numeric } from 'decimal.js-light'
 
 Decimal.default.set({
   precision: 30,
@@ -12,7 +11,7 @@ export function Dec(value: Numeric) {
   return new Decimal.default(value)
 }
 
-abstract class BigIntWrapper {
+export abstract class BigIntWrapper {
   protected value: bigint
 
   constructor(value: Numeric | bigint) {
@@ -36,7 +35,7 @@ abstract class BigIntWrapper {
   }
 }
 
-class DecimalWrapper extends BigIntWrapper {
+export class DecimalWrapper extends BigIntWrapper {
   protected decimals: number
 
   constructor(value: Numeric | bigint, decimals: number) {
@@ -68,18 +67,20 @@ class DecimalWrapper extends BigIntWrapper {
   }
 
   _mul<T>(value: bigint | (T extends BigIntWrapper ? T : never)): T {
-    const val = typeof value === 'bigint' ? value : value.toBigInt()
-    // divide by 10^decimals to avoid floating point precision issues
-    return new (this.constructor as any)((this.value * val) / BigInt(10 ** this.decimals), this.decimals)
+    if (typeof value === 'bigint') {
+      return new (this.constructor as any)(this.value * value, this.decimals)
+    }
+    return new (this.constructor as any)(this.value * value.toBigInt(), this.decimals)
   }
 
   _div<T>(value: bigint | (T extends BigIntWrapper ? T : never)): T {
-    const val = typeof value === 'bigint' ? value : value.toBigInt()
-    if (val === 0n) {
-      throw new Error('Division by zero')
+    if (!value) {
+      throw new Error(`Division by zero`)
     }
-    // multiply by 10^decimals to avoid floating point precision issues
-    return new (this.constructor as any)((this.value * BigInt(10 ** this.decimals)) / val, this.decimals)
+    if (typeof value === 'bigint') {
+      return new (this.constructor as any)(this.value / value, this.decimals)
+    }
+    return new (this.constructor as any)(this.value / value.toBigInt(), this.decimals)
   }
 }
 
