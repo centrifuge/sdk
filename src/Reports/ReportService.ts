@@ -1,5 +1,28 @@
 import { ReportData, ReportFilter, ReportProcessor } from './types.js'
 
+/**
+ * ReportService is responsible for generating reports.
+ * It uses a cache to store the reports and a TTL to invalidate the cache.
+ * The cache key is defined uniqulely by each processor.
+ *
+ * @category Reports
+ * 
+ * @example
+ * ```typescript
+ * const processor: ReportProcessor<Data, Report> = {
+    process: (data: Data, filter?: ReportFilter) => Report[],
+    getCacheKey: (...args: any[]) => string,
+  }
+
+  const filter = {
+    from: string
+    to: string
+    groupBy: string
+  }
+
+ * const report = await ReportService.generate(processor, poolId, data, filter)
+ * ```
+ */
 export class ReportService {
   private static cache = new Map<string, { data: any; timestamp: number }>()
   private static TTL = 5 * 60 * 1000 // 5 minutes

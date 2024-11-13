@@ -7,7 +7,7 @@ describe('Reports', () => {
   before(async () => {
     centrifuge = new Centrifuge({
       environment: 'mainnet',
-      centrifugeApiUrl: 'https://subql.embrio.tech/',
+      indexerUrl: 'https://subql.embrio.tech/',
     })
   })
 
