@@ -35,7 +35,6 @@ export class Account extends Entity {
             abi: ABI.Currency,
             eventName: 'Transfer',
             filter: (events) => {
-              console.log('Transfer Event')
               return events.some((event) => {
                 return event.args.from === this.accountId || event.args.to === this.accountId
               })
@@ -47,7 +46,7 @@ export class Account extends Entity {
     })
   }
 
-  transfer(to: HexString, amount: bigint) {
+  transfer(to: string, amount: bigint) {
     return this._transact(
       'Transfer',
       ({ walletClient }) =>

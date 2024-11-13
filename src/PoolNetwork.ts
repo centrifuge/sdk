@@ -17,28 +17,48 @@ export class PoolNetwork extends Entity {
     super(_root, ['pool', pool.id, 'network', chainId])
   }
 
-  investManager() {
-    return this._root._query(['investmentManager', this.chainId], () =>
-      defer(async () => {
+  gateway() {
+    return this._root._query(['gateway', this.chainId], () =>
+      defer(() => {
         const { router } = lpConfig[this.chainId]!
-        const client = this._root.getClient(this.chainId)!
-        const gatewayAddress = await getContract({ address: router, abi: ABI.Router, client }).read.gateway!()
-        const managerAddress = await getContract({ address: gatewayAddress as any, abi: ABI.Gateway, client }).read
-          .investmentManager!()
-        return managerAddress as HexString
+        return this._root.getClient(this.chainId)!.readContract({
+          address: router,
+          abi: ABI.Router,
+          functionName: 'gateway',
+        }) as Promise<HexString>
       })
+    )
+  }
+
+  investmentManager() {
+    return this._root._query(['investmentManager', this.chainId], () =>
+      this.gateway().pipe(
+        switchMap(
+          (gateway) =>
+            this._root.getClient(this.chainId)!.readContract({
+              address: gateway,
+              abi: ABI.Gateway,
+              functionName: 'investmentManager',
+            }) as Promise<HexString>
+        )
+      )
     )
   }
 
   poolManager() {
     return this._root._query(['poolManager', this.chainId], () =>
-      this.investManager().pipe(
-        switchMap((manager) => {
-          return getContract({
-            address: manager,
-            abi: ABI.InvestmentManager,
-            client: this._root.getClient(this.chainId)!,
-          }).read.poolManager!() as Promise<HexString>
+      this.gateway().pipe(
+        switchMap(
+          (gateway) =>
+            this._root.getClient(this.chainId)!.readContract({
+              address: gateway,
+              abi: ABI.Gateway,
+              functionName: 'poolManager',
+            }) as Promise<HexString>
+        )
+      )
+    )
+  }
         })
       )
     )
