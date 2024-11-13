@@ -8,6 +8,9 @@ import type { Pool } from './Pool.js'
 import type { HexString } from './types/index.js'
 import { repeatOnEvents } from './utils/rx.js'
 
+/**
+ * Query and interact with a pool on a specific network.
+ */
 export class PoolNetwork extends Entity {
   constructor(
     _root: Centrifuge,
@@ -17,36 +20,74 @@ export class PoolNetwork extends Entity {
     super(_root, ['pool', pool.id, 'network', chainId])
   }
 
-  investManager() {
-    return this._root._query(['investmentManager', this.chainId], () =>
-      defer(async () => {
+  /**
+   * Get the routing contract that forwards incoming/outgoing messages.
+   * @internal
+   */
+  _gateway() {
+    return this._root._query(['gateway', this.chainId], () =>
+      defer(() => {
         const { router } = lpConfig[this.chainId]!
-        const client = this._root.getClient(this.chainId)!
-        const gatewayAddress = await getContract({ address: router, abi: ABI.Router, client }).read.gateway!()
-        const managerAddress = await getContract({ address: gatewayAddress as any, abi: ABI.Gateway, client }).read
-          .investmentManager!()
-        return managerAddress as HexString
+        return this._root.getClient(this.chainId)!.readContract({
+          address: router,
+          abi: ABI.Router,
+          functionName: 'gateway',
+        }) as Promise<HexString>
       })
     )
   }
 
-  poolManager() {
+  /**
+   * Get the main contract that vaults interact with for
+   * incoming and outgoing investment transactions.
+   * @internal
+   */
+  _investmentManager() {
+    return this._root._query(['investmentManager', this.chainId], () =>
+      this._gateway().pipe(
+        switchMap(
+          (gateway) =>
+            this._root.getClient(this.chainId)!.readContract({
+              address: gateway,
+              abi: ABI.Gateway,
+              functionName: 'investmentManager',
+            }) as Promise<HexString>
+        )
+      )
+    )
+  }
+
+  /**
+   * Get the contract manages which pools & tranches exist,
+   * as well as managing allowed pool currencies, and incoming and outgoing transfers.
+   * @internal
+   */
+  _poolManager() {
     return this._root._query(['poolManager', this.chainId], () =>
-      this.investManager().pipe(
-        switchMap((manager) => {
-          return getContract({
-            address: manager,
-            abi: ABI.InvestmentManager,
-            client: this._root.getClient(this.chainId)!,
-          }).read.poolManager!() as Promise<HexString>
+      this._gateway().pipe(
+        switchMap(
+          (gateway) =>
+            this._root.getClient(this.chainId)!.readContract({
+              address: gateway,
+              abi: ABI.Gateway,
+              functionName: 'poolManager',
+            }) as Promise<HexString>
+        )
+      )
+    )
+  }
         })
       )
     )
   }
 
+  /**
+   * Get whether the pool is active on this network. It's a prerequisite for deploying vaults,
+   * and doesn't indicate whether any vaults have been deployed.
+   */
   isActive() {
     return this._query(['isActive'], () =>
-      this.poolManager().pipe(
+      this._poolManager().pipe(
         switchMap((manager) => {
           return defer(
             () =>
@@ -54,7 +95,7 @@ export class PoolNetwork extends Entity {
                 address: manager,
                 abi: ABI.PoolManager,
                 functionName: 'isPoolActive',
-                args: [Number(this.pool.id)],
+                args: [this.pool.id],
               }) as Promise<boolean>
           ).pipe(
             repeatOnEvents(

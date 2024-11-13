@@ -2,9 +2,9 @@ import { expect } from 'chai'
 import { combineLatest, defer, firstValueFrom, interval, map, of, Subject, take, tap, toArray } from 'rxjs'
 import sinon from 'sinon'
 import { createClient, custom } from 'viem'
+import { Centrifuge } from '../Centrifuge.js'
 import { doSignMessage, doTransaction } from '../utils/transaction.js'
 import { context } from './setup.js'
-import { Centrifuge } from '../Centrifuge.js'
 
 describe('Centrifuge', () => {
   let clock: sinon.SinonFakeTimers
@@ -24,7 +24,7 @@ describe('Centrifuge', () => {
     expect(chains).to.include(11155111)
   })
 
-  it('should fetch a pool by id', async function () {
+  it('should fetch a pool by id', async () => {
     const pool = await context.centrifuge.pool('4139607887')
     expect(pool).to.exist
   })

@@ -16,18 +16,8 @@ export class Pool extends Entity {
     return new Reports(this._root, this.id)
   }
 
-  networks() {
-    return this._query(null, () => {
-      return of(
-        this._root.chains.map((chainId) => {
-          return new PoolNetwork(this._root, this, chainId)
-        })
-      )
-    })
-  }
-
-  tranches() {
-    return this._root._queryCentrifugeApi(
+  trancheIds() {
+    return this._root._queryIndexer(
       ['tranches', this.id],
       `query($poolId: String!) {
         pool(id: $poolId) {
@@ -47,7 +37,23 @@ export class Pool extends Entity {
     )
   }
 
-  activenetworks() {
+  /**
+   * Get all networks where a pool can potentially be deployed.
+   */
+  networks() {
+    return this._query(null, () => {
+      return of(
+        this._root.chains.map((chainId) => {
+          return new PoolNetwork(this._root, this, chainId)
+        })
+      )
+    })
+  }
+
+  /**
+   * Get the networks where a pool is active. It doesn't mean that any vaults are deployed there necessarily.
+   */
+  activeNetworks() {
     return this._query(null, () => {
       return this.networks().pipe(
         switchMap((networks) => {
