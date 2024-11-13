@@ -8,6 +8,9 @@ import type { Pool } from './Pool.js'
 import type { HexString } from './types/index.js'
 import { repeatOnEvents } from './utils/rx.js'
 
+/**
+ * Query and interact with a pool on a specific network.
+ */
 export class PoolNetwork extends Entity {
   constructor(
     _root: Centrifuge,
@@ -17,7 +20,11 @@ export class PoolNetwork extends Entity {
     super(_root, ['pool', pool.id, 'network', chainId])
   }
 
-  gateway() {
+  /**
+   * Get the routing contract that forwards incoming/outgoing messages.
+   * @internal
+   */
+  _gateway() {
     return this._root._query(['gateway', this.chainId], () =>
       defer(() => {
         const { router } = lpConfig[this.chainId]!
@@ -30,9 +37,14 @@ export class PoolNetwork extends Entity {
     )
   }
 
-  investmentManager() {
+  /**
+   * Get the main contract that vaults interact with for
+   * incoming and outgoing investment transactions.
+   * @internal
+   */
+  _investmentManager() {
     return this._root._query(['investmentManager', this.chainId], () =>
-      this.gateway().pipe(
+      this._gateway().pipe(
         switchMap(
           (gateway) =>
             this._root.getClient(this.chainId)!.readContract({
@@ -45,9 +57,14 @@ export class PoolNetwork extends Entity {
     )
   }
 
-  poolManager() {
+  /**
+   * Get the contract manages which pools & tranches exist,
+   * as well as managing allowed pool currencies, and incoming and outgoing transfers.
+   * @internal
+   */
+  _poolManager() {
     return this._root._query(['poolManager', this.chainId], () =>
-      this.gateway().pipe(
+      this._gateway().pipe(
         switchMap(
           (gateway) =>
             this._root.getClient(this.chainId)!.readContract({
@@ -64,9 +81,13 @@ export class PoolNetwork extends Entity {
     )
   }
 
+  /**
+   * Get whether the pool is active on this network. It's a prerequisite for deploying vaults,
+   * and doesn't indicate whether any vaults have been deployed.
+   */
   isActive() {
     return this._query(['isActive'], () =>
-      this.poolManager().pipe(
+      this._poolManager().pipe(
         switchMap((manager) => {
           return defer(
             () =>
@@ -74,7 +95,7 @@ export class PoolNetwork extends Entity {
                 address: manager,
                 abi: ABI.PoolManager,
                 functionName: 'isPoolActive',
-                args: [Number(this.pool.id)],
+                args: [this.pool.id],
               }) as Promise<boolean>
           ).pipe(
             repeatOnEvents(
