@@ -26,7 +26,6 @@ export function groupByPeriod<T extends { date: string }>(data: T[], groupBy: Gr
     const period = getPeriod(new Date(item.date), groupBy)
     if (!period) return
 
-    // Keep the latest snapshot for each period
     if (!grouped.has(period) || new Date(item.date) > new Date(grouped.get(period)!.date)) {
       grouped.set(period, item)
     }

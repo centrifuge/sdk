@@ -39,7 +39,7 @@ import { doTransaction, isLocalAccount } from './utils/transaction.js'
 export type Config = {
   environment: 'mainnet' | 'demo' | 'dev'
   rpcUrls?: Record<number | string, string>
-  subqueryUrl: string
+  centrifugeApiUrl: string
 }
 type DerivedConfig = Config & {
   defaultChain: number
@@ -391,7 +391,7 @@ export class Centrifuge {
     title: string,
     transactionCallback: (params: TransactionCallbackParams) => Promise<HexString> | Observable<HexString>,
     chainId?: number
-  ): Transaction {
+  ) {
     return this._transactSequence(async function* (params) {
       const transaction = transactionCallback(params)
       yield* doTransaction(title, params.publicClient, () =>
@@ -438,7 +438,7 @@ export class Centrifuge {
       params: TransactionCallbackParams
     ) => AsyncGenerator<OperationStatus> | Observable<OperationStatus>,
     chainId?: number
-  ): Transaction {
+  ) {
     const targetChainId = chainId ?? this.config.defaultChain
     const self = this
     async function* transact() {

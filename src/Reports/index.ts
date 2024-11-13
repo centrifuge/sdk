@@ -18,6 +18,7 @@ export class Reports extends Entity {
     super(centrifuge, ['reports', poolId])
   }
 
+  // TODO: add direction parameter (horizontal or vertical)
   async balanceSheet(filter?: ReportFilter) {
     const dateFilter = {
       timestamp: {
@@ -41,11 +42,11 @@ export class Reports extends Entity {
   }
 
   async poolSnapshots(filter?: PoolSnapshotFilter) {
-    return this._root._querySubquery(['poolSnapshots'], poolSnapshotsQuery, { filter }, poolSnapshotsPostProcess)
+    return this._root._queryCentrifugeApi(['poolSnapshots'], poolSnapshotsQuery, { filter }, poolSnapshotsPostProcess)
   }
 
   async trancheSnapshots(filter?: TrancheSnapshotFilter) {
-    return this._root._querySubquery(
+    return this._root._queryCentrifugeApi(
       ['trancheSnapshots'],
       trancheSnapshotsQuery,
       { filter },
