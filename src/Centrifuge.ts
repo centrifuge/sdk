@@ -39,33 +39,36 @@ import { doTransaction, isLocalAccount } from './utils/transaction.js'
 export type Config = {
   environment: 'mainnet' | 'demo' | 'dev'
   rpcUrls?: Record<number | string, string>
-  subqueryUrl: string
-}
-type DerivedConfig = Config & {
-  defaultChain: number
 }
 export type UserProvidedConfig = Partial<Config>
+type EnvConfig = {
+  indexerUrl: string
+  alchemyKey: string
+  infuraKey: string
+  defaultChain: number
+}
+type DerivedConfig = Config & EnvConfig
 
 const envConfig = {
   mainnet: {
-    centrifugeApiUrl: 'https://subql.embrio.tech/',
+    indexerUrl: 'https://subql.embrio.tech/',
     alchemyKey: 'KNR-1LZhNqWOxZS2AN8AFeaiESBV10qZ',
     infuraKey: '8ed99a9a115349bbbc01dcf3a24edc96',
     defaultChain: 1,
   },
   demo: {
-    centrifugeApiUrl: 'https://api.subquery.network/sq/centrifuge/pools-demo-multichain',
+    indexerUrl: 'https://api.subquery.network/sq/centrifuge/pools-demo-multichain',
     alchemyKey: 'KNR-1LZhNqWOxZS2AN8AFeaiESBV10qZ',
     infuraKey: '8cd8e043ee8d4001b97a1c37e08fd9dd',
     defaultChain: 11155111,
   },
   dev: {
-    centrifugeApiUrl: 'https://api.subquery.network/sq/centrifuge/pools-demo-multichain',
+    indexerUrl: 'https://api.subquery.network/sq/centrifuge/pools-demo-multichain',
     alchemyKey: 'KNR-1LZhNqWOxZS2AN8AFeaiESBV10qZ',
     infuraKey: '8cd8e043ee8d4001b97a1c37e08fd9dd',
     defaultChain: 11155111,
   },
-}
+} satisfies Record<string, EnvConfig>
 
 const defaultConfig = {
   environment: 'mainnet',
@@ -100,8 +103,7 @@ export class Centrifuge {
     const defaultConfigForEnv = envConfig[config?.environment ?? 'mainnet']
     this.#config = {
       ...defaultConfig,
-      centrifugeApiUrl: defaultConfigForEnv.centrifugeApiUrl,
-      defaultChain: defaultConfigForEnv.defaultChain,
+      ...defaultConfigForEnv,
       ...config,
     }
     Object.freeze(this.#config)
@@ -180,8 +182,8 @@ export class Centrifuge {
   /**
    * @internal
    */
-  _getCentrifugeApiObservable<T = any>(query: string, variables?: Record<string, any>) {
-    return fromFetch<T>(this.config.centrifugeApiUrl, {
+  _getIndexerObservable<T = any>(query: string, variables?: Record<string, any>) {
+    return fromFetch<T>(this.config.indexerUrl, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -201,30 +203,22 @@ export class Centrifuge {
   /**
    * @internal
    */
-  _queryCentrifugeApi<Result>(
-    keys: (string | number)[] | null,
-    query: string,
-    variables?: Record<string, any>
-  ): Query<Result>
-  _queryCentrifugeApi<Result, Return>(
+  _queryIndexer<Result>(keys: (string | number)[] | null, query: string, variables?: Record<string, any>): Query<Result>
+  _queryIndexer<Result, Return>(
     keys: (string | number)[] | null,
     query: string,
     variables: Record<string, any>,
     postProcess: (data: Result) => Return
   ): Query<Return>
-  _queryCentrifugeApi<Result, Return = Result>(
+  _queryIndexer<Result, Return = Result>(
     keys: (string | number)[] | null,
     query: string,
     variables?: Record<string, any>,
     postProcess?: (data: Result) => Return
   ) {
-    return this._query(
-      keys,
-      () => this._getCentrifugeApiObservable(query, variables).pipe(map(postProcess ?? identity)),
-      {
-        valueCacheTime: 300,
-      }
-    )
+    return this._query(keys, () => this._getIndexerObservable(query, variables).pipe(map(postProcess ?? identity)), {
+      valueCacheTime: 120,
+    })
   }
 
   #memoized = new Map<string, any>()

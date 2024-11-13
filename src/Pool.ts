@@ -22,7 +22,7 @@ export class Pool extends Entity {
   }
 
   tranches() {
-    return this._root._queryCentrifugeApi(
+    return this._root._queryIndexer(
       ['tranches', this.id],
       `query($poolId: String!) {
         pool(id: $poolId) {
