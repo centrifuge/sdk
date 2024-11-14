@@ -32,7 +32,8 @@ import { chains } from './config/chains.js'
 import { Pool } from './Pool.js'
 import type { HexString } from './types/index.js'
 import type { CentrifugeQueryOptions, Query } from './types/query.js'
-import type { OperationStatus, Signer, TransactionCallbackParams } from './types/transaction.js'
+import type { OperationStatus, Signer, Transaction, TransactionCallbackParams } from './types/transaction.js'
+import { hashKey } from './utils/query.js'
 import { makeThenable, shareReplayWithDelayedReset } from './utils/rx.js'
 import { doTransaction, isLocalAccount } from './utils/transaction.js'
 
@@ -133,7 +134,6 @@ export class Centrifuge {
 
   /**
    * Returns an observable of all events on a given chain.
-   *
    * @internal
    */
   _events(chainId?: number) {
@@ -160,7 +160,6 @@ export class Centrifuge {
 
   /**
    * Returns an observable of events on a given chain, filtered by name(s) and address(es).
-   *
    * @internal
    */
   _filteredEvents(address: string | string[], abi: Abi | Abi[], eventName: string | string[], chainId?: number) {
@@ -205,27 +204,29 @@ export class Centrifuge {
   /**
    * @internal
    */
-  _queryIndexer<Result>(keys: (string | number)[] | null, query: string, variables?: Record<string, any>): Query<Result>
+  _queryIndexer<Result>(query: string, variables?: Record<string, any>): Query<Result>
   _queryIndexer<Result, Return>(
-    keys: (string | number)[] | null,
     query: string,
     variables: Record<string, any>,
     postProcess: (data: Result) => Return
   ): Query<Return>
   _queryIndexer<Result, Return = Result>(
-    keys: (string | number)[] | null,
     query: string,
     variables?: Record<string, any>,
     postProcess?: (data: Result) => Return
   ) {
-    return this._query(keys, () => this._getIndexerObservable(query, variables).pipe(map(postProcess ?? identity)), {
-      valueCacheTime: 120,
-    })
+    return this._query(
+      [query, variables],
+      () => this._getIndexerObservable(query, variables).pipe(map(postProcess ?? identity)),
+      {
+        valueCacheTime: 120,
+      }
+    )
   }
 
   #memoized = new Map<string, any>()
-  #memoizeWith<T = any>(keys: (string | number)[], callback: () => T): T {
-    const cacheKey = JSON.stringify(keys)
+  #memoizeWith<T = any>(keys: any[], callback: () => T): T {
+    const cacheKey = hashKey(keys)
     if (this.#memoized.has(cacheKey)) {
       return this.#memoized.get(cacheKey)
     }
@@ -315,11 +316,7 @@ export class Centrifuge {
    *
    * @internal
    */
-  _query<T>(
-    keys: (string | number)[] | null,
-    observableCallback: () => Observable<T>,
-    options?: CentrifugeQueryOptions
-  ): Query<T> {
+  _query<T>(keys: any[] | null, observableCallback: () => Observable<T>, options?: CentrifugeQueryOptions): Query<T> {
     function get() {
       const sharedSubject = new Subject<Observable<T>>()
       function createShared(): Observable<T> {
@@ -354,7 +351,6 @@ export class Centrifuge {
    * Will additionally prompt the user to switch chains if they're not on the correct chain.
    *
    * @example
-   *
    * ```ts
    * const tx = this._transact(
    *   'Transfer',

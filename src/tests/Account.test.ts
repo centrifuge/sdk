@@ -1,11 +1,11 @@
-import { combineLatest, filter, last, firstValueFrom, Observable } from 'rxjs'
 import { expect } from 'chai'
-import { context } from './setup.js'
+import { combineLatest, filter, firstValueFrom, last, Observable } from 'rxjs'
 import { parseEther } from 'viem/utils'
 import { type OperationConfirmedStatus } from '../types/transaction.js'
+import { context } from './setup.js'
 
 describe('Account', () => {
-  it('should fetch account and balances', async function () {
+  it('should fetch account and balances', async () => {
     const account = await context.centrifuge.account('0x423420Ae467df6e90291fd0252c0A8a637C1e03f')
     const balances = await account.balances()
     expect(balances).to.exist
@@ -40,7 +40,7 @@ describe('Account', () => {
     expect(destBalanceFinal).to.equal(destBalanceInitial + transferAmount)
   })
 
-  it('should make a transfer impersonating the from address', async function () {
+  it('should make a transfer impersonating the from address', async () => {
     const impersonatedAddress = '0x423420Ae467df6e90291fd0252c0A8a637C1e03f'
     context.tenderlyFork.impersonateAddress = impersonatedAddress
     context.centrifuge.setSigner(context.tenderlyFork.signer)
