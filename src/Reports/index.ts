@@ -40,11 +40,11 @@ export class Reports extends Entity {
     return ReportService.generate(processors.balanceSheet, this.poolId, { poolSnapshots, trancheSnapshots }, filter)
   }
 
-  async poolSnapshots(filter?: PoolSnapshotFilter) {
+  poolSnapshots(filter?: PoolSnapshotFilter) {
     return this._root._queryIndexer(poolSnapshotsQuery, { filter }, poolSnapshotsPostProcess)
   }
 
-  async trancheSnapshots(filter?: TrancheSnapshotFilter) {
+  trancheSnapshots(filter?: TrancheSnapshotFilter) {
     return this._root._queryIndexer(trancheSnapshotsQuery, { filter }, trancheSnapshotsPostProcess)
   }
 }
