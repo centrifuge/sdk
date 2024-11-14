@@ -105,6 +105,11 @@ export class DecimalWrapper extends BigIntWrapper {
     const val = typeof value === 'bigint' ? value : value.toBigInt()
     return this.value >= val
   }
+
+  eq<T>(value: bigint | (T extends BigIntWrapper ? T : never)) {
+    const val = typeof value === 'bigint' ? value : value.toBigInt()
+    return this.value === val
+  }
 }
 
 export class Currency extends DecimalWrapper {
