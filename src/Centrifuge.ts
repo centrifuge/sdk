@@ -32,8 +32,9 @@ import { chains } from './config/chains.js'
 import { Pool } from './Pool.js'
 import type { HexString } from './types/index.js'
 import type { CentrifugeQueryOptions, Query } from './types/query.js'
-import type { OperationStatus, Signer, TransactionCallbackParams } from './types/transaction.js'
 import { makeThenable, shareReplayWithDelayedReset } from './utils/rx.js'
+import type { OperationStatus, Signer, Transaction, TransactionCallbackParams } from './types/transaction.js'
+import { hashKey } from './utils/query.js'
 import { doTransaction, isLocalAccount } from './utils/transaction.js'
 
 export type Config = {
@@ -129,9 +130,73 @@ export class Centrifuge {
     return this._query(null, () => of(new Account(this, address as any, chainId ?? this.config.defaultChain)))
   }
 
+  currency(address: string, chainId?: number): Query<CurrencyMetadata> {
+    const curAddress = address.toLowerCase()
+    const cid = chainId ?? this.config.defaultChain
+    return this._query(['currency', curAddress, cid], () =>
+      defer(async () => {
+        const contract = getContract({
+          address: curAddress as any,
+          abi: ABI.Currency,
+          client: this.getClient(cid)!,
+        })
+        const [decimals, name, symbol, supportsPermit] = await Promise.all([
+          contract.read.decimals!() as Promise<number>,
+          contract.read.name!() as Promise<string>,
+          contract.read.symbol!() as Promise<string>,
+          contract.read.PERMIT_TYPEHASH!()
+            .then((hash) => hash === PERMIT_TYPEHASH)
+            .catch(() => false),
+        ])
+        return {
+          address: curAddress as any,
+          decimals,
+          name,
+          symbol,
+          chainId: cid,
+          supportsPermit,
+        }
+      })
+    )
+  }
+
+  balance(currency: string, owner: string, chainId?: number) {
+    const address = owner.toLowerCase()
+    const cid = chainId ?? this.config.defaultChain
+    return this._query(['balance', currency, owner, cid], () => {
+      return this.currency(currency, cid).pipe(
+        switchMap(() =>
+          defer(
+            () =>
+              this.getClient(cid)!.readContract({
+                address: currency as any,
+                abi: ABI.Currency,
+                functionName: 'balanceOf',
+                args: [address],
+              }) as Promise<bigint>
+          ).pipe(
+            repeatOnEvents(
+              this,
+              {
+                address: currency,
+                abi: ABI.Currency,
+                eventName: 'Transfer',
+                filter: (events) => {
+                  return events.some((event) => {
+                    return event.args.from?.toLowerCase() === address || event.args.to?.toLowerCase() === address
+                  })
+                },
+              },
+              cid
+            )
+          )
+        )
+      )
+    })
+  }
+
   /**
    * Returns an observable of all events on a given chain.
-   *
    * @internal
    */
   _events(chainId?: number) {
@@ -158,7 +223,6 @@ export class Centrifuge {
 
   /**
    * Returns an observable of events on a given chain, filtered by name(s) and address(es).
-   *
    * @internal
    */
   _filteredEvents(address: string | string[], abi: Abi | Abi[], eventName: string | string[], chainId?: number) {
@@ -203,27 +267,29 @@ export class Centrifuge {
   /**
    * @internal
    */
-  _queryIndexer<Result>(keys: (string | number)[] | null, query: string, variables?: Record<string, any>): Query<Result>
+  _queryIndexer<Result>(query: string, variables?: Record<string, any>): Query<Result>
   _queryIndexer<Result, Return>(
-    keys: (string | number)[] | null,
     query: string,
     variables: Record<string, any>,
     postProcess: (data: Result) => Return
   ): Query<Return>
   _queryIndexer<Result, Return = Result>(
-    keys: (string | number)[] | null,
     query: string,
     variables?: Record<string, any>,
     postProcess?: (data: Result) => Return
   ) {
-    return this._query(keys, () => this._getIndexerObservable(query, variables).pipe(map(postProcess ?? identity)), {
-      valueCacheTime: 120,
-    })
+    return this._query(
+      [query, variables],
+      () => this._getIndexerObservable(query, variables).pipe(map(postProcess ?? identity)),
+      {
+        valueCacheTime: 120,
+      }
+    )
   }
 
   #memoized = new Map<string, any>()
-  #memoizeWith<T = any>(keys: (string | number)[], callback: () => T): T {
-    const cacheKey = JSON.stringify(keys)
+  #memoizeWith<T = any>(keys: any[], callback: () => T): T {
+    const cacheKey = hashKey(keys)
     if (this.#memoized.has(cacheKey)) {
       return this.#memoized.get(cacheKey)
     }
@@ -313,11 +379,7 @@ export class Centrifuge {
    *
    * @internal
    */
-  _query<T>(
-    keys: (string | number)[] | null,
-    observableCallback: () => Observable<T>,
-    options?: CentrifugeQueryOptions
-  ): Query<T> {
+  _query<T>(keys: any[] | null, observableCallback: () => Observable<T>, options?: CentrifugeQueryOptions): Query<T> {
     function get() {
       const sharedSubject = new Subject<Observable<T>>()
       function createShared(): Observable<T> {
@@ -352,7 +414,6 @@ export class Centrifuge {
    * Will additionally prompt the user to switch chains if they're not on the correct chain.
    *
    * @example
-   *
    * ```ts
    * const tx = this._transact(
    *   'Transfer',
@@ -385,7 +446,7 @@ export class Centrifuge {
     title: string,
     transactionCallback: (params: TransactionCallbackParams) => Promise<HexString> | Observable<HexString>,
     chainId?: number
-  ): Transaction {
+  ) {
     return this._transactSequence(async function* (params) {
       const transaction = transactionCallback(params)
       yield* doTransaction(title, params.publicClient, () =>

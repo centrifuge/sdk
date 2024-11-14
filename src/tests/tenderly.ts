@@ -1,3 +1,4 @@
+import dotenv from 'dotenv'
 import {
   createPublicClient,
   createWalletClient,
@@ -13,7 +14,6 @@ import {
   type WalletClient,
 } from 'viem'
 import { generatePrivateKey, privateKeyToAccount } from 'viem/accounts'
-import dotenv from 'dotenv'
 dotenv.config({ path: './src/tests/.env' })
 
 type TenderlyVirtualNetwork = {
@@ -78,7 +78,14 @@ export class TenderlyFork {
   /**
    * after impersonateAddress is set, centrifuge.setSigner() must be called again to update the signer
    */
-  impersonateAddress?: `0x${string}`
+  private _impersonateAddress?: `0x${string}`
+  get impersonateAddress() {
+    return this._impersonateAddress
+  }
+  set impersonateAddress(address: `0x${string}` | undefined) {
+    this._impersonateAddress = address
+    this.setSigner()
+  }
   forkedNetwork?: TenderlyVirtualNetwork
   get rpcUrl(): string {
     if (!this._rpcUrl) {
@@ -105,11 +112,10 @@ export class TenderlyFork {
     return this.createAccount()
   }
 
-  constructor(chain: Chain, vnetId?: string, rpcUrl?: string, impersonateAddress?: `0x${string}`) {
+  constructor(chain: Chain, vnetId?: string, rpcUrl?: string) {
     this.chain = chain
     this.vnetId = vnetId
     this._rpcUrl = rpcUrl
-    this.impersonateAddress = impersonateAddress
   }
 
   public static async create(chain: Chain, vnetId?: string): Promise<TenderlyFork> {
@@ -135,7 +141,6 @@ export class TenderlyFork {
   }
 
   private setSigner(): WalletClient {
-    if (this._signer) return this._signer
     const client = createWalletClient({
       account: this.account,
       transport: http(this.rpcUrl),
@@ -147,10 +152,13 @@ export class TenderlyFork {
       ...client,
       // Override the request method to use override from address with impersonated account
       request: async (args) => {
-        if (args.method === 'eth_sendTransaction') {
-          // @ts-expect-error
-          const impersonatedParams = args.params.map((arg: any) => ({ ...arg, from: this.account.address }))
-          return client.request({ method: args.method, params: impersonatedParams })
+        switch (args.method) {
+          case 'eth_accounts':
+            return [this.account.address]
+          case 'eth_sendTransaction':
+            // @ts-expect-error
+            const impersonatedParams = args.params.map((arg: any) => ({ ...arg, from: this.account.address }))
+            return client.request({ method: args.method, params: impersonatedParams })
         }
         // @ts-expect-error
         return client.request(args)
@@ -172,10 +180,10 @@ export class TenderlyFork {
       address,
       type: 'local',
       source: 'custom',
-      signMessage: async ({ message }) => '0x' as `0x${string}`,
-      signTransaction: async (tx) => '0x' as `0x${string}`,
-      signTypedData: async (typedData) => '0x' as `0x${string}`,
-      publicKey: '0x' as `0x${string}`,
+      signMessage: async () => '0x',
+      signTransaction: async () => '0x',
+      signTypedData: async () => '0x',
+      publicKey: '0x',
     }
   }
 
