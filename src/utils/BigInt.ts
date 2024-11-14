@@ -45,6 +45,9 @@ export class DecimalWrapper extends BigIntWrapper {
 
   static _fromFloat<T extends DecimalWrapper>(num: Numeric, decimals: number) {
     const n = Dec(num.toString()).mul(Dec(10).pow(decimals)).toDecimalPlaces(0).toString()
+    if (Dec(n).lt(1)) {
+      throw new Error(`${num} is too small to be represented with ${decimals} decimals`)
+    }
     return new (this as any)(n, decimals) as T
   }
 
@@ -82,6 +85,26 @@ export class DecimalWrapper extends BigIntWrapper {
     }
     return new (this.constructor as any)(this.value / value.toBigInt(), this.decimals)
   }
+
+  lt<T>(value: bigint | (T extends BigIntWrapper ? T : never)) {
+    const val = typeof value === 'bigint' ? value : value.toBigInt()
+    return this.value < val
+  }
+
+  lte<T>(value: bigint | (T extends BigIntWrapper ? T : never)) {
+    const val = typeof value === 'bigint' ? value : value.toBigInt()
+    return this.value <= val
+  }
+
+  gt<T>(value: bigint | (T extends BigIntWrapper ? T : never)) {
+    const val = typeof value === 'bigint' ? value : value.toBigInt()
+    return this.value > val
+  }
+
+  gte<T>(value: bigint | (T extends BigIntWrapper ? T : never)) {
+    const val = typeof value === 'bigint' ? value : value.toBigInt()
+    return this.value >= val
+  }
 }
 
 export class Currency extends DecimalWrapper {
@@ -97,8 +120,22 @@ export class Currency extends DecimalWrapper {
     return this._sub<Currency>(value)
   }
 
-  mul(value: bigint | Currency) {
+  /**
+   * When a price is provided, it will be converted to a decimal and multiplied with the current value.
+   *
+   * @param value bigint | Currency | Price
+   * @returns Currency
+   */
+  mul(value: bigint | Currency | Price) {
+    if (value instanceof Price) {
+      return this._mulPrice<Currency>(value)
+    }
     return this._mul<Currency>(value)
+  }
+
+  _mulPrice<T = Currency>(value: Numeric | Price): T {
+    const val = value instanceof Price ? value.toDecimal() : Dec(value)
+    return (this.constructor as any)._fromFloat(this.toDecimal().mul(val), this.decimals) as T
   }
 
   div(value: bigint | Currency) {
