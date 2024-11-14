@@ -42,11 +42,11 @@ export class Reports extends Entity {
   }
 
   async poolSnapshots(filter?: PoolSnapshotFilter) {
-    return this._root._queryCentrifugeApi(['poolSnapshots'], poolSnapshotsQuery, { filter }, poolSnapshotsPostProcess)
+    return this._root._queryIndexer(['poolSnapshots'], poolSnapshotsQuery, { filter }, poolSnapshotsPostProcess)
   }
 
   async trancheSnapshots(filter?: TrancheSnapshotFilter) {
-    return this._root._queryCentrifugeApi(
+    return this._root._queryIndexer(
       ['trancheSnapshots'],
       trancheSnapshotsQuery,
       { filter },
