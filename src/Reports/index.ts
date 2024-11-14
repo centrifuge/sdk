@@ -18,7 +18,6 @@ export class Reports extends Entity {
     super(centrifuge, ['reports', poolId])
   }
 
-  // TODO: add direction parameter (horizontal or vertical)
   async balanceSheet(filter?: ReportFilter) {
     const dateFilter = {
       timestamp: {
