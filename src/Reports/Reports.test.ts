@@ -14,7 +14,7 @@ describe('Reports', () => {
   it('should get balance sheet report', async () => {
     const ns3PoolId = '1615768079'
     const pool = await centrifuge.pool(ns3PoolId)
-    const balanceSheetReport = await pool.reports().balanceSheet({
+    const balanceSheetReport = await pool.reports.balanceSheet({
       from: '2024-11-03T22:11:29.776Z',
       to: '2024-11-06T22:11:29.776Z',
       groupBy: 'day',

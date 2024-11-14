@@ -12,7 +12,7 @@ export class Pool extends Entity {
     super(_root, ['pool', id])
   }
 
-  reports() {
+  get reports() {
     return new Reports(this._root, this.id)
   }
 
