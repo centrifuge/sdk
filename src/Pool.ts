@@ -13,7 +13,6 @@ export class Pool extends Entity {
 
   trancheIds() {
     return this._root._queryIndexer(
-      ['tranches', this.id],
       `query($poolId: String!) {
         pool(id: $poolId) {
           tranches {
