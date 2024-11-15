@@ -76,10 +76,6 @@ export class PoolNetwork extends Entity {
       )
     )
   }
-        })
-      )
-    )
-  }
 
   /**
    * Get whether the pool is active on this network. It's a prerequisite for deploying vaults,
