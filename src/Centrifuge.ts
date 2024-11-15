@@ -135,6 +135,11 @@ export class Centrifuge {
     return this._query(null, () => of(new Account(this, address as any, chainId ?? this.config.defaultChain)))
   }
 
+  /**
+   * Get the metadata for an ERC20 token
+   * @param address - The token address
+   * @param chainId - The chain ID
+   */
   currency(address: string, chainId?: number): Query<CurrencyMetadata> {
     const curAddress = address.toLowerCase()
     const cid = chainId ?? this.config.defaultChain
@@ -165,6 +170,12 @@ export class Centrifuge {
     )
   }
 
+  /**
+   * Get the balance of an ERC20 token for a given owner.
+   * @param currency - The token address
+   * @param owner - The owner address
+   * @param chainId - The chain ID
+   */
   balance(currency: string, owner: string, chainId?: number) {
     const address = owner.toLowerCase()
     const cid = chainId ?? this.config.defaultChain
