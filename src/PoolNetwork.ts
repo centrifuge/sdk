@@ -1,4 +1,4 @@
-import { defer, switchMap } from 'rxjs'
+import { combineLatest, defer, map, switchMap } from 'rxjs'
 import { getContract } from 'viem'
 import { ABI } from './abi/index.js'
 import type { Centrifuge } from './Centrifuge.js'
@@ -7,6 +7,7 @@ import { Entity } from './Entity.js'
 import type { Pool } from './Pool.js'
 import type { HexString } from './types/index.js'
 import { repeatOnEvents } from './utils/rx.js'
+import { Vault } from './Vault.js'
 
 /**
  * Query and interact with a pool on a specific network.
@@ -73,6 +74,84 @@ export class PoolNetwork extends Entity {
               functionName: 'poolManager',
             }) as Promise<HexString>
         )
+      )
+    )
+  }
+
+  /**
+   * Get the deployed Vaults for a given tranche. There may exist one Vault for each allowed investment currency.
+   * Vaults are used to submit/claim investments and redemptions.
+   * @param trancheId - The tranche ID
+   */
+  vaults(trancheId: string) {
+    return this._query(['vaults', trancheId], () =>
+      this._poolManager().pipe(
+        switchMap((poolManager) =>
+          defer(async () => {
+            const { currencies } = lpConfig[this.chainId]!
+            if (!currencies.length) return []
+            const contract = getContract({
+              address: poolManager,
+              abi: ABI.PoolManager,
+              client: this._root.getClient(this.chainId)!,
+            })
+            const results = await Promise.allSettled(
+              currencies.map(async (curAddr) => {
+                const vaultAddr = (await contract.read.getVault!([this.pool.id, trancheId, curAddr])) as HexString
+                return new Vault(this._root, this, trancheId, curAddr, vaultAddr)
+              })
+            )
+            console.log('results', results)
+            return results.filter((result) => result.status === 'fulfilled').map((result) => result.value)
+          }).pipe(
+            repeatOnEvents(
+              this._root,
+              {
+                address: poolManager,
+                abi: ABI.PoolManager,
+                eventName: 'DeployVault',
+                filter: (events) => {
+                  return events.some((event) => {
+                    return String(event.args.poolId) === this.pool.id || event.args.trancheId === trancheId
+                  })
+                },
+              },
+              this.chainId
+            )
+          )
+        )
+      )
+    )
+  }
+
+  /**
+   * Get all Vaults for all tranches in the pool.
+   */
+  vaultsByTranche() {
+    return this._query(null, () =>
+      this.pool.trancheIds().pipe(
+        switchMap((tranches) => {
+          return combineLatest(tranches.map((trancheId) => this.vaults(trancheId))).pipe(
+            map((vaults) => Object.fromEntries(vaults.flat().map((vault, index) => [tranches[index], vault])))
+          )
+        })
+      )
+    )
+  }
+
+  /**
+   * Get a specific Vault for a given tranche and investment currency.
+   * @param trancheId - The tranche ID
+   * @param asset - The investment currency address
+   */
+  vault(trancheId: string, asset: string) {
+    return this._query(null, () =>
+      this.vaults(trancheId).pipe(
+        map((vaults) => {
+          const vault = vaults.find((v) => v._asset === asset)
+          if (!vault) throw new Error('Vault not found')
+          return vault
+        })
       )
     )
   }
