@@ -25,11 +25,14 @@
     "dev": "tsc -w --importHelpers",
     "build": "tsc --importHelpers",
     "prepare": "yarn build",
-    "test": "mocha --loader=ts-node/esm --require $(pwd)/src/tests/setup.ts --exit --timeout 60000 'src/**/*.test.ts'"
+    "test": "mocha --loader=ts-node/esm --require $(pwd)/src/tests/setup.ts --exit --timeout 60000 'src/**/*.test.ts'",
+    "test:simple:single": "mocha --loader=ts-node/esm --exit --timeout 60000",
+    "test:single": "mocha --loader=ts-node/esm --require $(pwd)/src/tests/setup.ts --exit --timeout 60000"
   },
   "dependencies": {
     "decimal.js-light": "^2.5.1",
     "eth-permit": "^0.2.3",
+    "isomorphic-ws": "^5.0.0",
     "rxjs": "^7.8.1"
   },
   "devDependencies": {
