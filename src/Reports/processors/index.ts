@@ -1,7 +1,7 @@
-import { balanceSheetProcessor } from './balanceSheet.js'
+import { processBalanceSheetData } from './balanceSheet.js'
 
 export const processors = {
-  balanceSheet: balanceSheetProcessor,
+  balanceSheet: processBalanceSheetData,
 } as const
 
 export type ReportProcessorType = keyof typeof processors

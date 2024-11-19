@@ -2,7 +2,7 @@ import { PoolSnapshot } from '../../queries/poolSnapshots.js'
 import { TrancheSnapshot } from '../../queries/trancheSnapshots.js'
 import { Currency, Price } from '../../utils/BigInt.js'
 import { groupByPeriod } from '../../utils/date.js'
-import { ReportData, ReportFilter, ReportProcessor } from '../types.js'
+import { ReportData, ReportFilter } from '../types.js'
 
 export interface BalanceSheetReport extends ReportData {
   date: string
@@ -27,16 +27,7 @@ type BalanceSheetData = {
   trancheSnapshots: TrancheSnapshot[]
 }
 
-export const balanceSheetProcessor: ReportProcessor<BalanceSheetData, BalanceSheetReport> = {
-  process(data: BalanceSheetData, filter?: ReportFilter): BalanceSheetReport[] {
-    return processBalanceSheetData(data, filter)
-  },
-  getCacheKey(poolId: string, filter?: ReportFilter): string {
-    return ['balanceSheet', poolId, filter?.from, filter?.to, filter?.groupBy].filter(Boolean).join(':')
-  },
-}
-
-function processBalanceSheetData(data: BalanceSheetData, filter?: ReportFilter): BalanceSheetReport[] {
+export function processBalanceSheetData(data: BalanceSheetData, filter?: ReportFilter): BalanceSheetReport[] {
   const trancheSnapshotsByDate = groupTranchesByDate(data.trancheSnapshots)
   const items = data?.poolSnapshots?.map((snapshot) => {
     const tranches = trancheSnapshotsByDate.get(snapshot.timestamp.slice(0, 10)) ?? []
