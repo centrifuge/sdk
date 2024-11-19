@@ -33,7 +33,7 @@ import { Pool } from './Pool.js'
 import type { HexString } from './types/index.js'
 import type { CentrifugeQueryOptions, Query } from './types/query.js'
 import type { OperationStatus, Signer, Transaction, TransactionCallbackParams } from './types/transaction.js'
-import { hashKey } from './utils/query.js'
+import { hashKey, serializeForCache } from './utils/query.js'
 import { makeThenable, shareReplayWithDelayedReset } from './utils/rx.js'
 import { doTransaction, isLocalAccount } from './utils/transaction.js'
 
@@ -226,7 +226,7 @@ export class Centrifuge {
 
   #memoized = new Map<string, any>()
   #memoizeWith<T = any>(keys: any[], callback: () => T): T {
-    const cacheKey = hashKey(keys)
+    const cacheKey = hashKey(serializeForCache(keys))
     if (this.#memoized.has(cacheKey)) {
       return this.#memoized.get(cacheKey)
     }
