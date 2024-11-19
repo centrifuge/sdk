@@ -59,21 +59,33 @@ export class DecimalWrapper extends BigIntWrapper {
     return this.toDecimal().toNumber()
   }
 
-  _add<T>(value: bigint | (T extends BigIntWrapper ? T : never)): T {
+  _add<T>(value: bigint | (T extends DecimalWrapper ? T : never)): T {
     const val = typeof value === 'bigint' ? value : value.toBigInt()
     return new (this.constructor as any)(this.value + val, this.decimals)
   }
 
-  _sub<T>(value: bigint | (T extends BigIntWrapper ? T : never)): T {
+  _sub<T>(value: bigint | (T extends DecimalWrapper ? T : never)): T {
     const val = typeof value === 'bigint' ? value : value.toBigInt()
     return this._add<T>(-val)
   }
 
-  _mul<T>(value: bigint | (T extends BigIntWrapper ? T : never)): T {
+  /**
+   * a._mul(b) will preserve the decimals of a
+   * @example
+   * Currency.fromFloat(1, 6).mul(Price.fromFloat(1.01))
+   * // Price has 18 decimals
+   * // returns Currency with 6 decimals (1_010_000n or 1.01)
+   */
+  _mul<T>(value: bigint | (T extends DecimalWrapper ? T : never)): T {
+    let val: Decimal.default
     if (typeof value === 'bigint') {
-      return new (this.constructor as any)(this.value * value, this.decimals)
+      val = Dec(value.toString())
+    } else if (value instanceof Decimal.default) {
+      val = value
+    } else {
+      val = value.toDecimal().mul(Dec(10).pow(this.decimals))
     }
-    return new (this.constructor as any)(this.value * value.toBigInt(), this.decimals)
+    return new (this.constructor as any)(this.toDecimal().mul(val), this.decimals) as T
   }
 
   _div<T>(value: bigint | (T extends BigIntWrapper ? T : never)): T {
@@ -125,22 +137,8 @@ export class Currency extends DecimalWrapper {
     return this._sub<Currency>(value)
   }
 
-  /**
-   * When a price is provided, it will be converted to a decimal and multiplied with the current value.
-   *
-   * @param value bigint | Currency | Price
-   * @returns Currency
-   */
   mul(value: bigint | Currency | Price) {
-    if (value instanceof Price) {
-      return this._mulPrice<Currency>(value)
-    }
     return this._mul<Currency>(value)
-  }
-
-  _mulPrice<T = Currency>(value: Numeric | Price): T {
-    const val = value instanceof Price ? value.toDecimal() : Dec(value)
-    return (this.constructor as any)._fromFloat(this.toDecimal().mul(val), this.decimals) as T
   }
 
   div(value: bigint | Currency) {

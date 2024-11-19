@@ -74,13 +74,18 @@ describe('utils/BigInt', () => {
       },
       {
         title: 'DecimalWrapper * bigint',
-        input: new DecimalWrapper(1000n, 6)._mul<DecimalWrapper>(200n),
-        expected: { bigint: 200_000n, decimal: '0.2', string: '200000' },
+        input: new DecimalWrapper(1000n, 3)._mul<DecimalWrapper>(2000n),
+        expected: { bigint: 2000n, decimal: '2', string: '2000' },
+      },
+      {
+        title: 'DecimalWrapper * DecimalWrapper.fromFloat on numbers that are too small and result in 0',
+        input: new DecimalWrapper(1000n, 6)._mul<DecimalWrapper>(DecimalWrapper._fromFloat(0.0002, 6)),
+        expected: { bigint: 0n, decimal: '0', string: '0' },
       },
       {
         title: 'DecimalWrapper * DecimalWrapper.fromFloat',
-        input: new DecimalWrapper(1000n, 6)._mul<DecimalWrapper>(DecimalWrapper._fromFloat(0.0002, 6)),
-        expected: { bigint: 200_000n, decimal: '0.2', string: '200000' },
+        input: new DecimalWrapper(1000n, 6)._mul<DecimalWrapper>(DecimalWrapper._fromFloat(2, 6)),
+        expected: { bigint: 2000n, decimal: '0.002', string: '2000' },
       },
       {
         title: 'DecimalWrapper / bigint',
@@ -195,33 +200,48 @@ describe('utils/BigInt', () => {
       },
       {
         title: 'Currency * bigint',
-        input: new Currency(1000n, 6).mul(200n),
-        expected: { bigint: 200_000n, float: 0.2, decimal: '0.2', string: '200000' },
+        input: new Currency(1000n, 3).mul(2000n),
+        expected: { bigint: 2000n, float: 2, decimal: '2', string: '2000' },
       },
       {
         title: 'Currency * Currency',
         input: new Currency(1_000_000_000n, 6).mul(new Currency(2_000_000_000n, 6)),
         expected: {
-          bigint: 2_000_000_000_000_000_000n,
-          float: 2000000000000,
-          decimal: '2000000000000',
-          string: '2000000000000000000',
+          bigint: 2_000_000_000_000n,
+          float: 2000000,
+          decimal: '2000000',
+          string: '2000000000000',
         },
       },
       {
         title: 'Currency * Currency.fromFloat(float)',
-        input: new Currency(10n, 6).mul(Currency.fromFloat(0.00001, 6)),
-        expected: { bigint: 100n, float: 0.0001, decimal: '0.0001', string: '100' },
+        input: new Currency(1_000_000n, 6).mul(Currency.fromFloat(1.000001, 6)),
+        expected: { bigint: 1_000_001n, float: 1.000001, decimal: '1.000001', string: '1000001' },
       },
       {
         title: 'Currency * Currency.fromFloat(Dec)',
-        input: new Currency(10n, 6).mul(Currency.fromFloat(Dec(0.00001), 6)),
-        expected: { bigint: 100n, float: 0.0001, decimal: '0.0001', string: '100' },
+        input: new Currency(20_000_000_000_000n, 6).mul(Currency.fromFloat(Dec(1.1), 6)),
+        expected: { bigint: 22_000_000_000_000n, float: 22000000, decimal: '22000000', string: '22000000000000' },
       },
       {
         title: 'Currency * Currency',
-        input: new Currency(10n, 6).mul(new Currency(200n, 6)),
-        expected: { bigint: 2000n, float: 0.002, decimal: '0.002', string: '2000' },
+        input: new Currency(1_566_119_435n, 6).mul(new Currency(1_000_000n, 6)),
+        expected: {
+          bigint: 1_566_119_435n,
+          float: 1566.119435,
+          decimal: '1566.119435',
+          string: '1566119435',
+        },
+      },
+      {
+        title: 'Currency * Currency',
+        input: Currency.fromFloat(1, 6).mul(new Price(1010000000000000000n)),
+        expected: { bigint: 1_010_000n, float: 1.01, decimal: '1.01', string: '1010000' },
+      },
+      {
+        title: 'Currency * Currency',
+        input: Currency.fromFloat(1, 6).mul(Price.fromFloat(1.01)),
+        expected: { bigint: 1_010_000n, float: 1.01, decimal: '1.01', string: '1010000' },
       },
       {
         title: 'Currency / bigint',
@@ -236,12 +256,12 @@ describe('utils/BigInt', () => {
       {
         title: 'Currency * Token.toBigInt()',
         input: new Currency(100n, 2).mul(new Token(100n, 4).toBigInt()),
-        expected: { bigint: 10_000n, float: 100, decimal: '100', string: '10000' },
+        expected: { bigint: 100n, float: 1, decimal: '1', string: '100' },
       },
       {
         title: 'Currency * Token.toBigInt()',
         input: new Currency(100n, 2).mul(Token.fromFloat(0.000001, 6).toBigInt()),
-        expected: { bigint: 100n, float: 1, decimal: '1', string: '100' },
+        expected: { bigint: 1n, float: 0.01, decimal: '0.01', string: '1' },
       },
       {
         title: 'Currency mulPrice Currency',
