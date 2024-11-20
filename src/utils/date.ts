@@ -19,14 +19,14 @@ export function getPeriod(date: Date, groupBy: GroupBy): string | undefined {
   }
 }
 
-export function groupByPeriod<T extends { date: string }>(data: T[], groupBy: GroupBy): T[] {
+export function groupByPeriod<T extends { timestamp: string }>(data: T[], groupBy: GroupBy): T[] {
   const grouped = new Map<string, T>()
 
   data.forEach((item) => {
-    const period = getPeriod(new Date(item.date), groupBy)
+    const period = getPeriod(new Date(item.timestamp), groupBy)
     if (!period) return
 
-    if (!grouped.has(period) || new Date(item.date) > new Date(grouped.get(period)!.date)) {
+    if (!grouped.has(period) || new Date(item.timestamp) > new Date(grouped.get(period)!.timestamp)) {
       grouped.set(period, item)
     }
   })

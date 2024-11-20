@@ -31,7 +31,7 @@ describe('Reports', () => {
     expect(balanceSheetReport.length).to.be.eql(4)
     expect(balanceSheetReport?.[0]?.tranches?.length ?? 0).to.be.eql(2) // ns3 has 2 tranches
     expect(balanceSheetReport?.[0]?.tranches?.[0]?.timestamp.slice(0, 10)).to.be.eql(
-      balanceSheetReport?.[0]?.date.slice(0, 10)
+      balanceSheetReport?.[0]?.timestamp.slice(0, 10)
     )
   })
 

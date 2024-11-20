@@ -10,13 +10,8 @@ export interface ReportFilter {
   groupBy?: GroupBy
 }
 
-export interface ReportData {
+export interface BalanceSheetReport {
   timestamp: string
-  [key: string]: unknown
-}
-
-export interface BalanceSheetReport extends ReportData {
-  date: string
   assetValuation: Currency
   onchainReserve: Currency
   offchainCash: Currency

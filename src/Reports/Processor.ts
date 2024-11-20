@@ -17,7 +17,6 @@ export class Processor {
       if (tranches.length === 0) throw new Error('No tranches found for snapshot')
       return {
         timestamp: snapshot.timestamp,
-        date: snapshot.timestamp,
         assetValuation: snapshot.portfolioValuation,
         onchainReserve: snapshot.totalReserve,
         offchainCash: snapshot.offchainCashValue,
@@ -37,7 +36,7 @@ export class Processor {
         ),
       }
     })
-    return this.applyGrouping(items, filter)
+    return this.applyGrouping<BalanceSheetReport>(items, filter)
   }
 
   // TODO: Add other processors
@@ -46,7 +45,7 @@ export class Processor {
     return timestamp.slice(0, 10)
   }
 
-  private applyGrouping(items: BalanceSheetReport[], filter?: ReportFilter): BalanceSheetReport[] {
+  private applyGrouping<T extends { timestamp: string }>(items: T[], filter?: ReportFilter): T[] {
     return filter?.groupBy ? groupByPeriod(items, filter.groupBy) : items
   }
 

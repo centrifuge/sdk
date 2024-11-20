@@ -60,8 +60,8 @@ describe('Processor', () => {
       )
 
       expect(result).to.have.lengthOf(2)
-      expect(result?.[0]?.date.slice(0, 10)).to.equal('2024-01-01')
-      expect(result?.[1]?.date.slice(0, 10)).to.equal('2024-01-02')
+      expect(result?.[0]?.timestamp.slice(0, 10)).to.equal('2024-01-01')
+      expect(result?.[1]?.timestamp.slice(0, 10)).to.equal('2024-01-02')
     })
 
     it('should group data by month when specified', () => {
@@ -74,7 +74,7 @@ describe('Processor', () => {
       )
 
       expect(result).to.have.lengthOf(1)
-      expect(result?.[0]?.date.slice(0, 10)).to.equal('2024-01-02')
+      expect(result?.[0]?.timestamp.slice(0, 10)).to.equal('2024-01-02')
     })
   })
 })
