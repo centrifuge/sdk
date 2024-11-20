@@ -8,8 +8,12 @@ export function hashKey(key: any[]): string {
             result[key] = val[key]
             return result
           }, {} as any)
-      : val
+      : jsonFormatter(val)
   )
+}
+
+function jsonFormatter(nestedValue: any) {
+  return typeof nestedValue === 'bigint' ? nestedValue.toString() : nestedValue
 }
 
 function isObject(o: any) {

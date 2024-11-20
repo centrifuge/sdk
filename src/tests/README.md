@@ -24,6 +24,18 @@ Run the tests:
 yarn test
 ```
 
+Run a single test:
+
+```bash
+yarn test:single <path-to-test>
+```
+
+Run a single test without setting up the fork:
+
+```bash
+yarn test:simple:single <path-to-test>
+```
+
 ### Usage
 
 ```ts

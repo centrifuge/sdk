@@ -45,7 +45,9 @@ import { doTransaction, isLocalAccount } from './utils/transaction.js'
 export type Config = {
   environment: 'mainnet' | 'demo' | 'dev'
   rpcUrls?: Record<number | string, string>
+  indexerUrl: string
 }
+
 export type UserProvidedConfig = Partial<Config>
 type EnvConfig = {
   indexerUrl: string
