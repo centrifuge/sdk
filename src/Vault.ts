@@ -45,7 +45,7 @@ export class Vault extends Entity {
    * @internal
    */
   _estimate() {
-    return this._root._query(['estimate'], () =>
+    return this._root._query(['estimate', this.chainId], () =>
       defer(() => {
         const bytes = toHex(new Uint8Array([0x12]))
         const { centrifugeRouter } = lpConfig[this.chainId]!
@@ -72,6 +72,27 @@ export class Vault extends Entity {
             abi: ABI.LiquidityPool,
             functionName: 'share',
           }) as Promise<HexString>
+      )
+    )
+  }
+
+  /**
+   * Get the contract address of the restriction mananger.
+   * @internal
+   */
+  _restrictionManager() {
+    return this._query(['restrictionManager'], () =>
+      this._share().pipe(
+        switchMap((share) =>
+          defer(
+            () =>
+              this._root.getClient(this.chainId)!.readContract({
+                address: share,
+                abi: ABI.Currency,
+                functionName: 'hook',
+              }) as Promise<HexString>
+          )
+        )
       )
     )
   }
@@ -136,8 +157,13 @@ export class Vault extends Entity {
   investment(investor: string) {
     const address = investor.toLowerCase() as HexString
     return this._query(['investment', address], () =>
-      combineLatest([this.investmentCurrency(), this.shareCurrency(), this.network._investmentManager()]).pipe(
-        switchMap(([investmentCurrency, shareCurrency, investmentManagerAddress]) =>
+      combineLatest([
+        this.investmentCurrency(),
+        this.shareCurrency(),
+        this.network._investmentManager(),
+        this._restrictionManager(),
+      ]).pipe(
+        switchMap(([investmentCurrency, shareCurrency, investmentManagerAddress, restrictionManagerAddress]) =>
           combineLatest([
             this._root.balance(investmentCurrency.address, address, this.chainId),
             this._root.balance(shareCurrency.address, address, this.chainId),
@@ -167,12 +193,11 @@ export class Vault extends Entity {
                 ,
                 pendingInvest,
                 pendingRedeem,
-                claimableCancelDepositCurrency,
+                claimableCancelInvestCurrency,
                 claimableCancelRedeemShares,
-                hasPendingCancelDepositRequest,
+                hasPendingCancelInvestRequest,
                 hasPendingCancelRedeemRequest,
               ] = investment
-              console.log('pendingInvest', pendingInvest)
               return {
                 isAllowedToInvest,
                 claimableInvestShares: maxMint,
@@ -181,9 +206,9 @@ export class Vault extends Entity {
                 claimableRedeemSharesEquivalent: maxRedeem,
                 pendingInvestCurrency: pendingInvest,
                 pendingRedeemShares: pendingRedeem,
-                claimableCancelDepositCurrency,
+                claimableCancelInvestCurrency,
                 claimableCancelRedeemShares,
-                hasPendingCancelDepositRequest,
+                hasPendingCancelInvestRequest,
                 hasPendingCancelRedeemRequest,
                 investmentCurrency,
                 shareCurrency,
@@ -192,9 +217,10 @@ export class Vault extends Entity {
               repeatOnEvents(
                 this._root,
                 {
-                  address: this.address,
-                  abi: ABI.LiquidityPool,
+                  address: [this.address, restrictionManagerAddress],
+                  abi: [ABI.LiquidityPool, ABI.RestrictionManager],
                   eventName: [
+                    'UpdateMember',
                     'CancelDepositClaim',
                     'CancelDepositClaimable',
                     'CancelDepositRequest',
@@ -212,10 +238,13 @@ export class Vault extends Entity {
                     console.log('events', events)
                     return events.some(
                       (event) =>
-                        event.args.receiver === investor ||
-                        event.args.controller === investor ||
-                        event.args.sender === investor ||
-                        event.args.owner === investor
+                        event.args.receiver?.toLowerCase() === address ||
+                        event.args.controller?.toLowerCase() === address ||
+                        event.args.sender?.toLowerCase() === address ||
+                        event.args.owner?.toLowerCase() === address ||
+                        // UpdateMember event
+                        (event.args.user?.toLowerCase() === address &&
+                          event.args.token?.toLowerCase() === shareCurrency.address)
                     )
                   },
                 },
@@ -250,13 +279,13 @@ export class Vault extends Entity {
         isAllowedToInvest,
         pendingInvestCurrency,
       } = investment
-      const supportsPermit = investmentCurrency.supportsPermit && 'send' in signer
+      const supportsPermit = investmentCurrency.supportsPermit && 'send' in signer // eth-permit uses the deprecated send method
       const needsApproval = investmentCurrencyAllowance < investAmount
 
       if (!isAllowedToInvest) throw new Error('Not allowed to invest')
       if (investAmount === 0n && pendingInvestCurrency === 0n) throw new Error('No order to cancel')
       if (investAmount > investmentCurrencyBalance) throw new Error('Insufficient balance')
-      if (pendingInvestCurrency > 0n) throw new Error('Cannot change order')
+      if (pendingInvestCurrency > 0n && investAmount > 0n) throw new Error('Cannot change order')
 
       if (investAmount === 0n) {
         yield* doTransaction('Cancel Invest Order', publicClient, () =>
@@ -354,6 +383,7 @@ export class Vault extends Entity {
 
       if (shares === 0n && pendingRedeemShares === 0n) throw new Error('No order to cancel')
       if (shares > shareBalance) throw new Error('Insufficient balance')
+      if (pendingRedeemShares > 0n && shares > 0n) throw new Error('Cannot change order')
       if (shares === 0n) {
         yield* doTransaction('Cancel Redeem Order', publicClient, () =>
           walletClient.writeContract({
@@ -370,7 +400,7 @@ export class Vault extends Entity {
         walletClient.writeContract({
           address: centrifugeRouter,
           abi: ABI.CentrifugeRouter,
-          functionName: 'redeem',
+          functionName: 'requestRedeem',
           args: [self.address, shares, signingAddress, signingAddress, estimate],
           value: estimate,
         })
@@ -395,13 +425,17 @@ export class Vault extends Entity {
       const investment = await this.investment(signingAddress)
       const receiverAddress = receiver || signingAddress
       const functionName =
-        investment.claimableCancelDepositCurrency > 0n
+        investment.claimableCancelInvestCurrency > 0n
           ? 'claimCancelDepositRequest'
           : investment.claimableCancelRedeemShares > 0n
             ? 'claimCancelRedeemRequest'
             : investment.claimableInvestShares > 0n
               ? 'claimDeposit'
-              : 'claimRedeem'
+              : investment.claimableRedeemCurrency > 0n
+                ? 'claimRedeem'
+                : ''
+
+      if (!functionName) throw new Error('No claimable funds')
 
       return walletClient.writeContract({
         address: centrifugeRouter,
