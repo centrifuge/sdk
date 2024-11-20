@@ -4,10 +4,17 @@ import { groupByPeriod } from '../utils/date.js'
 import { BalanceSheetData, BalanceSheetReport, ReportFilter } from './types.js'
 
 export class Processor {
+  /**
+   * Process raw data into a balance sheet report
+   * @param data Pool and tranche snapshot data
+   * @param filter Optional filtering and grouping options
+   * @returns Processed balance sheet report
+   */
   balanceSheet(data: BalanceSheetData, filter?: ReportFilter): BalanceSheetReport[] {
     const trancheSnapshotsByDate = this.groupTranchesByDate(data.trancheSnapshots)
     const items = data?.poolSnapshots?.map((snapshot) => {
-      const tranches = trancheSnapshotsByDate.get(snapshot.timestamp.slice(0, 10)) ?? []
+      const tranches = trancheSnapshotsByDate.get(this.getDateKey(snapshot.timestamp)) ?? []
+      if (tranches.length === 0) throw new Error('No tranches found for snapshot')
       return {
         timestamp: snapshot.timestamp,
         date: snapshot.timestamp,
@@ -30,16 +37,24 @@ export class Processor {
         ),
       }
     })
-    return filter?.groupBy ? groupByPeriod(items, filter.groupBy) : items
+    return this.applyGrouping(items, filter)
   }
 
   // TODO: Add other processors
+
+  private getDateKey(timestamp: string): string {
+    return timestamp.slice(0, 10)
+  }
+
+  private applyGrouping(items: BalanceSheetReport[], filter?: ReportFilter): BalanceSheetReport[] {
+    return filter?.groupBy ? groupByPeriod(items, filter.groupBy) : items
+  }
 
   private groupTranchesByDate(trancheSnapshots: TrancheSnapshot[]): Map<string, TrancheSnapshot[]> {
     const grouped = new Map<string, TrancheSnapshot[]>()
     if (!trancheSnapshots) return grouped
     trancheSnapshots?.forEach((snapshot) => {
-      const date = snapshot.timestamp.slice(0, 10)
+      const date = this.getDateKey(snapshot.timestamp)
       if (!grouped.has(date)) {
         grouped.set(date, [])
       }
