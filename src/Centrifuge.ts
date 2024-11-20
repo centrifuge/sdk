@@ -33,14 +33,16 @@ import { Pool } from './Pool.js'
 import type { HexString } from './types/index.js'
 import type { CentrifugeQueryOptions, Query } from './types/query.js'
 import type { OperationStatus, Signer, Transaction, TransactionCallbackParams } from './types/transaction.js'
-import { hashKey } from './utils/query.js'
+import { hashKey, serializeForCache } from './utils/query.js'
 import { makeThenable, shareReplayWithDelayedReset } from './utils/rx.js'
 import { doTransaction, isLocalAccount } from './utils/transaction.js'
 
 export type Config = {
   environment: 'mainnet' | 'demo' | 'dev'
   rpcUrls?: Record<number | string, string>
+  indexerUrl: string
 }
+
 export type UserProvidedConfig = Partial<Config>
 type EnvConfig = {
   indexerUrl: string
@@ -224,7 +226,7 @@ export class Centrifuge {
 
   #memoized = new Map<string, any>()
   #memoizeWith<T = any>(keys: any[], callback: () => T): T {
-    const cacheKey = hashKey(keys)
+    const cacheKey = hashKey(serializeForCache(keys))
     if (this.#memoized.has(cacheKey)) {
       return this.#memoized.get(cacheKey)
     }
@@ -428,7 +430,7 @@ export class Centrifuge {
       params: TransactionCallbackParams
     ) => AsyncGenerator<OperationStatus> | Observable<OperationStatus>,
     chainId?: number
-  ): Transaction {
+  ) {
     const targetChainId = chainId ?? this.config.defaultChain
     const self = this
     async function* transact() {

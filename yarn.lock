@@ -20,16 +20,20 @@ __metadata:
     "@types/mocha": "npm:^10.0.9"
     "@types/node": "npm:^22.7.8"
     "@types/sinon": "npm:^17.0.3"
+    "@types/sinon-chai": "npm:^4"
     chai: "npm:^5.1.2"
+    decimal.js-light: "npm:^2.5.1"
     dotenv: "npm:^16.4.5"
     eslint: "npm:^9.12.0"
     eth-permit: "npm:^0.2.3"
     globals: "npm:^15.11.0"
+    isomorphic-ws: "npm:^5.0.0"
     mocha: "npm:^10.7.3"
     npm-run-all: "npm:4.1.5"
     prettier: "npm:^3.3.3"
     rxjs: "npm:^7.8.1"
     sinon: "npm:^19.0.2"
+    sinon-chai: "npm:^4.0.0"
     ts-node: "npm:^10.9.2"
     typescript: "npm:~5.6.3"
     typescript-eslint: "npm:^8.8.1"
@@ -357,10 +361,26 @@ __metadata:
   languageName: node
   linkType: hard
 
+"@types/chai@npm:*":
+  version: 5.0.1
+  resolution: "@types/chai@npm:5.0.1"
+  dependencies:
+    "@types/deep-eql": "npm:*"
+  checksum: 10c0/82cb718101d37698e35fb03e2a983a442303065bfcb9b9e8b50b49fdad2fa5759c14dabfa5cb4a4bfa5c6aff1f05377d6ab4310bae0cfbf7d3138f94c969f441
+  languageName: node
+  linkType: hard
+
 "@types/chai@npm:^5.0.0":
   version: 5.0.0
   resolution: "@types/chai@npm:5.0.0"
   checksum: 10c0/fcce55f2bbb8485fc860a1dcbac17c1a685b598cfc91a55d37b65b1642b921cf736caa8cce9dcc530830d900f78ab95cf43db4e118db34a5176f252cacd9e1e8
+  languageName: node
+  linkType: hard
+
+"@types/deep-eql@npm:*":
+  version: 4.0.2
+  resolution: "@types/deep-eql@npm:4.0.2"
+  checksum: 10c0/bf3f811843117900d7084b9d0c852da9a044d12eb40e6de73b552598a6843c21291a8a381b0532644574beecd5e3491c5ff3a0365ab86b15d59862c025384844
   languageName: node
   linkType: hard
 
@@ -394,7 +414,17 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@types/sinon@npm:^17.0.3":
+"@types/sinon-chai@npm:^4":
+  version: 4.0.0
+  resolution: "@types/sinon-chai@npm:4.0.0"
+  dependencies:
+    "@types/chai": "npm:*"
+    "@types/sinon": "npm:*"
+  checksum: 10c0/9cc2b98ebd9d81cbb6fa234d81cf6d9a0f02af8e777bd19b66baa793455056c105640abc81e5108581f92ebd5753023920e99ee992fbd240e9dd28882bcd1276
+  languageName: node
+  linkType: hard
+
+"@types/sinon@npm:*, @types/sinon@npm:^17.0.3":
   version: 17.0.3
   resolution: "@types/sinon@npm:17.0.3"
   dependencies:
@@ -1018,6 +1048,13 @@ __metadata:
   version: 4.0.0
   resolution: "decamelize@npm:4.0.0"
   checksum: 10c0/e06da03fc05333e8cd2778c1487da67ffbea5b84e03ca80449519b8fa61f888714bbc6f459ea963d5641b4aa98832130eb5cd193d90ae9f0a27eee14be8e278d
+  languageName: node
+  linkType: hard
+
+"decimal.js-light@npm:^2.5.1":
+  version: 2.5.1
+  resolution: "decimal.js-light@npm:2.5.1"
+  checksum: 10c0/4fd33f535aac9e5bd832796831b65d9ec7914ad129c7437b3ab991b0c2eaaa5a57e654e6174c4a17f1b3895ea366f0c1ab4955cdcdf7cfdcf3ad5a58b456c020
   languageName: node
   linkType: hard
 
@@ -2109,6 +2146,15 @@ __metadata:
   languageName: node
   linkType: hard
 
+"isomorphic-ws@npm:^5.0.0":
+  version: 5.0.0
+  resolution: "isomorphic-ws@npm:5.0.0"
+  peerDependencies:
+    ws: "*"
+  checksum: 10c0/a058ac8b5e6efe9e46252cb0bc67fd325005d7216451d1a51238bc62d7da8486f828ef017df54ddf742e0fffcbe4b1bcc2a66cc115b027ed0180334cd18df252
+  languageName: node
+  linkType: hard
+
 "isows@npm:1.0.6":
   version: 1.0.6
   resolution: "isows@npm:1.0.6"
@@ -3074,6 +3120,16 @@ __metadata:
   version: 4.1.0
   resolution: "signal-exit@npm:4.1.0"
   checksum: 10c0/41602dce540e46d599edba9d9860193398d135f7ff72cab629db5171516cfae628d21e7bfccde1bbfdf11c48726bc2a6d1a8fb8701125852fbfda7cf19c6aa83
+  languageName: node
+  linkType: hard
+
+"sinon-chai@npm:^4.0.0":
+  version: 4.0.0
+  resolution: "sinon-chai@npm:4.0.0"
+  peerDependencies:
+    chai: ^5.0.0
+    sinon: ">=4.0.0"
+  checksum: 10c0/c2be6f7d964fd05dcd0870807a1447bc180703aca0cdf5ba7ed21bf2a8a2e0c8d1d2e464b2289982870dfe1b58ae797000cc742e23eeac8dd2f6339dea7d717b
   languageName: node
   linkType: hard
 

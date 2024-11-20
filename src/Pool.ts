@@ -1,6 +1,7 @@
 import { catchError, combineLatest, map, of, switchMap, timeout } from 'rxjs'
 import type { Centrifuge } from './Centrifuge.js'
 import { Entity } from './Entity.js'
+import { Reports } from './Reports/index.js'
 import { PoolNetwork } from './PoolNetwork.js'
 
 export class Pool extends Entity {
@@ -9,6 +10,10 @@ export class Pool extends Entity {
     public id: string
   ) {
     super(_root, ['pool', id])
+  }
+
+  get reports() {
+    return new Reports(this._root, this.id)
   }
 
   trancheIds() {
