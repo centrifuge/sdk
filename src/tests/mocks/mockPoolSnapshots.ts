@@ -3,7 +3,7 @@ import { PoolSnapshot } from '../../queries/poolSnapshots.js'
 
 export const mockPoolSnapshots: PoolSnapshot[] = [
   {
-    id: 'pool-1',
+    id: 'pool-10',
     poolId: 'pool-1',
     timestamp: '2024-01-01T12:00:00Z',
     netAssetValue: new Currency(0n, 6),
@@ -33,7 +33,7 @@ export const mockPoolSnapshots: PoolSnapshot[] = [
     },
   },
   {
-    id: 'pool-1',
+    id: 'pool-11',
     poolId: 'pool-1',
     timestamp: '2024-01-02T12:00:00Z',
     netAssetValue: new Currency(0n, 6),

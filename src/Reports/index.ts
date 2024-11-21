@@ -10,7 +10,8 @@ import { combineLatest, defer } from 'rxjs'
 import { processor } from './Processor.js'
 
 import { map } from 'rxjs'
-import { ReportFilter } from './types.js'
+import { BalanceSheetReport, CashflowReport, ReportFilter } from './types.js'
+import { Query } from '../types/query.js'
 
 export class Reports extends Entity {
   constructor(
@@ -21,10 +22,14 @@ export class Reports extends Entity {
   }
 
   balanceSheet(filter?: ReportFilter) {
-    return this._generateReport('balanceSheet', filter)
+    return this._generateReport('balanceSheet', filter) as Query<BalanceSheetReport[]>
   }
 
-  _generateReport(type: 'balanceSheet', filter?: ReportFilter) {
+  cashflow(filter?: ReportFilter) {
+    return this._generateReport('cashflow', filter) as Query<CashflowReport[]>
+  }
+
+  _generateReport(type: 'balanceSheet' | 'cashflow', filter?: ReportFilter) {
     return this._root._query(
       [type, filter?.from, filter?.to, filter?.groupBy],
       () =>
@@ -50,6 +55,8 @@ export class Reports extends Entity {
               switch (type) {
                 case 'balanceSheet':
                   return processor.balanceSheet({ poolSnapshots, trancheSnapshots }, filter)
+                case 'cashflow':
+                  return processor.cashflow({ poolSnapshots }, filter)
                 default:
                   throw new Error(`Unsupported report type: ${type}`)
               }

@@ -1,23 +1,18 @@
 import { expect } from 'chai'
 import { Centrifuge } from '../Centrifuge.js'
-import { SinonSpy, spy } from 'sinon'
+import { spy } from 'sinon'
 import { Reports } from '../Reports/index.js'
 import { ReportFilter } from './types.js'
 import { processor } from './Processor.js'
 
 describe('Reports', () => {
   let centrifuge: Centrifuge
-  let processBalanceSheetSpy: SinonSpy
 
-  beforeEach(async () => {
+  before(() => {
     centrifuge = new Centrifuge({
       environment: 'mainnet',
       indexerUrl: 'https://subql.embrio.tech/',
     })
-    processBalanceSheetSpy = spy(processor, 'balanceSheet')
-  })
-  afterEach(() => {
-    processBalanceSheetSpy.restore()
   })
 
   it('should get balance sheet report', async () => {
@@ -35,7 +30,9 @@ describe('Reports', () => {
     )
   })
 
+  // TODO: this test is not working as expected
   it('should use cached data for repeated queries', async () => {
+    const processBalanceSheetSpy = spy(processor, 'balanceSheet')
     const ns3PoolId = '1615768079'
     const reports = new Reports(centrifuge, ns3PoolId)
 
@@ -51,9 +48,12 @@ describe('Reports', () => {
     // Same query should use cache
     await reports.balanceSheet(filter)
     expect(processBalanceSheetSpy.callCount).to.equal(1)
+
+    processBalanceSheetSpy.restore()
   })
 
   it('should fetch new data for different query', async () => {
+    const processBalanceSheetSpy = spy(processor, 'balanceSheet')
     const ns3PoolId = '1615768079'
     const reports = new Reports(centrifuge, ns3PoolId)
 
@@ -75,5 +75,24 @@ describe('Reports', () => {
     const report3 = await reports.balanceSheet({ ...filter, groupBy: 'month' })
     expect(processBalanceSheetSpy.callCount).to.equal(3)
     expect(report3.length).to.equal(1)
+
+    processBalanceSheetSpy.restore()
+  })
+
+  it('should get cashflow report', async () => {
+    const processCashflowSpy = spy(processor, 'cashflow')
+    const ns3PoolId = '1615768079'
+    const pool = await centrifuge.pool(ns3PoolId)
+    const cashflowReport = await pool.reports.cashflow({
+      from: '2024-11-02T22:11:29.776Z',
+      to: '2024-11-06T22:11:29.776Z',
+      groupBy: 'day',
+    })
+    expect(cashflowReport.length).to.be.eql(4)
+    expect(processCashflowSpy.callCount).to.equal(1)
+    // expect(cashflowReport?.[0]?.tranches?.length ?? 0).to.be.eql(2) // ns3 has 2 tranches
+    // expect(cashflowReport?.[0]?.tranches?.[0]?.timestamp.slice(0, 10)).to.be.eql(
+    //   cashflowReport?.[0]?.timestamp.slice(0, 10)
+    // )
   })
 })

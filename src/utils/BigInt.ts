@@ -36,7 +36,7 @@ export abstract class BigIntWrapper {
 }
 
 export class DecimalWrapper extends BigIntWrapper {
-  protected decimals: number
+  readonly decimals: number
 
   constructor(value: Numeric | bigint, decimals: number) {
     super(value)
@@ -129,6 +129,8 @@ export class Currency extends DecimalWrapper {
     return Currency._fromFloat<Currency>(num, decimals)
   }
 
+  static ZERO = new Currency(0n, 0)
+
   add(value: bigint | Currency) {
     return this._add<Currency>(value)
   }
@@ -151,6 +153,8 @@ export class Token extends Currency {
     const n = Dec(number.toString()).mul(Dec(10).pow(decimals)).toDecimalPlaces(0).toString()
     return new Token(n, decimals)
   }
+
+  static override ZERO = new Token(0n, 0)
 
   override add(value: bigint | Token) {
     return this._add<Token>(value)

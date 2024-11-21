@@ -10,7 +10,8 @@ export interface ReportFilter {
   groupBy?: GroupBy
 }
 
-export interface BalanceSheetReport {
+export type BalanceSheetReport = {
+  type: 'balanceSheet'
   timestamp: string
   assetValuation: Currency
   onchainReserve: Currency
@@ -31,4 +32,25 @@ export interface BalanceSheetReport {
 export type BalanceSheetData = {
   poolSnapshots: PoolSnapshot[]
   trancheSnapshots: TrancheSnapshot[]
+}
+
+export type CashflowReport = {
+  type: 'cashflow'
+  timestamp: string
+  principalPayments: Currency
+  realizedPL: Currency
+  interestPayments: Currency
+  assetPurchases: Currency
+  netCashflowAsset: Currency // sum of cashflow from assetPurchases, principalPayments, interestPayments, realizedPL
+  fees: { name: string; amount: Currency }[]
+  netCashflowAfterFees: Currency
+  investments: Currency
+  redemptions: Currency
+  activitiesCashflow: Currency // sum of cashflow from investments and redemptions
+  totalCashflow: Currency // sum of netCashflowAsset, netCashflowAfterFees and activitiesCashflow
+  endCashBalance: Currency
+}
+
+export type CashflowData = {
+  poolSnapshots: PoolSnapshot[]
 }
