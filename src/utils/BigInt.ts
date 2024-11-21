@@ -122,6 +122,9 @@ export class DecimalWrapper extends BigIntWrapper {
     const val = typeof value === 'bigint' ? value : value.toBigInt()
     return this.value === val
   }
+  isZero() {
+    return this.value === 0n
+  }
 }
 
 export class Currency extends DecimalWrapper {
