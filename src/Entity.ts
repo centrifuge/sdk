@@ -16,10 +16,10 @@ export class Entity {
   }
 
   protected _query<T>(
-    keys: (string | number)[] | null,
+    keys: (string | number | undefined)[] | null,
     observableCallback: () => Observable<T>,
     options?: CentrifugeQueryOptions
   ) {
-    return this._root._query<T>(keys ? [...this.#baseKeys, ...keys] : null, observableCallback, options)
+    return this._root._query<T>(keys ? [...this.#baseKeys, ...keys.filter(Boolean)] : null, observableCallback, options)
   }
 }

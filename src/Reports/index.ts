@@ -6,7 +6,7 @@ import {
   trancheSnapshotsPostProcess,
   trancheSnapshotsQuery,
 } from '../queries/trancheSnapshots.js'
-import { combineLatest, defer } from 'rxjs'
+import { combineLatest } from 'rxjs'
 import { processor } from './Processor.js'
 
 import { map } from 'rxjs'
@@ -30,39 +30,38 @@ export class Reports extends Entity {
   }
 
   _generateReport(type: 'balanceSheet' | 'cashflow', filter?: ReportFilter) {
-    return this._root._query(
+    return this._query(
       [type, filter?.from, filter?.to, filter?.groupBy],
-      () =>
-        defer(() => {
-          const dateFilter = {
-            timestamp: {
-              greaterThan: filter?.from,
-              lessThan: filter?.to,
-            },
-          }
+      () => {
+        const dateFilter = {
+          timestamp: {
+            greaterThan: filter?.from,
+            lessThan: filter?.to,
+          },
+        }
 
-          const poolSnapshots$ = this.poolSnapshots({
-            ...dateFilter,
-            poolId: { equalTo: this.poolId },
-          })
-          const trancheSnapshots$ = this.trancheSnapshots({
-            ...dateFilter,
-            tranche: { poolId: { equalTo: this.poolId } },
-          })
+        const poolSnapshots$ = this.poolSnapshots({
+          ...dateFilter,
+          poolId: { equalTo: this.poolId },
+        })
+        const trancheSnapshots$ = this.trancheSnapshots({
+          ...dateFilter,
+          tranche: { poolId: { equalTo: this.poolId } },
+        })
 
-          return combineLatest([poolSnapshots$, trancheSnapshots$]).pipe(
-            map(([poolSnapshots, trancheSnapshots]) => {
-              switch (type) {
-                case 'balanceSheet':
-                  return processor.balanceSheet({ poolSnapshots, trancheSnapshots }, filter)
-                case 'cashflow':
-                  return processor.cashflow({ poolSnapshots }, filter)
-                default:
-                  throw new Error(`Unsupported report type: ${type}`)
-              }
-            })
-          )
-        }),
+        return combineLatest([poolSnapshots$, trancheSnapshots$]).pipe(
+          map(([poolSnapshots, trancheSnapshots]) => {
+            switch (type) {
+              case 'balanceSheet':
+                return processor.balanceSheet({ poolSnapshots, trancheSnapshots }, filter)
+              case 'cashflow':
+                return processor.cashflow({ poolSnapshots }, filter)
+              default:
+                throw new Error(`Unsupported report type: ${type}`)
+            }
+          })
+        )
+      },
       {
         valueCacheTime: 120,
       }
