@@ -7,6 +7,7 @@ import { PoolNetwork } from './PoolNetwork.js'
 import { ABI } from './abi/index.js'
 import { lpConfig } from './config/lp.js'
 import type { HexString } from './types/index.js'
+import { Currency, Token } from './utils/BigInt.js'
 import { repeatOnEvents } from './utils/rx.js'
 import { doSignMessage, doTransaction, signPermit, type Permit } from './utils/transaction.js'
 
@@ -119,32 +120,38 @@ export class Vault extends Entity {
   allowance(owner: string) {
     const address = owner.toLowerCase()
     return this._query(['allowance', address], () =>
-      defer(
-        () =>
-          this._root.getClient(this.chainId)!.readContract({
-            address: this._asset,
-            abi: ABI.Currency,
-            functionName: 'allowance',
-            args: [address, lpConfig[this.chainId]!.centrifugeRouter],
-          }) as Promise<bigint>
-      ).pipe(
-        repeatOnEvents(
-          this._root,
-          {
-            address: this._asset,
-            abi: ABI.Currency,
-            eventName: ['Approval', 'Transfer'],
-            filter: (events) => {
-              return events.some((event) => {
-                return (
-                  event.args.owner?.toLowerCase() === address ||
-                  event.args.spender?.toLowerCase() === this._asset ||
-                  event.args.from?.toLowerCase() === address
-                )
+      this.investmentCurrency().pipe(
+        switchMap((currency) =>
+          defer(() =>
+            this._root
+              .getClient(this.chainId)!
+              .readContract({
+                address: this._asset,
+                abi: ABI.Currency,
+                functionName: 'allowance',
+                args: [address, lpConfig[this.chainId]!.centrifugeRouter],
               })
-            },
-          },
-          this.chainId
+              .then((val: any) => new Currency(val, currency.decimals))
+          ).pipe(
+            repeatOnEvents(
+              this._root,
+              {
+                address: this._asset,
+                abi: ABI.Currency,
+                eventName: ['Approval', 'Transfer'],
+                filter: (events) => {
+                  return events.some((event) => {
+                    return (
+                      event.args.owner?.toLowerCase() === address ||
+                      event.args.spender?.toLowerCase() === this._asset ||
+                      event.args.from?.toLowerCase() === address
+                    )
+                  })
+                },
+              },
+              this.chainId
+            )
+          )
         )
       )
     )
@@ -200,14 +207,14 @@ export class Vault extends Entity {
               ] = investment
               return {
                 isAllowedToInvest,
-                claimableInvestShares: maxMint,
-                claimableInvestCurrencyEquivalent: maxDeposit,
-                claimableRedeemCurrency: maxWithdraw,
-                claimableRedeemSharesEquivalent: maxRedeem,
-                pendingInvestCurrency: pendingInvest,
-                pendingRedeemShares: pendingRedeem,
-                claimableCancelInvestCurrency,
-                claimableCancelRedeemShares,
+                claimableInvestShares: new Token(maxMint, shareCurrency.decimals),
+                claimableInvestCurrencyEquivalent: new Currency(maxDeposit, investmentCurrency.decimals),
+                claimableRedeemCurrency: new Currency(maxWithdraw, investmentCurrency.decimals),
+                claimableRedeemSharesEquivalent: new Token(maxRedeem, shareCurrency.decimals),
+                pendingInvestCurrency: new Currency(pendingInvest, investmentCurrency.decimals),
+                pendingRedeemShares: new Token(pendingRedeem, shareCurrency.decimals),
+                claimableCancelInvestCurrency: new Currency(claimableCancelInvestCurrency, investmentCurrency.decimals),
+                claimableCancelRedeemShares: new Token(claimableCancelRedeemShares, shareCurrency.decimals),
                 hasPendingCancelInvestRequest,
                 hasPendingCancelRedeemRequest,
                 investmentCurrency,
@@ -255,7 +262,7 @@ export class Vault extends Entity {
         ),
         map(([currencyBalance, shareBalance, allowance, investment]) => ({
           ...investment,
-          shareBalance,
+          shareBalance: new Token(shareBalance.toBigInt(), investment.shareCurrency.decimals),
           investmentCurrencyBalance: currencyBalance,
           investmentCurrencyAllowance: allowance,
         }))
@@ -267,11 +274,12 @@ export class Vault extends Entity {
    * Place an order to invest funds in the vault. If the amount is 0, it will request to cancel an open order.
    * @param investAmount - The amount to invest in the vault
    */
-  placeInvestOrder(investAmount: bigint) {
+  placeInvestOrder(investAmount: bigint | number) {
     const self = this
     return this._transactSequence(async function* ({ walletClient, publicClient, signer, signingAddress }) {
       const { centrifugeRouter } = lpConfig[self.chainId]!
       const [estimate, investment] = await Promise.all([self._estimate(), self.investment(signingAddress)])
+      const amount = new Currency(investAmount, investment.investmentCurrency.decimals)
       const {
         investmentCurrency,
         investmentCurrencyBalance,
@@ -280,14 +288,14 @@ export class Vault extends Entity {
         pendingInvestCurrency,
       } = investment
       const supportsPermit = investmentCurrency.supportsPermit && 'send' in signer // eth-permit uses the deprecated send method
-      const needsApproval = investmentCurrencyAllowance < investAmount
+      const needsApproval = investmentCurrencyAllowance.lt(amount)
 
       if (!isAllowedToInvest) throw new Error('Not allowed to invest')
-      if (investAmount === 0n && pendingInvestCurrency === 0n) throw new Error('No order to cancel')
-      if (investAmount > investmentCurrencyBalance) throw new Error('Insufficient balance')
-      if (pendingInvestCurrency > 0n && investAmount > 0n) throw new Error('Cannot change order')
+      if (amount.isZero() && pendingInvestCurrency.isZero()) throw new Error('No order to cancel')
+      if (amount.gt(investmentCurrencyBalance)) throw new Error('Insufficient balance')
+      if (pendingInvestCurrency.gt(0n) && amount.gt(0n)) throw new Error('Cannot change order')
 
-      if (investAmount === 0n) {
+      if (amount.isZero()) {
         yield* doTransaction('Cancel Invest Order', publicClient, () =>
           walletClient.writeContract({
             address: centrifugeRouter,
@@ -311,7 +319,7 @@ export class Vault extends Entity {
               signingAddress,
               investmentCurrency.address,
               centrifugeRouter,
-              investAmount
+              amount.toBigInt()
             )
           )
         } else {
@@ -320,7 +328,7 @@ export class Vault extends Entity {
               address: investmentCurrency.address,
               abi: ABI.Currency,
               functionName: 'approve',
-              args: [centrifugeRouter, investAmount],
+              args: [centrifugeRouter, amount],
             })
           )
         }
@@ -329,7 +337,7 @@ export class Vault extends Entity {
       const enableData = encodeFunctionData({
         abi: ABI.CentrifugeRouter,
         functionName: 'enableLockDepositRequest',
-        args: [self.address, investAmount],
+        args: [self.address, amount],
       })
       const requestData = encodeFunctionData({
         abi: ABI.CentrifugeRouter,
@@ -344,7 +352,7 @@ export class Vault extends Entity {
           args: [
             investmentCurrency.address,
             centrifugeRouter,
-            investAmount.toString(),
+            amount.toString(),
             permit.deadline,
             permit.v,
             permit.r,
@@ -374,17 +382,18 @@ export class Vault extends Entity {
    * Place an order to redeem funds from the vault. If the amount is 0, it will request to cancel an open order.
    * @param shares - The amount of shares to redeem
    */
-  placeRedeemOrder(shares: bigint) {
+  placeRedeemOrder(shares: bigint | number) {
     const self = this
     return this._transactSequence(async function* ({ walletClient, publicClient, signingAddress }) {
       const { centrifugeRouter } = lpConfig[self.chainId]!
       const [estimate, investment] = await Promise.all([self._estimate(), self.investment(signingAddress)])
       const { shareBalance, pendingRedeemShares } = investment
+      const amount = new Token(shares, investment.shareCurrency.decimals)
 
-      if (shares === 0n && pendingRedeemShares === 0n) throw new Error('No order to cancel')
-      if (shares > shareBalance) throw new Error('Insufficient balance')
-      if (pendingRedeemShares > 0n && shares > 0n) throw new Error('Cannot change order')
-      if (shares === 0n) {
+      if (amount.isZero() && pendingRedeemShares.isZero()) throw new Error('No order to cancel')
+      if (amount.gt(shareBalance)) throw new Error('Insufficient balance')
+      if (pendingRedeemShares.gt(0n) && amount.gt(0n)) throw new Error('Cannot change order')
+      if (amount.isZero()) {
         yield* doTransaction('Cancel Redeem Order', publicClient, () =>
           walletClient.writeContract({
             address: centrifugeRouter,
@@ -401,7 +410,7 @@ export class Vault extends Entity {
           address: centrifugeRouter,
           abi: ABI.CentrifugeRouter,
           functionName: 'requestRedeem',
-          args: [self.address, shares, signingAddress, signingAddress, estimate],
+          args: [self.address, amount.toBigInt(), signingAddress, signingAddress, estimate],
           value: estimate,
         })
       )
@@ -424,16 +433,15 @@ export class Vault extends Entity {
       const { centrifugeRouter } = lpConfig[this.chainId]!
       const investment = await this.investment(signingAddress)
       const receiverAddress = receiver || signingAddress
-      const functionName =
-        investment.claimableCancelInvestCurrency > 0n
-          ? 'claimCancelDepositRequest'
-          : investment.claimableCancelRedeemShares > 0n
-            ? 'claimCancelRedeemRequest'
-            : investment.claimableInvestShares > 0n
-              ? 'claimDeposit'
-              : investment.claimableRedeemCurrency > 0n
-                ? 'claimRedeem'
-                : ''
+      const functionName = investment.claimableCancelInvestCurrency.gt(0n)
+        ? 'claimCancelDepositRequest'
+        : investment.claimableCancelRedeemShares.gt(0n)
+          ? 'claimCancelRedeemRequest'
+          : investment.claimableInvestShares.gt(0n)
+            ? 'claimDeposit'
+            : investment.claimableRedeemCurrency.gt(0n)
+              ? 'claimRedeem'
+              : ''
 
       if (!functionName) throw new Error('No claimable funds')
 

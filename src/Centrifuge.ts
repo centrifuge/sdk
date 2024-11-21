@@ -38,6 +38,7 @@ import { Pool } from './Pool.js'
 import type { HexString } from './types/index.js'
 import type { CentrifugeQueryOptions, Query } from './types/query.js'
 import type { OperationStatus, Signer, Transaction, TransactionCallbackParams } from './types/transaction.js'
+import { Currency } from './utils/BigInt.js'
 import { hashKey } from './utils/query.js'
 import { makeThenable, repeatOnEvents, shareReplayWithDelayedReset } from './utils/rx.js'
 import { doTransaction, isLocalAccount } from './utils/transaction.js'
@@ -183,15 +184,16 @@ export class Centrifuge {
     const cid = chainId ?? this.config.defaultChain
     return this._query(['balance', currency, owner, cid], () => {
       return this.currency(currency, cid).pipe(
-        switchMap(() =>
-          defer(
-            () =>
-              this.getClient(cid)!.readContract({
+        switchMap((currencyMeta) =>
+          defer(() =>
+            this.getClient(cid)!
+              .readContract({
                 address: currency as any,
                 abi: ABI.Currency,
                 functionName: 'balanceOf',
                 args: [address],
-              }) as Promise<bigint>
+              })
+              .then((val: any) => new Currency(val, currencyMeta.decimals))
           ).pipe(
             repeatOnEvents(
               this,

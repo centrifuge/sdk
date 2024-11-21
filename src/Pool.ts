@@ -50,6 +50,21 @@ export class Pool extends Entity {
   }
 
   /**
+   * Get a specific network where a pool can potentially be deployed.
+   */
+  network(chainId: number) {
+    return this._query(null, () => {
+      return this.networks().pipe(
+        map((networks) => {
+          const network = networks.find((network) => network.chainId === chainId)
+          if (!network) throw new Error(`Network ${chainId} not found`)
+          return network
+        })
+      )
+    })
+  }
+
+  /**
    * Get the networks where a pool is active. It doesn't mean that any vaults are deployed there necessarily.
    */
   activeNetworks() {
