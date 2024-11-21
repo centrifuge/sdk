@@ -8,7 +8,7 @@ import { processor } from './Processor.js'
 describe('Reports', () => {
   let centrifuge: Centrifuge
 
-  before(() => {
+  beforeEach(() => {
     centrifuge = new Centrifuge({
       environment: 'mainnet',
       indexerUrl: 'https://subql.embrio.tech/',
@@ -16,6 +16,7 @@ describe('Reports', () => {
   })
 
   it('should get balance sheet report', async () => {
+    const processBalanceSheetSpy = spy(processor, 'balanceSheet')
     const ns3PoolId = '1615768079'
     const pool = await centrifuge.pool(ns3PoolId)
     const balanceSheetReport = await pool.reports.balanceSheet({
@@ -28,9 +29,10 @@ describe('Reports', () => {
     expect(balanceSheetReport?.[0]?.tranches?.[0]?.timestamp.slice(0, 10)).to.be.eql(
       balanceSheetReport?.[0]?.timestamp.slice(0, 10)
     )
+    expect(processBalanceSheetSpy.callCount).to.equal(1)
+    processBalanceSheetSpy.restore()
   })
 
-  // TODO: this test is not working as expected
   it('should use cached data for repeated queries', async () => {
     const processBalanceSheetSpy = spy(processor, 'balanceSheet')
     const ns3PoolId = '1615768079'

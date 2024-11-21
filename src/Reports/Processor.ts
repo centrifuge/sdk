@@ -37,9 +37,15 @@ export class Processor {
         ),
       }
     })
-    return this.applyGrouping<BalanceSheetReport>(items, filter, 'latest')
+    return this.applyGrouping<BalanceSheetReport>(items, filter?.groupBy, 'latest')
   }
 
+  /**
+   * Process raw data into an aggregated cashflow report
+   * @param data Pool snapshot data
+   * @param filter Optional filtering and grouping options
+   * @returns Processed cashflow report
+   */
   cashflow(data: CashflowData, filter?: ReportFilter): CashflowReport[] {
     // TODO: requires pool metadata which requires querying the pool on chain?
     // check if metadata is available in the snapshot
@@ -60,7 +66,7 @@ export class Processor {
         principalPayments: principalRepayments,
         realizedPL: day.sumRealizedProfitFifoByPeriod, // show only for pools that are public credit pools
         interestPayments: interest,
-        assetPurchases: purchases,
+        assetPurchases: purchases, // assetFinancing if public credit pool
         netCashflowAsset,
         fees: [{ name: 'Management Fee', amount: fees }],
         netCashflowAfterFees,
@@ -71,17 +77,22 @@ export class Processor {
         endCashBalance: day.totalReserve.add(day.offchainCashValue),
       }
     })
-    return this.applyGrouping<CashflowReport>(items, filter, 'sum')
+    return this.applyGrouping<CashflowReport>(items, filter?.groupBy, 'sum')
   }
 
+  /**
+   * Apply grouping to a report
+   * @param items Report items
+   * @param filter Optional filtering and grouping options
+   * @param strategy Grouping strategy, sum aggregates data by period, latest returns the latest item in the period
+   * @returns Grouped report
+   */
   private applyGrouping<T extends CashflowReport | BalanceSheetReport>(
     items: T[],
-    filter?: ReportFilter,
+    groupBy: ReportFilter['groupBy'] = 'day',
     strategy: 'latest' | 'sum' = 'latest'
   ): T[] {
-    if (!filter?.groupBy) return items
-
-    const grouped = groupByPeriod<T>(items, filter.groupBy)
+    const grouped = groupByPeriod<T>(items, groupBy ?? 'day')
 
     if (strategy === 'latest') {
       return grouped
@@ -90,8 +101,7 @@ export class Processor {
     return grouped.map((latest) => {
       const result = { ...latest } as T
       const itemsInGroup = items.filter(
-        (item) =>
-          this.getDateKey(item.timestamp, filter?.groupBy) === this.getDateKey(latest.timestamp, filter?.groupBy)
+        (item) => this.getDateKey(item.timestamp, groupBy) === this.getDateKey(latest.timestamp, groupBy)
       )
 
       for (const key in latest) {
@@ -119,10 +129,18 @@ export class Processor {
       case 'year':
         return timestamp.slice(0, 4) // YYYY
       default:
-        return timestamp.slice(0, 10) // YYYY-MM-DD (daily is default)
+        return timestamp.slice(0, 10) // YYYY-MM-DD
     }
   }
 
+  /**
+   * Group tranche snapshots by date to enable access via date rather than iteration
+   * @param trancheSnapshots Tranche snapshots
+   * @returns Grouped tranche snapshots by date eg
+   * @example
+   * const tranches = groupTranchesByDate(trancheSnapshots)
+   * tranches.get('2024-11-01') // [tranche1Snapshot, tranche2Snapshot] of that date
+   */
   private groupTranchesByDate(trancheSnapshots: TrancheSnapshot[]): Map<string, TrancheSnapshot[]> {
     const grouped = new Map<string, TrancheSnapshot[]>()
     if (!trancheSnapshots) return grouped

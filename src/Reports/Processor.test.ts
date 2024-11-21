@@ -6,40 +6,48 @@ import { PoolSnapshot } from '../queries/poolSnapshots.js'
 import { Currency } from '../utils/BigInt.js'
 
 describe('Processor', () => {
-  it('should process pool and tranche data correctly', () => {
-    const result = processor.balanceSheet({
-      poolSnapshots: mockPoolSnapshots,
-      trancheSnapshots: mockTrancheSnapshots,
+  describe('balanceSheet', () => {
+    it('should process pool and tranche data correctly', () => {
+      const result = processor.balanceSheet({
+        poolSnapshots: mockPoolSnapshots,
+        trancheSnapshots: mockTrancheSnapshots,
+      })
+
+      expect(result).to.have.lengthOf(2)
+      const report = result[0]
+
+      expect(report?.timestamp).to.equal('2024-01-01T12:00:00Z')
+      expect(report?.assetValuation.toBigInt()).to.equal(0n)
+      expect(report?.onchainReserve.toBigInt()).to.equal(0n)
+      expect(report?.offchainCash.toBigInt()).to.equal(0n)
+      expect(report?.accruedFees.toBigInt()).to.equal(0n)
+      expect(report?.netAssetValue.toBigInt()).to.equal(0n)
+
+      expect(report?.tranches?.length).to.equal(2)
+      const seniorTranche = report?.tranches?.find((t) => t.tokenId === 'senior')!
+      const juniorTranche = report?.tranches?.find((t) => t.tokenId === 'junior')!
+
+      expect(seniorTranche?.tokenPrice!.toBigInt()).to.equal(1000000000000000000n)
+      expect(juniorTranche?.tokenPrice!.toBigInt()).to.equal(1120000000000000000n)
+      expect(report?.totalCapital?.toBigInt()).to.equal(0n)
     })
 
-    expect(result).to.have.lengthOf(2)
-    const report = result[0]
-
-    expect(report?.timestamp).to.equal('2024-01-01T12:00:00Z')
-    expect(report?.assetValuation.toBigInt()).to.equal(0n)
-    expect(report?.onchainReserve.toBigInt()).to.equal(0n)
-    expect(report?.offchainCash.toBigInt()).to.equal(0n)
-    expect(report?.accruedFees.toBigInt()).to.equal(0n)
-    expect(report?.netAssetValue.toBigInt()).to.equal(0n)
-
-    expect(report?.tranches?.length).to.equal(2)
-    const seniorTranche = report?.tranches?.find((t) => t.tokenId === 'senior')!
-    const juniorTranche = report?.tranches?.find((t) => t.tokenId === 'junior')!
-
-    expect(seniorTranche?.tokenPrice!.toBigInt()).to.equal(1000000000000000000n)
-    expect(juniorTranche?.tokenPrice!.toBigInt()).to.equal(1120000000000000000n)
-    expect(report?.totalCapital?.toBigInt()).to.equal(0n)
-  })
-
-  it('should throw error when no tranches found', () => {
-    expect(() =>
-      processor.balanceSheet({
-        poolSnapshots: mockPoolSnapshots,
-        trancheSnapshots: [],
-      })
-    ).to.throw('No tranches found for snapshot')
-  })
-  describe('balanceSheet', () => {
+    it('should throw error when no tranches found', () => {
+      expect(() =>
+        processor.balanceSheet({
+          poolSnapshots: mockPoolSnapshots,
+          trancheSnapshots: [],
+        })
+      ).to.throw('No tranches found for snapshot')
+    })
+    it('should return empty array when no pool snapshots found', () => {
+      expect(
+        processor.balanceSheet({
+          poolSnapshots: [],
+          trancheSnapshots: [],
+        })
+      ).to.deep.equal([])
+    })
     it('should group data by day when specified', () => {
       const result = processor.balanceSheet(
         {
@@ -69,7 +77,6 @@ describe('Processor', () => {
   })
 
   describe('cashflow', () => {
-    // Create specific mocks focusing only on key fields for aggregation testing
     const mockCashflowSnapshots: PoolSnapshot[] = [
       {
         ...mockPoolSnapshots[0],
