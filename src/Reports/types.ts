@@ -1,6 +1,6 @@
 import { PoolFeeSnapshotsByDate } from '../queries/poolFeeSnapshots.js'
 import { PoolSnapshot } from '../queries/poolSnapshots.js'
-import { TrancheSnapshot, TrancheSnapshotsByDate } from '../queries/trancheSnapshots.js'
+import { TrancheSnapshotsByDate } from '../queries/trancheSnapshots.js'
 import { Price } from '../utils/BigInt.js'
 import { Currency } from '../utils/BigInt.js'
 import { GroupBy } from '../utils/date.js'

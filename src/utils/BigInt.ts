@@ -45,7 +45,7 @@ export class DecimalWrapper extends BigIntWrapper {
 
   static _fromFloat<T extends DecimalWrapper>(num: Numeric, decimals: number) {
     const n = Dec(num.toString()).mul(Dec(10).pow(decimals)).toDecimalPlaces(0).toString()
-    if (Dec(n).lt(1)) {
+    if (Dec(n).gt(0) && Dec(n).lt(1)) {
       throw new Error(`${num} is too small to be represented with ${decimals} decimals`)
     }
     return new (this as any)(n, decimals) as T
