@@ -3,17 +3,23 @@ import type { Centrifuge } from './Centrifuge.js'
 import { Entity } from './Entity.js'
 import { Reports } from './Reports/index.js'
 import { PoolNetwork } from './PoolNetwork.js'
+import { PoolMetadata } from './types/poolMetadata.js'
 
 export class Pool extends Entity {
   constructor(
     _root: Centrifuge,
-    public id: string
+    public id: string,
+    public metadataHash?: string
   ) {
     super(_root, ['pool', id])
   }
 
   get reports() {
-    return new Reports(this._root, this.id)
+    return new Reports(this._root, this.id, this.metadataHash)
+  }
+
+  metadata() {
+    return this.metadataHash ? this._root._queryIPFS<PoolMetadata>(this.metadataHash) : of(null)
   }
 
   trancheIds() {
