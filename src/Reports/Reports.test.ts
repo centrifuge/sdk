@@ -83,8 +83,9 @@ describe('Reports', () => {
 
   it('should get cashflow report', async () => {
     const processCashflowSpy = spy(processor, 'cashflow')
-    const ns3PoolId = '1615768079'
-    const pool = await centrifuge.pool(ns3PoolId)
+    const ltfPoolId = '4139607887'
+    const lftMetadataHash = 'QmTjbzx4mX1A9vRFxzLDZszKQSTsFbH8YgnpfmTSfWx73G'
+    const pool = await centrifuge.pool(ltfPoolId, lftMetadataHash)
     const cashflowReport = await pool.reports.cashflow({
       from: '2024-11-02T22:11:29.776Z',
       to: '2024-11-06T22:11:29.776Z',
@@ -92,9 +93,6 @@ describe('Reports', () => {
     })
     expect(cashflowReport.length).to.be.eql(4)
     expect(processCashflowSpy.callCount).to.equal(1)
-    // expect(cashflowReport?.[0]?.tranches?.length ?? 0).to.be.eql(2) // ns3 has 2 tranches
-    // expect(cashflowReport?.[0]?.tranches?.[0]?.timestamp.slice(0, 10)).to.be.eql(
-    //   cashflowReport?.[0]?.timestamp.slice(0, 10)
-    // )
+    expect(cashflowReport?.[0]?.timestamp.slice(0, 10)).to.be.eq(cashflowReport?.[0]?.fees?.[0]?.timestamp.slice(0, 10))
   })
 })

@@ -12,24 +12,33 @@ import { processor } from './Processor.js'
 import { map } from 'rxjs'
 import { BalanceSheetReport, CashflowReport, ReportFilter } from './types.js'
 import { Query } from '../types/query.js'
+import {
+  PoolFeeSnapshotFilter,
+  poolFeeSnapshotQuery,
+  poolFeeSnapshotsPostProcess,
+} from '../queries/poolFeeSnapshots.js'
+
+type ReportType = 'balanceSheet' | 'cashflow'
 
 export class Reports extends Entity {
   constructor(
     centrifuge: Centrifuge,
-    public poolId: string
+    public poolId: string,
+    public metadataHash?: string
   ) {
     super(centrifuge, ['reports', poolId])
   }
 
+  // TODO: think about a horizontal formatting option
   balanceSheet(filter?: ReportFilter) {
-    return this._generateReport('balanceSheet', filter) as Query<BalanceSheetReport[]>
+    return this._generateReport<BalanceSheetReport>('balanceSheet', filter)
   }
 
   cashflow(filter?: ReportFilter) {
-    return this._generateReport('cashflow', filter) as Query<CashflowReport[]>
+    return this._generateReport<CashflowReport>('cashflow', filter)
   }
 
-  _generateReport(type: 'balanceSheet' | 'cashflow', filter?: ReportFilter) {
+  _generateReport<T>(type: ReportType, filter?: ReportFilter): Query<T[]> {
     return this._query(
       [type, filter?.from, filter?.to, filter?.groupBy],
       () => {
@@ -48,24 +57,38 @@ export class Reports extends Entity {
           ...dateFilter,
           tranche: { poolId: { equalTo: this.poolId } },
         })
+        const poolFeeSnapshots$ = this.poolFeeSnapshots({
+          ...dateFilter,
+          poolFeeId: { includes: this.poolId },
+        })
 
-        return combineLatest([poolSnapshots$, trancheSnapshots$]).pipe(
-          map(([poolSnapshots, trancheSnapshots]) => {
-            switch (type) {
-              case 'balanceSheet':
-                return processor.balanceSheet({ poolSnapshots, trancheSnapshots }, filter)
-              case 'cashflow':
-                return processor.cashflow({ poolSnapshots }, filter)
-              default:
-                throw new Error(`Unsupported report type: ${type}`)
-            }
-          })
-        )
+        switch (type) {
+          case 'balanceSheet':
+            return combineLatest([poolSnapshots$, trancheSnapshots$]).pipe(
+              map(
+                ([poolSnapshots, trancheSnapshots]) =>
+                  processor.balanceSheet({ poolSnapshots, trancheSnapshots }, filter) as T[]
+              )
+            )
+          case 'cashflow':
+            return combineLatest([poolSnapshots$, poolFeeSnapshots$]).pipe(
+              map(
+                ([poolSnapshots, poolFeeSnapshots]) =>
+                  processor.cashflow({ poolSnapshots, poolFeeSnapshots }, filter) as T[]
+              )
+            )
+          default:
+            throw new Error(`Unsupported report type: ${type}`)
+        }
       },
       {
         valueCacheTime: 120,
       }
     )
+  }
+
+  poolFeeSnapshots(filter?: PoolFeeSnapshotFilter) {
+    return this._root._queryIndexer(poolFeeSnapshotQuery, { filter }, poolFeeSnapshotsPostProcess)
   }
 
   poolSnapshots(filter?: PoolSnapshotFilter) {

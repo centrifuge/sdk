@@ -1,3 +1,4 @@
+import { PoolFeeSnapshotsByDate } from '../queries/poolFeeSnapshots.js'
 import { PoolSnapshot } from '../queries/poolSnapshots.js'
 import { TrancheSnapshot } from '../queries/trancheSnapshots.js'
 import { Price } from '../utils/BigInt.js'
@@ -42,7 +43,7 @@ export type CashflowReport = {
   interestPayments: Currency
   assetPurchases: Currency
   netCashflowAsset: Currency // sum of cashflow from assetPurchases, principalPayments, interestPayments, realizedPL
-  fees: { name: string; amount: Currency }[]
+  fees: { name: string; amount: Currency; timestamp: string; feeId: string }[]
   netCashflowAfterFees: Currency
   investments: Currency
   redemptions: Currency
@@ -53,4 +54,5 @@ export type CashflowReport = {
 
 export type CashflowData = {
   poolSnapshots: PoolSnapshot[]
+  poolFeeSnapshots: PoolFeeSnapshotsByDate
 }

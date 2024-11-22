@@ -47,9 +47,14 @@ export class Processor {
    * @returns Processed cashflow report
    */
   cashflow(data: CashflowData, filter?: ReportFilter): CashflowReport[] {
-    // TODO: requires pool metadata which requires querying the pool on chain?
-    // check if metadata is available in the snapshot
     const items: CashflowReport[] = data.poolSnapshots.map((day) => {
+      const poolFees =
+        data.poolFeeSnapshots[day.timestamp.slice(0, 10)]?.map((fee) => ({
+          name: fee.poolFee.name,
+          amount: fee.sumPaidAmountByPeriod,
+          timestamp: fee.timestamp,
+          feeId: fee.poolFeeId.split('-')[1] ?? '',
+        })) ?? []
       const principalRepayments = day.sumPrincipalRepaidAmountByPeriod
       const interest = day.sumInterestRepaidAmountByPeriod.add(day.sumUnscheduledRepaidAmountByPeriod)
       const purchases = day.sumBorrowedAmountByPeriod
@@ -68,7 +73,7 @@ export class Processor {
         interestPayments: interest,
         assetPurchases: purchases, // assetFinancing if public credit pool
         netCashflowAsset,
-        fees: [{ name: 'Management Fee', amount: fees }],
+        fees: poolFees,
         netCashflowAfterFees,
         investments,
         redemptions,
