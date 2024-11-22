@@ -11,9 +11,8 @@ export class Processor {
    * @returns Processed balance sheet report
    */
   balanceSheet(data: BalanceSheetData, filter?: ReportFilter): BalanceSheetReport[] {
-    const trancheSnapshotsByDate = this.groupTranchesByDate(data.trancheSnapshots)
     const items: BalanceSheetReport[] = data?.poolSnapshots?.map((snapshot) => {
-      const tranches = trancheSnapshotsByDate.get(this.getDateKey(snapshot.timestamp)) ?? []
+      const tranches = data.trancheSnapshots[this.getDateKey(snapshot.timestamp)] ?? []
       if (tranches.length === 0) throw new Error('No tranches found for snapshot')
       return {
         type: 'balanceSheet',
@@ -136,27 +135,6 @@ export class Processor {
       default:
         return timestamp.slice(0, 10) // YYYY-MM-DD
     }
-  }
-
-  /**
-   * Group tranche snapshots by date to enable access via date rather than iteration
-   * @param trancheSnapshots Tranche snapshots
-   * @returns Grouped tranche snapshots by date eg
-   * @example
-   * const tranches = groupTranchesByDate(trancheSnapshots)
-   * tranches.get('2024-11-01') // [tranche1Snapshot, tranche2Snapshot] of that date
-   */
-  private groupTranchesByDate(trancheSnapshots: TrancheSnapshot[]): Map<string, TrancheSnapshot[]> {
-    const grouped = new Map<string, TrancheSnapshot[]>()
-    if (!trancheSnapshots) return grouped
-    trancheSnapshots?.forEach((snapshot) => {
-      const date = this.getDateKey(snapshot.timestamp)
-      if (!grouped.has(date)) {
-        grouped.set(date, [])
-      }
-      grouped.get(date)!.push(snapshot)
-    })
-    return grouped
   }
 }
 

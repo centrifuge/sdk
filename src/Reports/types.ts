@@ -1,6 +1,6 @@
 import { PoolFeeSnapshotsByDate } from '../queries/poolFeeSnapshots.js'
 import { PoolSnapshot } from '../queries/poolSnapshots.js'
-import { TrancheSnapshot } from '../queries/trancheSnapshots.js'
+import { TrancheSnapshot, TrancheSnapshotsByDate } from '../queries/trancheSnapshots.js'
 import { Price } from '../utils/BigInt.js'
 import { Currency } from '../utils/BigInt.js'
 import { GroupBy } from '../utils/date.js'
@@ -32,7 +32,7 @@ export type BalanceSheetReport = {
 
 export type BalanceSheetData = {
   poolSnapshots: PoolSnapshot[]
-  trancheSnapshots: TrancheSnapshot[]
+  trancheSnapshots: TrancheSnapshotsByDate
 }
 
 export type CashflowReport = {
