@@ -49,7 +49,7 @@ export type CashflowReport = {
   redemptions: Currency
   activitiesCashflow: Currency // sum of cashflow from investments and redemptions
   totalCashflow: Currency // sum of netCashflowAsset, netCashflowAfterFees and activitiesCashflow
-  endCashBalance: Currency
+  endCashBalance: { balance: Currency }
 }
 
 export type CashflowData = {

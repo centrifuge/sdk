@@ -1,4 +1,3 @@
-import { TrancheSnapshot } from '../queries/trancheSnapshots.js'
 import { Currency } from '../utils/BigInt.js'
 import { groupByPeriod } from '../utils/date.js'
 import { BalanceSheetData, BalanceSheetReport, CashflowData, CashflowReport, ReportFilter } from './types.js'
@@ -40,7 +39,7 @@ export class Processor {
   }
 
   /**
-   * Process raw data into an aggregated cashflow report
+   * Process raw data into an aggregated cashflow report, fees and endCashBalance are NOT aggregated by period
    * @param data Pool snapshot data
    * @param filter Optional filtering and grouping options
    * @returns Processed cashflow report
@@ -78,7 +77,7 @@ export class Processor {
         redemptions,
         activitiesCashflow,
         totalCashflow,
-        endCashBalance: day.totalReserve.add(day.offchainCashValue),
+        endCashBalance: { balance: day.totalReserve.add(day.offchainCashValue) },
       }
     })
     return this.applyGrouping<CashflowReport>(items, filter?.groupBy, 'sum')
