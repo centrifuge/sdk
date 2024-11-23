@@ -2,8 +2,10 @@ import { expect } from 'chai'
 import { processor } from './Processor.js'
 import { mockPoolSnapshots } from '../tests/mocks/mockPoolSnapshots.js'
 import { mockTrancheSnapshots } from '../tests/mocks/mockTrancheSnapshots.js'
+import { mockPoolFeeSnapshots } from '../tests/mocks/mockPoolFeeSnapshot.js'
 import { PoolSnapshot } from '../queries/poolSnapshots.js'
 import { Currency } from '../utils/BigInt.js'
+import { PoolFeeSnapshot, PoolFeeSnapshotsByDate } from '../queries/poolFeeSnapshots.js'
 
 describe('Processor', () => {
   describe('balanceSheet', () => {
@@ -36,7 +38,7 @@ describe('Processor', () => {
       expect(() =>
         processor.balanceSheet({
           poolSnapshots: mockPoolSnapshots,
-          trancheSnapshots: [],
+          trancheSnapshots: {},
         })
       ).to.throw('No tranches found for snapshot')
     })
@@ -44,7 +46,7 @@ describe('Processor', () => {
       expect(
         processor.balanceSheet({
           poolSnapshots: [],
-          trancheSnapshots: [],
+          trancheSnapshots: {},
         })
       ).to.deep.equal([])
     })
@@ -104,8 +106,42 @@ describe('Processor', () => {
       },
     ] as PoolSnapshot[]
 
+    const mockCashflowFeeSnapshots: PoolFeeSnapshotsByDate = {
+      '2024-01-01': [
+        {
+          ...mockPoolFeeSnapshots['2024-01-01']?.[0],
+          poolFee: { name: 'serviceFee' },
+          sumPaidAmountByPeriod: new Currency(1_000_000n, 6), // 1.0
+          sumAccruedAmountByPeriod: new Currency(500_000n, 6), // 0.5
+        } as PoolFeeSnapshot,
+        {
+          ...mockPoolFeeSnapshots['2024-01-01']?.[1],
+          poolFee: { name: 'adminFee' },
+          sumPaidAmountByPeriod: new Currency(2_000_000n, 6), // 2.0
+          sumAccruedAmountByPeriod: new Currency(1_000_000n, 6), // 1.0
+        } as PoolFeeSnapshot,
+      ],
+      '2024-01-02': [
+        {
+          ...mockPoolFeeSnapshots['2024-01-02']?.[0],
+          poolFee: { name: 'serviceFee' },
+          sumPaidAmountByPeriod: new Currency(3_000_000n, 6), // 3.0
+          sumAccruedAmountByPeriod: new Currency(1_500_000n, 6), // 1.5
+        } as PoolFeeSnapshot,
+        {
+          ...mockPoolFeeSnapshots['2024-01-02']?.[1],
+          poolFee: { name: 'adminFee' },
+          sumPaidAmountByPeriod: new Currency(4_000_000n, 6), // 4.0
+          sumAccruedAmountByPeriod: new Currency(2_000_000n, 6), // 2.0
+        } as PoolFeeSnapshot,
+      ],
+    }
+
     it('should aggregate values correctly when grouping by day', () => {
-      const result = processor.cashflow({ poolSnapshots: mockCashflowSnapshots }, { groupBy: 'day' })
+      const result = processor.cashflow(
+        { poolSnapshots: mockCashflowSnapshots, poolFeeSnapshots: mockCashflowFeeSnapshots },
+        { groupBy: 'day' }
+      )
 
       expect(result).to.have.lengthOf(2)
 
@@ -114,16 +150,33 @@ describe('Processor', () => {
       expect(jan1?.principalPayments.toFloat()).to.equal(1.5) // 1.0 + 0.5
       expect(jan1?.interestPayments.toFloat()).to.equal(0.075) // 0.05 + 0.025
       expect(jan1?.assetPurchases.toFloat()).to.equal(3) // 2.0 + 1.0
+      expect(jan1?.fees.length).to.equal(2)
+      expect(jan1?.fees[0]?.name).to.equal('serviceFee')
+      expect(jan1?.fees[1]?.name).to.equal('adminFee')
+      expect(jan1?.fees[0]?.amount.toFloat()).to.equal(1)
+      expect(jan1?.fees[1]?.amount.toFloat()).to.equal(2)
+      expect(jan1?.fees[0]?.timestamp.slice(0, 10)).to.equal('2024-01-01')
+      expect(jan1?.fees[1]?.timestamp.slice(0, 10)).to.equal('2024-01-01')
 
       const jan2 = result[1]
       expect(jan2?.timestamp.slice(0, 10)).to.equal('2024-01-02')
       expect(jan2?.principalPayments.toFloat()).to.equal(2) // 2.0
       expect(jan2?.interestPayments.toFloat()).to.equal(0.1) // 0.1
       expect(jan2?.assetPurchases.toFloat()).to.equal(4) // 4.0
+      expect(jan2?.fees.length).to.equal(2)
+      expect(jan2?.fees[0]?.name).to.equal('serviceFee')
+      expect(jan2?.fees[1]?.name).to.equal('adminFee')
+      expect(jan2?.fees[0]?.amount.toFloat()).to.equal(3)
+      expect(jan2?.fees[1]?.amount.toFloat()).to.equal(4)
+      expect(jan2?.fees[0]?.timestamp.slice(0, 10)).to.equal('2024-01-02')
+      expect(jan2?.fees[1]?.timestamp.slice(0, 10)).to.equal('2024-01-02')
     })
 
     it('should aggregate values correctly when grouping by month', () => {
-      const result = processor.cashflow({ poolSnapshots: mockCashflowSnapshots }, { groupBy: 'month' })
+      const result = processor.cashflow(
+        { poolSnapshots: mockCashflowSnapshots, poolFeeSnapshots: mockPoolFeeSnapshots },
+        { groupBy: 'month' }
+      )
 
       expect(result).to.have.lengthOf(1)
 

@@ -18,7 +18,7 @@ export type PoolFeeSnapshot = {
   }
 }
 
-export type PoolFeeSnapshotsByDate = { [date: string]: PoolFeeSnapshot[] }
+export type PoolFeeSnapshotsByDate = { [timestamp: string]: PoolFeeSnapshot[] }
 
 export type SubqueryPoolFeeSnapshot = {
   poolFeeSnapshots: {
