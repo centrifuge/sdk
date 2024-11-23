@@ -1,5 +1,5 @@
 import { Currency } from '../utils/BigInt.js'
-import { groupByPeriod } from '../utils/date.js'
+import { getPeriod, groupByPeriod } from '../utils/date.js'
 import { BalanceSheetData, BalanceSheetReport, CashflowData, CashflowReport, ReportFilter } from './types.js'
 
 export class Processor {
@@ -101,7 +101,8 @@ export class Processor {
       return grouped
     }
 
-    return grouped.map((latest) => {
+    // First aggregate by day
+    const dailyAggregated = grouped.map((latest) => {
       const result = { ...latest } as T
       const itemsInGroup = items.filter(
         (item) => this.getDateKey(item.timestamp, groupBy) === this.getDateKey(latest.timestamp, groupBy)
@@ -119,6 +120,8 @@ export class Processor {
 
       return result
     })
+
+    return dailyAggregated
   }
 
   private getDateKey(timestamp: string, groupBy?: ReportFilter['groupBy']): string {

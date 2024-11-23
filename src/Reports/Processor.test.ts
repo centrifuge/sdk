@@ -79,7 +79,7 @@ describe('Processor', () => {
   })
 
   describe('cashflow', () => {
-    const mockCashflowSnapshots: PoolSnapshot[] = [
+    const mockCashflowPoolSnapshots: PoolSnapshot[] = [
       {
         ...mockPoolSnapshots[0],
         id: 'pool-10',
@@ -139,7 +139,7 @@ describe('Processor', () => {
 
     it('should aggregate values correctly when grouping by day', () => {
       const result = processor.cashflow(
-        { poolSnapshots: mockCashflowSnapshots, poolFeeSnapshots: mockCashflowFeeSnapshots },
+        { poolSnapshots: mockCashflowPoolSnapshots, poolFeeSnapshots: mockCashflowFeeSnapshots },
         { groupBy: 'day' }
       )
 
@@ -172,9 +172,9 @@ describe('Processor', () => {
       expect(jan2?.fees[1]?.timestamp.slice(0, 10)).to.equal('2024-01-02')
     })
 
-    it('should aggregate values correctly when grouping by month', () => {
+    it('should aggregate values correctly when grouping by month (except for fees)', () => {
       const result = processor.cashflow(
-        { poolSnapshots: mockCashflowSnapshots, poolFeeSnapshots: mockPoolFeeSnapshots },
+        { poolSnapshots: mockCashflowPoolSnapshots, poolFeeSnapshots: mockCashflowFeeSnapshots },
         { groupBy: 'month' }
       )
 
@@ -185,6 +185,12 @@ describe('Processor', () => {
       expect(january?.principalPayments.toFloat()).to.equal(3.5) // 1.0 + 0.5 + 2.0
       expect(january?.interestPayments.toFloat()).to.equal(0.175) // 0.05 + 0.025 + 0.1
       expect(january?.assetPurchases.toFloat()).to.equal(7) // 2.0 + 1.0 + 4.0
+      expect(january?.fees.length).to.equal(2)
+      expect(january?.fees[0]?.name).to.equal('serviceFee')
+      expect(january?.fees[1]?.name).to.equal('adminFee')
+      // fees are NOT aggregated by period
+      expect(january?.fees[0]?.amount.toFloat()).to.equal(3)
+      expect(january?.fees[1]?.amount.toFloat()).to.equal(4)
     })
   })
 })
