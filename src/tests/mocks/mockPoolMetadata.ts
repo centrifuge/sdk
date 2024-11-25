@@ -3,30 +3,29 @@ import { PoolMetadata } from '../../types/poolMetadata.js'
 export const mockPoolMetadata: PoolMetadata = {
   version: 1,
   pool: {
-    name: 'New Silver Series 3',
+    name: 'Fake Pool',
     icon: {
       uri: 'ipfs://QmVxA2MaBMUsZMgxBcfg5VdrF4FJAVW26U9s3mY9oH7wMs',
       mime: 'image/svg+xml',
     },
     asset: {
       class: 'Private credit',
-      subClass: 'Residential real estate',
+      subClass: 'Fake Subclass',
     },
     issuer: {
-      name: 'NS Pool 3 LLC',
-      repName: 'Kirill Bensonoff',
-      description:
-        'Founded in 2018, New Silver is a technology enabled non-bank lender primarily focused on financing residential real estate investments in the United States. Loans are for commercial use only, and are secured by the subject property. Funds are typically used for purchase and construction of single family or small multi-family developments. Typical loan term is 12-24 months.\n',
-      email: 'investors@newsilver.com',
+      name: 'Fake Issuer',
+      repName: '',
+      description: 'Fake Description',
+      email: 'fake@issuer.com',
       logo: {
         uri: 'ipfs://QmZB95usKnoSHEwG9s61gYWqgxbYyq7NAdo24XEowqJtFS',
         mime: 'image/png',
       },
-      shortDescription: 'A US tech-enabled non-bank lender, offers 12-24 month loans for US real estate investors',
+      shortDescription: 'Fake Short Description',
       categories: [
         {
           type: 'trustee',
-          value: 'Ankura Trust ',
+          value: 'Fake Trustee',
           customType: '',
         },
         {
@@ -59,18 +58,18 @@ export const mockPoolMetadata: PoolMetadata = {
       {
         author: {
           avatar: null,
-          name: 'Fang Zhang',
-          title: 'Member of the Centrifuge Credit Group',
+          name: 'Fake Author',
+          title: 'Fake Title',
         },
-        uri: 'https://gov.centrifuge.io/t/pop-report-new-silver-ns3/5869',
+        uri: 'https://gov.centrifuge.io/t/fake-report',
       },
     ],
-    investorType: 'Qualified US and non-US investors',
-    poolStructure: 'Revolving',
+    investorType: 'Fake Investor Type',
+    poolStructure: 'Fake Structure',
     poolRatings: [],
   },
   pod: {
-    indexer: 'https://pod-centrifuge.k-f.dev',
+    indexer: 'https://fake-pod.com',
   },
   tranches: {
     '0x6756e091ae798a8e51e12e27ee8facdf': {
