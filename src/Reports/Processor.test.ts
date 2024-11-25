@@ -10,6 +10,22 @@ import { PoolFeeSnapshot, PoolFeeSnapshotsByDate } from '../queries/poolFeeSnaps
 
 describe('Processor', () => {
   describe('balanceSheet processor', () => {
+    it('should return empty array when no pool snapshots found', () => {
+      expect(
+        processor.balanceSheet({
+          poolSnapshots: [],
+          trancheSnapshots: {},
+        })
+      ).to.deep.equal([])
+    })
+    it('should throw error when no tranches found', () => {
+      expect(() =>
+        processor.balanceSheet({
+          poolSnapshots: mockPoolSnapshots,
+          trancheSnapshots: {},
+        })
+      ).to.throw('No tranches found for snapshot')
+    })
     it('should process pool and tranche data correctly', () => {
       const result = processor.balanceSheet({
         poolSnapshots: mockPoolSnapshots,
@@ -33,23 +49,6 @@ describe('Processor', () => {
       expect(seniorTranche?.tokenPrice!.toBigInt()).to.equal(1000000000000000000n)
       expect(juniorTranche?.tokenPrice!.toBigInt()).to.equal(1120000000000000000n)
       expect(report?.totalCapital?.toBigInt()).to.equal(0n)
-    })
-
-    it('should throw error when no tranches found', () => {
-      expect(() =>
-        processor.balanceSheet({
-          poolSnapshots: mockPoolSnapshots,
-          trancheSnapshots: {},
-        })
-      ).to.throw('No tranches found for snapshot')
-    })
-    it('should return empty array when no pool snapshots found', () => {
-      expect(
-        processor.balanceSheet({
-          poolSnapshots: [],
-          trancheSnapshots: {},
-        })
-      ).to.deep.equal([])
     })
     it('should group data by day when specified', () => {
       const result = processor.balanceSheet(
@@ -201,7 +200,7 @@ describe('Processor', () => {
       expect(january?.fees[0]?.amount.toFloat()).to.equal(3)
       expect(january?.fees[1]?.amount.toFloat()).to.equal(4)
     })
-    it('should return realizedPL for public credit', () => {
+    it('should return realizedPL if pool is public credit', () => {
       const result = processor.cashflow(
         {
           poolSnapshots: mockCashflowPoolSnapshots,
