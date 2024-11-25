@@ -6,7 +6,7 @@ import {
   trancheSnapshotsPostProcess,
   trancheSnapshotsQuery,
 } from '../queries/trancheSnapshots.js'
-import { combineLatest } from 'rxjs'
+import { combineLatest, of } from 'rxjs'
 import { processor } from './Processor.js'
 
 import { map } from 'rxjs'
@@ -17,6 +17,7 @@ import {
   poolFeeSnapshotQuery,
   poolFeeSnapshotsPostProcess,
 } from '../queries/poolFeeSnapshots.js'
+import { PoolMetadata } from '../types/poolMetadata.js'
 
 type ReportType = 'balanceSheet' | 'cashflow'
 
@@ -49,6 +50,8 @@ export class Reports extends Entity {
           },
         }
 
+        const metadata$ = this.metadataHash ? this._root._queryIPFS<PoolMetadata>(this.metadataHash) : of(undefined)
+
         const poolSnapshots$ = this.poolSnapshots({
           ...dateFilter,
           poolId: { equalTo: this.poolId },
@@ -71,10 +74,10 @@ export class Reports extends Entity {
               )
             )
           case 'cashflow':
-            return combineLatest([poolSnapshots$, poolFeeSnapshots$]).pipe(
+            return combineLatest([poolSnapshots$, poolFeeSnapshots$, metadata$]).pipe(
               map(
-                ([poolSnapshots, poolFeeSnapshots]) =>
-                  processor.cashflow({ poolSnapshots, poolFeeSnapshots }, filter) as T[]
+                ([poolSnapshots, poolFeeSnapshots, metadata]) =>
+                  processor.cashflow({ poolSnapshots, poolFeeSnapshots, metadata }, filter) as T[]
               )
             )
           default:

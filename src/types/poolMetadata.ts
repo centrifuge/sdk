@@ -15,7 +15,7 @@ export type PoolMetadata = {
       id: number
       name: string
       feePosition: 'Top of waterfall'
-      category?: string
+      feeType?: string
     }[]
     newInvestmentsStatus?: Record<string, 'closed' | 'request' | 'open'>
     issuer: {

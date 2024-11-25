@@ -45,6 +45,7 @@ export class Processor {
    * @returns Processed cashflow report
    */
   cashflow(data: CashflowData, filter?: ReportFilter): CashflowReport[] {
+    const subtype = data.metadata?.pool.asset.class === 'Public credit' ? 'publicCredit' : 'privateCredit'
     const items: CashflowReport[] = data.poolSnapshots.map((day) => {
       const poolFees =
         data.poolFeeSnapshots[day.timestamp.slice(0, 10)]?.map((fee) => ({
@@ -55,9 +56,9 @@ export class Processor {
         })) ?? []
       const principalRepayments = day.sumPrincipalRepaidAmountByPeriod
       const interest = day.sumInterestRepaidAmountByPeriod.add(day.sumUnscheduledRepaidAmountByPeriod)
-      const purchases = day.sumBorrowedAmountByPeriod
+      const aquisistions = day.sumBorrowedAmountByPeriod
       const fees = day.sumPoolFeesPaidAmountByPeriod
-      const netCashflowAsset = principalRepayments.sub(purchases).add(interest)
+      const netCashflowAsset = principalRepayments.sub(aquisistions).add(interest)
       const investments = day.sumInvestedAmountByPeriod
       const redemptions = day.sumRedeemedAmountByPeriod
       const activitiesCashflow = investments.sub(redemptions)
@@ -65,11 +66,12 @@ export class Processor {
       const totalCashflow = netCashflowAfterFees.add(activitiesCashflow)
       return {
         type: 'cashflow',
+        subtype,
         timestamp: day.timestamp,
         principalPayments: principalRepayments,
-        realizedPL: day.sumRealizedProfitFifoByPeriod, // show only for pools that are public credit pools
+        ...(subtype === 'publicCredit' && { realizedPL: day.sumRealizedProfitFifoByPeriod }),
         interestPayments: interest,
-        assetPurchases: purchases, // assetFinancing if public credit pool
+        assetAcquisitions: aquisistions,
         netCashflowAsset,
         fees: poolFees,
         netCashflowAfterFees,
