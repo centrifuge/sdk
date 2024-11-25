@@ -46,7 +46,7 @@ export class Reports extends Entity {
         const dateFilter = {
           timestamp: {
             greaterThan: filter?.from,
-            lessThan: filter?.to,
+            lessThanOrEqualTo: filter?.to && `${filter.to.split('T')[0]}T23:59:59.999Z`,
           },
         }
 

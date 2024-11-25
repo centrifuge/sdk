@@ -7,7 +7,7 @@ export class Processor {
    * Process raw data into a balance sheet report
    * @param data Pool and tranche snapshot data
    * @param filter Optional filtering and grouping options
-   * @returns Processed balance sheet report
+   * @returns Processed balance sheet report at the end of each period
    */
   balanceSheet(data: BalanceSheetData, filter?: ReportFilter): BalanceSheetReport[] {
     const items: BalanceSheetReport[] = data?.poolSnapshots?.map((snapshot) => {
@@ -42,13 +42,13 @@ export class Processor {
    * Process raw data into an aggregated cashflow report, fees and endCashBalance are NOT aggregated by period
    * @param data Pool snapshot data
    * @param filter Optional filtering and grouping options
-   * @returns Processed cashflow report
+   * @returns Processed cashflow report at the end of each period
    */
   cashflow(data: CashflowData, filter?: ReportFilter): CashflowReport[] {
     const subtype = data.metadata?.pool.asset.class === 'Public credit' ? 'publicCredit' : 'privateCredit'
     const items: CashflowReport[] = data.poolSnapshots.map((day) => {
       const poolFees =
-        data.poolFeeSnapshots[day.timestamp.slice(0, 10)]?.map((fee) => ({
+        data.poolFeeSnapshots[this.getDateKey(day.timestamp)]?.map((fee) => ({
           name: fee.poolFee.name,
           amount: fee.sumPaidAmountByPeriod,
           timestamp: fee.timestamp,
@@ -97,33 +97,26 @@ export class Processor {
     groupBy: ReportFilter['groupBy'] = 'day',
     strategy: 'latest' | 'sum' = 'latest'
   ): T[] {
-    const grouped = groupByPeriod<T>(items, groupBy ?? 'day')
-
     if (strategy === 'latest') {
-      return grouped
+      return groupByPeriod<T>(items, groupBy, 'latest')
     }
 
-    // First aggregate by day
-    const dailyAggregated = grouped.map((latest) => {
-      const result = { ...latest } as T
-      const itemsInGroup = items.filter(
-        (item) => this.getDateKey(item.timestamp, groupBy) === this.getDateKey(latest.timestamp, groupBy)
-      )
+    const groups = groupByPeriod<T>(items, groupBy, 'all')
+    return groups.map((group) => {
+      const base = { ...group[group.length - 1] } as T
 
-      for (const key in latest) {
-        const value = latest[key as keyof T]
+      // Aggregate Currency values
+      for (const key in base) {
+        const value = base[key as keyof T]
         if (value instanceof Currency) {
-          result[key as keyof T] = itemsInGroup.reduce(
+          base[key as keyof T] = group.reduce(
             (sum, item) => sum.add(item[key as keyof T] as Currency),
             new Currency(0n, value.decimals)
           ) as T[keyof T]
         }
       }
-
-      return result
+      return base
     })
-
-    return dailyAggregated
   }
 
   private getDateKey(timestamp: string, groupBy?: ReportFilter['groupBy']): string {

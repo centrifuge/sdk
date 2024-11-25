@@ -9,7 +9,7 @@ import { Currency } from '../utils/BigInt.js'
 import { PoolFeeSnapshot, PoolFeeSnapshotsByDate } from '../queries/poolFeeSnapshots.js'
 
 describe('Processor', () => {
-  describe('balanceSheet', () => {
+  describe('balanceSheet processor', () => {
     it('should process pool and tranche data correctly', () => {
       const result = processor.balanceSheet({
         poolSnapshots: mockPoolSnapshots,
@@ -79,7 +79,7 @@ describe('Processor', () => {
     })
   })
 
-  describe('cashflow', () => {
+  describe('cashflow processor', () => {
     const mockCashflowPoolSnapshots: PoolSnapshot[] = [
       {
         ...mockPoolSnapshots[0],
@@ -177,15 +177,12 @@ describe('Processor', () => {
       expect(jan2?.fees[1]?.timestamp.slice(0, 10)).to.equal('2024-01-02')
     })
 
-    it('should aggregate values correctly when grouping by month (except for fees)', () => {
+    it('should aggregate values correctly when grouping by month', () => {
       const result = processor.cashflow(
         {
           poolSnapshots: mockCashflowPoolSnapshots,
           poolFeeSnapshots: mockCashflowFeeSnapshots,
-          metadata: {
-            ...mockPoolMetadata,
-            pool: { ...mockPoolMetadata.pool, asset: { ...mockPoolMetadata.pool.asset, class: 'Public credit' } },
-          },
+          metadata: mockPoolMetadata,
         },
         { groupBy: 'month' }
       )
@@ -193,7 +190,7 @@ describe('Processor', () => {
       expect(result).to.have.lengthOf(1)
 
       const january = result[0]
-      expect(january?.timestamp.slice(0, 7)).to.equal('2024-01')
+      expect(january?.timestamp.slice(0, 10)).to.equal('2024-01-02') // Grouping by month returns the last day of the period
       expect(january?.principalPayments.toFloat()).to.equal(3.5) // 1.0 + 0.5 + 2.0
       expect(january?.interestPayments.toFloat()).to.equal(0.175) // 0.05 + 0.025 + 0.1
       expect(january?.assetAcquisitions.toFloat()).to.equal(7) // 2.0 + 1.0 + 4.0
