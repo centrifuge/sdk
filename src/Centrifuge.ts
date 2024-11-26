@@ -402,8 +402,7 @@ export class Centrifuge {
   _query<T>(keys: any[] | null, observableCallback: () => Observable<T>, options?: CentrifugeQueryOptions): Query<T> {
     function get() {
       const sharedSubject = new Subject<Observable<T>>()
-      function createShared(a?: string): Observable<T> {
-        if (a) console.log('createShared', a)
+      function createShared(): Observable<T> {
         const $shared = observableCallback().pipe(
           shareReplayWithDelayedReset({
             bufferSize: (options?.cache ?? true) ? 1 : 0,
@@ -418,7 +417,7 @@ export class Centrifuge {
       const $query = createShared().pipe(
         // For new subscribers, recreate the shared observable if the previously shared observable has completed
         // and no longer has a cached value, or if the previously cached value is expired without the observable having completed.
-        defaultIfEmpty(defer(() => createShared('EMPTY'))),
+        defaultIfEmpty(defer(createShared)),
         // For existing subscribers, merge any newly created shared observable.
         concatWith(sharedSubject),
         mergeMap((d) => (isObservable(d) ? d : of(d)))
