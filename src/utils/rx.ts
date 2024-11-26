@@ -1,9 +1,8 @@
 import type { MonoTypeOperatorFunction, Observable, Subscriber, Subscription } from 'rxjs'
-import { filter, firstValueFrom, lastValueFrom, repeat, ReplaySubject, Subject, timer } from 'rxjs'
+import { filter, firstValueFrom, lastValueFrom, repeat, ReplaySubject, share, Subject, timer } from 'rxjs'
 import type { Abi, Log } from 'viem'
 import type { Centrifuge } from '../Centrifuge.js'
 import type { Query } from '../types/query.js'
-import { share } from './share.js'
 
 export function shareReplayWithDelayedReset<T>(config?: {
   bufferSize?: number
@@ -59,20 +58,17 @@ class ExpiringReplaySubject<T> extends ReplaySubject<T> {
   // @ts-expect-error
   protected override _subscribe(subscriber: Subscriber<T>): Subscription {
     // @ts-expect-error
-    const length = this._buffer.length
+    const { _infiniteTimeWindow, _buffer } = this
+    const length = _buffer.length
     // @ts-expect-error
     this._throwIfClosed()
     // @ts-expect-error
     this._trimBuffer()
-    // @ts-expect-error
-    const { _infiniteTimeWindow, _buffer } = this
     const copy = _buffer.slice()
     for (let i = 0; i < copy.length && !subscriber.closed; i += _infiniteTimeWindow ? 1 : 2) {
       subscriber.next(copy[i] as T)
     }
-    // @ts-expect-error
-    const { _buffer: bufferAfter } = this
-    if (length && bufferAfter.length === 0) {
+    if (length && _buffer.length === 0) {
       this.complete()
       throw new ExpiredCacheError()
     }
