@@ -1,17 +1,8 @@
 {
   "all": true,
-  "include": [
-    "src/**/*.ts"
-  ],
-  "exclude": [
-    "**/*.test.ts",
-    "src/tests/**",
-    "src/types/**"
-  ],
-  "reporter": [
-    "text",
-    "lcov"
-  ],
+  "include": ["src/**/*.ts"],
+  "exclude": ["**/*.test.ts", "src/tests/**", "src/types/**"],
+  "reporter": ["text", "text-summary", "html", "lcov"],
   "check-coverage": true,
   "lines": 80,
   "functions": 80,
