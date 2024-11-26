@@ -51,31 +51,19 @@ export function makeThenable<T>($query: Observable<T>, exhaust = false) {
   return thenableQuery
 }
 
-export class ExpiredCacheError extends Error {}
-
 class ExpiringReplaySubject<T> extends ReplaySubject<T> {
-  // Re-implementation of ReplaySubject._subscribe that throws when an existing buffer is expired
+  // Re-implementation of ReplaySubject._subscribe that completes the subject when an existing buffer is expired
   // @ts-expect-error
   protected override _subscribe(subscriber: Subscriber<T>): Subscription {
     // @ts-expect-error
-    const { _infiniteTimeWindow, _buffer } = this
+    const { _buffer } = this
     const length = _buffer.length
     // @ts-expect-error
-    this._throwIfClosed()
-    // @ts-expect-error
-    this._trimBuffer()
-    const copy = _buffer.slice()
-    for (let i = 0; i < copy.length && !subscriber.closed; i += _infiniteTimeWindow ? 1 : 2) {
-      subscriber.next(copy[i] as T)
-    }
+    const subscription = super._subscribe(subscriber)
+
     if (length && _buffer.length === 0) {
       this.complete()
-      throw new ExpiredCacheError()
     }
-    // @ts-expect-error
-    const subscription = this._innerSubscribe(subscriber)
-    // @ts-expect-error
-    this._checkFinalizedStatuses(subscriber)
     return subscription
   }
 }

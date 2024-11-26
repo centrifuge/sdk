@@ -1,6 +1,5 @@
 import type { Observable } from 'rxjs'
 import {
-  catchError,
   concatWith,
   defaultIfEmpty,
   defer,
@@ -41,7 +40,7 @@ import type { CentrifugeQueryOptions, Query } from './types/query.js'
 import type { OperationStatus, Signer, Transaction, TransactionCallbackParams } from './types/transaction.js'
 import { Currency } from './utils/BigInt.js'
 import { hashKey } from './utils/query.js'
-import { ExpiredCacheError, makeThenable, repeatOnEvents, shareReplayWithDelayedReset } from './utils/rx.js'
+import { makeThenable, repeatOnEvents, shareReplayWithDelayedReset } from './utils/rx.js'
 import { doTransaction, isLocalAccount } from './utils/transaction.js'
 
 export type Config = {
@@ -403,7 +402,8 @@ export class Centrifuge {
   _query<T>(keys: any[] | null, observableCallback: () => Observable<T>, options?: CentrifugeQueryOptions): Query<T> {
     function get() {
       const sharedSubject = new Subject<Observable<T>>()
-      function createShared(): Observable<T> {
+      function createShared(a?: string): Observable<T> {
+        if (a) console.log('createShared', a)
         const $shared = observableCallback().pipe(
           shareReplayWithDelayedReset({
             bufferSize: (options?.cache ?? true) ? 1 : 0,
@@ -417,14 +417,8 @@ export class Centrifuge {
 
       const $query = createShared().pipe(
         // For new subscribers, recreate the shared observable if the previously shared observable has completed
-        // and no longer has a cached value, which can happen with a finite `valueCacheTime`.
-        defaultIfEmpty(defer(createShared)),
-        // For new subscribers, recreate the shared observable if the previously cached value is expired,
-        // without the observable having completed.
-        catchError((err) => {
-          if (err instanceof ExpiredCacheError) defer(createShared)
-          throw err
-        }),
+        // and no longer has a cached value, or if the previously cached value is expired without the observable having completed.
+        defaultIfEmpty(defer(() => createShared('EMPTY'))),
         // For existing subscribers, merge any newly created shared observable.
         concatWith(sharedSubject),
         mergeMap((d) => (isObservable(d) ? d : of(d)))
