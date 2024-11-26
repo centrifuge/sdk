@@ -140,11 +140,12 @@ export class Processor {
    * @param strategy Grouping strategy, sum aggregates data by period, latest returns the latest item in the period
    * @returns Grouped report
    */
-  private applyGrouping<T extends CashflowReport | BalanceSheetReport | ProfitAndLossReport>(
-    items: T[],
-    groupBy: ReportFilter['groupBy'] = 'day',
-    strategy: 'latest' | 'sum' = 'latest'
-  ): T[] {
+  private applyGrouping<
+    T extends {
+      timestamp: string
+      [key: string]: Currency | string | { [key: string]: any } | undefined
+    },
+  >(items: T[], groupBy: ReportFilter['groupBy'] = 'day', strategy: 'latest' | 'sum' = 'latest'): T[] {
     if (strategy === 'latest') {
       return groupByPeriod<T>(items, groupBy, 'latest')
     }
