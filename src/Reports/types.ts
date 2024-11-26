@@ -36,17 +36,6 @@ export type BalanceSheetData = {
   trancheSnapshots: TrancheSnapshotsByDate
 }
 
-export type CashflowReport = CashflowReportPublicCredit | CashflowReportPrivateCredit
-
-type CashflowReportPublicCredit = CashflowReportBase & {
-  subtype: 'publicCredit'
-  realizedPL?: Currency
-}
-
-type CashflowReportPrivateCredit = CashflowReportBase & {
-  subtype: 'privateCredit'
-}
-
 type CashflowReportBase = {
   type: 'cashflow'
   timestamp: string
@@ -63,7 +52,48 @@ type CashflowReportBase = {
   endCashBalance: { balance: Currency }
 }
 
+type CashflowReportPublicCredit = CashflowReportBase & {
+  subtype: 'publicCredit'
+  realizedPL?: Currency
+}
+
+type CashflowReportPrivateCredit = CashflowReportBase & {
+  subtype: 'privateCredit'
+}
+
+export type CashflowReport = CashflowReportPublicCredit | CashflowReportPrivateCredit
+
 export type CashflowData = {
+  poolSnapshots: PoolSnapshot[]
+  poolFeeSnapshots: PoolFeeSnapshotsByDate
+  metadata: PoolMetadata | undefined
+}
+
+export type ProfitAndLossReportBase = {
+  type: 'profitAndLoss'
+  timestamp: string
+  profitAndLossFromAsset: Currency
+  interestPayments: Currency
+  otherPayments: Currency
+  totalExpenses: Currency
+  totalProfitAndLoss: Currency
+  fees: { name: string; amount: Currency; timestamp: string; feeId: string }[]
+}
+
+export type ProfitAndLossReportPublicCredit = ProfitAndLossReportBase & {
+  subtype: 'publicCredit'
+  totalIncome: Currency
+}
+
+export type ProfitAndLossReportPrivateCredit = ProfitAndLossReportBase & {
+  subtype: 'privateCredit'
+  interestAccrued: Currency
+  assetWriteOffs: Currency
+}
+
+export type ProfitAndLossReport = ProfitAndLossReportPublicCredit | ProfitAndLossReportPrivateCredit
+
+export type ProfitAndLossData = {
   poolSnapshots: PoolSnapshot[]
   poolFeeSnapshots: PoolFeeSnapshotsByDate
   metadata: PoolMetadata | undefined

@@ -1,6 +1,14 @@
 import { Currency } from '../utils/BigInt.js'
-import { getPeriod, groupByPeriod } from '../utils/date.js'
-import { BalanceSheetData, BalanceSheetReport, CashflowData, CashflowReport, ReportFilter } from './types.js'
+import { groupByPeriod } from '../utils/date.js'
+import {
+  BalanceSheetData,
+  BalanceSheetReport,
+  CashflowData,
+  CashflowReport,
+  ProfitAndLossReport,
+  ProfitAndLossData,
+  ReportFilter,
+} from './types.js'
 
 export class Processor {
   /**
@@ -85,6 +93,46 @@ export class Processor {
     return this.applyGrouping<CashflowReport>(items, filter?.groupBy, 'sum')
   }
 
+  profitAndLoss(data: ProfitAndLossData, filter?: ReportFilter): ProfitAndLossReport[] {
+    const items: ProfitAndLossReport[] = data.poolSnapshots.map((day) => {
+      const subtype = data.metadata?.pool.asset.class === 'Public credit' ? 'publicCredit' : 'privateCredit'
+      const profitAndLossFromAsset =
+        subtype === 'publicCredit'
+          ? day.sumUnrealizedProfitByPeriod
+          : day.sumInterestRepaidAmountByPeriod
+              .add(day.sumInterestAccruedByPeriod)
+              .add(day.sumDebtWrittenOffByPeriod)
+              .sub(day.sumUnscheduledRepaidAmountByPeriod)
+      const interestPayments = day.sumInterestRepaidAmountByPeriod
+      const otherPayments = day.sumUnscheduledRepaidAmountByPeriod
+      const totalIncome = profitAndLossFromAsset.add(interestPayments).add(otherPayments)
+      const fees =
+        data.poolFeeSnapshots[this.getDateKey(day.timestamp)]?.map((fee) => ({
+          name: fee.poolFee.name,
+          amount: fee.sumAccruedAmountByPeriod.add(fee.sumChargedAmountByPeriod),
+          timestamp: fee.timestamp,
+          feeId: fee.poolFeeId.split('-')[1] ?? '',
+        })) ?? []
+      const totalExpenses = day.sumPoolFeesChargedAmountByPeriod.sub(day.sumPoolFeesAccruedAmountByPeriod)
+      const totalProfitAndLoss = totalIncome.sub(totalExpenses)
+      return {
+        type: 'profitAndLoss',
+        subtype,
+        timestamp: day.timestamp,
+        profitAndLossFromAsset,
+        interestPayments,
+        ...(subtype === 'privateCredit' && { interestAccrued: day.sumInterestAccruedByPeriod }),
+        ...(subtype === 'privateCredit' && { assetWriteOffs: day.sumDebtWrittenOffByPeriod }),
+        otherPayments,
+        ...(subtype === 'publicCredit' && { totalIncome }),
+        fees,
+        totalExpenses,
+        totalProfitAndLoss,
+      } as ProfitAndLossReport
+    })
+    return this.applyGrouping<ProfitAndLossReport>(items, filter?.groupBy, 'sum')
+  }
+
   /**
    * Apply grouping to a report
    * @param items Report items
@@ -92,7 +140,7 @@ export class Processor {
    * @param strategy Grouping strategy, sum aggregates data by period, latest returns the latest item in the period
    * @returns Grouped report
    */
-  private applyGrouping<T extends CashflowReport | BalanceSheetReport>(
+  private applyGrouping<T extends CashflowReport | BalanceSheetReport | ProfitAndLossReport>(
     items: T[],
     groupBy: ReportFilter['groupBy'] = 'day',
     strategy: 'latest' | 'sum' = 'latest'

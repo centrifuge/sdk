@@ -7,6 +7,7 @@ import { mockPoolMetadata } from '../tests/mocks/mockPoolMetadata.js'
 import { PoolSnapshot } from '../queries/poolSnapshots.js'
 import { Currency } from '../utils/BigInt.js'
 import { PoolFeeSnapshot, PoolFeeSnapshotsByDate } from '../queries/poolFeeSnapshots.js'
+import { ProfitAndLossReportPrivateCredit, ProfitAndLossReportPublicCredit } from './types.js'
 
 describe('Processor', () => {
   describe('balanceSheet processor', () => {
@@ -213,6 +214,112 @@ describe('Processor', () => {
         { groupBy: 'day' }
       )
       expect(result?.[0]).to.have.property('realizedPL')
+    })
+  })
+  describe('profit and loss processor', () => {
+    const mockPLPoolSnapshots: PoolSnapshot[] = [
+      {
+        ...mockPoolSnapshots[0],
+        id: 'pool-10',
+        timestamp: '2024-01-01T12:00:00Z',
+        sumInterestRepaidAmountByPeriod: Currency.fromFloat(0.05, 6), // 0.05
+        sumInterestAccruedByPeriod: Currency.fromFloat(0.1, 6), // 0.1
+        sumDebtWrittenOffByPeriod: Currency.fromFloat(0.02, 6), // 0.02
+        sumUnscheduledRepaidAmountByPeriod: Currency.fromFloat(0.01, 6), // 0.01
+        sumUnrealizedProfitByPeriod: Currency.fromFloat(0.15, 6), // 0.15
+      },
+      {
+        ...mockPoolSnapshots[0],
+        id: 'pool-11',
+        timestamp: '2024-01-02T12:00:00Z',
+        sumInterestRepaidAmountByPeriod: Currency.fromFloat(0.1, 6),
+        sumInterestAccruedByPeriod: Currency.fromFloat(0.2, 6),
+        sumDebtWrittenOffByPeriod: Currency.fromFloat(0.03, 6),
+        sumUnscheduledRepaidAmountByPeriod: Currency.fromFloat(0.02, 6),
+        sumUnrealizedProfitByPeriod: Currency.fromFloat(0.25, 6),
+      },
+    ] as PoolSnapshot[]
+
+    const mockPLFeeSnapshots: PoolFeeSnapshotsByDate = {
+      '2024-01-01': [
+        {
+          poolFee: { name: 'serviceFee' },
+          sumAccruedAmountByPeriod: Currency.fromFloat(0.01, 6),
+          sumChargedAmountByPeriod: Currency.fromFloat(0.02, 6),
+          timestamp: '2024-01-01T12:00:00Z',
+          poolFeeId: 'pool-fee-1',
+        } as PoolFeeSnapshot,
+      ],
+      '2024-01-02': [
+        {
+          poolFee: { name: 'serviceFee' },
+          sumAccruedAmountByPeriod: Currency.fromFloat(0.02, 6),
+          sumChargedAmountByPeriod: Currency.fromFloat(0.03, 6),
+          timestamp: '2024-01-02T12:00:00Z',
+          poolFeeId: 'pool-fee-2',
+        } as PoolFeeSnapshot,
+      ],
+    }
+
+    it('should process private credit pool correctly', () => {
+      const result = processor.profitAndLoss({
+        poolSnapshots: mockPLPoolSnapshots,
+        poolFeeSnapshots: mockPLFeeSnapshots,
+        metadata: mockPoolMetadata, // defaults to private credit
+      })
+
+      expect(result).to.have.lengthOf(2)
+      const firstDay = result[0] as ProfitAndLossReportPrivateCredit
+
+      expect(firstDay?.subtype).to.equal('privateCredit')
+      expect(firstDay).to.have.property('interestAccrued')
+      expect(firstDay).to.have.property('assetWriteOffs')
+      expect(firstDay?.interestAccrued.toFloat()).to.equal(0.1)
+      expect(firstDay?.assetWriteOffs.toFloat()).to.equal(0.02)
+      expect(firstDay?.interestPayments.toFloat()).to.equal(0.05)
+      expect(firstDay?.otherPayments.toFloat()).to.equal(0.01)
+      expect(firstDay?.profitAndLossFromAsset.toFloat()).to.equal(0.16) // 0.05 + 0.1 + 0.02 - 0.01
+    })
+
+    it('should process public credit pool correctly', () => {
+      const result = processor.profitAndLoss({
+        poolSnapshots: mockPLPoolSnapshots,
+        poolFeeSnapshots: mockPLFeeSnapshots,
+        metadata: {
+          ...mockPoolMetadata,
+          pool: {
+            ...mockPoolMetadata.pool,
+            asset: { ...mockPoolMetadata.pool.asset, class: 'Public credit' },
+          },
+        },
+      })
+
+      expect(result).to.have.lengthOf(2)
+      const firstDay = result[0] as ProfitAndLossReportPublicCredit
+
+      expect(firstDay?.subtype).to.equal('publicCredit')
+      expect(firstDay?.profitAndLossFromAsset.toFloat()).to.equal(0.15) // unrealized profit
+      expect(firstDay?.interestPayments.toFloat()).to.equal(0.05)
+      expect(firstDay?.otherPayments.toFloat()).to.equal(0.01)
+      expect(firstDay).to.have.property('totalIncome')
+      expect(firstDay?.totalIncome.toFloat()).to.equal(0.21) // 0.15 + 0.05 + 0.01
+    })
+
+    it('should aggregate values correctly when grouping by month', () => {
+      const result = processor.profitAndLoss(
+        {
+          poolSnapshots: mockPLPoolSnapshots,
+          poolFeeSnapshots: mockPLFeeSnapshots,
+          metadata: mockPoolMetadata,
+        },
+        { groupBy: 'month' }
+      )
+
+      expect(result).to.have.lengthOf(1)
+      const january = result[0]
+      expect(january?.timestamp.slice(0, 10)).to.equal('2024-01-02')
+      expect(january?.interestPayments.toFloat()).to.equal(0.15) // 0.05 + 0.1
+      expect(january?.otherPayments.toFloat()).to.equal(0.03) // 0.01 + 0.02
     })
   })
 })
