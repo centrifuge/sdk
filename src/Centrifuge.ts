@@ -415,13 +415,16 @@ export class Centrifuge {
       }
 
       const $query = createShared().pipe(
-        // For new subscribers, recreate the shared observable if the previously shared observable has completed
-        // and no longer has a cached value, or if the previously cached value is expired without the observable having completed.
+        // When `valueCacheTime` is finite, and the cached value is expired,
+        // the shared observable will immediately complete upon the next subscription.
+        // This will cause the shared observable to be recreated.
         defaultIfEmpty(defer(createShared)),
         // For existing subscribers, merge any newly created shared observable.
         concatWith(sharedSubject),
+        // Flatten observables emitted from the `sharedSubject`
         mergeMap((d) => (isObservable(d) ? d : of(d)))
       )
+
       return makeThenable($query)
     }
     return keys ? this.#memoizeWith(keys, get) : get()
