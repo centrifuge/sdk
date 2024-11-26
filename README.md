@@ -81,3 +81,32 @@ const subscription = pool.closeEpoch().subscribe(
   () => console.log('complete')
 )
 ```
+
+## Reports
+
+Reports are generated from the subquery pool indexer and are combined with pool metadata to provide a comprehensive view of the pool's financials.
+
+Available reports are:
+
+- `profitAndLoss`
+- `balanceSheet`
+- `profitAndLoss`
+
+```ts
+const pool = await centrifuge.pool('<pool-id>')
+const balanceSheetReport = await pool.reports.balanceSheet()
+```
+
+### Report Filtering
+
+Reports can be filtered using the `ReportFilter` type.
+
+```ts
+type GroupBy = 'day' | 'month' | 'quarter' | 'year'
+
+const balanceSheetReport = await pool.reports.balanceSheet({
+  from: '2024-01-01',
+  to: '2024-01-31',
+  groupBy: 'month',
+})
+```
