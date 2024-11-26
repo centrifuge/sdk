@@ -180,6 +180,39 @@ describe('Centrifuge', () => {
       expect(value2).to.equal(3)
       expect(value3).to.equal(6)
     })
+
+    it('should update dependant queries with values from dependencies', async () => {
+      let i = 0
+      const query1 = context.centrifuge._query(['key3'], () => of(++i), { valueCacheTime: 120 })
+      const query2 = context.centrifuge._query(['key4'], () => query1.pipe(map((v1) => v1 * 10)))
+      const value1 = await query2
+      clock.tick(150_000)
+      const value3 = await query2
+      expect(value1).to.equal(10)
+      expect(value3).to.equal(20)
+    })
+
+    it('should recreate the shared observable when the cached value is expired', async () => {
+      let i = 0
+      const query1 = context.centrifuge._query(
+        null,
+        () =>
+          defer(async function* () {
+            yield await lazy(`${++i}-A`)
+            yield await lazy(`${i}-B`, 5000)
+          }),
+        { valueCacheTime: 1 }
+      )
+      let lastValue = ''
+      const subscription1 = query1.subscribe((next) => (lastValue = next))
+      const value1 = await query1
+      clock.tick(2_000)
+      const value2 = await query1
+      expect(value1).to.equal('1-A')
+      expect(value2).to.equal('2-A')
+      expect(lastValue).to.equal('2-A')
+      subscription1.unsubscribe()
+    })
   })
 
   describe('Transactions', () => {
@@ -285,8 +318,8 @@ describe('Centrifuge', () => {
   })
 })
 
-function lazy<T>(value: T) {
-  return new Promise<T>((res) => setTimeout(() => res(value), 10))
+function lazy<T>(value: T, t = 10) {
+  return new Promise<T>((res) => setTimeout(() => res(value), t))
 }
 
 function mockProvider({ chainId = 11155111, accounts = ['0x2'] } = {}) {
