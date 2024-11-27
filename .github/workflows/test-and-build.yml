@@ -10,8 +10,8 @@ jobs:
     runs-on: ubuntu-latest
     env:
       TENDERLY_ACCESS_KEY: ${{ secrets.TENDERLY_ACCESS_KEY }}
-      TENDERLY_PROJECT_SLUG: ${{ secrets.PROJECT_SLUG }}
-      TENDERLY_ACCOUNT_ID: ${{ secrets.ACCOUNT_ID }}
+      PROJECT_SLUG: ${{ secrets.PROJECT_SLUG }}
+      ACCOUNT_SLUG: ${{ secrets.ACCOUNT_SLUG }}
       DEBUG: true
     steps:
       - uses: actions/checkout@v4
