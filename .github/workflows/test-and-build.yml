@@ -12,7 +12,7 @@ jobs:
       TENDERLY_ACCESS_KEY: ${{ secrets.TENDERLY_ACCESS_KEY }}
       PROJECT_SLUG: ${{ secrets.PROJECT_SLUG }}
       ACCOUNT_SLUG: ${{ secrets.ACCOUNT_SLUG }}
-      DEBUG: true
+      DEBUG: ${{ github.run_attempt > 1 }}
     steps:
       - uses: actions/checkout@v4
 
@@ -34,3 +34,22 @@ jobs:
 
       - name: Build
         run: yarn build
+
+  enforce-pr-naming:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: amannn/action-semantic-pull-request@v5
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          types: |
+            fix
+            feat
+            docs
+            chore
+            refactor
+            perf
+            test
+          requireScope: false
+          wip: true
+          validateSingleCommit: false
