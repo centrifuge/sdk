@@ -2,7 +2,7 @@
   "name": "@centrifuge/sdk",
   "version": "0.0.0",
   "description": "",
-  "homepage": "https://github.com/centrifuge/centrifuge-sdk/tree/main#readme",
+  "homepage": "https://github.com/centrifuge/sdk/tree/main#readme",
   "author": "",
   "license": "LGPL-3.0-only",
   "type": "module",

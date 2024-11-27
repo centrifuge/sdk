@@ -7,7 +7,7 @@ CentrifugeSDK provides a JavaScript client to interact with the Centrifuge ecosy
 CentrifugeSDK uses [Viem](https://viem.sh/) under the hood. It's necessary to install it alongside the SDK.
 
 ```bash
-npm install --save @centrifuge/centrifuge-sdk viem
+npm install --save @centrifuge/sdk viem
 ```
 
 ## Init and config
@@ -15,7 +15,7 @@ npm install --save @centrifuge/centrifuge-sdk viem
 Create an instance and pass optional configuration
 
 ```js
-import Centrifuge from '@centrifuge/centrifuge-sdk'
+import Centrifuge from '@centrifuge/sdk'
 
 const centrifuge = new Centrifuge()
 ```
