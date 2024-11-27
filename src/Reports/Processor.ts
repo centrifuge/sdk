@@ -93,6 +93,12 @@ export class Processor {
     return this.applyGrouping<CashflowReport>(items, filter?.groupBy, 'sum')
   }
 
+  /**
+   * Process raw data into an aggregated profit and loss report, fees and endCashBalance are NOT aggregated by period
+   * @param data Pool snapshot data
+   * @param filter Optional filtering and grouping options
+   * @returns Processed profit and loss report at the end of each period
+   */
   profitAndLoss(data: ProfitAndLossData, filter?: ReportFilter): ProfitAndLossReport[] {
     const items: ProfitAndLossReport[] = data.poolSnapshots.map((day) => {
       const subtype = data.metadata?.pool.asset.class === 'Public credit' ? 'publicCredit' : 'privateCredit'
@@ -134,11 +140,14 @@ export class Processor {
   }
 
   /**
-   * Apply grouping to a report
+   * Apply grouping to a report.
    * @param items Report items
    * @param filter Optional filtering and grouping options
    * @param strategy Grouping strategy, sum aggregates data by period, latest returns the latest item in the period
    * @returns Grouped report
+   *
+   * Note: if strategy is 'sum', only Currency values that are not nested are aggregated, all
+   * other values are overwritten with the last value in the period
    */
   private applyGrouping<
     T extends {

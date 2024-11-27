@@ -390,5 +390,53 @@ describe('Processor', () => {
       ]
       expect(grouped).to.deep.equal(expected)
     })
+    it('should only aggregate top-level Currency values and use last value for nested objects', () => {
+      const items = [
+        {
+          timestamp: '2024-01-01T12:00:00Z',
+          topLevelAmount: Currency.fromFloat(1, 6), // should be summed
+          nested: {
+            amount: Currency.fromFloat(1, 6), // should take last value
+            description: 'first',
+          },
+          fees: [
+            {
+              amount: Currency.fromFloat(0.5, 6), // should take last value
+              name: 'fee1',
+            },
+          ],
+        },
+        {
+          timestamp: '2024-01-01T18:00:00Z',
+          topLevelAmount: Currency.fromFloat(2, 6),
+          nested: {
+            amount: Currency.fromFloat(3, 6),
+            description: 'second',
+          },
+          fees: [
+            {
+              amount: Currency.fromFloat(0.7, 6),
+              name: 'fee1',
+            },
+          ],
+        },
+      ]
+
+      const result = processor['applyGrouping'](items, 'day', 'sum')
+
+      expect(result).to.have.lengthOf(1)
+      const aggregated = result[0]
+
+      // Top level Currency should be summed
+      expect(aggregated.topLevelAmount.toFloat()).to.equal(3) // 1 + 2
+
+      // Nested Currency should be from last item
+      expect(aggregated.nested.amount.toFloat()).to.equal(3) // last value only
+      expect(aggregated.nested.description).to.equal('second')
+
+      // Array of objects with Currency should be from last item
+      expect(aggregated.fees[0].amount.toFloat()).to.equal(0.7)
+      expect(aggregated.fees[0].name).to.equal('fee1')
+    })
   })
 })
