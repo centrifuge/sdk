@@ -428,15 +428,15 @@ describe('Processor', () => {
       const aggregated = result[0]
 
       // Top level Currency should be summed
-      expect(aggregated.topLevelAmount.toFloat()).to.equal(3) // 1 + 2
+      expect(aggregated?.topLevelAmount.toFloat()).to.equal(3) // 1 + 2
 
       // Nested Currency should be from last item
-      expect(aggregated.nested.amount.toFloat()).to.equal(3) // last value only
-      expect(aggregated.nested.description).to.equal('second')
+      expect(aggregated?.nested?.amount.toFloat()).to.equal(3) // last value only
+      expect(aggregated?.nested?.description).to.equal('second')
 
       // Array of objects with Currency should be from last item
-      expect(aggregated.fees[0].amount.toFloat()).to.equal(0.7)
-      expect(aggregated.fees[0].name).to.equal('fee1')
+      expect(aggregated?.fees[0]?.amount.toFloat()).to.equal(0.7)
+      expect(aggregated?.fees[0]?.name).to.equal('fee1')
     })
   })
 })
