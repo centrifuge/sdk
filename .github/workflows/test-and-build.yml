@@ -46,7 +46,7 @@ jobs:
             major
             minor
             patch
-            none # will not bump version or publish changes
+            none
           requireScope: false
           wip: true
           validateSingleCommit: false
