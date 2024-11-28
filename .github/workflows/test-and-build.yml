@@ -43,13 +43,9 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           types: |
-            fix
-            feat
-            docs
-            chore
-            refactor
-            perf
-            test
+            major
+            minor
+            patch
           requireScope: false
           wip: true
           validateSingleCommit: false

@@ -81,3 +81,35 @@ const subscription = pool.closeEpoch().subscribe(
   () => console.log('complete')
 )
 ```
+
+## Developer Docs
+
+### Dev server
+
+```bash
+yarn dev
+```
+
+### Build
+
+```bash
+yarn build
+```
+
+### Test
+
+```bash
+yarn test
+yarn test:single <path-to-file>
+yarn test:simple:single <path-to-file> # without setup file, faster and without tenderly setup
+```
+
+### PR Naming Convention for Semantic Versioning
+
+PR naming convention is used to determine the semantic version bump of the package. It is enforced by a GitHub action in each pull request.
+
+Version bumps:
+
+- `major: breaking changes`
+- `minor: new features`
+- `patch: bug fixes`
