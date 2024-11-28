@@ -113,3 +113,4 @@ Version bumps:
 - `major: breaking changes`
 - `minor: new features`
 - `patch: bug fixes`
+- `none: no version bump, no publish`
