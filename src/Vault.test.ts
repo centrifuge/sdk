@@ -37,42 +37,42 @@ describe('Vault', () => {
     const investment = await vault.investment(investorA)
     expect(investment.isAllowedToInvest).to.equal(true)
     // Calls should get batched
-    expect(fetchSpy.getCalls().length).to.equal(4)
+    expect(fetchSpy.getCalls().length).to.equal(6)
   })
 
   it("should throw when placing an invest order larger than the users's balance", async () => {
     context.tenderlyFork.impersonateAddress = investorB
     context.centrifuge.setSigner(context.tenderlyFork.signer)
     let error: Error | null = null
-    let wasAskedToSign = false
+    let emittedSigningStatus = false
     try {
-      await lastValueFrom(vault.placeInvestOrder(1000000000000000n).pipe(tap(() => (wasAskedToSign = true))))
+      await lastValueFrom(vault.increaseInvestOrder(1000000000000000n).pipe(tap(() => (emittedSigningStatus = true))))
     } catch (e: any) {
       error = e
     }
     expect(error?.message).to.equal('Insufficient balance')
-    expect(wasAskedToSign).to.equal(false)
+    expect(emittedSigningStatus).to.equal(false)
   })
 
   it('should throw when not allowed to invest', async () => {
     context.tenderlyFork.impersonateAddress = investorD
     context.centrifuge.setSigner(context.tenderlyFork.signer)
     let error: Error | null = null
-    let wasAskedToSign = false
+    let emittedSigningStatus = false
     try {
-      await lastValueFrom(vault.placeInvestOrder(100000000n).pipe(tap(() => (wasAskedToSign = true))))
+      await lastValueFrom(vault.increaseInvestOrder(100000000n).pipe(tap(() => (emittedSigningStatus = true))))
     } catch (e: any) {
       error = e
     }
     expect(error?.message).to.equal('Not allowed to invest')
-    expect(wasAskedToSign).to.equal(false)
+    expect(emittedSigningStatus).to.equal(false)
   })
 
   it('should place an invest order', async () => {
     context.tenderlyFork.impersonateAddress = investorB
     context.centrifuge.setSigner(context.tenderlyFork.signer)
     const [result, investmentAfter] = await Promise.all([
-      lastValueFrom(vault.placeInvestOrder(100000000n).pipe(toArray())),
+      lastValueFrom(vault.increaseInvestOrder(100000000n).pipe(toArray())),
       firstValueFrom(vault.investment(investorB).pipe(skipWhile((i) => !i.pendingInvestCurrency.eq(100000000n)))),
     ])
     expect(result[2]?.type).to.equal('TransactionConfirmed')
@@ -112,14 +112,14 @@ describe('Vault', () => {
     context.tenderlyFork.impersonateAddress = investorB
     context.centrifuge.setSigner(context.tenderlyFork.signer)
     let thrown = false
-    let wasAskedToSign = false
+    let emittedSigningStatus = false
     try {
-      await lastValueFrom(vault.cancelRedeemOrder().pipe(tap(() => (wasAskedToSign = true))))
+      await lastValueFrom(vault.cancelRedeemOrder().pipe(tap(() => (emittedSigningStatus = true))))
     } catch {
       thrown = true
     }
     expect(thrown).to.equal(true)
-    expect(wasAskedToSign).to.equal(false)
+    expect(emittedSigningStatus).to.equal(false)
   })
 
   it('should claim an executed order', async () => {
@@ -142,7 +142,7 @@ describe('Vault', () => {
     context.tenderlyFork.impersonateAddress = investorC
     context.centrifuge.setSigner(context.tenderlyFork.signer)
     const [result, investmentAfter] = await Promise.all([
-      lastValueFrom(vault.placeRedeemOrder(939254224n).pipe(toArray())),
+      lastValueFrom(vault.increaseRedeemOrder(939254224n).pipe(toArray())),
       firstValueFrom(vault.investment(investorC).pipe(skipWhile((i) => !i.pendingRedeemShares.eq(939254224n)))),
     ])
     expect(result[2]?.type).to.equal('TransactionConfirmed')

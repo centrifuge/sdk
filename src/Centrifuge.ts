@@ -4,7 +4,6 @@ import {
   defaultIfEmpty,
   defer,
   filter,
-  firstValueFrom,
   identity,
   isObservable,
   map,
@@ -467,14 +466,12 @@ export class Centrifuge {
    */
   _transact(
     title: string,
-    transactionCallback: (params: TransactionCallbackParams) => Promise<HexString> | Observable<HexString>,
+    transactionCallback: (params: TransactionCallbackParams) => Promise<HexString>,
     chainId?: number
   ) {
     return this._transactSequence(async function* (params) {
       const transaction = transactionCallback(params)
-      yield* doTransaction(title, params.publicClient, () =>
-        'then' in transaction ? transaction : firstValueFrom(transaction)
-      )
+      yield* doTransaction(title, params.publicClient, () => transaction)
     }, chainId)
   }
 

@@ -1,5 +1,5 @@
 import { combineLatest, defer, map, switchMap } from 'rxjs'
-import { getContract } from 'viem'
+import { getContract, toHex } from 'viem'
 import { ABI } from './abi/index.js'
 import type { Centrifuge } from './Centrifuge.js'
 import { lpConfig } from './config/lp.js'
@@ -7,6 +7,7 @@ import { Entity } from './Entity.js'
 import type { Pool } from './Pool.js'
 import type { HexString } from './types/index.js'
 import { repeatOnEvents } from './utils/rx.js'
+import { doTransaction } from './utils/transaction.js'
 import { Vault } from './Vault.js'
 
 /**
@@ -79,6 +80,72 @@ export class PoolNetwork extends Entity {
   }
 
   /**
+   * Estimates the gas cost needed to bridge the message that results from a transaction.
+   * @internal
+   */
+  _estimate() {
+    return this._root._query(['estimate', this.chainId], () =>
+      defer(() => {
+        const bytes = toHex(new Uint8Array([0x12]))
+        const { centrifugeRouter } = lpConfig[this.chainId]!
+        return this._root.getClient(this.chainId)!.readContract({
+          address: centrifugeRouter,
+          abi: ABI.CentrifugeRouter,
+          functionName: 'estimate',
+          args: [bytes],
+        }) as Promise<bigint>
+      })
+    )
+  }
+
+  /**
+   * Get the contract address of the share token.
+   * @internal
+   */
+  _share(trancheId: string) {
+    return this._query(['share'], () =>
+      this._poolManager().pipe(
+        switchMap((poolManager) =>
+          defer(
+            () =>
+              this._root.getClient(this.chainId)!.readContract({
+                address: poolManager,
+                abi: ABI.PoolManager,
+                functionName: 'getTranche',
+                args: [this.pool.id, trancheId],
+              }) as Promise<HexString>
+          ).pipe(
+            repeatOnEvents(
+              this._root,
+              {
+                address: poolManager,
+                abi: ABI.PoolManager,
+                eventName: 'DeployTranche',
+                filter: (events) => {
+                  return events.some(
+                    (event) => String(event.args.poolId) === this.pool.id && event.args.trancheId === trancheId
+                  )
+                },
+              },
+              this.chainId
+            )
+          )
+        )
+      )
+    )
+  }
+
+  /**
+   * Get the details of the share token.
+   * @param trancheId - The tranche ID
+   */
+  shareCurrency(trancheId: string) {
+    return this._query(null, () =>
+      this._share(trancheId).pipe(switchMap((share) => this._root.currency(share, this.chainId)))
+    )
+  }
+
+  /**
    * Get the deployed Vaults for a given tranche. There may exist one Vault for each allowed investment currency.
    * Vaults are used to submit/claim investments and redemptions.
    * @param trancheId - The tranche ID
@@ -110,9 +177,9 @@ export class PoolNetwork extends Entity {
                 abi: ABI.PoolManager,
                 eventName: 'DeployVault',
                 filter: (events) => {
-                  return events.some((event) => {
-                    return String(event.args.poolId) === this.pool.id || event.args.trancheId === trancheId
-                  })
+                  return events.some(
+                    (event) => String(event.args.poolId) === this.pool.id && event.args.trancheId === trancheId
+                  )
                 },
               },
               this.chainId
@@ -190,5 +257,86 @@ export class PoolNetwork extends Entity {
         })
       )
     )
+  }
+
+  /**
+   * Get whether a pool is active and the tranche token can be deployed.
+   * @param trancheId - The tranche ID
+   */
+  canTrancheBeDeployed(trancheId: string) {
+    return this._query(['canTrancheBeDeployed'], () =>
+      this._poolManager().pipe(
+        switchMap((manager) => {
+          return defer(
+            () =>
+              this._root.getClient(this.chainId)!.readContract({
+                address: manager,
+                abi: ABI.PoolManager,
+                functionName: 'canTrancheBeDeployed',
+                args: [this.pool.id, trancheId],
+              }) as Promise<boolean>
+          ).pipe(
+            repeatOnEvents(
+              this._root,
+              {
+                address: manager,
+                abi: ABI.PoolManager,
+                eventName: 'DeployTranche',
+                filter: (events) => {
+                  return events.some(
+                    (event) => String(event.args.poolId) === this.pool.id && event.args.trancheId === trancheId
+                  )
+                },
+              },
+              this.chainId
+            )
+          )
+        })
+      )
+    )
+  }
+
+  /**
+   * Deploy a tranche token for the pool.
+   * @param trancheId - The tranche ID
+   */
+  deployTranche(trancheId: string) {
+    const self = this
+    return this._transactSequence(async function* ({ walletClient, publicClient }) {
+      const [poolManager, canTrancheBeDeployed] = await Promise.all([
+        self._poolManager(),
+        self.canTrancheBeDeployed(trancheId),
+      ])
+      if (!canTrancheBeDeployed) throw new Error('Pool is not active on this network')
+      yield* doTransaction('Deploy Tranche', publicClient, () =>
+        walletClient.writeContract({
+          address: poolManager,
+          abi: ABI.PoolManager,
+          functionName: 'deployTranche',
+          args: [self.pool.id, trancheId],
+        })
+      )
+    }, this.chainId)
+  }
+
+  /**
+   * Deploy a vault for a specific tranche x currency combination.
+   * @param trancheId - The tranche ID
+   * @param currencyAddress - The investment currency address
+   */
+  deployVault(trancheId: string, currencyAddress: string) {
+    const self = this
+    return this._transactSequence(async function* ({ walletClient, publicClient }) {
+      const [poolManager, trancheToken] = await Promise.all([self._poolManager(), self._share(trancheId)])
+      if (!trancheToken) throw new Error('Pool is not active on this network')
+      yield* doTransaction('Deploy Vault', publicClient, () =>
+        walletClient.writeContract({
+          address: poolManager,
+          abi: ABI.PoolManager,
+          functionName: 'deployVault',
+          args: [self.pool.id, trancheId, currencyAddress],
+        })
+      )
+    }, this.chainId)
   }
 }

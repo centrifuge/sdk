@@ -51,8 +51,8 @@ export function makeThenable<T>($query: Observable<T>, exhaust = false) {
   return thenableQuery
 }
 
+// A ReplaySubject that completes when an existing buffer is expired
 class ExpiringReplaySubject<T> extends ReplaySubject<T> {
-  // Re-implementation of ReplaySubject._subscribe that completes the subject when an existing buffer is expired
   // @ts-expect-error
   protected override _subscribe(subscriber: Subscriber<T>): Subscription {
     // @ts-expect-error

@@ -1,5 +1,5 @@
 import { combineLatest, defer, map, switchMap } from 'rxjs'
-import { encodeFunctionData, getContract, toHex } from 'viem'
+import { encodeFunctionData, getContract } from 'viem'
 import type { Centrifuge } from './Centrifuge.js'
 import { Entity } from './Entity.js'
 import type { Pool } from './Pool.js'
@@ -42,57 +42,19 @@ export class Vault extends Entity {
   }
 
   /**
-   * Estimates the gas cost needed to bridge the message that results from a transaction.
-   * @internal
-   */
-  _estimate() {
-    return this._root._query(['estimate', this.chainId], () =>
-      defer(() => {
-        const bytes = toHex(new Uint8Array([0x12]))
-        const { centrifugeRouter } = lpConfig[this.chainId]!
-        return this._root.getClient(this.chainId)!.readContract({
-          address: centrifugeRouter,
-          abi: ABI.CentrifugeRouter,
-          functionName: 'estimate',
-          args: [bytes],
-        }) as Promise<bigint>
-      })
-    )
-  }
-
-  /**
-   * Get the contract address of the share token.
-   * @internal
-   */
-  _share() {
-    return this._query(['share'], () =>
-      defer(
-        () =>
-          this._root.getClient(this.chainId)!.readContract({
-            address: this.address,
-            abi: ABI.LiquidityPool,
-            functionName: 'share',
-          }) as Promise<HexString>
-      )
-    )
-  }
-
-  /**
    * Get the contract address of the restriction mananger.
    * @internal
    */
   _restrictionManager() {
     return this._query(['restrictionManager'], () =>
-      this._share().pipe(
-        switchMap((share) =>
-          defer(
-            () =>
-              this._root.getClient(this.chainId)!.readContract({
-                address: share,
-                abi: ABI.Currency,
-                functionName: 'hook',
-              }) as Promise<HexString>
-          )
+      this.network._share(this.trancheId).pipe(
+        switchMap(
+          (share) =>
+            this._root.getClient(this.chainId)!.readContract({
+              address: share,
+              abi: ABI.Currency,
+              functionName: 'hook',
+            }) as Promise<HexString>
         )
       )
     )
@@ -102,14 +64,14 @@ export class Vault extends Entity {
    * Get the details of the investment currency.
    */
   investmentCurrency() {
-    return this._query(null, () => this._root.currency(this._asset, this.chainId))
+    return this._root.currency(this._asset, this.chainId)
   }
 
   /**
    * Get the details of the share token.
    */
   shareCurrency() {
-    return this._query(null, () => this._share().pipe(switchMap((share) => this._root.currency(share, this.chainId))))
+    return this.network.shareCurrency(this.trancheId)
   }
 
   /**
@@ -241,9 +203,8 @@ export class Vault extends Entity {
                     'RedeemRequest',
                     'Withdraw',
                   ],
-                  filter: (events) => {
-                    console.log('events', events)
-                    return events.some(
+                  filter: (events) =>
+                    events.some(
                       (event) =>
                         event.args.receiver?.toLowerCase() === address ||
                         event.args.controller?.toLowerCase() === address ||
@@ -252,8 +213,7 @@ export class Vault extends Entity {
                         // UpdateMember event
                         (event.args.user?.toLowerCase() === address &&
                           event.args.token?.toLowerCase() === shareCurrency.address)
-                    )
-                  },
+                    ),
                 },
                 this.chainId
               )
@@ -271,42 +231,23 @@ export class Vault extends Entity {
   }
 
   /**
-   * Place an order to invest funds in the vault. If the amount is 0, it will request to cancel an open order.
+   * Place an order to invest funds in the vault. If an order exists, it will increase the amount.
    * @param investAmount - The amount to invest in the vault
    */
-  placeInvestOrder(investAmount: bigint | number) {
+  increaseInvestOrder(investAmount: bigint | number) {
     const self = this
     return this._transactSequence(async function* ({ walletClient, publicClient, signer, signingAddress }) {
       const { centrifugeRouter } = lpConfig[self.chainId]!
-      const [estimate, investment] = await Promise.all([self._estimate(), self.investment(signingAddress)])
+      const [estimate, investment] = await Promise.all([self.network._estimate(), self.investment(signingAddress)])
       const amount = new Currency(investAmount, investment.investmentCurrency.decimals)
-      const {
-        investmentCurrency,
-        investmentCurrencyBalance,
-        investmentCurrencyAllowance,
-        isAllowedToInvest,
-        pendingInvestCurrency,
-      } = investment
+      const { investmentCurrency, investmentCurrencyBalance, investmentCurrencyAllowance, isAllowedToInvest } =
+        investment
       const supportsPermit = investmentCurrency.supportsPermit && 'send' in signer // eth-permit uses the deprecated send method
       const needsApproval = investmentCurrencyAllowance.lt(amount)
 
       if (!isAllowedToInvest) throw new Error('Not allowed to invest')
-      if (amount.isZero() && pendingInvestCurrency.isZero()) throw new Error('No order to cancel')
       if (amount.gt(investmentCurrencyBalance)) throw new Error('Insufficient balance')
-      if (pendingInvestCurrency.gt(0n) && amount.gt(0n)) throw new Error('Cannot change order')
-
-      if (amount.isZero()) {
-        yield* doTransaction('Cancel Invest Order', publicClient, () =>
-          walletClient.writeContract({
-            address: centrifugeRouter,
-            abi: ABI.CentrifugeRouter,
-            functionName: 'cancelDepositRequest',
-            args: [self.address, estimate],
-            value: estimate,
-          })
-        )
-        return
-      }
+      if (!amount.gt(0n)) throw new Error('Order amount must be greater than 0')
 
       let permit: Permit | null = null
       if (needsApproval) {
@@ -375,36 +316,39 @@ export class Vault extends Entity {
    * Cancel an open investment order.
    */
   cancelInvestOrder() {
-    return this.placeInvestOrder(0n)
+    const self = this
+    return this._transactSequence(async function* ({ walletClient, signingAddress, publicClient }) {
+      const { centrifugeRouter } = lpConfig[self.chainId]!
+      const [estimate, investment] = await Promise.all([self.network._estimate(), self.investment(signingAddress)])
+
+      if (investment.pendingInvestCurrency.isZero()) throw new Error('No order to cancel')
+
+      yield* doTransaction('Cancel Invest Order', publicClient, () =>
+        walletClient.writeContract({
+          address: centrifugeRouter,
+          abi: ABI.CentrifugeRouter,
+          functionName: 'cancelDepositRequest',
+          args: [self.address, estimate],
+          value: estimate,
+        })
+      )
+    }, this.chainId)
   }
 
   /**
-   * Place an order to redeem funds from the vault. If the amount is 0, it will request to cancel an open order.
+   * Place an order to redeem funds from the vault. If an order exists, it will increase the amount.
    * @param shares - The amount of shares to redeem
    */
-  placeRedeemOrder(shares: bigint | number) {
+  increaseRedeemOrder(shares: bigint | number) {
     const self = this
-    return this._transactSequence(async function* ({ walletClient, publicClient, signingAddress }) {
+    return this._transactSequence(async function* ({ walletClient, signingAddress, publicClient }) {
       const { centrifugeRouter } = lpConfig[self.chainId]!
-      const [estimate, investment] = await Promise.all([self._estimate(), self.investment(signingAddress)])
-      const { shareBalance, pendingRedeemShares } = investment
+      const [estimate, investment] = await Promise.all([self.network._estimate(), self.investment(signingAddress)])
       const amount = new Token(shares, investment.shareCurrency.decimals)
 
-      if (amount.isZero() && pendingRedeemShares.isZero()) throw new Error('No order to cancel')
-      if (amount.gt(shareBalance)) throw new Error('Insufficient balance')
-      if (pendingRedeemShares.gt(0n) && amount.gt(0n)) throw new Error('Cannot change order')
-      if (amount.isZero()) {
-        yield* doTransaction('Cancel Redeem Order', publicClient, () =>
-          walletClient.writeContract({
-            address: centrifugeRouter,
-            abi: ABI.CentrifugeRouter,
-            functionName: 'cancelRedeemRequest',
-            args: [self.address, estimate],
-            value: estimate,
-          })
-        )
-        return
-      }
+      if (amount.gt(investment.shareBalance)) throw new Error('Insufficient balance')
+      if (!amount.gt(0n)) throw new Error('Order amount must be greater than 0')
+
       yield* doTransaction('Redeem', publicClient, () =>
         walletClient.writeContract({
           address: centrifugeRouter,
@@ -421,7 +365,23 @@ export class Vault extends Entity {
    * Cancel an open redemption order.
    */
   cancelRedeemOrder() {
-    return this.placeRedeemOrder(0n)
+    const self = this
+    return this._transactSequence(async function* ({ walletClient, signingAddress, publicClient }) {
+      const { centrifugeRouter } = lpConfig[self.chainId]!
+      const [estimate, investment] = await Promise.all([self.network._estimate(), self.investment(signingAddress)])
+
+      if (investment.pendingRedeemShares.isZero()) throw new Error('No order to cancel')
+
+      yield* doTransaction('Cancel Redeem Order', publicClient, () =>
+        walletClient.writeContract({
+          address: centrifugeRouter,
+          abi: ABI.CentrifugeRouter,
+          functionName: 'cancelRedeemRequest',
+          args: [self.address, estimate],
+          value: estimate,
+        })
+      )
+    }, this.chainId)
   }
 
   /**
@@ -429,9 +389,10 @@ export class Vault extends Entity {
    * @param receiver - The address that should receive the funds. If not provided, the investor's address is used.
    */
   claim(receiver?: string) {
-    return this._transact('Claim', async ({ walletClient, signingAddress }) => {
-      const { centrifugeRouter } = lpConfig[this.chainId]!
-      const investment = await this.investment(signingAddress)
+    const self = this
+    return this._transactSequence(async function* ({ walletClient, signingAddress, publicClient }) {
+      const { centrifugeRouter } = lpConfig[self.chainId]!
+      const investment = await self.investment(signingAddress)
       const receiverAddress = receiver || signingAddress
       const functionName = investment.claimableCancelInvestCurrency.gt(0n)
         ? 'claimCancelDepositRequest'
@@ -445,12 +406,14 @@ export class Vault extends Entity {
 
       if (!functionName) throw new Error('No claimable funds')
 
-      return walletClient.writeContract({
-        address: centrifugeRouter,
-        abi: ABI.CentrifugeRouter,
-        functionName,
-        args: [this.address, receiverAddress, signingAddress],
-      })
+      yield* doTransaction('Claim', publicClient, () =>
+        walletClient.writeContract({
+          address: centrifugeRouter,
+          abi: ABI.CentrifugeRouter,
+          functionName,
+          args: [self.address, receiverAddress, signingAddress],
+        })
+      )
     })
   }
 }
