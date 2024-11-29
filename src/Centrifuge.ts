@@ -249,9 +249,7 @@ export class Centrifuge {
    * @internal
    */
   _queryIPFS<Result>(hash: string): Query<Result> {
-    return this._query([hash], () => this._getIPFSObservable(hash), {
-      valueCacheTime: 120,
-    })
+    return this._query([hash], () => this._getIPFSObservable(hash))
   }
 
   #memoized = new Map<string, any>()
