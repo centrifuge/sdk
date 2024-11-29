@@ -1,23 +1,11 @@
-import Decimal, { type Numeric } from 'decimal.js-light'
-
-Decimal.default.set({
-  precision: 30,
-  toExpNeg: -7,
-  toExpPos: 29,
-  rounding: Decimal.default.ROUND_HALF_CEIL, // ROUND_HALF_CEIL is 1
-})
-
-export function Dec(value: Numeric) {
-  return new Decimal.default(value)
-}
-
+import { Dec, Decimal, type Numeric } from './decimal.js'
 export abstract class BigIntWrapper {
   protected value: bigint
 
   constructor(value: Numeric | bigint) {
     if (typeof value === 'bigint') {
       this.value = value
-    } else if (value instanceof Decimal.default) {
+    } else if (value instanceof Decimal) {
       this.value = BigInt(value.toFixed(0))
     } else if (typeof value === 'number') {
       this.value = BigInt(Math.floor(value))
@@ -77,10 +65,10 @@ export class DecimalWrapper extends BigIntWrapper {
    * // returns Currency with 6 decimals (1_010_000n or 1.01)
    */
   _mul<T>(value: bigint | (T extends DecimalWrapper ? T : never)): T {
-    let val: Decimal.default
+    let val: any
     if (typeof value === 'bigint') {
       val = Dec(value.toString())
-    } else if (value instanceof Decimal.default) {
+    } else if (value instanceof Decimal) {
       val = value
     } else {
       val = value.toDecimal().mul(Dec(10).pow(this.decimals))
