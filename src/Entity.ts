@@ -20,6 +20,6 @@ export class Entity {
     observableCallback: () => Observable<T>,
     options?: CentrifugeQueryOptions
   ) {
-    return this._root._query<T>(keys ? [...this.#baseKeys, ...keys.filter(Boolean)] : null, observableCallback, options)
+    return this._root._query<T>(keys ? [...this.#baseKeys, ...keys] : null, observableCallback, options)
   }
 }
