@@ -37,7 +37,8 @@ describe('Reports', () => {
     it('should use cached data for repeated queries', async () => {
       const processBalanceSheetSpy = spy(processor, 'balanceSheet')
       const ns3PoolId = '1615768079'
-      const reports = new Reports(centrifuge, ns3PoolId)
+      const pool = await centrifuge.pool(ns3PoolId)
+      const reports = new Reports(centrifuge, pool)
 
       const filter: ReportFilter = {
         from: '2024-11-03T22:11:29.776Z',
@@ -58,7 +59,8 @@ describe('Reports', () => {
     it('should fetch new data for different query', async () => {
       const processBalanceSheetSpy = spy(processor, 'balanceSheet')
       const ns3PoolId = '1615768079'
-      const reports = new Reports(centrifuge, ns3PoolId)
+      const pool = await centrifuge.pool(ns3PoolId)
+      const reports = new Reports(centrifuge, pool)
 
       const filter: ReportFilter = {
         from: '2024-10-03T22:11:29.776Z',
@@ -86,7 +88,8 @@ describe('Reports', () => {
 
     it('should retrieve 6 months worth of data and group by day, month, quarter and year', async () => {
       const anemoyPoolId = '4139607887'
-      const reports = new Reports(centrifuge, anemoyPoolId)
+      const pool = await centrifuge.pool(anemoyPoolId)
+      const reports = new Reports(centrifuge, pool)
       let filter: ReportFilter = {
         from: '2024-01-01',
         to: '2024-06-30',
@@ -140,7 +143,8 @@ describe('Reports', () => {
     })
     it('should retrieve 6 months worth of data and group by day, month, quarter and year', async () => {
       const anemoyPoolId = '4139607887'
-      const reports = new Reports(centrifuge, anemoyPoolId)
+      const pool = await centrifuge.pool(anemoyPoolId)
+      const reports = new Reports(centrifuge, pool)
       let filter: ReportFilter = {
         from: '2024-01-01',
         to: '2024-06-30',

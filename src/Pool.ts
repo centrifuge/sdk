@@ -15,11 +15,11 @@ export class Pool extends Entity {
   }
 
   get reports() {
-    return new Reports(this._root, this.id, this.metadataHash)
+    return new Reports(this._root, this)
   }
 
   metadata() {
-    return this.metadataHash ? this._root._queryIPFS<PoolMetadata>(this.metadataHash) : of(null)
+    return this.metadataHash ? this._root._queryIPFS<PoolMetadata>(this.metadataHash) : of(undefined)
   }
 
   trancheIds() {

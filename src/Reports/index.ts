@@ -6,7 +6,7 @@ import {
   trancheSnapshotsPostProcess,
   trancheSnapshotsQuery,
 } from '../queries/trancheSnapshots.js'
-import { combineLatest, of } from 'rxjs'
+import { combineLatest } from 'rxjs'
 import { processor } from './Processor.js'
 
 import { map } from 'rxjs'
@@ -17,20 +17,18 @@ import {
   poolFeeSnapshotQuery,
   poolFeeSnapshotsPostProcess,
 } from '../queries/poolFeeSnapshots.js'
-import { PoolMetadata } from '../types/poolMetadata.js'
+import { Pool } from '../Pool.js'
 
 type ReportType = 'balanceSheet' | 'cashflow'
 
 export class Reports extends Entity {
   constructor(
     centrifuge: Centrifuge,
-    public poolId: string,
-    public metadataHash?: string
+    public pool: Pool
   ) {
-    super(centrifuge, ['reports', poolId])
+    super(centrifuge, ['reports', pool.id])
   }
 
-  // TODO: think about a horizontal formatting option
   balanceSheet(filter?: ReportFilter) {
     return this._generateReport<BalanceSheetReport>('balanceSheet', filter)
   }
@@ -50,19 +48,19 @@ export class Reports extends Entity {
           },
         }
 
-        const metadata$ = this.metadataHash ? this._root._queryIPFS<PoolMetadata>(this.metadataHash) : of(undefined)
+        const metadata$ = this.pool.metadata()
 
         const poolSnapshots$ = this.poolSnapshots({
           ...dateFilter,
-          poolId: { equalTo: this.poolId },
+          poolId: { equalTo: this.pool.id },
         })
         const trancheSnapshots$ = this.trancheSnapshots({
           ...dateFilter,
-          tranche: { poolId: { equalTo: this.poolId } },
+          tranche: { poolId: { equalTo: this.pool.id } },
         })
         const poolFeeSnapshots$ = this.poolFeeSnapshots({
           ...dateFilter,
-          poolFeeId: { includes: this.poolId },
+          poolFeeId: { includes: this.pool.id },
         })
 
         switch (type) {
