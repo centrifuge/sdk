@@ -1,3 +1,9 @@
+[![Codecov](https://codecov.io/gh/centrifuge/sdk/graph/badge.svg?token=Q2yU8QfefP)](https://codecov.io/gh/centrifuge/sdk)
+[![Build CI status](https://github.com/centrifuge/sdk/actions/workflows/build-test-report.yml/badge.svg)](https://github.com/centrifuge/sdk/actions/workflows/build-test-report.yml)
+<!-- [![npm version](https://badge.fury.io/js/@centrifuge%2Fsdk.svg)](https://www.npmjs.com/package/@centrifuge/sdk) -->
+[![Latest Release](https://img.shields.io/github/v/release/centrifuge/sdk?sort=semver)](https://github.com/centrifuge/sdk/releases/latest)
+
+
 # Centrifuge JavaScript SDK
 
 CentrifugeSDK provides a JavaScript client to interact with the Centrifuge ecosystem. It provides a comprehensive interface to easily create and manage pools, nfts, loans and metadata.
