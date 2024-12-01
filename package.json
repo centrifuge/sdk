@@ -7,7 +7,7 @@
   "repository": {
     "type": "git",
     "url": "https://github.com/centrifuge/sdk.git"
-  },  
+  },
   "license": "LGPL-3.0-only",
   "type": "module",
   "files": [
@@ -31,7 +31,8 @@
     "prepare": "yarn build",
     "test": "mocha --loader=ts-node/esm --require $(pwd)/src/tests/setup.ts --exit --timeout 60000 'src/**/*.test.ts'",
     "test:simple:single": "mocha --loader=ts-node/esm --exit --timeout 60000",
-    "test:single": "mocha --loader=ts-node/esm --require $(pwd)/src/tests/setup.ts --exit --timeout 60000"
+    "test:single": "mocha --loader=ts-node/esm --require $(pwd)/src/tests/setup.ts --exit --timeout 60000",
+    "test:ci": "yarn test --reporter xunit > test-results.xml"
   },
   "dependencies": {
     "decimal.js-light": "^2.5.1",

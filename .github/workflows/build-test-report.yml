@@ -31,7 +31,7 @@ jobs:
         run: yarn build
       
       - name: Run tests
-        run: yarn test
+        run: yarn test:ci
         env:
           TENDERLY_ACCESS_KEY: ${{ secrets.TENDERLY_ACCESS_KEY }}
           PROJECT_SLUG: ${{ secrets.PROJECT_SLUG }}
@@ -42,7 +42,7 @@ jobs:
         if: success() || failure()
         uses: actions/upload-artifact@v4
         with:
-          name: coverage
+          name: test-results
           path: |
-            coverage/
+            test-results.xml
           retention-days: 15
