@@ -3,9 +3,6 @@ name: PR Title and Label Check
 on:
   pull_request:
     types: [opened, edited, labeled, unlabeled]
-
-permissions:
-  pull-requests: read
 jobs:
   enforce-pr-naming:
     runs-on: ubuntu-latest
@@ -13,7 +10,6 @@ jobs:
       pull-requests: write
       contents: read
     steps:
-
       - name: Check PR Title follows conventional commit naming
         id: check-pr-naming
         uses: amannn/action-semantic-pull-request@v5
