@@ -9,8 +9,6 @@ jobs:
   get_version:
     if: github.event.pull_request.merged == true
     runs-on: ubuntu-latest
-    outputs:
-      type: ${{ steps.set_output.outputs.type }}
     steps:
       - uses: actions/checkout@v4
 
@@ -37,7 +35,7 @@ jobs:
           elif echo "$labels" | grep -q "^patch$"; then
             echo "type=patch" >> $GITHUB_OUTPUT
           else
-            echo "type=none" >> $GITHUB_OUTPUT
+            echo "type=no-release" >> $GITHUB_OUTPUT
           fi
           
           # Check for alpha label
@@ -48,19 +46,21 @@ jobs:
           fi
 
       - name: Exit if no version bump
-        if: steps.bump.outputs.type == 'none'
+        id: cancel
+        if: steps.bump.outputs.type == 'no-release'
         run: |
           echo "No version bump required. Exiting successfully."
           exit 0
+        continue-on-error: true
 
       - name: Configure Git
-        if: steps.bump.outputs.type != 'none'
+        if: steps.cancel.outcome == 'success'
         run: |
           git config --global user.name 'GitHub Action'
           git config --global user.email 'actionsbot@github.com'
 
       - name: Bump version
-        if: steps.bump.outputs.type != 'none'
+        if: steps.cancel.outcome == 'success'
         run: |
           if [ "${{ steps.bump.outputs.alpha }}" == "true" ]; then
             yarn version --${{ steps.bump.outputs.type }} --preid alpha
@@ -69,16 +69,20 @@ jobs:
           fi
 
       - name: Push changes
-        if: steps.bump.outputs.type != 'none'
+        if: steps.cancel.outcome == 'success'
         run: |
           git push
           git push --tags
+    outputs:
+      type: ${{ steps.bump.outputs.type }}
+      alpha: ${{ steps.bump.outputs.alpha }}
       
   create-release:
     needs: get_version
     runs-on: ubuntu-latest
     permissions:
       contents: write
+    if: needs.get_version.outputs.type != 'no-release'
     steps:
       - uses: actions/checkout@v4
         with:
