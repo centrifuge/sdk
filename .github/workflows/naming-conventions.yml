@@ -30,12 +30,12 @@ jobs:
         continue-on-error: true
         run: |
           labels=$(echo "${{ github.event.pull_request.labels[*].name }}" | tr ' ' '\n')
-          if ! echo "$labels" | grep -qE '^(major|minor|patch|no-release)$'; then
+          if echo "$labels" | grep -qE '^(major|minor|patch|no-release)$'; then
+            echo "labels_valid=true" >> $GITHUB_OUTPUT
+          else
             echo "PR must have at least one of the following labels: major, minor, patch or no-release"
             echo "labels_valid=false" >> $GITHUB_OUTPUT
             # exit 1
-          else
-            echo "labels_valid=true" >> $GITHUB_OUTPUT
           fi
 
       - name: Find existing PR title error comment
@@ -74,7 +74,7 @@ jobs:
           edit-mode: replace
         if: steps.check-pr-naming.outputs.error_message != null
 
-      - name: Add PR naming error comment
+      - name: Add PR label error comment
         id: pr-label-error
         uses: peter-evans/create-or-update-comment@v2
         with:
@@ -92,7 +92,7 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           COMMENT_ID: ${{ steps.find-title-comment.outputs.comment-id }}
         run: |
-            if [ "${{ steps.check-pr-naming.outputs.error_message }}" == "null" ] && [ -n "$COMMENT_ID" ]; then
+            if [ -z "${{ steps.check-pr-naming.outputs.error_message }}" ] && [ -n "$COMMENT_ID" ]; then
               curl -X DELETE \
                 -H "Authorization: token $GITHUB_TOKEN" \
                 -H "Accept: application/vnd.github.v3+json" \
