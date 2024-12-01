@@ -106,7 +106,7 @@ jobs:
           body: |
             PR must have at least one of the following labels: major, minor, patch.
           edit-mode: replace
-        if: needs.title-n-label-check.outputs.labels_valid == 'success'
+        if: needs.title-n-label-check.outputs.labels_valid != 'success'
 
       - name: Remove label error comment
         env:
