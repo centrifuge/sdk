@@ -1,8 +1,7 @@
 name: PR Title and Label Check
-
 on:
   pull_request:
-    types: [opened, edited, labeled, unlabeled]
+    # types: [opened, edited, labeled, unlabeled]
 jobs:
   enforce-pr-naming:
     runs-on: ubuntu-latest
