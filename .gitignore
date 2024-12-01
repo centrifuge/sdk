@@ -24,3 +24,4 @@ yarn-error.log
 coverage/
 test-results.xml
 .nyc_output
+report/
