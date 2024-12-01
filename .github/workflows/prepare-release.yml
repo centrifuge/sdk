@@ -73,10 +73,16 @@ jobs:
         run: |
           git push
           git push --tags
-
-      - name: Set job output
-        id: set_output
-        run: echo "type=${{ steps.bump.outputs.type }}" >> $GITHUB_OUTPUT
+      
+  create-release:
+    needs: get_version
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
       
       - name: Create GitHub Release
         env:
@@ -88,56 +94,3 @@ jobs:
             --generate-notes \
             --prerelease \
             --draft
-
-
-
-
-
-
-
-
-  publish:
-    needs: version_and_publish
-    if: success() && needs.version_and_publish.outputs.type != 'none'
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          ref: main
-
-      - uses: actions/setup-node@v4
-        with:
-          node-version: '20'
-          registry-url: 'https://registry.npmjs.org'
-
-      - name: Enable Corepack
-        run: corepack enable
-
-      - name: Set Yarn version
-        run: yarn set version 4.5.0
-
-      - name: Install dependencies
-        run: yarn install --immutable
-
-      - name: Build
-        run: yarn build
-
-      - name: bump version
-        run: yarn version ${{ needs.version_and_publish.outputs.type }}
-        ## Creates a tag, add --no-git-tag-version to disable
-
-      # Push changes (e.g., updated version) back to Git
-      - name: Push changes to Git
-        run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add package.json package-lock.json
-          git commit -m "chore(release): publish version $(node -p "require('./package.json').version")"
-          git push
-        env:
-          GIT_TOKEN: ${{ secrets.GIT_TOKEN }}
-
-      - name: Publish to NPM
-        run: yarn npm publish --access public
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}

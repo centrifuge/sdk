@@ -9,6 +9,9 @@ permissions:
 jobs:
   enforce-pr-naming:
     runs-on: ubuntu-latest
+    permissions:
+      pull-requests: write
+      contents: read
     steps:
 
       - name: Check PR Title follows conventional commit naming
