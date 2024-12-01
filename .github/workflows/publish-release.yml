@@ -6,9 +6,10 @@ on:
 jobs:
   publish:
     runs-on: ubuntu-latest
+    # environment: release
     permissions:
       contents: read
-      pull-requests: write
+      id-token: write
     steps:
       - uses: actions/checkout@v4
         with:

@@ -8,6 +8,8 @@ on:
 
 jobs:
   build-n-test:
+    permissions:
+      id-token: write
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -30,6 +32,11 @@ jobs:
       
       - name: Run tests
         run: yarn test
+        env:
+          TENDERLY_ACCESS_KEY: ${{ secrets.TENDERLY_ACCESS_KEY }}
+          PROJECT_SLUG: ${{ secrets.PROJECT_SLUG }}
+          ACCOUNT_SLUG: ${{ secrets.ACCOUNT_SLUG }}
+          DEBUG: ${{ github.run_attempt > 1 }}
 
       - name: Upload test results
         if: success() || failure()
