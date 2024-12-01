@@ -1,0 +1,143 @@
+name: Release and Versioning
+on:
+  pull_request:
+    types: [closed]
+    branches:
+      - main
+
+jobs:
+  get_version:
+    if: github.event.pull_request.merged == true
+    runs-on: ubuntu-latest
+    outputs:
+      type: ${{ steps.set_output.outputs.type }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Enable Corepack
+        run: corepack enable
+
+      - name: Set Yarn version
+        run: yarn set version 4.5.0
+
+      - name: Get version bump type from labels
+        id: bump
+        run: |
+          labels=$(echo "${{ github.event.pull_request.labels[*].name }}" | tr ' ' '\n')
+          
+          # Check for version type labels
+          if echo "$labels" | grep -q "^major$"; then
+            echo "type=major" >> $GITHUB_OUTPUT
+          elif echo "$labels" | grep -q "^minor$"; then
+            echo "type=minor" >> $GITHUB_OUTPUT
+          elif echo "$labels" | grep -q "^patch$"; then
+            echo "type=patch" >> $GITHUB_OUTPUT
+          else
+            echo "type=none" >> $GITHUB_OUTPUT
+          fi
+          
+          # Check for alpha label
+          if echo "$labels" | grep -q "^alpha$"; then
+            echo "alpha=true" >> $GITHUB_OUTPUT
+          else
+            echo "alpha=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Exit if no version bump
+        if: steps.bump.outputs.type == 'none'
+        run: |
+          echo "No version bump required. Exiting successfully."
+          exit 0
+
+      - name: Configure Git
+        if: steps.bump.outputs.type != 'none'
+        run: |
+          git config --global user.name 'GitHub Action'
+          git config --global user.email 'actionsbot@github.com'
+
+      - name: Bump version
+        if: steps.bump.outputs.type != 'none'
+        run: |
+          if [ "${{ steps.bump.outputs.alpha }}" == "true" ]; then
+            yarn version --${{ steps.bump.outputs.type }} --preid alpha
+          else
+            yarn version --${{ steps.bump.outputs.type }}
+          fi
+
+      - name: Push changes
+        if: steps.bump.outputs.type != 'none'
+        run: |
+          git push
+          git push --tags
+
+      - name: Set job output
+        id: set_output
+        run: echo "type=${{ steps.bump.outputs.type }}" >> $GITHUB_OUTPUT
+      
+      - name: Create GitHub Release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          VERSION=$(node -p "require('./package.json').version")
+          gh release create "v${VERSION}" \
+            --title "Release v${VERSION}" \
+            --generate-notes \
+            --prerelease \
+            --draft
+
+
+
+
+
+
+
+
+  publish:
+    needs: version_and_publish
+    if: success() && needs.version_and_publish.outputs.type != 'none'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          registry-url: 'https://registry.npmjs.org'
+
+      - name: Enable Corepack
+        run: corepack enable
+
+      - name: Set Yarn version
+        run: yarn set version 4.5.0
+
+      - name: Install dependencies
+        run: yarn install --immutable
+
+      - name: Build
+        run: yarn build
+
+      - name: bump version
+        run: yarn version ${{ needs.version_and_publish.outputs.type }}
+        ## Creates a tag, add --no-git-tag-version to disable
+
+      # Push changes (e.g., updated version) back to Git
+      - name: Push changes to Git
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add package.json package-lock.json
+          git commit -m "chore(release): publish version $(node -p "require('./package.json').version")"
+          git push
+        env:
+          GIT_TOKEN: ${{ secrets.GIT_TOKEN }}
+
+      - name: Publish to NPM
+        run: yarn npm publish --access public
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}

@@ -4,6 +4,10 @@
   "description": "",
   "homepage": "https://github.com/centrifuge/sdk/tree/main#readme",
   "author": "",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/centrifuge/sdk.git"
+  },  
   "license": "LGPL-3.0-only",
   "type": "module",
   "files": [
