@@ -24,7 +24,8 @@ jobs:
           wip: true
           validateSingleCommit: false
 
-      - uses: docker://agilepathway/pull-request-label-checker:latest
+      - uses: docker://agilepathway/pull-request-label-checker:v1.6.56
+        # https://github.com/agilepathway/label-checker
         id: check-pr-labels
         with:
           one_of: major,minor,patch,no-release
@@ -42,6 +43,11 @@ jobs:
       pull-requests: write
       contents: read
     steps:
+      - name: Debug outputs from title-n-label-check
+        run: |
+          echo "Title Error: ${{ needs.title-n-label-check.outputs.title_error }}"
+          echo "Labels Valid: ${{ needs.title-n-label-check.outputs.labels_valid }}"
+
       - name: Find existing PR title error comment
         uses: peter-evans/find-comment@v2
         id: find-title-comment
