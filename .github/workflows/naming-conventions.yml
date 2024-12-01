@@ -38,6 +38,22 @@ jobs:
             echo "labels_valid=true" >> $GITHUB_OUTPUT
           fi
 
+      - name: Find existing PR title error comment
+        uses: peter-evans/find-comment@v2
+        id: find-title-comment
+        with:
+          issue-number: ${{ github.event.pull_request.number }}
+          comment-author: 'github-actions[bot]'
+          body-includes: We require pull request titles to follow
+
+      - name: Find existing PR label error comment
+        uses: peter-evans/find-comment@v2
+        id: find-label-comment
+        with:
+          issue-number: ${{ github.event.pull_request.number }}
+          comment-author: 'github-actions[bot]'
+          body-includes: PR must have at least one of the following labels
+
       - name: Add PR naming error comment
         id: pr-title-error
         uses: peter-evans/create-or-update-comment@v2
@@ -45,6 +61,7 @@ jobs:
           token: ${{ secrets.GITHUB_TOKEN }}
           repository: ${{ github.repository }}
           issue-number: ${{ github.event.pull_request.number }}
+          comment-id: ${{ steps.find-title-comment.outputs.comment-id }}
           body: |
             Hey there and thank you for opening this pull request! 👋🏼
             
@@ -64,6 +81,7 @@ jobs:
           token: ${{ secrets.GITHUB_TOKEN }}
           repository: ${{ github.repository }}
           issue-number: ${{ github.event.pull_request.number }}
+          comment-id: ${{ steps.find-label-comment.outputs.comment-id }}
           body: |
             PR must have at least one of the following labels: major, minor, patch.
           edit-mode: replace
@@ -72,21 +90,25 @@ jobs:
       - name: Remove title error comment
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          COMMENT_ID: ${{ steps.pr-title-error.outputs.comment-id }} # Ensure you have the comment ID stored
+          COMMENT_ID: ${{ steps.find-title-comment.outputs.comment-id }}
         run: |
-            if [ "${{ steps.check-pr-naming.outputs.error_message }}" == "null" ]; then
+            if [ "${{ steps.check-pr-naming.outputs.error_message }}" == "null" ] && [ -n "$COMMENT_ID" ]; then
               curl -X DELETE \
                 -H "Authorization: token $GITHUB_TOKEN" \
                 -H "Accept: application/vnd.github.v3+json" \
-                https://api.github.com/repos/${{ github.repository }}/issues/comments/${{ steps.pr-title-error.outputs.comment-id }}
+                https://api.github.com/repos/${{ github.repository }}/issues/comments/$COMMENT_ID
             fi
+        if: steps.check-pr-naming.outputs.error_message == null
 
-            if [ "${{ steps.check-pr-labels.outputs.labels_valid }}" == "true" ]; then
+      - name: Remove label error comment
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          COMMENT_ID: ${{ steps.find-label-comment.outputs.comment-id }}
+        run: |
+            if [ "${{ steps.check-pr-labels.outputs.labels_valid }}" == "true" ] && [ -n "$COMMENT_ID" ]; then
               curl -X DELETE \
                 -H "Authorization: token $GITHUB_TOKEN" \
                 -H "Accept: application/vnd.github.v3+json" \
-                https://api.github.com/repos/${{ github.repository }}/issues/comments/${{ steps.pr-label-error.outputs.comment-id }}
+                https://api.github.com/repos/${{ github.repository }}/issues/comments/$COMMENT_ID
             fi
-        if: steps.check-pr-naming.outputs.error_message == null || steps.check-pr-labels.outputs.labels_valid == 'true'
-
-
+        if: steps.check-pr-labels.outputs.labels_valid == 'true'
