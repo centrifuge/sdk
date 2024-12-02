@@ -41,7 +41,6 @@ type CashflowReportBase = {
   timestamp: string
   principalPayments: Currency
   interestPayments: Currency
-  assetAcquisitions: Currency
   netCashflowAsset: Currency // sum of cashflow from assetAcquisitions, principalPayments, interestPayments, realizedPL
   fees: { name: string; amount: Currency; timestamp: string; feeId: string }[]
   netCashflowAfterFees: Currency
@@ -55,10 +54,12 @@ type CashflowReportBase = {
 type CashflowReportPublicCredit = CashflowReportBase & {
   subtype: 'publicCredit'
   realizedPL?: Currency
+  assetPurchases?: Currency
 }
 
 type CashflowReportPrivateCredit = CashflowReportBase & {
   subtype: 'privateCredit'
+  assetFinancing?: Currency
 }
 
 export type CashflowReport = CashflowReportPublicCredit | CashflowReportPrivateCredit

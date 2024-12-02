@@ -158,7 +158,9 @@ describe('Processor', () => {
       expect(jan1?.timestamp.slice(0, 10)).to.equal('2024-01-01')
       expect(jan1?.principalPayments.toFloat()).to.equal(1.5) // 1.0 + 0.5
       expect(jan1?.interestPayments.toFloat()).to.equal(0.075) // 0.05 + 0.025
-      expect(jan1?.assetAcquisitions.toFloat()).to.equal(3) // 2.0 + 1.0
+      expect(
+        jan1?.subtype === 'privateCredit' ? jan1?.assetFinancing?.toFloat() : jan1?.assetPurchases?.toFloat()
+      ).to.equal(3) // 2.0 + 1.0
       expect(jan1?.fees.length).to.equal(2)
       expect(jan1?.fees[0]?.name).to.equal('serviceFee')
       expect(jan1?.fees[1]?.name).to.equal('adminFee')
@@ -171,7 +173,9 @@ describe('Processor', () => {
       expect(jan2?.timestamp.slice(0, 10)).to.equal('2024-01-02')
       expect(jan2?.principalPayments.toFloat()).to.equal(2) // 2.0
       expect(jan2?.interestPayments.toFloat()).to.equal(0.1) // 0.1
-      expect(jan2?.assetAcquisitions.toFloat()).to.equal(4) // 4.0
+      expect(
+        jan2?.subtype === 'privateCredit' ? jan2?.assetFinancing?.toFloat() : jan2?.assetPurchases?.toFloat()
+      ).to.equal(4) // 4.0
       expect(jan2?.fees.length).to.equal(2)
       expect(jan2?.fees[0]?.name).to.equal('serviceFee')
       expect(jan2?.fees[1]?.name).to.equal('adminFee')
@@ -197,7 +201,9 @@ describe('Processor', () => {
       expect(january?.timestamp.slice(0, 10)).to.equal('2024-01-02') // Grouping by month returns the last day of the period
       expect(january?.principalPayments.toFloat()).to.equal(3.5) // 1.0 + 0.5 + 2.0
       expect(january?.interestPayments.toFloat()).to.equal(0.175) // 0.05 + 0.025 + 0.1
-      expect(january?.assetAcquisitions.toFloat()).to.equal(7) // 2.0 + 1.0 + 4.0
+      expect(
+        january?.subtype === 'privateCredit' ? january?.assetFinancing?.toFloat() : january?.assetPurchases?.toFloat()
+      ).to.equal(7) // 2.0 + 1.0 + 4.0
       expect(january?.fees.length).to.equal(2)
       expect(january?.fees[0]?.name).to.equal('serviceFee')
       expect(january?.fees[1]?.name).to.equal('adminFee')

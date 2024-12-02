@@ -64,9 +64,9 @@ export class Processor {
         })) ?? []
       const principalRepayments = day.sumPrincipalRepaidAmountByPeriod
       const interest = day.sumInterestRepaidAmountByPeriod.add(day.sumUnscheduledRepaidAmountByPeriod)
-      const aquisistions = day.sumBorrowedAmountByPeriod
+      const acquisistions = day.sumBorrowedAmountByPeriod
       const fees = day.sumPoolFeesPaidAmountByPeriod
-      const netCashflowAsset = principalRepayments.sub(aquisistions).add(interest)
+      const netCashflowAsset = principalRepayments.sub(acquisistions).add(interest)
       const investments = day.sumInvestedAmountByPeriod
       const redemptions = day.sumRedeemedAmountByPeriod
       const activitiesCashflow = investments.sub(redemptions)
@@ -79,7 +79,7 @@ export class Processor {
         principalPayments: principalRepayments,
         ...(subtype === 'publicCredit' && { realizedPL: day.sumRealizedProfitFifoByPeriod }),
         interestPayments: interest,
-        assetAcquisitions: aquisistions,
+        ...(subtype === 'privateCredit' ? { assetFinancing: acquisistions } : { assetPurchases: acquisistions }),
         netCashflowAsset,
         fees: poolFees,
         netCashflowAfterFees,
