@@ -84,7 +84,7 @@ const subscription = pool.closeEpoch().subscribe(
 
 ## Reports
 
-Reports are generated from the subquery pool indexer and are combined with pool metadata to provide a comprehensive view of the pool's financials.
+Reports are generated from data from the Centrifuge API and are combined with pool metadata to provide a comprehensive view of the pool's financials.
 
 Available reports are:
 
