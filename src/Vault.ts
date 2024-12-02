@@ -1,3 +1,4 @@
+import { Decimal } from 'decimal.js-light'
 import { combineLatest, defer, map, switchMap } from 'rxjs'
 import { encodeFunctionData, getContract } from 'viem'
 import type { Centrifuge } from './Centrifuge.js'
@@ -7,7 +8,7 @@ import { PoolNetwork } from './PoolNetwork.js'
 import { ABI } from './abi/index.js'
 import { lpConfig } from './config/lp.js'
 import type { HexString } from './types/index.js'
-import { Currency, Token } from './utils/BigInt.js'
+import { Currency, DecimalWrapper, Token } from './utils/BigInt.js'
 import { repeatOnEvents } from './utils/rx.js'
 import { doSignMessage, doTransaction, signPermit, type Permit } from './utils/transaction.js'
 
@@ -234,12 +235,12 @@ export class Vault extends Entity {
    * Place an order to invest funds in the vault. If an order exists, it will increase the amount.
    * @param investAmount - The amount to invest in the vault
    */
-  increaseInvestOrder(investAmount: bigint | number) {
+  increaseInvestOrder(investAmount: NumberInput) {
     const self = this
     return this._transactSequence(async function* ({ walletClient, publicClient, signer, signingAddress }) {
       const { centrifugeRouter } = lpConfig[self.chainId]!
       const [estimate, investment] = await Promise.all([self.network._estimate(), self.investment(signingAddress)])
-      const amount = new Currency(investAmount, investment.investmentCurrency.decimals)
+      const amount = toCurrency(investAmount, investment.investmentCurrency.decimals)
       const { investmentCurrency, investmentCurrencyBalance, investmentCurrencyAllowance, isAllowedToInvest } =
         investment
       const supportsPermit = investmentCurrency.supportsPermit && 'send' in signer // eth-permit uses the deprecated send method
@@ -339,12 +340,12 @@ export class Vault extends Entity {
    * Place an order to redeem funds from the vault. If an order exists, it will increase the amount.
    * @param shares - The amount of shares to redeem
    */
-  increaseRedeemOrder(shares: bigint | number) {
+  increaseRedeemOrder(shares: NumberInput) {
     const self = this
     return this._transactSequence(async function* ({ walletClient, signingAddress, publicClient }) {
       const { centrifugeRouter } = lpConfig[self.chainId]!
       const [estimate, investment] = await Promise.all([self.network._estimate(), self.investment(signingAddress)])
-      const amount = new Token(shares, investment.shareCurrency.decimals)
+      const amount = toCurrency(shares, investment.shareCurrency.decimals)
 
       if (amount.gt(investment.shareBalance)) throw new Error('Insufficient balance')
       if (!amount.gt(0n)) throw new Error('Order amount must be greater than 0')
@@ -416,4 +417,11 @@ export class Vault extends Entity {
       )
     })
   }
+}
+
+type NumberInput = number | bigint | DecimalWrapper | Decimal
+function toCurrency(val: NumberInput, decimals: number) {
+  return typeof val === 'number'
+    ? Currency.fromFloat(val, decimals!)
+    : new Currency(val instanceof DecimalWrapper ? val.toBigInt() : val, decimals)
 }
