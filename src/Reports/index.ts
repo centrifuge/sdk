@@ -10,7 +10,7 @@ import { combineLatest } from 'rxjs'
 import { processor } from './Processor.js'
 
 import { map } from 'rxjs'
-import { BalanceSheetReport, CashflowReport, ReportFilter } from './types.js'
+import { BalanceSheetReport, CashflowReport, ProfitAndLossReport, ReportFilter } from './types.js'
 import { Query } from '../types/query.js'
 import {
   PoolFeeSnapshotFilter,
@@ -37,6 +37,10 @@ export class Reports extends Entity {
 
   cashflow(filter?: ReportFilter) {
     return this._generateReport<CashflowReport>('cashflow', filter)
+  }
+
+  profitAndLoss(filter?: ReportFilter) {
+    return this._generateReport<ProfitAndLossReport>('profitAndLoss', filter)
   }
 
   _generateReport<T>(type: ReportType, filter?: ReportFilter): Query<T[]> {
