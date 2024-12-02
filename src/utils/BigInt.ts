@@ -1,14 +1,14 @@
-import Decimal, { type Numeric } from 'decimal.js-light'
+import { Decimal, type Numeric } from 'decimal.js-light'
 
-Decimal.default.set({
+Decimal.set({
   precision: 30,
   toExpNeg: -7,
   toExpPos: 29,
-  rounding: Decimal.default.ROUND_HALF_CEIL, // ROUND_HALF_CEIL is 1
+  rounding: Decimal.ROUND_HALF_CEIL, // ROUND_HALF_CEIL is 1
 })
 
 export function Dec(value: Numeric) {
-  return new Decimal.default(value)
+  return new Decimal(value)
 }
 
 export abstract class BigIntWrapper {
@@ -17,7 +17,7 @@ export abstract class BigIntWrapper {
   constructor(value: Numeric | bigint) {
     if (typeof value === 'bigint') {
       this.value = value
-    } else if (value instanceof Decimal.default) {
+    } else if (value instanceof Decimal) {
       this.value = BigInt(value.toFixed(0))
     } else if (typeof value === 'number') {
       this.value = BigInt(Math.floor(value))
@@ -77,10 +77,10 @@ export class DecimalWrapper extends BigIntWrapper {
    * // returns Currency with 6 decimals (1_010_000n or 1.01)
    */
   _mul<T>(value: bigint | (T extends DecimalWrapper ? T : never)): T {
-    let val: Decimal.default
+    let val: Decimal
     if (typeof value === 'bigint') {
       val = Dec(value.toString())
-    } else if (value instanceof Decimal.default) {
+    } else if (value instanceof Decimal) {
       val = value
     } else {
       val = value.toDecimal().mul(Dec(10).pow(this.decimals))
@@ -121,6 +121,9 @@ export class DecimalWrapper extends BigIntWrapper {
   eq<T>(value: bigint | (T extends BigIntWrapper ? T : never)) {
     const val = typeof value === 'bigint' ? value : value.toBigInt()
     return this.value === val
+  }
+  isZero() {
+    return this.value === 0n
   }
 }
 

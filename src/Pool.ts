@@ -1,8 +1,8 @@
 import { catchError, combineLatest, map, of, switchMap, timeout } from 'rxjs'
 import type { Centrifuge } from './Centrifuge.js'
 import { Entity } from './Entity.js'
-import { Reports } from './Reports/index.js'
 import { PoolNetwork } from './PoolNetwork.js'
+import { Reports } from './Reports/index.js'
 
 export class Pool extends Entity {
   constructor(
@@ -50,6 +50,21 @@ export class Pool extends Entity {
   }
 
   /**
+   * Get a specific network where a pool can potentially be deployed.
+   */
+  network(chainId: number) {
+    return this._query(null, () => {
+      return this.networks().pipe(
+        map((networks) => {
+          const network = networks.find((network) => network.chainId === chainId)
+          if (!network) throw new Error(`Network ${chainId} not found`)
+          return network
+        })
+      )
+    })
+  }
+
+  /**
    * Get the networks where a pool is active. It doesn't mean that any vaults are deployed there necessarily.
    */
   activeNetworks() {
@@ -69,5 +84,9 @@ export class Pool extends Entity {
         })
       )
     })
+  }
+
+  vault(chainId: number, trancheId: string, asset: string) {
+    return this._query(null, () => this.network(chainId).pipe(switchMap((network) => network.vault(trancheId, asset))))
   }
 }

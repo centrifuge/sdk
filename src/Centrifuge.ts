@@ -4,13 +4,13 @@ import {
   defaultIfEmpty,
   defer,
   filter,
-  firstValueFrom,
   identity,
   isObservable,
   map,
   mergeMap,
   of,
   Subject,
+  switchMap,
   using,
 } from 'rxjs'
 import { fromFetch } from 'rxjs/fetch'
@@ -18,6 +18,7 @@ import {
   createPublicClient,
   createWalletClient,
   custom,
+  getContract,
   http,
   parseEventLogs,
   type Abi,
@@ -27,14 +28,18 @@ import {
   type WalletClient,
   type WatchEventOnLogsParameter,
 } from 'viem'
+import { ABI } from './abi/index.js'
 import { Account } from './Account.js'
 import { chains } from './config/chains.js'
+import type { CurrencyMetadata } from './config/lp.js'
+import { PERMIT_TYPEHASH } from './constants.js'
 import { Pool } from './Pool.js'
 import type { HexString } from './types/index.js'
 import type { CentrifugeQueryOptions, Query } from './types/query.js'
 import type { OperationStatus, Signer, Transaction, TransactionCallbackParams } from './types/transaction.js'
-import { hashKey, serializeForCache } from './utils/query.js'
-import { makeThenable, shareReplayWithDelayedReset } from './utils/rx.js'
+import { Currency } from './utils/BigInt.js'
+import { hashKey } from './utils/query.js'
+import { makeThenable, repeatOnEvents, shareReplayWithDelayedReset } from './utils/rx.js'
 import { doTransaction, isLocalAccount } from './utils/transaction.js'
 
 export type Config = {
@@ -133,6 +138,83 @@ export class Centrifuge {
   }
 
   /**
+   * Get the metadata for an ERC20 token
+   * @param address - The token address
+   * @param chainId - The chain ID
+   */
+  currency(address: string, chainId?: number): Query<CurrencyMetadata> {
+    const curAddress = address.toLowerCase()
+    const cid = chainId ?? this.config.defaultChain
+    return this._query(['currency', curAddress, cid], () =>
+      defer(async () => {
+        const contract = getContract({
+          address: curAddress as any,
+          abi: ABI.Currency,
+          client: this.getClient(cid)!,
+        })
+        const [decimals, name, symbol, supportsPermit] = await Promise.all([
+          contract.read.decimals!() as Promise<number>,
+          contract.read.name!() as Promise<string>,
+          contract.read.symbol!() as Promise<string>,
+          contract.read.PERMIT_TYPEHASH!()
+            .then((hash) => hash === PERMIT_TYPEHASH)
+            .catch(() => false),
+        ])
+        return {
+          address: curAddress as any,
+          decimals,
+          name,
+          symbol,
+          chainId: cid,
+          supportsPermit,
+        }
+      })
+    )
+  }
+
+  /**
+   * Get the balance of an ERC20 token for a given owner.
+   * @param currency - The token address
+   * @param owner - The owner address
+   * @param chainId - The chain ID
+   */
+  balance(currency: string, owner: string, chainId?: number) {
+    const address = owner.toLowerCase()
+    const cid = chainId ?? this.config.defaultChain
+    return this._query(['balance', currency, owner, cid], () => {
+      return this.currency(currency, cid).pipe(
+        switchMap((currencyMeta) =>
+          defer(() =>
+            this.getClient(cid)!
+              .readContract({
+                address: currency as any,
+                abi: ABI.Currency,
+                functionName: 'balanceOf',
+                args: [address],
+              })
+              .then((val: any) => new Currency(val, currencyMeta.decimals))
+          ).pipe(
+            repeatOnEvents(
+              this,
+              {
+                address: currency,
+                abi: ABI.Currency,
+                eventName: 'Transfer',
+                filter: (events) => {
+                  return events.some((event) => {
+                    return event.args.from?.toLowerCase() === address || event.args.to?.toLowerCase() === address
+                  })
+                },
+              },
+              cid
+            )
+          )
+        )
+      )
+    })
+  }
+
+  /**
    * Returns an observable of all events on a given chain.
    * @internal
    */
@@ -226,7 +308,7 @@ export class Centrifuge {
 
   #memoized = new Map<string, any>()
   #memoizeWith<T = any>(keys: any[], callback: () => T): T {
-    const cacheKey = hashKey(serializeForCache(keys))
+    const cacheKey = hashKey(keys)
     if (this.#memoized.has(cacheKey)) {
       return this.#memoized.get(cacheKey)
     }
@@ -332,13 +414,16 @@ export class Centrifuge {
       }
 
       const $query = createShared().pipe(
-        // For new subscribers, recreate the shared observable if the previously shared observable has completed
-        // and no longer has a cached value, which can happen with a finite `valueCacheTime`.
+        // When `valueCacheTime` is finite, and the cached value is expired,
+        // the shared observable will immediately complete upon the next subscription.
+        // This will cause the shared observable to be recreated.
         defaultIfEmpty(defer(createShared)),
         // For existing subscribers, merge any newly created shared observable.
         concatWith(sharedSubject),
+        // Flatten observables emitted from the `sharedSubject`
         mergeMap((d) => (isObservable(d) ? d : of(d)))
       )
+
       return makeThenable($query)
     }
     return keys ? this.#memoizeWith(keys, get) : get()
@@ -381,14 +466,12 @@ export class Centrifuge {
    */
   _transact(
     title: string,
-    transactionCallback: (params: TransactionCallbackParams) => Promise<HexString> | Observable<HexString>,
+    transactionCallback: (params: TransactionCallbackParams) => Promise<HexString>,
     chainId?: number
   ) {
     return this._transactSequence(async function* (params) {
       const transaction = transactionCallback(params)
-      yield* doTransaction(title, params.publicClient, () =>
-        'then' in transaction ? transaction : firstValueFrom(transaction)
-      )
+      yield* doTransaction(title, params.publicClient, () => transaction)
     }, chainId)
   }
 
@@ -430,7 +513,7 @@ export class Centrifuge {
       params: TransactionCallbackParams
     ) => AsyncGenerator<OperationStatus> | Observable<OperationStatus>,
     chainId?: number
-  ) {
+  ): Transaction {
     const targetChainId = chainId ?? this.config.defaultChain
     const self = this
     async function* transact() {

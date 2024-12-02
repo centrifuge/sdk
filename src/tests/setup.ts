@@ -3,18 +3,22 @@ import { Centrifuge } from '../Centrifuge.js'
 import { TenderlyFork } from './tenderly.js'
 
 class TestContext {
-  public centrifuge!: Centrifuge
+  #centrifuge: Centrifuge | null = null
   public tenderlyFork!: TenderlyFork
+
+  get centrifuge() {
+    return this.#centrifuge ?? (this.#centrifuge = new Centrifuge({ environment: 'demo' }))
+  }
 
   async initialize() {
     this.tenderlyFork = await TenderlyFork.create(sepolia)
-    this.centrifuge = new Centrifuge({
+    this.#centrifuge = new Centrifuge({
       environment: 'demo',
       rpcUrls: {
         11155111: this.tenderlyFork.rpcUrl,
       },
     })
-    this.centrifuge.setSigner(this.tenderlyFork.signer)
+    this.#centrifuge.setSigner(this.tenderlyFork.signer)
   }
 
   async cleanup() {
