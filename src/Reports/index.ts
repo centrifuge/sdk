@@ -10,7 +10,13 @@ import { combineLatest } from 'rxjs'
 import { processor } from './Processor.js'
 
 import { map } from 'rxjs'
-import { BalanceSheetReport, CashflowReport, ProfitAndLossReport, ReportFilter } from './types.js'
+import {
+  BalanceSheetReport,
+  CashflowReport,
+  InvestorTransactionsReport,
+  ProfitAndLossReport,
+  ReportFilter,
+} from './types.js'
 import { Query } from '../types/query.js'
 import {
   PoolFeeSnapshotFilter,
@@ -43,6 +49,10 @@ export class Reports extends Entity {
     return this._generateReport<ProfitAndLossReport>('profitAndLoss', filter)
   }
 
+  investorTransactions(filter?: ReportFilter) {
+    return this._generateReport<InvestorTransactionsReport>('investorTransactions', filter)
+  }
+
   _generateReport<T>(type: ReportType, filter?: ReportFilter): Query<T[]> {
     return this._query(
       [type, filter?.from, filter?.to, filter?.groupBy],
@@ -56,19 +66,19 @@ export class Reports extends Entity {
 
         const metadata$ = this.pool.metadata()
 
-        const poolSnapshots$ = this.poolSnapshots({
+        const poolSnapshots$ = this.poolSnapshotsQuery({
           ...dateFilter,
           poolId: { equalTo: this.pool.id },
         })
-        const trancheSnapshots$ = this.trancheSnapshots({
+        const trancheSnapshots$ = this.trancheSnapshotsQuery({
           ...dateFilter,
           tranche: { poolId: { equalTo: this.pool.id } },
         })
-        const poolFeeSnapshots$ = this.poolFeeSnapshots({
+        const poolFeeSnapshots$ = this.poolFeeSnapshotsQuery({
           ...dateFilter,
           poolFeeId: { includes: this.pool.id },
         })
-        const investorTransactions$ = this.investorTransactions({
+        const investorTransactions$ = this.investorTransactionsQuery({
           ...dateFilter,
           poolId: { equalTo: this.pool.id },
         })
@@ -112,19 +122,19 @@ export class Reports extends Entity {
     )
   }
 
-  poolFeeSnapshots(filter?: PoolFeeSnapshotFilter) {
+  poolFeeSnapshotsQuery(filter?: PoolFeeSnapshotFilter) {
     return this._root._queryIndexer(poolFeeSnapshotQuery, { filter }, poolFeeSnapshotsPostProcess)
   }
 
-  poolSnapshots(filter?: PoolSnapshotFilter) {
+  poolSnapshotsQuery(filter?: PoolSnapshotFilter) {
     return this._root._queryIndexer(poolSnapshotsQuery, { filter }, poolSnapshotsPostProcess)
   }
 
-  trancheSnapshots(filter?: TrancheSnapshotFilter) {
+  trancheSnapshotsQuery(filter?: TrancheSnapshotFilter) {
     return this._root._queryIndexer(trancheSnapshotsQuery, { filter }, trancheSnapshotsPostProcess)
   }
 
-  investorTransactions(filter?: InvestorTransactionFilter) {
+  investorTransactionsQuery(filter?: InvestorTransactionFilter) {
     return this._root._queryIndexer(investorTransactionsQuery, { filter }, investorTransactionsPostProcess)
   }
 }

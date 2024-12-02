@@ -1,4 +1,3 @@
-import { SubqueryInvestorTransactionType } from '../queries/investorTransactions.js'
 import { Currency } from '../utils/BigInt.js'
 import { groupByPeriod } from '../utils/date.js'
 import {
@@ -171,8 +170,6 @@ export class Processor {
         return false
       })
       .map((day) => {
-        const token = data?.metadata?.tranches[day.trancheId]
-        if (!token) throw new Error('Token not found')
         return {
           type: 'investorTransactions',
           timestamp: day.timestamp.toISOString(),

@@ -178,4 +178,29 @@ describe('Reports', () => {
       expect(report4?.[0]?.timestamp.slice(0, 10)).to.equal('2024-06-30')
     })
   })
+  describe('profit and loss report', () => {
+    it('should fetch profit and loss report', async () => {
+      const pool = await centrifuge.pool('1615768079')
+      const report = await pool.reports.profitAndLoss({
+        from: '2024-11-02T22:11:29.776Z',
+        to: '2024-11-06T22:11:29.776Z',
+        groupBy: 'day',
+      })
+      expect(report.length).to.equal(4)
+    })
+  })
+  describe('investor transactions report', () => {
+    it('should fetch investor transactions report', async () => {
+      const anemoyPoolId = '4139607887'
+      const pool = await centrifuge.pool(anemoyPoolId)
+      const report = await pool.reports.investorTransactions({
+        from: '2024-01-16T22:11:29.776Z',
+        to: '2024-01-19T22:11:29.776Z',
+        groupBy: 'day',
+      })
+      expect(report.length).to.equal(5)
+      expect(report.find((day) => day.transactionType === 'INVEST_EXECUTION')).to.exist
+      expect(report.find((day) => day.transactionType === 'REDEEM_EXECUTION')).not.to.exist
+    })
+  })
 })

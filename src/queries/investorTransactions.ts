@@ -86,13 +86,10 @@ export const investorTransactionsPostProcess = (data: SubqueryInvestorTransactio
 }
 
 export const investorTransactionsQuery = `
-query($poolId: String!, $trancheId: String, $from: Datetime!, $to: Datetime!) {
+query($filter: InvestorTransactionFilter) {
     investorTransactions(
         orderBy: TIMESTAMP_ASC,
-        filter: {
-            poolId: { equalTo: $poolId },
-            timestamp: { greaterThan: $from, lessThan: $to },
-        }
+        filter: $filter
     ) {
         nodes {
             id
