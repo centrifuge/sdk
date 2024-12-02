@@ -1,0 +1,59 @@
+# Build, Test, and Report
+name: Build, Test, and Report
+
+on:
+  pull_request:
+    branches:
+      - main
+
+jobs:
+  build-n-test:
+    permissions:
+      id-token: write
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Enable Corepack
+        run: corepack enable
+
+      - name: Set Yarn version
+        run: yarn set version 4.5.0
+
+      - name: Install dependencies
+        run: yarn install --immutable
+
+      - name: Run Build
+        run: yarn build
+      
+      - name: Run tests
+        run: |
+          yarn test:ci
+          yarn test:coverage
+        env:
+          TENDERLY_ACCESS_KEY: ${{ secrets.TENDERLY_ACCESS_KEY }}
+          PROJECT_SLUG: ${{ secrets.PROJECT_SLUG }}
+          ACCOUNT_SLUG: ${{ secrets.ACCOUNT_SLUG }}
+          DEBUG: ${{ github.run_attempt > 1 }}
+
+      - name: Upload test results
+        if: success() || failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-results
+          path: |
+            report/
+          retention-days: 15
+
+      - name: Upload coverage to Codecov
+        uses: codecov/codecov-action@v5
+        with:
+          directory: ./coverage
+          token: ${{ secrets.CODECOV_TOKEN }}
+          # flags: unittests
+          name: sdk-coverage-with-nyc
+          fail_ci_if_error: true          
