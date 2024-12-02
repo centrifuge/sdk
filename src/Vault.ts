@@ -324,7 +324,7 @@ export class Vault extends Entity {
 
       if (investment.pendingInvestCurrency.isZero()) throw new Error('No order to cancel')
 
-      yield* doTransaction('Cancel Invest Order', publicClient, () =>
+      yield* doTransaction('Cancel invest order', publicClient, () =>
         walletClient.writeContract({
           address: centrifugeRouter,
           abi: ABI.CentrifugeRouter,
@@ -338,14 +338,14 @@ export class Vault extends Entity {
 
   /**
    * Place an order to redeem funds from the vault. If an order exists, it will increase the amount.
-   * @param shares - The amount of shares to redeem
+   * @param redeemAmount - The amount of shares to redeem
    */
-  increaseRedeemOrder(shares: NumberInput) {
+  increaseRedeemOrder(redeemAmount: NumberInput) {
     const self = this
     return this._transactSequence(async function* ({ walletClient, signingAddress, publicClient }) {
       const { centrifugeRouter } = lpConfig[self.chainId]!
       const [estimate, investment] = await Promise.all([self.network._estimate(), self.investment(signingAddress)])
-      const amount = toCurrency(shares, investment.shareCurrency.decimals)
+      const amount = toCurrency(redeemAmount, investment.shareCurrency.decimals)
 
       if (amount.gt(investment.shareBalance)) throw new Error('Insufficient balance')
       if (!amount.gt(0n)) throw new Error('Order amount must be greater than 0')
@@ -373,7 +373,7 @@ export class Vault extends Entity {
 
       if (investment.pendingRedeemShares.isZero()) throw new Error('No order to cancel')
 
-      yield* doTransaction('Cancel Redeem Order', publicClient, () =>
+      yield* doTransaction('Cancel redeem order', publicClient, () =>
         walletClient.writeContract({
           address: centrifugeRouter,
           abi: ABI.CentrifugeRouter,
@@ -388,13 +388,16 @@ export class Vault extends Entity {
   /**
    * Claim any outstanding fund shares after an investment has gone through, or funds after an redemption has gone through.
    * @param receiver - The address that should receive the funds. If not provided, the investor's address is used.
+   * @param controller - The address of the user that has invested. Allows someone else to claim on behalf of the user
+   *  if the user has set the CentrifugeRouter as an operator on the vault. If not provided, the investor's address is used.
    */
-  claim(receiver?: string) {
+  claim(receiver?: string, controller?: string) {
     const self = this
     return this._transactSequence(async function* ({ walletClient, signingAddress, publicClient }) {
       const { centrifugeRouter } = lpConfig[self.chainId]!
       const investment = await self.investment(signingAddress)
       const receiverAddress = receiver || signingAddress
+      const controllerAddress = controller || signingAddress
       const functionName = investment.claimableCancelInvestCurrency.gt(0n)
         ? 'claimCancelDepositRequest'
         : investment.claimableCancelRedeemShares.gt(0n)
@@ -412,7 +415,7 @@ export class Vault extends Entity {
           address: centrifugeRouter,
           abi: ABI.CentrifugeRouter,
           functionName,
-          args: [self.address, receiverAddress, signingAddress],
+          args: [self.address, receiverAddress, controllerAddress],
         })
       )
     })

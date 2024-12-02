@@ -308,7 +308,7 @@ export class PoolNetwork extends Entity {
         self.canTrancheBeDeployed(trancheId),
       ])
       if (!canTrancheBeDeployed) throw new Error('Pool is not active on this network')
-      yield* doTransaction('Deploy Tranche', publicClient, () =>
+      yield* doTransaction('Deploy tranche', publicClient, () =>
         walletClient.writeContract({
           address: poolManager,
           abi: ABI.PoolManager,
@@ -329,7 +329,7 @@ export class PoolNetwork extends Entity {
     return this._transactSequence(async function* ({ walletClient, publicClient }) {
       const [poolManager, trancheToken] = await Promise.all([self._poolManager(), self._share(trancheId)])
       if (!trancheToken) throw new Error('Pool is not active on this network')
-      yield* doTransaction('Deploy Vault', publicClient, () =>
+      yield* doTransaction('Deploy vault', publicClient, () =>
         walletClient.writeContract({
           address: poolManager,
           abi: ABI.PoolManager,
