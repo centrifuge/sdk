@@ -1,8 +1,9 @@
 [![Codecov](https://codecov.io/gh/centrifuge/sdk/graph/badge.svg?token=Q2yU8QfefP)](https://codecov.io/gh/centrifuge/sdk)
 [![Build CI status](https://github.com/centrifuge/sdk/actions/workflows/build-test-report.yml/badge.svg)](https://github.com/centrifuge/sdk/actions/workflows/build-test-report.yml)
-<!-- [![npm version](https://badge.fury.io/js/@centrifuge%2Fsdk.svg)](https://www.npmjs.com/package/@centrifuge/sdk) -->
-[![Latest Release](https://img.shields.io/github/v/release/centrifuge/sdk?sort=semver)](https://github.com/centrifuge/sdk/releases/latest)
 
+<!-- [![npm version](https://badge.fury.io/js/@centrifuge%2Fsdk.svg)](https://www.npmjs.com/package/@centrifuge/sdk) -->
+
+[![Latest Release](https://img.shields.io/github/v/release/centrifuge/sdk?sort=semver)](https://github.com/centrifuge/sdk/releases/latest)
 
 # Centrifuge JavaScript SDK
 
@@ -88,6 +89,35 @@ const subscription = pool.closeEpoch().subscribe(
 )
 ```
 
+## Reports
+
+Reports are generated from data from the Centrifuge API and are combined with pool metadata to provide a comprehensive view of the pool's financials.
+
+Available reports are:
+
+- `balanceSheet`
+- `profitAndLoss`
+- `cashflow`
+
+```ts
+const pool = await centrifuge.pool('<pool-id>')
+const balanceSheetReport = await pool.reports.balanceSheet()
+```
+
+### Report Filtering
+
+Reports can be filtered using the `ReportFilter` type.
+
+```ts
+type GroupBy = 'day' | 'month' | 'quarter' | 'year'
+
+const balanceSheetReport = await pool.reports.balanceSheet({
+  from: '2024-01-01',
+  to: '2024-01-31',
+  groupBy: 'month',
+})
+```
+
 ## Developer Docs
 
 ### Dev server
@@ -110,13 +140,10 @@ yarn test:single <path-to-file>
 yarn test:simple:single <path-to-file> # without setup file, faster and without tenderly setup
 ```
 
-### PR Naming Convention for Semantic Versioning
+### PR Naming Convention
 
-PR naming convention is used to determine the semantic version bump of the package. It is enforced by a GitHub action in each pull request.
+PR naming should follow the [Conventional Commits](https://www.conventionalcommits.org/en/v1.0.0/) specification.
 
-Version bumps:
+### Semantic Versioning
 
-- `major: breaking changes`
-- `minor: new features`
-- `patch: bug fixes`
-- `none: no version bump, no publish`
+PRs should be marked with the appropriate type: `major`, `minor`, `patch`, `no-release`.

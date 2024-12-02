@@ -120,11 +120,11 @@ export function poolSnapshotsPostProcess(data: SubqueryPoolSnapshot): PoolSnapsh
       const timestamp = state.timestamp.slice(0, 10)
       const poolCurrencyDecimals = state.pool.currency.decimals
       // point in time snapshot used to aggregate snapshots by day (there can be multiple snapshots per day)
-      const snapshotToday = snapshotByDay.get(timestamp)
+      const currentSnapshot = snapshotByDay.get(timestamp)
 
       const poolState = {
         id: state.id,
-        timestamp,
+        timestamp: state.timestamp,
         poolId: state.pool.id,
         poolCurrency: state.pool.currency,
         netAssetValue: new Currency(state.netAssetValue, poolCurrencyDecimals),
@@ -154,59 +154,59 @@ export function poolSnapshotsPostProcess(data: SubqueryPoolSnapshot): PoolSnapsh
         sumUnrealizedProfitByPeriod: new Currency(state.sumUnrealizedProfitByPeriod, poolCurrencyDecimals),
       }
 
-      if (snapshotToday) {
-        snapshotToday.sumPoolFeesChargedAmountByPeriod = snapshotToday.sumPoolFeesChargedAmountByPeriod.add(
+      if (currentSnapshot) {
+        currentSnapshot.sumPoolFeesChargedAmountByPeriod = currentSnapshot.sumPoolFeesChargedAmountByPeriod.add(
           poolState.sumPoolFeesChargedAmountByPeriod
         )
-        snapshotToday.sumPoolFeesAccruedAmountByPeriod = snapshotToday.sumPoolFeesAccruedAmountByPeriod.add(
+        currentSnapshot.sumPoolFeesAccruedAmountByPeriod = currentSnapshot.sumPoolFeesAccruedAmountByPeriod.add(
           poolState.sumPoolFeesAccruedAmountByPeriod
         )
-        snapshotToday.sumPoolFeesPaidAmountByPeriod = snapshotToday.sumPoolFeesPaidAmountByPeriod.add(
+        currentSnapshot.sumPoolFeesPaidAmountByPeriod = currentSnapshot.sumPoolFeesPaidAmountByPeriod.add(
           poolState.sumPoolFeesPaidAmountByPeriod
         )
-        snapshotToday.sumBorrowedAmountByPeriod = snapshotToday.sumBorrowedAmountByPeriod.add(
+        currentSnapshot.sumBorrowedAmountByPeriod = currentSnapshot.sumBorrowedAmountByPeriod.add(
           poolState.sumBorrowedAmountByPeriod
         )
-        snapshotToday.sumPrincipalRepaidAmountByPeriod = snapshotToday.sumPrincipalRepaidAmountByPeriod.add(
+        currentSnapshot.sumPrincipalRepaidAmountByPeriod = currentSnapshot.sumPrincipalRepaidAmountByPeriod.add(
           poolState.sumPrincipalRepaidAmountByPeriod
         )
-        snapshotToday.sumInterestRepaidAmountByPeriod = snapshotToday.sumInterestRepaidAmountByPeriod.add(
+        currentSnapshot.sumInterestRepaidAmountByPeriod = currentSnapshot.sumInterestRepaidAmountByPeriod.add(
           poolState.sumInterestRepaidAmountByPeriod
         )
-        snapshotToday.sumUnscheduledRepaidAmountByPeriod = snapshotToday.sumUnscheduledRepaidAmountByPeriod.add(
+        currentSnapshot.sumUnscheduledRepaidAmountByPeriod = currentSnapshot.sumUnscheduledRepaidAmountByPeriod.add(
           poolState.sumUnscheduledRepaidAmountByPeriod
         )
-        snapshotToday.sumRepaidAmountByPeriod = snapshotToday.sumRepaidAmountByPeriod.add(
+        currentSnapshot.sumRepaidAmountByPeriod = currentSnapshot.sumRepaidAmountByPeriod.add(
           poolState.sumRepaidAmountByPeriod
         )
-        snapshotToday.sumInvestedAmountByPeriod = snapshotToday.sumInvestedAmountByPeriod.add(
+        currentSnapshot.sumInvestedAmountByPeriod = currentSnapshot.sumInvestedAmountByPeriod.add(
           poolState.sumInvestedAmountByPeriod
         )
-        snapshotToday.sumRedeemedAmountByPeriod = snapshotToday.sumRedeemedAmountByPeriod.add(
+        currentSnapshot.sumRedeemedAmountByPeriod = currentSnapshot.sumRedeemedAmountByPeriod.add(
           poolState.sumRedeemedAmountByPeriod
         )
-        snapshotToday.sumDebtWrittenOffByPeriod = snapshotToday.sumDebtWrittenOffByPeriod.add(
+        currentSnapshot.sumDebtWrittenOffByPeriod = currentSnapshot.sumDebtWrittenOffByPeriod.add(
           poolState.sumDebtWrittenOffByPeriod
         )
-        snapshotToday.sumInterestAccruedByPeriod = snapshotToday.sumInterestAccruedByPeriod.add(
+        currentSnapshot.sumInterestAccruedByPeriod = currentSnapshot.sumInterestAccruedByPeriod.add(
           poolState.sumInterestAccruedByPeriod
         )
 
-        snapshotToday.sumRealizedProfitFifoByPeriod = snapshotToday.sumRealizedProfitFifoByPeriod.add(
+        currentSnapshot.sumRealizedProfitFifoByPeriod = currentSnapshot.sumRealizedProfitFifoByPeriod.add(
           poolState.sumRealizedProfitFifoByPeriod
         )
-        snapshotToday.sumUnrealizedProfitByPeriod = snapshotToday.sumUnrealizedProfitByPeriod.add(
+        currentSnapshot.sumUnrealizedProfitByPeriod = currentSnapshot.sumUnrealizedProfitByPeriod.add(
           poolState.sumUnrealizedProfitByPeriod
         )
 
         // Update point-in-time values with latest
-        snapshotToday.netAssetValue = poolState.netAssetValue
-        snapshotToday.totalReserve = poolState.totalReserve
-        snapshotToday.offchainCashValue = poolState.offchainCashValue
-        snapshotToday.portfolioValuation = poolState.portfolioValuation
-        snapshotToday.sumPoolFeesPendingAmount = poolState.sumPoolFeesPendingAmount
-        snapshotToday.sumUnrealizedProfitAtMarketPrice = poolState.sumUnrealizedProfitAtMarketPrice
-        snapshotToday.sumUnrealizedProfitAtNotional = poolState.sumUnrealizedProfitAtNotional
+        currentSnapshot.netAssetValue = poolState.netAssetValue
+        currentSnapshot.totalReserve = poolState.totalReserve
+        currentSnapshot.offchainCashValue = poolState.offchainCashValue
+        currentSnapshot.portfolioValuation = poolState.portfolioValuation
+        currentSnapshot.sumPoolFeesPendingAmount = poolState.sumPoolFeesPendingAmount
+        currentSnapshot.sumUnrealizedProfitAtMarketPrice = poolState.sumUnrealizedProfitAtMarketPrice
+        currentSnapshot.sumUnrealizedProfitAtNotional = poolState.sumUnrealizedProfitAtNotional
 
         return []
       }

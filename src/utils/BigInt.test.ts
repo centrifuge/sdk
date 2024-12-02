@@ -1,5 +1,6 @@
 import { expect } from 'chai'
-import { BigIntWrapper, Currency, Dec, DecimalWrapper, Price, Rate, Token } from './BigInt.js'
+import { BigIntWrapper, Currency, DecimalWrapper, Price, Rate, Token } from './BigInt.js'
+import { Dec } from './decimal.js'
 
 describe('utils/BigInt', () => {
   describe('BigIntWrapper', () => {

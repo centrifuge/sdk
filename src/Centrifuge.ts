@@ -46,6 +46,7 @@ export type Config = {
   environment: 'mainnet' | 'demo' | 'dev'
   rpcUrls?: Record<number | string, string>
   indexerUrl: string
+  ipfsUrl: string
 }
 
 export type UserProvidedConfig = Partial<Config>
@@ -54,6 +55,7 @@ type EnvConfig = {
   alchemyKey: string
   infuraKey: string
   defaultChain: number
+  ipfsUrl: string
 }
 type DerivedConfig = Config & EnvConfig
 
@@ -63,18 +65,21 @@ const envConfig = {
     alchemyKey: 'KNR-1LZhNqWOxZS2AN8AFeaiESBV10qZ',
     infuraKey: '8ed99a9a115349bbbc01dcf3a24edc96',
     defaultChain: 1,
+    ipfsUrl: 'https://centrifuge.mypinata.cloud',
   },
   demo: {
     indexerUrl: 'https://api.subquery.network/sq/centrifuge/pools-demo-multichain',
     alchemyKey: 'KNR-1LZhNqWOxZS2AN8AFeaiESBV10qZ',
     infuraKey: '8cd8e043ee8d4001b97a1c37e08fd9dd',
     defaultChain: 11155111,
+    ipfsUrl: 'https://centrifuge.mypinata.cloud',
   },
   dev: {
     indexerUrl: 'https://api.subquery.network/sq/centrifuge/pools-demo-multichain',
     alchemyKey: 'KNR-1LZhNqWOxZS2AN8AFeaiESBV10qZ',
     infuraKey: '8cd8e043ee8d4001b97a1c37e08fd9dd',
     defaultChain: 11155111,
+    ipfsUrl: 'https://centrifuge.mypinata.cloud',
   },
 } satisfies Record<string, EnvConfig>
 
@@ -129,8 +134,8 @@ export class Centrifuge {
       })
   }
 
-  pool(id: string) {
-    return this._query(null, () => of(new Pool(this, id)))
+  pool(id: string, metadataHash?: string) {
+    return this._query(null, () => of(new Pool(this, id, metadataHash)))
   }
 
   account(address: string, chainId?: number) {
@@ -304,6 +309,29 @@ export class Centrifuge {
         valueCacheTime: 120,
       }
     )
+  }
+
+  /**
+   * @internal
+   */
+  _getIPFSObservable<T = any>(hash: string) {
+    return fromFetch<T>(`${this.config.ipfsUrl}/ipfs/${hash}`, {
+      method: 'GET',
+      selector: async (res) => {
+        if (!res.ok) {
+          console.warn(`Failed to fetch IPFS data: ${res.statusText}`)
+        }
+        const data = await res.json()
+        return data as T
+      },
+    })
+  }
+
+  /**
+   * @internal
+   */
+  _queryIPFS<Result>(hash: string): Query<Result> {
+    return this._query([hash], () => this._getIPFSObservable(hash))
   }
 
   #memoized = new Map<string, any>()
