@@ -14,19 +14,10 @@
     "declarationMap": true,
     "noUncheckedIndexedAccess": true,
     "noImplicitOverride": true,
-    "lib": [
-      "es2023",
-      "dom",
-      "dom.iterable"
-    ],
+    "lib": ["es2023", "dom", "dom.iterable"],
     "outDir": "dist",
     "allowSyntheticDefaultImports": true
   },
-  "include": [
-    "src",
-    "src/**/*.d.ts"
-  ],
-  "exclude": [
-    "**/*.test.ts"
-  ]
+  "include": ["src", "src/**/*.d.ts"],
+  "exclude": ["**/*.test.ts"]
 }

@@ -30,7 +30,7 @@
   "function gateway() view returns (address)",
   "function getTranche(uint64 poolId, bytes16 trancheId) view returns (address)",
   "function getTranchePrice(uint64 poolId, bytes16 trancheId, address asset) view returns (uint128 price, uint64 computedAt)",
-  "function getVault(uint64 poolId, bytes16 trancheId, uint128 assetId) view returns (address)",
+  "function getVault_(uint64 poolId, bytes16 trancheId, uint128 assetId) view returns (address)",
   "function getVault(uint64 poolId, bytes16 trancheId, address asset) view returns (address)",
   "function getVaultAsset(address vault) view returns (address, bool)",
   "function handle(bytes message)",
