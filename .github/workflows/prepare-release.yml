@@ -25,21 +25,19 @@ jobs:
       - name: Get version bump type from labels
         id: bump
         run: |
-          labels=$(echo "${{ github.event.pull_request.labels[*].name }}" | tr ' ' '\n')
-          
           # Check for version type labels
-          if echo "$labels" | grep -q "^major$"; then
+          if ${{ contains(github.event.pull_request.labels.*.name, 'major') }}; then
             echo "type=major" >> $GITHUB_OUTPUT
-          elif echo "$labels" | grep -q "^minor$"; then
+          elif ${{ contains(github.event.pull_request.labels.*.name, 'minor') }}; then
             echo "type=minor" >> $GITHUB_OUTPUT
-          elif echo "$labels" | grep -q "^patch$"; then
+          elif ${{ contains(github.event.pull_request.labels.*.name, 'patch') }}; then
             echo "type=patch" >> $GITHUB_OUTPUT
           else
             echo "type=no-release" >> $GITHUB_OUTPUT
           fi
           
           # Check for alpha label
-          if echo "$labels" | grep -q "^alpha$"; then
+          if ${{ contains(github.event.pull_request.labels.*.name, 'alpha') }}; then
             echo "alpha=true" >> $GITHUB_OUTPUT
           else
             echo "alpha=false" >> $GITHUB_OUTPUT
@@ -93,6 +91,9 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           VERSION=$(node -p "require('./package.json').version")
+          if ${{ contains(github.event.pull_request.labels.*.name, 'alpha') }}; then
+            VERSION="${VERSION}-alpha"
+          fi
           gh release create "v${VERSION}" \
             --title "Release v${VERSION}" \
             --generate-notes \
