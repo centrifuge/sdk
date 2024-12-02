@@ -10,7 +10,13 @@ import { combineLatest } from 'rxjs'
 import { processor } from './Processor.js'
 
 import { map } from 'rxjs'
-import { BalanceSheetReport, CashflowReport, ProfitAndLossReport, ReportFilter } from './types.js'
+import {
+  BalanceSheetReport,
+  CashflowReport,
+  InvestorTransactionsReport,
+  ProfitAndLossReport,
+  ReportFilter,
+} from './types.js'
 import { Query } from '../types/query.js'
 import {
   PoolFeeSnapshotFilter,
@@ -18,8 +24,10 @@ import {
   poolFeeSnapshotsPostProcess,
 } from '../queries/poolFeeSnapshots.js'
 import { Pool } from '../Pool.js'
+import { investorTransactionsPostProcess } from '../queries/investorTransactions.js'
+import { InvestorTransactionFilter, investorTransactionsQuery } from '../queries/investorTransactions.js'
 
-type ReportType = 'balanceSheet' | 'cashflow' | 'profitAndLoss'
+type ReportType = 'balanceSheet' | 'cashflow' | 'profitAndLoss' | 'investorTransactions'
 
 export class Reports extends Entity {
   constructor(
@@ -41,6 +49,10 @@ export class Reports extends Entity {
     return this._generateReport<ProfitAndLossReport>('profitAndLoss', filter)
   }
 
+  investorTransactions(filter?: ReportFilter) {
+    return this._generateReport<InvestorTransactionsReport>('investorTransactions', filter)
+  }
+
   _generateReport<T>(type: ReportType, filter?: ReportFilter): Query<T[]> {
     return this._query(
       [type, filter?.from, filter?.to, filter?.groupBy],
@@ -54,17 +66,21 @@ export class Reports extends Entity {
 
         const metadata$ = this.pool.metadata()
 
-        const poolSnapshots$ = this.poolSnapshots({
+        const poolSnapshots$ = this.poolSnapshotsQuery({
           ...dateFilter,
           poolId: { equalTo: this.pool.id },
         })
-        const trancheSnapshots$ = this.trancheSnapshots({
+        const trancheSnapshots$ = this.trancheSnapshotsQuery({
           ...dateFilter,
           tranche: { poolId: { equalTo: this.pool.id } },
         })
-        const poolFeeSnapshots$ = this.poolFeeSnapshots({
+        const poolFeeSnapshots$ = this.poolFeeSnapshotsQuery({
           ...dateFilter,
           poolFeeId: { includes: this.pool.id },
+        })
+        const investorTransactions$ = this.investorTransactionsQuery({
+          ...dateFilter,
+          poolId: { equalTo: this.pool.id },
         })
 
         switch (type) {
@@ -89,6 +105,13 @@ export class Reports extends Entity {
                   processor.profitAndLoss({ poolSnapshots, poolFeeSnapshots, metadata }, filter) as T[]
               )
             )
+          case 'investorTransactions':
+            return combineLatest([investorTransactions$, metadata$]).pipe(
+              map(
+                ([investorTransactions, metadata]) =>
+                  processor.investorTransactions({ investorTransactions, metadata }, filter) as T[]
+              )
+            )
           default:
             throw new Error(`Unsupported report type: ${type}`)
         }
@@ -99,15 +122,19 @@ export class Reports extends Entity {
     )
   }
 
-  poolFeeSnapshots(filter?: PoolFeeSnapshotFilter) {
+  poolFeeSnapshotsQuery(filter?: PoolFeeSnapshotFilter) {
     return this._root._queryIndexer(poolFeeSnapshotQuery, { filter }, poolFeeSnapshotsPostProcess)
   }
 
-  poolSnapshots(filter?: PoolSnapshotFilter) {
+  poolSnapshotsQuery(filter?: PoolSnapshotFilter) {
     return this._root._queryIndexer(poolSnapshotsQuery, { filter }, poolSnapshotsPostProcess)
   }
 
-  trancheSnapshots(filter?: TrancheSnapshotFilter) {
+  trancheSnapshotsQuery(filter?: TrancheSnapshotFilter) {
     return this._root._queryIndexer(trancheSnapshotsQuery, { filter }, trancheSnapshotsPostProcess)
+  }
+
+  investorTransactionsQuery(filter?: InvestorTransactionFilter) {
+    return this._root._queryIndexer(investorTransactionsQuery, { filter }, investorTransactionsPostProcess)
   }
 }
