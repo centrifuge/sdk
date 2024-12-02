@@ -1,4 +1,4 @@
-import type { MonoTypeOperatorFunction, Observable } from 'rxjs'
+import type { MonoTypeOperatorFunction, Observable, Subscriber, Subscription } from 'rxjs'
 import { filter, firstValueFrom, lastValueFrom, repeat, ReplaySubject, share, Subject, timer } from 'rxjs'
 import type { Abi, Log } from 'viem'
 import type { Centrifuge } from '../Centrifuge.js'
@@ -12,7 +12,7 @@ export function shareReplayWithDelayedReset<T>(config?: {
   const { bufferSize = Infinity, windowTime = Infinity, resetDelay = 1000 } = config ?? {}
   const reset = resetDelay === 0 ? true : isFinite(resetDelay) ? () => timer(resetDelay) : false
   return share<T>({
-    connector: () => (bufferSize === 0 ? new Subject() : new ReplaySubject(bufferSize, windowTime)),
+    connector: () => (bufferSize === 0 ? new Subject() : new ExpiringReplaySubject(bufferSize, windowTime)),
     resetOnError: true,
     resetOnComplete: false,
     resetOnRefCountZero: reset,
@@ -49,4 +49,21 @@ export function makeThenable<T>($query: Observable<T>, exhaust = false) {
     },
   })
   return thenableQuery
+}
+
+// A ReplaySubject that completes when an existing buffer is expired
+class ExpiringReplaySubject<T> extends ReplaySubject<T> {
+  // @ts-expect-error
+  protected override _subscribe(subscriber: Subscriber<T>): Subscription {
+    // @ts-expect-error
+    const { _buffer } = this
+    const length = _buffer.length
+    // @ts-expect-error
+    const subscription = super._subscribe(subscriber)
+
+    if (length && _buffer.length === 0) {
+      this.complete()
+    }
+    return subscription
+  }
 }

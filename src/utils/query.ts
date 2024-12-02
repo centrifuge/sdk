@@ -8,8 +8,12 @@ export function hashKey(key: any[]): string {
             result[key] = val[key]
             return result
           }, {} as any)
-      : val
+      : jsonFormatter(val)
   )
+}
+
+function jsonFormatter(nestedValue: any) {
+  return typeof nestedValue === 'bigint' ? nestedValue.toString() : nestedValue
 }
 
 function isObject(o: any) {
@@ -35,17 +39,4 @@ function isPlainObject(o: any) {
 
   // Most likely a plain Object
   return true
-}
-
-export function serializeForCache(value: any): any {
-  if (typeof value === 'bigint') {
-    return value.toString()
-  }
-  if (Array.isArray(value)) {
-    return value.map((v) => serializeForCache(v))
-  }
-  if (typeof value === 'object' && value !== null) {
-    return Object.fromEntries(Object.entries(value).map(([k, v]) => [k, serializeForCache(v)]))
-  }
-  return value
 }

@@ -9,5 +9,6 @@
   "function decimals() view returns (uint8)",
   "function name() view returns (string)",
   "function symbol() view returns (string)",
-  "function checkTransferRestriction(address, address, uint) view returns (bool)"
+  "function checkTransferRestriction(address, address, uint) view returns (bool)",
+  "function hook() view returns (address)"
 ]
