@@ -18,8 +18,10 @@ import {
   poolFeeSnapshotsPostProcess,
 } from '../queries/poolFeeSnapshots.js'
 import { Pool } from '../Pool.js'
+import { investorTransactionsPostProcess } from '../queries/investorTransactions.js'
+import { InvestorTransactionFilter, investorTransactionsQuery } from '../queries/investorTransactions.js'
 
-type ReportType = 'balanceSheet' | 'cashflow' | 'profitAndLoss'
+type ReportType = 'balanceSheet' | 'cashflow' | 'profitAndLoss' | 'investorTransactions'
 
 export class Reports extends Entity {
   constructor(
@@ -62,6 +64,10 @@ export class Reports extends Entity {
           ...dateFilter,
           poolFeeId: { includes: this.pool.id },
         })
+        const investorTransactions$ = this.investorTransactions({
+          ...dateFilter,
+          poolId: { equalTo: this.pool.id },
+        })
 
         switch (type) {
           case 'balanceSheet':
@@ -85,6 +91,13 @@ export class Reports extends Entity {
                   processor.profitAndLoss({ poolSnapshots, poolFeeSnapshots, metadata }, filter) as T[]
               )
             )
+          case 'investorTransactions':
+            return combineLatest([investorTransactions$, metadata$]).pipe(
+              map(
+                ([investorTransactions, metadata]) =>
+                  processor.investorTransactions({ investorTransactions, metadata }, filter) as T[]
+              )
+            )
           default:
             throw new Error(`Unsupported report type: ${type}`)
         }
@@ -105,5 +118,9 @@ export class Reports extends Entity {
 
   trancheSnapshots(filter?: TrancheSnapshotFilter) {
     return this._root._queryIndexer(trancheSnapshotsQuery, { filter }, trancheSnapshotsPostProcess)
+  }
+
+  investorTransactions(filter?: InvestorTransactionFilter) {
+    return this._root._queryIndexer(investorTransactionsQuery, { filter }, investorTransactionsPostProcess)
   }
 }

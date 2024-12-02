@@ -1,3 +1,4 @@
+import { SubqueryInvestorTransactionType } from '../queries/investorTransactions.js'
 import { Currency } from '../utils/BigInt.js'
 import { groupByPeriod } from '../utils/date.js'
 import {
@@ -8,6 +9,8 @@ import {
   ProfitAndLossReport,
   ProfitAndLossData,
   ReportFilter,
+  InvestorTransactionsData,
+  InvestorTransactionsReport,
 } from './types.js'
 
 export class Processor {
@@ -137,6 +140,53 @@ export class Processor {
       } as ProfitAndLossReport
     })
     return this.applyGrouping<ProfitAndLossReport>(items, filter?.groupBy, 'sum')
+  }
+
+  investorTransactions(data: InvestorTransactionsData, filter?: ReportFilter): InvestorTransactionsReport[] {
+    return data.investorTransactions
+      .filter((day) => {
+        if (
+          day.type === 'INVEST_ORDER_UPDATE' ||
+          day.type === 'REDEEM_ORDER_UPDATE' ||
+          day.type === 'INVEST_ORDER_CANCEL' ||
+          day.type === 'REDEEM_ORDER_CANCEL'
+        ) {
+          return true
+        }
+
+        if (day.type === 'INVEST_EXECUTION' || day.type === 'REDEEM_EXECUTION') {
+          return true
+        }
+        if (
+          day.type === 'INVEST_COLLECT' ||
+          day.type === 'REDEEM_COLLECT' ||
+          day.type === 'INVEST_LP_COLLECT' ||
+          day.type === 'REDEEM_LP_COLLECT' ||
+          day.type === 'TRANSFER_IN' ||
+          day.type === 'TRANSFER_OUT'
+        ) {
+          return true
+        }
+
+        return false
+      })
+      .map((day) => {
+        const token = data?.metadata?.tranches[day.trancheId]
+        if (!token) throw new Error('Token not found')
+        return {
+          type: 'investorTransactions',
+          timestamp: day.timestamp.toISOString(),
+          chainId: day.chainId,
+          account: day.evmAddress ?? day.accountId,
+          epoch: day.epochNumber ? day.epochNumber.toString() : '',
+          transactionType: day.type,
+          currencyAmount: day.currencyAmount,
+          trancheTokenAmount: day.tokenAmount,
+          trancheTokenName: '', // TODO: add tranche name
+          price: day.tokenPrice ?? '',
+          transactionHash: day.hash,
+        } as InvestorTransactionsReport
+      })
   }
 
   /**

@@ -1,3 +1,4 @@
+import { InvestorTransaction, SubqueryInvestorTransactionType } from '../queries/investorTransactions.js'
 import { PoolFeeSnapshotsByDate } from '../queries/poolFeeSnapshots.js'
 import { PoolSnapshot } from '../queries/poolSnapshots.js'
 import { TrancheSnapshotsByDate } from '../queries/trancheSnapshots.js'
@@ -98,4 +99,23 @@ export type ProfitAndLossData = {
   poolSnapshots: PoolSnapshot[]
   poolFeeSnapshots: PoolFeeSnapshotsByDate
   metadata: PoolMetadata | undefined
+}
+
+export type InvestorTransactionsData = {
+  investorTransactions: InvestorTransaction[]
+  metadata: PoolMetadata | undefined
+}
+
+export type InvestorTransactionsReport = {
+  type: 'investorTransactions'
+  timestamp: string
+  chainId: number
+  account: string
+  epoch: string
+  transactionType: SubqueryInvestorTransactionType
+  currencyAmount: Currency
+  trancheTokenName: string
+  trancheTokenAmount: Currency
+  price: Price
+  transactionHash: string
 }
