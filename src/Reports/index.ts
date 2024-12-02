@@ -19,7 +19,7 @@ import {
 } from '../queries/poolFeeSnapshots.js'
 import { Pool } from '../Pool.js'
 
-type ReportType = 'balanceSheet' | 'cashflow'
+type ReportType = 'balanceSheet' | 'cashflow' | 'profitAndLoss'
 
 export class Reports extends Entity {
   constructor(
@@ -76,6 +76,13 @@ export class Reports extends Entity {
               map(
                 ([poolSnapshots, poolFeeSnapshots, metadata]) =>
                   processor.cashflow({ poolSnapshots, poolFeeSnapshots, metadata }, filter) as T[]
+              )
+            )
+          case 'profitAndLoss':
+            return combineLatest([poolSnapshots$, poolFeeSnapshots$, metadata$]).pipe(
+              map(
+                ([poolSnapshots, poolFeeSnapshots, metadata]) =>
+                  processor.profitAndLoss({ poolSnapshots, poolFeeSnapshots, metadata }, filter) as T[]
               )
             )
           default:
