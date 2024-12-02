@@ -88,9 +88,9 @@ Reports are generated from data from the Centrifuge API and are combined with po
 
 Available reports are:
 
-- `profitAndLoss`
 - `balanceSheet`
 - `profitAndLoss`
+- `cashflow`
 
 ```ts
 const pool = await centrifuge.pool('<pool-id>')
