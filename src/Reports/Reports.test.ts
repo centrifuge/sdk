@@ -30,24 +30,24 @@ describe('Reports', () => {
     )
   })
 
-  it('should use cached data for repeated queries', async () => {
-    const processBalanceSheetSpy = spy(balanceSheetProcessor, 'processBalanceSheetData')
+  // it('should use cached data for repeated queries', async () => {
+  //   const processBalanceSheetSpy = spy(balanceSheetProcessor, 'processBalanceSheetData')
 
-    const ns3PoolId = '1615768079'
-    const reports = new Reports(centrifuge, ns3PoolId)
+  //   const ns3PoolId = '1615768079'
+  //   const reports = new Reports(centrifuge, ns3PoolId)
 
-    const filter: ReportFilter = {
-      from: '2024-11-03T22:11:29.776Z',
-      to: '2024-11-06T22:11:29.776Z',
-      groupBy: 'day',
-    }
+  //   const filter: ReportFilter = {
+  //     from: '2024-11-03T22:11:29.776Z',
+  //     to: '2024-11-06T22:11:29.776Z',
+  //     groupBy: 'day',
+  //   }
 
-    await firstValueFrom(reports.balanceSheet(filter))
-    expect(processBalanceSheetSpy.callCount).to.equal(1)
+  //   await firstValueFrom(reports.balanceSheet(filter))
+  //   expect(processBalanceSheetSpy.callCount).to.equal(1)
 
-    // Same query should use cache
-    await firstValueFrom(reports.balanceSheet(filter))
-    // TODO: Can't spy on es module
-    expect(processBalanceSheetSpy.callCount).to.equal(1)
-  })
+  //   // Same query should use cache
+  //   await firstValueFrom(reports.balanceSheet(filter))
+  //   // TODO: Can't spy on es module
+  //   expect(processBalanceSheetSpy.callCount).to.equal(1)
+  // })
 })

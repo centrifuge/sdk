@@ -1,0 +1,101 @@
+name: Release and Versioning
+on:
+  pull_request:
+    types: [closed]
+    branches:
+      - main
+
+jobs:
+  get_version:
+    if: github.event.pull_request.merged == true
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Enable Corepack
+        run: corepack enable
+
+      - name: Set Yarn version
+        run: yarn set version 4.5.0
+
+      - name: Get version bump type from labels
+        id: bump
+        run: |
+          # Check for version type labels
+          if ${{ contains(github.event.pull_request.labels.*.name, 'major') }}; then
+            echo "type=major" >> $GITHUB_OUTPUT
+          elif ${{ contains(github.event.pull_request.labels.*.name, 'minor') }}; then
+            echo "type=minor" >> $GITHUB_OUTPUT
+          elif ${{ contains(github.event.pull_request.labels.*.name, 'patch') }}; then
+            echo "type=patch" >> $GITHUB_OUTPUT
+          else
+            echo "type=no-release" >> $GITHUB_OUTPUT
+          fi
+          
+          # Check for alpha label
+          if ${{ contains(github.event.pull_request.labels.*.name, 'alpha') }}; then
+            echo "alpha=true" >> $GITHUB_OUTPUT
+          else
+            echo "alpha=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Exit if no version bump
+        id: cancel
+        if: steps.bump.outputs.type == 'no-release'
+        run: |
+          echo "No version bump required. Exiting successfully."
+          exit 0
+        continue-on-error: true
+
+      - name: Configure Git
+        if: steps.cancel.outcome == 'success'
+        run: |
+          git config --global user.name 'GitHub Action'
+          git config --global user.email 'actionsbot@github.com'
+
+      - name: Bump version
+        if: steps.cancel.outcome == 'success'
+        run: |
+          if [ "${{ steps.bump.outputs.alpha }}" == "true" ]; then
+            yarn version --${{ steps.bump.outputs.type }} --preid alpha
+          else
+            yarn version --${{ steps.bump.outputs.type }}
+          fi
+
+      - name: Push changes
+        if: steps.cancel.outcome == 'success'
+        run: |
+          git push
+          git push --tags
+    outputs:
+      type: ${{ steps.bump.outputs.type }}
+      alpha: ${{ steps.bump.outputs.alpha }}
+      
+  create-release:
+    needs: get_version
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    if: needs.get_version.outputs.type != 'no-release'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+      
+      - name: Create GitHub Release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          VERSION=$(node -p "require('./package.json').version")
+          if ${{ contains(github.event.pull_request.labels.*.name, 'alpha') }}; then
+            VERSION="${VERSION}-alpha"
+          fi
+          gh release create "v${VERSION}" \
+            --title "Release v${VERSION}" \
+            --generate-notes \
+            --prerelease \
+            --draft

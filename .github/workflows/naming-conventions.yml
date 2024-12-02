@@ -1,0 +1,116 @@
+name: PR Title and Label Check
+on:
+  pull_request:
+    types: [opened, reopened, edited, labeled, unlabeled, synchronize]
+jobs:
+  title-n-label-check:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Check PR Title follows conventional commit naming
+        id: check-pr-naming
+        uses: amannn/action-semantic-pull-request@v5
+        continue-on-error: true
+        with:
+          # https://www.conventionalcommits.org/en/v1.0.0/
+          ignoreLabels: |
+            skip-ci
+          requireScope: false
+          wip: true
+          validateSingleCommit: false
+
+      - uses: docker://agilepathway/pull-request-label-checker:v1.6.56
+        # https://github.com/agilepathway/label-checker
+        id: check-pr-labels
+        with:
+          one_of: major,minor,patch,no-release
+          repo_token: ${{ secrets.GITHUB_TOKEN }}
+
+    outputs:
+      labels_valid: ${{ steps.check-pr-labels.outputs.label_check }} # 'success' or 'failure'
+      title_error: ${{ steps.check-pr-naming.outputs.error_message }} # null or error message
+
+
+  handle-comments:
+    runs-on: ubuntu-latest
+    needs: title-n-label-check
+    permissions:
+      pull-requests: write
+      contents: read
+    steps:
+      - name: Debug outputs from title-n-label-check
+        run: |
+          echo "Title Error: ${{ needs.title-n-label-check.outputs.title_error }}"
+          echo "Labels Valid: ${{ needs.title-n-label-check.outputs.labels_valid }}"
+
+      - name: Find existing PR title error comment
+        uses: peter-evans/find-comment@v2
+        id: find-title-comment
+        with:
+          issue-number: ${{ github.event.pull_request.number }}
+          comment-author: 'github-actions[bot]'
+          body-includes: We require pull request titles to follow
+
+      - name: Find existing PR label error comment
+        uses: peter-evans/find-comment@v2
+        id: find-label-comment
+        with:
+          issue-number: ${{ github.event.pull_request.number }}
+          comment-author: 'github-actions[bot]'
+          body-includes: PR must have at least one of the following labels
+
+      - name: Add PR naming error comment
+        id: pr-title-error
+        uses: peter-evans/create-or-update-comment@v2
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          repository: ${{ github.repository }}
+          issue-number: ${{ github.event.pull_request.number }}
+          comment-id: ${{ steps.find-title-comment.outputs.comment-id }}
+          body: |
+            Hey there and thank you for opening this pull request! 👋🏼
+            
+            We require pull request titles to follow the [Conventional Commits specification](https://www.conventionalcommits.org/en/v1.0.0/) and it looks like your proposed title needs to be adjusted.
+
+            Details:
+            
+            ```
+            ${{ needs.title-n-label-check.outputs.title_error }}
+          edit-mode: replace
+        if: needs.title-n-label-check.outputs.title_error != null
+
+      - name: Remove title error comment
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          COMMENT_ID: ${{ steps.find-title-comment.outputs.comment-id }}
+        run: |
+          curl -X DELETE \
+            -H "Authorization: token $GITHUB_TOKEN" \
+            -H "Accept: application/vnd.github.v3+json" \
+            https://api.github.com/repos/${{ github.repository }}/issues/comments/$COMMENT_ID
+        if: needs.title-n-label-check.outputs.title_error == null        
+
+      - name: Add PR label error comment
+        id: pr-label-error
+        uses: peter-evans/create-or-update-comment@v2
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          repository: ${{ github.repository }}
+          issue-number: ${{ github.event.pull_request.number }}
+          comment-id: ${{ steps.find-label-comment.outputs.comment-id }}
+          body: |
+            PR must have at least one of the following labels: major, minor, patch.
+          edit-mode: replace
+        if: needs.title-n-label-check.outputs.labels_valid != 'success'
+
+      - name: Remove label error comment
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          COMMENT_ID: ${{ steps.find-label-comment.outputs.comment-id }}
+        run: |
+          curl -X DELETE \
+            -H "Authorization: token $GITHUB_TOKEN" \
+            -H "Accept: application/vnd.github.v3+json" \
+            https://api.github.com/repos/${{ github.repository }}/issues/comments/$COMMENT_ID
+        if: needs.title-n-label-check.outputs.labels_valid == 'success'
