@@ -24,7 +24,7 @@ jobs:
           echo "Current commit: $(git rev-parse HEAD)"
           git log --oneline -5          
           
-      - uses: actions/setup-node@39370e3 #@v4
+      - uses: actions/setup-node@39370e3970a6d050c480ffad4ff0ed4d3fdee5af #@v4
         with:
           node-version: '20'
 
