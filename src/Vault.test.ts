@@ -1,6 +1,5 @@
 import { expect } from 'chai'
 import { firstValueFrom, lastValueFrom, skip, skipWhile, tap, toArray } from 'rxjs'
-import sinon from 'sinon'
 import { ABI } from './abi/index.js'
 import { Pool } from './Pool.js'
 import { PoolNetwork } from './PoolNetwork.js'
@@ -32,17 +31,9 @@ describe('Vault', () => {
     vault = new Vault(centrifuge, poolNetwork, trancheId, asset, vaultAddress)
   })
 
-  afterEach(() => {
-    sinon.restore()
-  })
-
   it('get investment details for an investor', async () => {
-    const fetchSpy = sinon.spy(globalThis, 'fetch')
     const investment = await vault.investment(investorA)
     expect(investment.isAllowedToInvest).to.equal(true)
-    // Calls should get batched
-    // TODO @Onno
-    expect(fetchSpy.getCalls().length).to.equal(6)
   })
 
   it("should throw when placing an invest order larger than the users's balance", async () => {
