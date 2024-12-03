@@ -16,7 +16,8 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: ${{ github.event.pull_request.head.ref }}          
+          ref: ${{${{ github.ref_name }} }}          
+          fetch-depth: 0 # https://yarnpkg.com/features/release-workflow#caveat
 
       - name: Show current branch
         run: |
