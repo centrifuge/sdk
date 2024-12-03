@@ -17,11 +17,7 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           # https://www.conventionalcommits.org/en/v1.0.0/
-          ignoreLabels: |
-            skip-ci
           requireScope: false
-          wip: true
-          validateSingleCommit: false
 
       - uses: docker://agilepathway/pull-request-label-checker:v1.6.56
         # continue-on-error: true
