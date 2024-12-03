@@ -10,6 +10,9 @@ on:
 jobs:
   get_version:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write # Highly security sensitive. Do NOT add third party actions in this job
+      pull-requests: read
     steps:
       - uses: actions/checkout@v4
         with:
@@ -21,7 +24,7 @@ jobs:
           echo "Current commit: $(git rev-parse HEAD)"
           git log --oneline -5          
           
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@39370e3 #@v4
         with:
           node-version: '20'
 
@@ -59,12 +62,6 @@ jobs:
         run: |
           echo "::warning::No version bump required. Skipping release steps."
 
-      - name: Configure Git
-        if: steps.bump.outputs.type != 'no-release'
-        run: |
-          git config --global user.name 'GitHub Action'
-          git config --global user.email 'actionsbot@github.com'
-
       - name: Toggle Alpha
         if: steps.bump.outputs.type != 'no-release'
         run: |
@@ -81,24 +78,16 @@ jobs:
       - name: Push changes
         if: steps.bump.outputs.type != 'no-release'
         run: |
+          git config --global user.name 'GitHub Action'
+          git config --global user.email 'actionsbot@github.com'
+          VERSION=$(node -p "require('./package.json').version")
+          git add .
+          git commit -am "Bump version to ${VERSION}"
           git push
           git push --tags
-    outputs:
-      type: ${{ steps.bump.outputs.type }}
-      alpha: ${{ steps.bump.outputs.alpha }}
-      
-  create-release:
-    needs: get_version
-    runs-on: ubuntu-latest
-    permissions:
-      contents: write
-    if: needs.get_version.outputs.type != 'no-release'
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          ref: main
       
       - name: Create GitHub Release
+        if: steps.bump.outputs.type != 'no-release'
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
