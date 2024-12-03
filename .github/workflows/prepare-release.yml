@@ -61,9 +61,9 @@ jobs:
         if: steps.bump.outputs.type != 'no-release'
         run: |
           if [ "${{ steps.bump.outputs.alpha }}" == "true" ]; then
-            ./toggle-alpha.sh yes
+            ./.github/ci-scripts/toggle-alpha.sh yes
           else
-            ./toggle-alpha.sh #remove alpha if present
+            ./.github/ci-scripts/toggle-alpha.sh #remove alpha if present
           fi
 
       - name: Bump version
