@@ -12,7 +12,7 @@ jobs:
       - name: Check PR Title follows conventional commit naming
         id: check-pr-naming
         uses: amannn/action-semantic-pull-request@v5
-        continue-on-error: true
+        # continue-on-error: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
@@ -24,7 +24,7 @@ jobs:
           validateSingleCommit: false
 
       - uses: docker://agilepathway/pull-request-label-checker:v1.6.56
-        continue-on-error: true
+        # continue-on-error: true
         # https://github.com/agilepathway/label-checker
         id: check-pr-labels
         with:
@@ -38,6 +38,7 @@ jobs:
 
   handle-comments:
     runs-on: ubuntu-latest
+    if: always()
     needs: title-n-label-check
     permissions:
       pull-requests: write
