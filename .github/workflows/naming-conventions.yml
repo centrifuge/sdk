@@ -60,7 +60,7 @@ jobs:
         with:
           issue-number: ${{ github.event.pull_request.number }}
           comment-author: 'github-actions[bot]'
-          body-includes: PR must have at least one of the following labels
+          body-includes: PR must have ONLY one of the following labels
 
       - name: Add PR naming error comment
         id: pr-title-error
@@ -102,7 +102,7 @@ jobs:
           issue-number: ${{ github.event.pull_request.number }}
           comment-id: ${{ steps.find-label-comment.outputs.comment-id }}
           body: |
-            PR must have at least one of the following labels: major, minor, patch.
+            PR must have ONLY one of the following labels: major, minor, patch, no-release, alpha.
           edit-mode: replace
         if: needs.title-n-label-check.outputs.labels_valid != 'success'
 
