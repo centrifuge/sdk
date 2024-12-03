@@ -15,6 +15,7 @@ describe('Centrifuge', () => {
 
   afterEach(() => {
     clock.restore()
+    sinon.restore()
   })
 
   it('should be connected to sepolia', async () => {
@@ -212,6 +213,16 @@ describe('Centrifuge', () => {
       expect(value2).to.equal('2-A')
       expect(lastValue).to.equal('2-A')
       subscription1.unsubscribe()
+    })
+
+    it('should batch calls', async () => {
+      const fetchSpy = sinon.spy(globalThis, 'fetch')
+      const centrifuge = new Centrifuge({ environment: 'demo' })
+      const tUSD = '0x8503b4452Bf6238cC76CdbEE223b46d7196b1c93'
+      const user = '0x423420Ae467df6e90291fd0252c0A8a637C1e03f'
+      await centrifuge.balance(tUSD, user)
+      // One call to get the metadata, one to get the balance, and one to poll events
+      expect(fetchSpy.getCalls().length).to.equal(3)
     })
   })
 
