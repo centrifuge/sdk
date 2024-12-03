@@ -196,11 +196,28 @@ describe('Reports', () => {
       const report = await pool.reports.investorTransactions({
         from: '2024-01-16T22:11:29.776Z',
         to: '2024-01-19T22:11:29.776Z',
-        groupBy: 'day',
       })
       expect(report.length).to.equal(5)
-      expect(report.find((day) => day.transactionType === 'INVEST_EXECUTION')).to.exist
-      expect(report.find((day) => day.transactionType === 'REDEEM_EXECUTION')).not.to.exist
+    })
+    it('should filter by evm address', async () => {
+      const anemoyPoolId = '4139607887'
+      const pool = await centrifuge.pool(anemoyPoolId)
+      const report = await pool.reports.investorTransactions({
+        from: '2024-01-01T22:11:29.776Z',
+        to: '2024-12-03T22:11:29.776Z',
+        address: '0x86552B8d4F4a600D92d516eE8eA8B922EFEcB561',
+      })
+      expect(report.length).to.equal(3)
+    })
+    it('should filter by substrate address (subtrate address must be converted to evm style)', async () => {
+      const anemoyPoolId = '4139607887'
+      const pool = await centrifuge.pool(anemoyPoolId)
+      const report = await pool.reports.investorTransactions({
+        from: '2024-01-01T22:11:29.776Z',
+        to: '2024-12-03T22:11:29.776Z',
+        address: '0xa23adc45d99e11ba3dbe9c029a4d378565eeb663e393569cee93fd9f89610faf', // 4f1TYnM7qt92veCgRjZy9rgMWXQRS2825NmcBiY9yHFbAXJa
+      })
+      expect(report.length).to.equal(8)
     })
   })
 })

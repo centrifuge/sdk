@@ -19,6 +19,7 @@ import {
   Report,
   DataReport,
   DataReportFilter,
+  InvestorTransactionsReportFilter,
 } from './types.js'
 import { Query } from '../types/query.js'
 import {
@@ -50,7 +51,8 @@ export class Reports extends Entity {
     return this._generateReport<ProfitAndLossReport>('profitAndLoss', filter)
   }
 
-  investorTransactions(filter?: DataReportFilter) {
+  investorTransactions(filter?: InvestorTransactionsReportFilter) {
+    console.log('🚀 ~ it filter:', filter)
     return this._generateReport<InvestorTransactionsReport>('investorTransactions', filter)
   }
 
@@ -63,7 +65,16 @@ export class Reports extends Entity {
   _generateReport<T>(type: DataReport, filter?: DataReportFilter): Query<T[]>
   _generateReport<T>(type: string, filter?: Record<string, any>) {
     return this._query(
-      [type, filter?.from, filter?.to, filter?.groupBy],
+      [
+        type,
+        filter?.from,
+        filter?.to,
+        filter?.groupBy,
+        filter?.address,
+        filter?.network,
+        filter?.tokenId,
+        filter?.transactionType,
+      ],
       () => {
         const dateFilter = {
           timestamp: {
@@ -117,7 +128,7 @@ export class Reports extends Entity {
             return combineLatest([investorTransactions$, metadata$]).pipe(
               map(
                 ([investorTransactions, metadata]) =>
-                  processor.investorTransactions({ investorTransactions, metadata }) as T[]
+                  processor.investorTransactions({ investorTransactions, metadata }, filter) as T[]
               )
             )
           default:
