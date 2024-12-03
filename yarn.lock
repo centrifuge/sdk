@@ -194,6 +194,7 @@ __metadata:
   version: 0.0.0-use.local
   resolution: "@centrifuge/sdk@workspace:."
   dependencies:
+    "@istanbuljs/nyc-config-typescript": "npm:^1.0.2"
     "@types/chai": "npm:^5.0.0"
     "@types/mocha": "npm:^10.0.9"
     "@types/node": "npm:^22.7.8"
@@ -372,6 +373,17 @@ __metadata:
     js-yaml: "npm:^3.13.1"
     resolve-from: "npm:^5.0.0"
   checksum: 10c0/dd2a8b094887da5a1a2339543a4933d06db2e63cbbc2e288eb6431bd832065df0c099d091b6a67436e71b7d6bf85f01ce7c15f9253b4cbebcc3b9a496165ba42
+  languageName: node
+  linkType: hard
+
+"@istanbuljs/nyc-config-typescript@npm:^1.0.2":
+  version: 1.0.2
+  resolution: "@istanbuljs/nyc-config-typescript@npm:1.0.2"
+  dependencies:
+    "@istanbuljs/schema": "npm:^0.1.2"
+  peerDependencies:
+    nyc: ">=15"
+  checksum: 10c0/0a8ba7e46046e263cdb4d2a91c5e843de0d7b46a7cd613ca164e6d7bf120c43e9209922b9ab3b816331d3703da66f8986cbd90639c2c558ce649bbe15ecb029a
   languageName: node
   linkType: hard
 
