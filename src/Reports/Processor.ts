@@ -146,72 +146,65 @@ export class Processor {
     data: InvestorTransactionsData,
     filter?: InvestorTransactionsReportFilter
   ): InvestorTransactionsReport[] {
-    const items = data.investorTransactions
+    if (!data.investorTransactions?.length) return []
+
+    const validTypes = new Set([
+      'INVEST_ORDER_UPDATE',
+      'REDEEM_ORDER_UPDATE',
+      'INVEST_ORDER_CANCEL',
+      'REDEEM_ORDER_CANCEL',
+      'INVEST_EXECUTION',
+      'REDEEM_EXECUTION',
+      'INVEST_COLLECT',
+      'REDEEM_COLLECT',
+      'INVEST_LP_COLLECT',
+      'REDEEM_LP_COLLECT',
+      'TRANSFER_IN',
+      'TRANSFER_OUT',
+    ])
+
+    const filterAddress = filter?.address?.toLowerCase()
+    const filterNetwork = filter?.network === 'all' ? null : filter?.network
+
+    return data.investorTransactions
       .filter((day) => {
+        // Type check
+        if (filter?.transactionType === 'orders') {
+          return day.type.includes('ORDER')
+        }
+        if (filter?.transactionType === 'executions') {
+          return day.type.includes('EXECUTION')
+        }
+        if (filter?.transactionType === 'transfers') {
+          return day.type.includes('COLLECT') || day.type.includes('TRANSFER')
+        }
         if (filter?.transactionType === 'all' || !filter?.transactionType) {
-          return true
+          return validTypes.has(day.type)
         }
-        if (
-          filter?.transactionType === 'orders' &&
-          (day.type === 'INVEST_ORDER_UPDATE' ||
-            day.type === 'REDEEM_ORDER_UPDATE' ||
-            day.type === 'INVEST_ORDER_CANCEL' ||
-            day.type === 'REDEEM_ORDER_CANCEL')
-        ) {
-          return true
-        }
-
-        if (
-          filter?.transactionType === 'executions' &&
-          (day.type === 'INVEST_EXECUTION' || day.type === 'REDEEM_EXECUTION')
-        ) {
-          return true
-        }
-        if (
-          filter?.transactionType === 'transfers' &&
-          (day.type === 'INVEST_COLLECT' ||
-            day.type === 'REDEEM_COLLECT' ||
-            day.type === 'INVEST_LP_COLLECT' ||
-            day.type === 'REDEEM_LP_COLLECT' ||
-            day.type === 'TRANSFER_IN' ||
-            day.type === 'TRANSFER_OUT')
-        ) {
-          return true
-        }
-
         return false
       })
       .filter((day) => {
-        if (!filter?.network || filter?.network === 'all') return true
-        return filter?.network === (day.chainId || 'centrifuge')
-      })
-      .filter((day) => {
-        if (filter?.tokenId) return filter?.tokenId === day.trancheId
-        return true
-      })
-      .filter((day) => {
-        if (!filter?.address) return true
         return (
-          day.accountId.toLowerCase() === filter.address.toLowerCase() ||
-          day.evmAddress?.toLowerCase() === filter.address.toLowerCase()
+          (!filterNetwork || filterNetwork === (day.chainId || 'centrifuge')) &&
+          (!filter?.tokenId || filter.tokenId === day.trancheId) &&
+          (!filterAddress ||
+            day.accountId.toLowerCase() === filterAddress ||
+            day.evmAddress?.toLowerCase() === filterAddress)
         )
       })
-      .map((day) => {
-        return {
-          type: 'investorTransactions',
-          timestamp: day.timestamp.toISOString(),
-          chainId: day.chainId,
-          account: day.evmAddress ?? day.accountId,
-          epoch: day.epochNumber ? day.epochNumber.toString() : '',
-          transactionType: day.type,
-          currencyAmount: day.currencyAmount,
-          trancheTokenAmount: day.tokenAmount,
-          trancheTokenId: day.trancheId,
-          price: day.tokenPrice ?? '',
-          transactionHash: day.hash,
-        } satisfies InvestorTransactionsReport
-      })
-    return items
+      .map((day) => ({
+        type: 'investorTransactions',
+        timestamp: day.timestamp.toISOString(),
+        chainId: day.chainId,
+        account: day.evmAddress ?? day.accountId,
+        epoch: day.epochNumber?.toString() ?? '',
+        transactionType: day.type,
+        currencyAmount: day.currencyAmount,
+        trancheTokenAmount: day.tokenAmount,
+        trancheTokenId: day.trancheId,
+        price: day.tokenPrice ?? '',
+        transactionHash: day.hash,
+      }))
   }
 
   /**
