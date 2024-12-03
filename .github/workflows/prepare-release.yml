@@ -81,9 +81,15 @@ jobs:
         run: |
           VERSION=$(node -p "require('./package.json').version")
           git config user.name "GitHub Actions"
-          git config user.email "actions@github.com"          
-          git add package.json
-          git commit -am "chore:Bump version to ${VERSION}"
-          git push
+          git config user.email "actions@github.com"
+          
+          # Check if package.json has changes
+          if git diff --quiet package.json; then
+            echo "::notice::Version ${VERSION} is already pushed. No changes to commit."
+          else
+            git add package.json
+            git commit -am "chore: Bump version to ${VERSION}"
+            git push
+          fi
       
 
