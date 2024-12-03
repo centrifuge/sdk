@@ -26,7 +26,7 @@ jobs:
         # https://github.com/agilepathway/label-checker
         id: check-pr-labels
         with:
-          one_of: major,minor,patch,no-release
+          one_of: major,minor,patch,no-release,alpha
           repo_token: ${{ secrets.GITHUB_TOKEN }}
 
     outputs:
