@@ -16,7 +16,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: ${{ github.ref_name }}          
+          ref: ${{ github.event.pull_request.head.ref || github.ref_name }}          
           fetch-depth: 0 # https://yarnpkg.com/features/release-workflow#caveat
 
       - name: Show current branch
@@ -77,15 +77,14 @@ jobs:
         run: yarn version ${{ steps.bump.outputs.type }}
 
       - name: Push changes
-        if: steps.bump.outputs.type != 'no-release'
+        if: steps.bump.outputs.type != 'no-release'     
         run: |
-          git config --global user.name 'GitHub Action'
-          git config --global user.email 'actionsbot@github.com'
           VERSION=$(node -p "require('./package.json').version")
-          git add .
-          git commit -am "Bump version to ${VERSION}"
+          git config user.name "GitHub Actions"
+          git config user.email "actions@github.com"          
+          git add package.json
+          git commit -am "chore:Bump version to ${VERSION}"
           git push
-          git push --tags
       
       - name: Create GitHub Release
         if: steps.bump.outputs.type != 'no-release'
