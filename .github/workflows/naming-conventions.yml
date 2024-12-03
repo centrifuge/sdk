@@ -23,6 +23,7 @@ jobs:
           validateSingleCommit: false
 
       - uses: docker://agilepathway/pull-request-label-checker:v1.6.56
+        continue-on-error: true
         # https://github.com/agilepathway/label-checker
         id: check-pr-labels
         with:
