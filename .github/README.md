@@ -13,6 +13,9 @@ This workflow is responsible for versioning and preparing releases based on pull
 - **Versioning**: Uses `yarn version` to update the version in `package.json`.
 - **Outputs**: Provides the version type and alpha status for subsequent workflows.
 
+- **Alpha Versioning**: When a PR includes the `alpha` label, versions are created with an `-alpha.N` suffix (e.g., `1.2.3-alpha.1`, `1.2.3-alpha.2`). This continues until the alpha label is removed, at which point the version returns to standard semantic versioning.
+
+
 ### 2. `build-test-report.yml`
 
 This workflow handles building, testing, and reporting.
