@@ -23,7 +23,7 @@ jobs:
       - name: Set Yarn version
         run: yarn set version 4.5.0
 
-      - name: Get version bump type from labels
+      - name: Check PR version labels
         id: bump
         run: |
           # Check for version type labels
@@ -40,6 +40,7 @@ jobs:
           # Check for alpha label
           if ${{ contains(github.event.pull_request.labels.*.name, 'alpha') }}; then
             echo "alpha=true" >> $GITHUB_OUTPUT
+            echo "type=prerelease" >> $GITHUB_OUTPUT
           else
             echo "alpha=false" >> $GITHUB_OUTPUT
           fi
@@ -49,8 +50,6 @@ jobs:
         if: steps.bump.outputs.type == 'no-release'
         run: |
           echo "::warning::No version bump required. Skipping release steps."
-          exit 0
-        continue-on-error: true
 
       - name: Configure Git
         if: steps.bump.outputs.type != 'no-release'
@@ -58,14 +57,18 @@ jobs:
           git config --global user.name 'GitHub Action'
           git config --global user.email 'actionsbot@github.com'
 
-      - name: Bump version
+      - name: Toggle Alpha
         if: steps.bump.outputs.type != 'no-release'
         run: |
           if [ "${{ steps.bump.outputs.alpha }}" == "true" ]; then
-            yarn version prerelease --prerelease alpha
+            ./toggle-alpha.sh yes
           else
-            yarn version ${{ steps.bump.outputs.type }}
+            ./toggle-alpha.sh #remove alpha if present
           fi
+
+      - name: Bump version
+        if: steps.bump.outputs.type != 'no-release'
+        run: yarn version ${{ steps.bump.outputs.type }}
 
       - name: Push changes
         if: steps.bump.outputs.type != 'no-release'
@@ -92,9 +95,6 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           VERSION=$(node -p "require('./package.json').version")
-          if ${{ contains(github.event.pull_request.labels.*.name, 'alpha') }}; then
-            VERSION="${VERSION}-alpha"
-          fi
           gh release create "v${VERSION}" \
             --title "Release v${VERSION}" \
             --generate-notes \
