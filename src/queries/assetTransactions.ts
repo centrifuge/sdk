@@ -127,7 +127,7 @@ export const assetTransactionsPostProcess = (data: SubqueryAssetTransactions): A
 }
 
 export const assetTransactionsQuery = `
-query(filter: AssetTransactionFilter) {
+query($filter: AssetTransactionFilter) {
   assetTransactions(
     orderBy: TIMESTAMP_ASC,
     filter: $filter
