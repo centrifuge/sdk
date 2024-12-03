@@ -1,4 +1,4 @@
-import { Currency } from '../utils/BigInt.js'
+import { Currency, Price, Token } from '../utils/BigInt.js'
 import { groupByPeriod } from '../utils/date.js'
 import {
   BalanceSheetData,
@@ -10,6 +10,7 @@ import {
   ReportFilter,
   InvestorTransactionsData,
   InvestorTransactionsReport,
+  InvestorTransactionsReportFilter,
 } from './types.js'
 
 export class Processor {
@@ -141,33 +142,59 @@ export class Processor {
     return this.applyGrouping<ProfitAndLossReport>(items, filter?.groupBy, 'sum')
   }
 
-  investorTransactions(data: InvestorTransactionsData, filter?: ReportFilter): InvestorTransactionsReport[] {
-    return data.investorTransactions
+  investorTransactions(
+    data: InvestorTransactionsData,
+    filter?: InvestorTransactionsReportFilter
+  ): InvestorTransactionsReport[] {
+    const items = data.investorTransactions
       .filter((day) => {
+        if (filter?.transactionType === 'all' || !filter?.transactionType) {
+          return true
+        }
         if (
-          day.type === 'INVEST_ORDER_UPDATE' ||
-          day.type === 'REDEEM_ORDER_UPDATE' ||
-          day.type === 'INVEST_ORDER_CANCEL' ||
-          day.type === 'REDEEM_ORDER_CANCEL'
+          filter?.transactionType === 'orders' &&
+          (day.type === 'INVEST_ORDER_UPDATE' ||
+            day.type === 'REDEEM_ORDER_UPDATE' ||
+            day.type === 'INVEST_ORDER_CANCEL' ||
+            day.type === 'REDEEM_ORDER_CANCEL')
         ) {
           return true
         }
 
-        if (day.type === 'INVEST_EXECUTION' || day.type === 'REDEEM_EXECUTION') {
+        if (
+          filter?.transactionType === 'executions' &&
+          (day.type === 'INVEST_EXECUTION' || day.type === 'REDEEM_EXECUTION')
+        ) {
           return true
         }
         if (
-          day.type === 'INVEST_COLLECT' ||
-          day.type === 'REDEEM_COLLECT' ||
-          day.type === 'INVEST_LP_COLLECT' ||
-          day.type === 'REDEEM_LP_COLLECT' ||
-          day.type === 'TRANSFER_IN' ||
-          day.type === 'TRANSFER_OUT'
+          filter?.transactionType === 'transfers' &&
+          (day.type === 'INVEST_COLLECT' ||
+            day.type === 'REDEEM_COLLECT' ||
+            day.type === 'INVEST_LP_COLLECT' ||
+            day.type === 'REDEEM_LP_COLLECT' ||
+            day.type === 'TRANSFER_IN' ||
+            day.type === 'TRANSFER_OUT')
         ) {
           return true
         }
 
         return false
+      })
+      .filter((day) => {
+        if (!filter?.network || filter?.network === 'all') return true
+        return filter?.network === (day.chainId || 'centrifuge')
+      })
+      .filter((day) => {
+        if (filter?.tokenId) return filter?.tokenId === day.trancheId
+        return true
+      })
+      .filter((day) => {
+        if (!filter?.address) return true
+        return (
+          day.accountId.toLowerCase() === filter.address.toLowerCase() ||
+          day.evmAddress?.toLowerCase() === filter.address.toLowerCase()
+        )
       })
       .map((day) => {
         return {
@@ -179,11 +206,12 @@ export class Processor {
           transactionType: day.type,
           currencyAmount: day.currencyAmount,
           trancheTokenAmount: day.tokenAmount,
-          trancheTokenName: '', // TODO: add tranche name
+          trancheTokenId: day.trancheId,
           price: day.tokenPrice ?? '',
           transactionHash: day.hash,
-        } as InvestorTransactionsReport
+        } satisfies InvestorTransactionsReport
       })
+    return items
   }
 
   /**
@@ -193,13 +221,13 @@ export class Processor {
    * @param strategy Grouping strategy, sum aggregates data by period, latest returns the latest item in the period
    * @returns Grouped report
    *
-   * Note: if strategy is 'sum', only Currency values that are not nested are aggregated, all
+   * Note: if strategy is 'sum', only Decimal values that are not nested are aggregated, all
    * other values are overwritten with the last value in the period
    */
   private applyGrouping<
     T extends {
       timestamp: string
-      [key: string]: Currency | string | { [key: string]: any } | undefined
+      [key: string]: Currency | string | { [key: string]: any } | number | undefined
     },
   >(items: T[], groupBy: ReportFilter['groupBy'] = 'day', strategy: 'latest' | 'sum' = 'latest'): T[] {
     if (strategy === 'latest') {
@@ -210,13 +238,25 @@ export class Processor {
     return groups.map((group) => {
       const base = { ...group[group.length - 1] } as T
 
-      // Aggregate Currency values
+      // Aggregate Decimal values
       for (const key in base) {
         const value = base[key as keyof T]
         if (value instanceof Currency) {
           base[key as keyof T] = group.reduce(
             (sum, item) => sum.add(item[key as keyof T] as Currency),
             new Currency(0n, value.decimals)
+          ) as T[keyof T]
+        }
+        if (value instanceof Token) {
+          base[key as keyof T] = group.reduce(
+            (sum, item) => sum.add(item[key as keyof T] as Token),
+            new Token(0n, value.decimals)
+          ) as T[keyof T]
+        }
+        if (value instanceof Price) {
+          base[key as keyof T] = group.reduce(
+            (sum, item) => sum.add(item[key as keyof T] as Price),
+            new Price(0n)
           ) as T[keyof T]
         }
       }

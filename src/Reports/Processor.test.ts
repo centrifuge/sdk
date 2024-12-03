@@ -5,9 +5,10 @@ import { mockTrancheSnapshots } from '../tests/mocks/mockTrancheSnapshots.js'
 import { mockPoolFeeSnapshots } from '../tests/mocks/mockPoolFeeSnapshot.js'
 import { mockPoolMetadata } from '../tests/mocks/mockPoolMetadata.js'
 import { PoolSnapshot } from '../queries/poolSnapshots.js'
-import { Currency } from '../utils/BigInt.js'
+import { Currency, Price } from '../utils/BigInt.js'
 import { PoolFeeSnapshot, PoolFeeSnapshotsByDate } from '../queries/poolFeeSnapshots.js'
 import { ProfitAndLossReportPrivateCredit, ProfitAndLossReportPublicCredit } from './types.js'
+import { InvestorTransaction } from '../queries/investorTransactions.js'
 
 describe('Processor', () => {
   describe('balanceSheet processor', () => {
@@ -277,7 +278,18 @@ describe('Processor', () => {
       )
     })
 
-    it('should process private credit pool correctly', () => {
+    it('should handle undefined metadata', () => {
+      const result = processor.profitAndLoss({
+        poolSnapshots: mockPLPoolSnapshots,
+        poolFeeSnapshots: mockPLFeeSnapshots,
+        metadata: undefined,
+      })
+      expect(result).to.have.lengthOf(2)
+      const firstDay = result[0]
+      expect(firstDay?.subtype).to.equal('privateCredit') // should default to privateCredit
+    })
+
+    it('should process private credit pool data correctly', () => {
       const result = processor.profitAndLoss({
         poolSnapshots: mockPLPoolSnapshots,
         poolFeeSnapshots: mockPLFeeSnapshots,
@@ -345,6 +357,123 @@ describe('Processor', () => {
       })
       expect(result[0]?.timestamp.slice(0, 10)).to.equal('2024-01-01')
       expect(result[0]?.fees?.[0]?.timestamp.slice(0, 10)).to.equal('2024-01-01')
+    })
+  })
+  describe('investor transactions processor', () => {
+    const mockInvestorTransactions: InvestorTransaction[] = [
+      {
+        id: 'tx-1',
+        poolId: 'pool-1',
+        timestamp: new Date('2024-01-01T12:00:00Z'),
+        accountId: 'account-1',
+        chainId: 1,
+        evmAddress: '0x123a',
+        trancheId: 'senior',
+        epochNumber: 1,
+        type: 'INVEST_ORDER_UPDATE',
+        currencyAmount: new Currency(1_000_000n, 6), // 1.0
+        tokenAmount: new Currency(900_000n, 6), // 0.9
+        tokenPrice: new Price(1_100_000_000_000_000_000n), // 1.1
+        hash: '0xabc',
+      } as InvestorTransaction,
+      {
+        id: 'tx-2',
+        poolId: 'pool-1',
+        timestamp: new Date('2024-01-01T18:00:00Z'),
+        accountId: 'account-1',
+        chainId: 1,
+        evmAddress: '0x123b',
+        trancheId: 'senior',
+        epochNumber: 1,
+        type: 'INVEST_EXECUTION',
+        currencyAmount: new Currency(2_000_000n, 6), // 2.0
+        tokenAmount: new Currency(1_800_000n, 6), // 1.8
+        tokenPrice: new Price(1_100_000_000_000_000_000n), // 1.1
+        hash: '0xdef',
+      } as InvestorTransaction,
+    ]
+
+    it('should return empty array when no transactions found', () => {
+      expect(processor.investorTransactions({ investorTransactions: [], metadata: undefined })).to.deep.equal([])
+    })
+
+    it('should process investor transactions correctly without filters', () => {
+      const result = processor.investorTransactions({
+        investorTransactions: mockInvestorTransactions,
+        metadata: mockPoolMetadata,
+      })
+
+      expect(result).to.have.lengthOf(2)
+      const firstTx = result[0]
+
+      expect(firstTx?.timestamp.slice(0, 10)).to.equal('2024-01-01')
+      expect(firstTx?.chainId).to.equal(1)
+      expect(firstTx?.account).to.equal('0x123a')
+      expect(firstTx?.epoch).to.equal('1')
+      expect(firstTx?.transactionType).to.equal('INVEST_ORDER_UPDATE')
+      expect(firstTx?.currencyAmount.toFloat()).to.equal(1.0)
+      expect(firstTx?.trancheTokenAmount.toFloat()).to.equal(0.9)
+      expect(firstTx?.price.toString()).to.equal('1100000000000000000')
+      expect(firstTx?.transactionHash).to.equal('0xabc')
+    })
+
+    it('should filter by tokenId', () => {
+      const mockInvestorTransactionsWithJunior = [
+        ...mockInvestorTransactions,
+        {
+          ...mockInvestorTransactions[0],
+          trancheId: 'junior',
+        } as InvestorTransaction,
+      ]
+      const result = processor.investorTransactions(
+        {
+          investorTransactions: mockInvestorTransactionsWithJunior,
+          metadata: mockPoolMetadata,
+        },
+        { tokenId: 'senior' }
+      )
+      expect(result).to.have.lengthOf(2)
+      expect(result[0]?.trancheTokenId).to.equal('senior')
+    })
+    it('should filter by address', () => {
+      const result = processor.investorTransactions(
+        {
+          investorTransactions: mockInvestorTransactions,
+          metadata: mockPoolMetadata,
+        },
+        { address: '0x123a' }
+      )
+      expect(result).to.have.lengthOf(1)
+      expect(result[0]?.account).to.equal('0x123a')
+    })
+    it('should filter by network', () => {
+      const mockInvestorTransactionsWithNetwork = [
+        ...mockInvestorTransactions,
+        {
+          ...mockInvestorTransactions[0],
+          chainId: 2,
+        } as InvestorTransaction,
+      ]
+      const result = processor.investorTransactions(
+        {
+          investorTransactions: mockInvestorTransactionsWithNetwork,
+          metadata: mockPoolMetadata,
+        },
+        { network: 1 }
+      )
+      expect(result).to.have.lengthOf(2)
+      expect(result[0]?.chainId).to.equal(1)
+    })
+    it('should filter by transaction type', () => {
+      const result = processor.investorTransactions(
+        {
+          investorTransactions: mockInvestorTransactions,
+          metadata: mockPoolMetadata,
+        },
+        { transactionType: 'orders' }
+      )
+      expect(result).to.have.lengthOf(1)
+      expect(result[0]?.transactionType).to.equal('INVEST_ORDER_UPDATE')
     })
   })
   describe('applyGrouping', () => {

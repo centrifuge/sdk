@@ -12,10 +12,10 @@ export type InvestorTransaction = {
   trancheId: string
   epochNumber: number
   type: SubqueryInvestorTransactionType
-  currencyAmount?: Currency
-  tokenAmount?: Currency
-  tokenPrice?: Price
-  transactionFee?: Currency
+  currencyAmount: Currency
+  tokenAmount: Currency
+  tokenPrice: Price
+  transactionFee: Currency
   chainId: number
   evmAddress?: string
   hash: string
@@ -76,10 +76,10 @@ export const investorTransactionsPostProcess = (data: SubqueryInvestorTransactio
       trancheId: tx.trancheId.split('-')[1] ?? '',
       epochNumber: tx.epochNumber,
       type: tx.type as SubqueryInvestorTransactionType,
-      currencyAmount: tx.currencyAmount ? new Currency(tx.currencyAmount, currencyDecimals) : undefined,
-      tokenAmount: tx.tokenAmount ? new Currency(tx.tokenAmount, currencyDecimals) : undefined,
-      tokenPrice: tx.tokenPrice ? new Price(tx.tokenPrice) : undefined,
-      transactionFee: tx.transactionFee ? new Currency(tx.transactionFee, currencyDecimals) : undefined, // native tokenks are always denominated in 18
+      currencyAmount: new Currency(tx?.currencyAmount || 0n, currencyDecimals),
+      tokenAmount: new Currency(tx?.tokenAmount || 0n, currencyDecimals),
+      tokenPrice: new Price(tx?.tokenPrice ?? 0n),
+      transactionFee: new Currency(tx?.transactionFee ?? 0n, currencyDecimals),
       hash: tx.hash,
     } satisfies InvestorTransaction
   })

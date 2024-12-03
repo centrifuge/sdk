@@ -13,6 +13,23 @@ export interface ReportFilter {
   groupBy?: GroupBy
 }
 
+export type DataReportFilter = {
+  to?: string
+  from?: string
+}
+
+export type InvestorTransactionsReportFilter = {
+  tokenId?: string
+  transactionType?: 'orders' | 'executions' | 'transfers' | 'all'
+  network?: number | 'centrifuge' | 'all'
+  address?: string
+  to?: string
+  from?: string
+}
+
+export type Report = 'balanceSheet' | 'cashflow' | 'profitAndLoss'
+export type DataReport = 'investorTransactions'
+
 export type BalanceSheetReport = {
   type: 'balanceSheet'
   timestamp: string
@@ -114,7 +131,7 @@ export type InvestorTransactionsReport = {
   epoch: string
   transactionType: SubqueryInvestorTransactionType
   currencyAmount: Currency
-  trancheTokenName: string
+  trancheTokenId: string
   trancheTokenAmount: Currency
   price: Price
   transactionHash: string

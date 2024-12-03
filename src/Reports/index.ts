@@ -16,6 +16,9 @@ import {
   InvestorTransactionsReport,
   ProfitAndLossReport,
   ReportFilter,
+  Report,
+  DataReport,
+  DataReportFilter,
 } from './types.js'
 import { Query } from '../types/query.js'
 import {
@@ -26,8 +29,6 @@ import {
 import { Pool } from '../Pool.js'
 import { investorTransactionsPostProcess } from '../queries/investorTransactions.js'
 import { InvestorTransactionFilter, investorTransactionsQuery } from '../queries/investorTransactions.js'
-
-type ReportType = 'balanceSheet' | 'cashflow' | 'profitAndLoss' | 'investorTransactions'
 
 export class Reports extends Entity {
   constructor(
@@ -49,11 +50,18 @@ export class Reports extends Entity {
     return this._generateReport<ProfitAndLossReport>('profitAndLoss', filter)
   }
 
-  investorTransactions(filter?: ReportFilter) {
+  investorTransactions(filter?: DataReportFilter) {
     return this._generateReport<InvestorTransactionsReport>('investorTransactions', filter)
   }
 
-  _generateReport<T>(type: ReportType, filter?: ReportFilter): Query<T[]> {
+  /**
+   * Reports are split into two types:
+   * - A `Report` is a standard report: balanceSheet, cashflow, profitAndLoss
+   * - A `DataReport` is a custom report: investorTransactions
+   */
+  _generateReport<T>(type: Report, filter?: ReportFilter): Query<T[]>
+  _generateReport<T>(type: DataReport, filter?: DataReportFilter): Query<T[]>
+  _generateReport<T>(type: string, filter?: Record<string, any>) {
     return this._query(
       [type, filter?.from, filter?.to, filter?.groupBy],
       () => {
@@ -109,7 +117,7 @@ export class Reports extends Entity {
             return combineLatest([investorTransactions$, metadata$]).pipe(
               map(
                 ([investorTransactions, metadata]) =>
-                  processor.investorTransactions({ investorTransactions, metadata }, filter) as T[]
+                  processor.investorTransactions({ investorTransactions, metadata }) as T[]
               )
             )
           default:
