@@ -8,7 +8,7 @@ This repository contains several GitHub Actions workflows that automate various 
 
 This workflow is responsible for versioning and preparing releases based on pull request labels.
 
-- **Trigger**: Runs on pull requests affecting the `main` branch.
+- **Trigger**: Runs on pull request reviews that are approved.
 - **Version Bump**: Determines the version bump type (major, minor, patch) based on PR labels. If an `alpha` label is present, it creates a prerelease version.
 - **Versioning**: Uses `yarn version` to update the version in `package.json`.
 - **Outputs**: Provides the version type and alpha status for subsequent workflows.
@@ -30,7 +30,15 @@ This workflow ensures that pull request titles and labels follow specific conven
 - **Label Check**: Ensures PRs have one of the required labels (major, minor, patch, no-release).
 - **Comments**: Adds or removes comments on PRs based on title and label validation results.
 
-### 4. `publish-release.yml`
+### 4. `create-release.yml`
+
+This workflow creates a draft release on GitHub when a new version is detected in `package.json` on the `main` branch.
+
+- **Trigger**: Runs on pushes to the `main` branch.
+- **Version Check**: Verifies if the version in `package.json` has been updated.
+- **Draft Release**: Creates a draft release with the new version tag if the version check is successful.
+
+### 5. `publish-release.yml`
 
 This workflow handles the publishing of releases to NPM.
 
@@ -40,12 +48,9 @@ This workflow handles the publishing of releases to NPM.
 
 ## Release Process
 
-1. **Versioning**: The `prepare-release.yml` workflow determines the version bump based on PR labels. If a PR is labeled with `major`, `minor`, or `patch`, the version is updated accordingly. If labeled with `alpha`, a prerelease version is created.
+1. **Versioning**: The `prepare-release.yml` workflow determines the version bump based on PR labels after a review has been approved. If a PR is labeled with `major`, `minor`, or `patch`, the version is updated accordingly. If labeled with `alpha`, a prerelease version is created.
 
-2. **Tagging**: Once the version is updated, a new Git tag is created corresponding to the new version.
+2. **Draft Release Creation**: The `create-release.yml` workflow creates a draft release if `package.json` contains a new version on the `main` branch.
 
-3. **Release Creation**: The `create-release` job in `prepare-release.yml` creates a draft release on GitHub with the new version tag. If it's an alpha release, it is marked as a prerelease.
+3. **Publishing**: When a release is published on GitHub (moved from draft to released), the `publish-release.yml` workflow is triggered. It builds the project and publishes it to NPM, ensuring the package is available for public use.
 
-4. **Publishing**: When a release is published on GitHub (moved from pre-release to released), the `publish-release.yml` workflow is triggered. It builds the project and publishes it to NPM, ensuring the package is available for public use.
-
-This setup ensures a smooth and automated release process, from versioning to publishing, with checks in place to maintain consistency and quality.
