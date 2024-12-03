@@ -11,6 +11,9 @@ import {
   InvestorTransactionsData,
   InvestorTransactionsReport,
   InvestorTransactionsReportFilter,
+  AssetTransactionReport,
+  AssetTransactionsData,
+  AssetTransactionReportFilter,
 } from './types.js'
 
 export class Processor {
@@ -203,6 +206,25 @@ export class Processor {
         trancheTokenAmount: day.tokenAmount,
         trancheTokenId: day.trancheId,
         price: day.tokenPrice ?? '',
+        transactionHash: day.hash,
+      }))
+  }
+
+  assetTransactions(data: AssetTransactionsData, filter?: AssetTransactionReportFilter): AssetTransactionReport[] {
+    return data.assetTransactions
+      .filter((day) => {
+        return (
+          (!filter?.assetId || filter.assetId === day.asset.id) &&
+          (!filter?.transactionType || filter.transactionType === day.type)
+        )
+      })
+      .map((day) => ({
+        type: 'assetTransactions',
+        timestamp: day.timestamp.toISOString(),
+        assetId: day.asset.id,
+        epoch: day.epochId,
+        transactionType: day.type,
+        amount: day.amount,
         transactionHash: day.hash,
       }))
   }

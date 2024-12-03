@@ -1,3 +1,4 @@
+import { AssetTransaction, AssetTransactionType } from '../queries/assetTransactions.js'
 import { InvestorTransaction, SubqueryInvestorTransactionType } from '../queries/investorTransactions.js'
 import { PoolFeeSnapshotsByDate } from '../queries/poolFeeSnapshots.js'
 import { PoolSnapshot } from '../queries/poolSnapshots.js'
@@ -18,18 +19,12 @@ export type DataReportFilter = {
   from?: string
 }
 
-export type InvestorTransactionsReportFilter = {
-  tokenId?: string
-  transactionType?: 'orders' | 'executions' | 'transfers' | 'all'
-  network?: number | 'centrifuge' | 'all'
-  address?: string
-  to?: string
-  from?: string
-}
-
 export type Report = 'balanceSheet' | 'cashflow' | 'profitAndLoss'
-export type DataReport = 'investorTransactions'
+export type DataReport = 'investorTransactions' | 'assetTransactions'
 
+/**
+ * Balance sheet type
+ */
 export type BalanceSheetReport = {
   type: 'balanceSheet'
   timestamp: string
@@ -54,6 +49,9 @@ export type BalanceSheetData = {
   trancheSnapshots: TrancheSnapshotsByDate
 }
 
+/**
+ * Cashflow types
+ */
 type CashflowReportBase = {
   type: 'cashflow'
   timestamp: string
@@ -88,6 +86,9 @@ export type CashflowData = {
   metadata: PoolMetadata | undefined
 }
 
+/**
+ * Profit and loss types
+ */
 export type ProfitAndLossReportBase = {
   type: 'profitAndLoss'
   timestamp: string
@@ -118,9 +119,11 @@ export type ProfitAndLossData = {
   metadata: PoolMetadata | undefined
 }
 
+/**
+ * Investor transactions types
+ */
 export type InvestorTransactionsData = {
   investorTransactions: InvestorTransaction[]
-  metadata: PoolMetadata | undefined
 }
 
 export type InvestorTransactionsReport = {
@@ -135,4 +138,37 @@ export type InvestorTransactionsReport = {
   trancheTokenAmount: Currency
   price: Price
   transactionHash: string
+}
+
+export type InvestorTransactionsReportFilter = {
+  tokenId?: string
+  transactionType?: 'orders' | 'executions' | 'transfers' | 'all'
+  network?: number | 'centrifuge' | 'all'
+  address?: string
+  to?: string
+  from?: string
+}
+
+/**
+ * Asset transactions types
+ */
+export type AssetTransactionsData = {
+  assetTransactions: AssetTransaction[]
+}
+
+export type AssetTransactionReport = {
+  type: 'assetTransactions'
+  timestamp: string
+  assetId: string
+  epoch: string
+  transactionType: AssetTransactionType
+  amount: Currency
+  transactionHash: string
+}
+
+export type AssetTransactionReportFilter = {
+  from?: string
+  to?: string
+  assetId?: string
+  transactionType?: AssetTransactionType
 }

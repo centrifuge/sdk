@@ -222,4 +222,16 @@ describe('Reports', () => {
       expect(report.length).to.equal(8)
     })
   })
+
+  describe('asset transactions report', () => {
+    it('should fetch asset transactions report', async () => {
+      const anemoyPoolId = '4139607887'
+      const pool = await centrifuge.pool(anemoyPoolId)
+      const report = await pool.reports.assetTransactions({
+        from: '2024-01-01T22:11:29.776Z',
+        to: '2024-10-03T22:11:29.776Z',
+      })
+      expect(report.length).to.equal(5)
+    })
+  })
 })

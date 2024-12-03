@@ -4,8 +4,10 @@ import { mockPoolSnapshots } from '../tests/mocks/mockPoolSnapshots.js'
 import { mockTrancheSnapshots } from '../tests/mocks/mockTrancheSnapshots.js'
 import { mockPoolFeeSnapshots } from '../tests/mocks/mockPoolFeeSnapshot.js'
 import { mockPoolMetadata } from '../tests/mocks/mockPoolMetadata.js'
+import { mockInvestorTransactions } from '../tests/mocks/mockInvestorTransactions.js'
+import { mockAssetTransactions } from '../tests/mocks/mockAssetTransactions.js'
 import { PoolSnapshot } from '../queries/poolSnapshots.js'
-import { Currency, Price } from '../utils/BigInt.js'
+import { Currency } from '../utils/BigInt.js'
 import { PoolFeeSnapshot, PoolFeeSnapshotsByDate } from '../queries/poolFeeSnapshots.js'
 import { ProfitAndLossReportPrivateCredit, ProfitAndLossReportPublicCredit } from './types.js'
 import { InvestorTransaction } from '../queries/investorTransactions.js'
@@ -360,47 +362,13 @@ describe('Processor', () => {
     })
   })
   describe('investor transactions processor', () => {
-    const mockInvestorTransactions: InvestorTransaction[] = [
-      {
-        id: 'tx-1',
-        poolId: 'pool-1',
-        timestamp: new Date('2024-01-01T12:00:00Z'),
-        accountId: 'account-1',
-        chainId: 1,
-        evmAddress: '0x123a',
-        trancheId: 'senior',
-        epochNumber: 1,
-        type: 'INVEST_ORDER_UPDATE',
-        currencyAmount: new Currency(1_000_000n, 6), // 1.0
-        tokenAmount: new Currency(900_000n, 6), // 0.9
-        tokenPrice: new Price(1_100_000_000_000_000_000n), // 1.1
-        hash: '0xabc',
-      } as InvestorTransaction,
-      {
-        id: 'tx-2',
-        poolId: 'pool-1',
-        timestamp: new Date('2024-01-01T18:00:00Z'),
-        accountId: 'account-1',
-        chainId: 1,
-        evmAddress: '0x123b',
-        trancheId: 'senior',
-        epochNumber: 1,
-        type: 'INVEST_EXECUTION',
-        currencyAmount: new Currency(2_000_000n, 6), // 2.0
-        tokenAmount: new Currency(1_800_000n, 6), // 1.8
-        tokenPrice: new Price(1_100_000_000_000_000_000n), // 1.1
-        hash: '0xdef',
-      } as InvestorTransaction,
-    ]
-
     it('should return empty array when no transactions found', () => {
-      expect(processor.investorTransactions({ investorTransactions: [], metadata: undefined })).to.deep.equal([])
+      expect(processor.investorTransactions({ investorTransactions: [] })).to.deep.equal([])
     })
 
     it('should process investor transactions correctly without filters', () => {
       const result = processor.investorTransactions({
         investorTransactions: mockInvestorTransactions,
-        metadata: mockPoolMetadata,
       })
 
       expect(result).to.have.lengthOf(2)
@@ -428,7 +396,6 @@ describe('Processor', () => {
       const result = processor.investorTransactions(
         {
           investorTransactions: mockInvestorTransactionsWithJunior,
-          metadata: mockPoolMetadata,
         },
         { tokenId: 'senior' }
       )
@@ -439,7 +406,6 @@ describe('Processor', () => {
       const result = processor.investorTransactions(
         {
           investorTransactions: mockInvestorTransactions,
-          metadata: mockPoolMetadata,
         },
         { address: '0x123a' }
       )
@@ -457,7 +423,6 @@ describe('Processor', () => {
       const result = processor.investorTransactions(
         {
           investorTransactions: mockInvestorTransactionsWithNetwork,
-          metadata: mockPoolMetadata,
         },
         { network: 1 }
       )
@@ -468,7 +433,6 @@ describe('Processor', () => {
       const result = processor.investorTransactions(
         {
           investorTransactions: mockInvestorTransactions,
-          metadata: mockPoolMetadata,
         },
         { transactionType: 'orders' }
       )
@@ -486,7 +450,6 @@ describe('Processor', () => {
       const result = processor.investorTransactions(
         {
           investorTransactions: mockInvestorTransactionsWithNetworkAndOrders,
-          metadata: mockPoolMetadata,
         },
         { network: 1, transactionType: 'orders' }
       )
@@ -498,11 +461,21 @@ describe('Processor', () => {
       const result = processor.investorTransactions(
         {
           investorTransactions: mockInvestorTransactions,
-          metadata: mockPoolMetadata,
         },
         { network: 2, transactionType: 'executions' }
       )
       expect(result).to.deep.equal([])
+    })
+  })
+  describe('asset transactions processor', () => {
+    it('should return empty array when no transactions found', () => {
+      expect(processor.assetTransactions({ assetTransactions: [] })).to.deep.equal([])
+    })
+    it('should process asset transactions correctly without filters', () => {
+      const result = processor.assetTransactions({
+        assetTransactions: mockAssetTransactions,
+      })
+      expect(result).to.have.lengthOf(3)
     })
   })
   describe('applyGrouping', () => {

@@ -20,6 +20,8 @@ import {
   DataReport,
   DataReportFilter,
   InvestorTransactionsReportFilter,
+  AssetTransactionReport,
+  AssetTransactionReportFilter,
 } from './types.js'
 import { Query } from '../types/query.js'
 import {
@@ -30,6 +32,11 @@ import {
 import { Pool } from '../Pool.js'
 import { investorTransactionsPostProcess } from '../queries/investorTransactions.js'
 import { InvestorTransactionFilter, investorTransactionsQuery } from '../queries/investorTransactions.js'
+import {
+  AssetTransactionFilter,
+  assetTransactionsPostProcess,
+  assetTransactionsQuery,
+} from '../queries/assetTransactions.js'
 
 export class Reports extends Entity {
   constructor(
@@ -52,8 +59,11 @@ export class Reports extends Entity {
   }
 
   investorTransactions(filter?: InvestorTransactionsReportFilter) {
-    console.log('🚀 ~ it filter:', filter)
     return this._generateReport<InvestorTransactionsReport>('investorTransactions', filter)
+  }
+
+  assetTransactions(filter?: AssetTransactionReportFilter) {
+    return this._generateReport<AssetTransactionReport>('assetTransactions', filter)
   }
 
   /**
@@ -74,6 +84,7 @@ export class Reports extends Entity {
         filter?.network,
         filter?.tokenId,
         filter?.transactionType,
+        filter?.assetId,
       ],
       () => {
         const dateFilter = {
@@ -98,6 +109,10 @@ export class Reports extends Entity {
           poolFeeId: { includes: this.pool.id },
         })
         const investorTransactions$ = this.investorTransactionsQuery({
+          ...dateFilter,
+          poolId: { equalTo: this.pool.id },
+        })
+        const assetTransactions$ = this.assetTransactionsQuery({
           ...dateFilter,
           poolId: { equalTo: this.pool.id },
         })
@@ -126,10 +141,11 @@ export class Reports extends Entity {
             )
           case 'investorTransactions':
             return combineLatest([investorTransactions$, metadata$]).pipe(
-              map(
-                ([investorTransactions, metadata]) =>
-                  processor.investorTransactions({ investorTransactions, metadata }, filter) as T[]
-              )
+              map(([investorTransactions]) => processor.investorTransactions({ investorTransactions }, filter) as T[])
+            )
+          case 'assetTransactions':
+            return combineLatest([assetTransactions$, metadata$]).pipe(
+              map(([assetTransactions]) => processor.assetTransactions({ assetTransactions }, filter) as T[])
             )
           default:
             throw new Error(`Unsupported report type: ${type}`)
@@ -155,5 +171,9 @@ export class Reports extends Entity {
 
   investorTransactionsQuery(filter?: InvestorTransactionFilter) {
     return this._root._queryIndexer(investorTransactionsQuery, { filter }, investorTransactionsPostProcess)
+  }
+
+  assetTransactionsQuery(filter?: AssetTransactionFilter) {
+    return this._root._queryIndexer(assetTransactionsQuery, { filter }, assetTransactionsPostProcess)
   }
 }
