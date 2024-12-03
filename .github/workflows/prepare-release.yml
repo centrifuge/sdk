@@ -1,4 +1,4 @@
-name: Release and Versioning
+name: Package version bump
 on:
   pull_request_review:
     types: [submitted]  

@@ -5,8 +5,13 @@ current_version=$(node -p "require('./package.json').version")
 
 # Check if version contains alpha
 if [[ "$current_version" == *"-alpha"* ]]; then
-  # Remove alpha if present
-  new_version="${current_version%%-alpha*}"
+  if [[ "$1" != "yes" ]]; then
+    # Remove alpha if present and "yes" is not passed
+    new_version="${current_version%%-alpha*}"
+  else
+    # Keep the current version if "yes" is passed
+    new_version="${current_version}"
+  fi
 elif [[ "$1" == "yes" ]]; then
   # Add alpha if not present and "yes" was passed
   new_version="${current_version}-alpha"
