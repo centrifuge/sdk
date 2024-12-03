@@ -67,5 +67,6 @@
   },
   "peerDependencies": {
     "viem": "^2"
-  }
+  },
+  "stableVersion": "0.0.0-alpha"
 }
