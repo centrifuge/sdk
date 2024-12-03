@@ -475,6 +475,35 @@ describe('Processor', () => {
       expect(result).to.have.lengthOf(1)
       expect(result[0]?.transactionType).to.equal('INVEST_ORDER_UPDATE')
     })
+    it('should filter by network and transaction type', () => {
+      const mockInvestorTransactionsWithNetworkAndOrders = [
+        ...mockInvestorTransactions,
+        {
+          ...mockInvestorTransactions[0],
+          chainId: 2,
+        } as InvestorTransaction,
+      ]
+      const result = processor.investorTransactions(
+        {
+          investorTransactions: mockInvestorTransactionsWithNetworkAndOrders,
+          metadata: mockPoolMetadata,
+        },
+        { network: 1, transactionType: 'orders' }
+      )
+      expect(result).to.have.lengthOf(1)
+      expect(result[0]?.chainId).to.equal(1)
+      expect(result[0]?.transactionType).to.equal('INVEST_ORDER_UPDATE')
+    })
+    it('should return an empty array when no filters match', () => {
+      const result = processor.investorTransactions(
+        {
+          investorTransactions: mockInvestorTransactions,
+          metadata: mockPoolMetadata,
+        },
+        { network: 2, transactionType: 'executions' }
+      )
+      expect(result).to.deep.equal([])
+    })
   })
   describe('applyGrouping', () => {
     const applyGrouping = processor['applyGrouping']
