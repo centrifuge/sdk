@@ -62,7 +62,7 @@ jobs:
         if: steps.bump.outputs.type != 'no-release'
         run: |
           if [ "${{ steps.bump.outputs.alpha }}" == "true" ]; then
-            yarn version ${{ steps.bump.outputs.type }} --preid alpha
+            yarn version prerelease --prerelease alpha
           else
             yarn version ${{ steps.bump.outputs.type }}
           fi
