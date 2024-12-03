@@ -104,6 +104,7 @@ jobs:
           comment-id: ${{ steps.find-label-comment.outputs.comment-id }}
           body: |
             PR must have ONLY one of the following labels: major, minor, patch, no-release, alpha.
+            Check the logs for more details: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}/jobs/${{ github.job }}
           edit-mode: replace
         if: needs.title-n-label-check.outputs.labels_valid != 'success'
 
