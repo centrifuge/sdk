@@ -12,11 +12,14 @@ dist
 
 # Yarn
 yarn-error.log
-.yarn
+.yarn/*
 !.yarn/releases
 !.yarn/plugins
 !.yarn/sdks
 !.yarn/versions
+.yarn/cache
+.yarn/unplugged
+.yarn/build-state.yml
 
 .env
 

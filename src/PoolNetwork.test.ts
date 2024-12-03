@@ -16,6 +16,10 @@ describe('PoolNetwork', () => {
     poolNetwork = new PoolNetwork(centrifuge, pool, 11155111)
   })
 
+  afterEach(() => {
+    sinon.restore()
+  })
+
   it('should get whether a pool is deployed to a network', async () => {
     const isActive = await poolNetwork.isActive()
     expect(isActive).to.equal(true)

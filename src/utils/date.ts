@@ -19,17 +19,36 @@ export function getPeriod(date: Date, groupBy: GroupBy): string | undefined {
   }
 }
 
-export function groupByPeriod<T extends { date: string }>(data: T[], groupBy: GroupBy): T[] {
-  const grouped = new Map<string, T>()
+/**
+ * Group data by period and return the latest item or all items in the period
+ * @param data - Data to group
+ * @param groupBy - Period to group by
+ * @param strategy - 'latest' returns the latest item in the period, 'all' returns all items in the period
+ * @returns Grouped data
+ */
+export function groupByPeriod<T extends { timestamp: string }>(data: T[], groupBy: GroupBy, strategy: 'all'): T[][]
+export function groupByPeriod<T extends { timestamp: string }>(data: T[], groupBy: GroupBy, strategy?: 'latest'): T[]
+export function groupByPeriod<T extends { timestamp: string }>(
+  data: T[],
+  groupBy: GroupBy,
+  strategy: 'latest' | 'all' = 'latest'
+): T[] | T[][] {
+  const grouped = new Map<string, T[]>()
 
   data.forEach((item) => {
-    const period = getPeriod(new Date(item.date), groupBy)
+    const period = getPeriod(new Date(item.timestamp), groupBy)
     if (!period) return
 
-    if (!grouped.has(period) || new Date(item.date) > new Date(grouped.get(period)!.date)) {
-      grouped.set(period, item)
+    if (!grouped.has(period)) {
+      grouped.set(period, [])
     }
+    grouped.get(period)!.push(item)
+
+    // Sort by timestamp within each group
+    grouped.get(period)!.sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime())
   })
 
-  return Array.from(grouped.values())
+  return strategy === 'latest'
+    ? Array.from(grouped.values()).map((group) => group[group.length - 1] as T)
+    : Array.from(grouped.values())
 }

@@ -16,7 +16,7 @@ export class Entity {
   }
 
   protected _query<T>(
-    keys: (string | number)[] | null,
+    keys: (string | number | undefined)[] | null,
     observableCallback: () => Observable<T>,
     options?: CentrifugeQueryOptions
   ) {

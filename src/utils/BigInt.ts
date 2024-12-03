@@ -1,16 +1,4 @@
-import { Decimal, type Numeric } from 'decimal.js-light'
-
-Decimal.set({
-  precision: 30,
-  toExpNeg: -7,
-  toExpPos: 29,
-  rounding: Decimal.ROUND_HALF_CEIL, // ROUND_HALF_CEIL is 1
-})
-
-export function Dec(value: Numeric) {
-  return new Decimal(value)
-}
-
+import { Dec, Decimal, type Numeric } from './decimal.js'
 export abstract class BigIntWrapper {
   protected value: bigint
 
@@ -36,7 +24,7 @@ export abstract class BigIntWrapper {
 }
 
 export class DecimalWrapper extends BigIntWrapper {
-  protected decimals: number
+  readonly decimals: number
 
   constructor(value: Numeric | bigint, decimals: number) {
     super(value)
@@ -44,11 +32,11 @@ export class DecimalWrapper extends BigIntWrapper {
   }
 
   static _fromFloat<T extends DecimalWrapper>(num: Numeric, decimals: number) {
-    const n = Dec(num.toString()).mul(Dec(10).pow(decimals)).toDecimalPlaces(0).toString()
-    if (Dec(n).lt(1)) {
+    const n = Dec(num.toString()).mul(Dec(10).pow(decimals))
+    if (Dec(n).gt(0) && Dec(n).lt(1)) {
       throw new Error(`${num} is too small to be represented with ${decimals} decimals`)
     }
-    return new (this as any)(n, decimals) as T
+    return new (this as any)(n.toDecimalPlaces(0), decimals) as T
   }
 
   toDecimal() {
@@ -77,7 +65,7 @@ export class DecimalWrapper extends BigIntWrapper {
    * // returns Currency with 6 decimals (1_010_000n or 1.01)
    */
   _mul<T>(value: bigint | (T extends DecimalWrapper ? T : never)): T {
-    let val: Decimal
+    let val: any
     if (typeof value === 'bigint') {
       val = Dec(value.toString())
     } else if (value instanceof Decimal) {
@@ -132,6 +120,8 @@ export class Currency extends DecimalWrapper {
     return Currency._fromFloat<Currency>(num, decimals)
   }
 
+  static ZERO = new Currency(0n, 0)
+
   add(value: bigint | Currency) {
     return this._add<Currency>(value)
   }
@@ -154,6 +144,8 @@ export class Token extends Currency {
     const n = Dec(number.toString()).mul(Dec(10).pow(decimals)).toDecimalPlaces(0).toString()
     return new Token(n, decimals)
   }
+
+  static override ZERO = new Token(0n, 0)
 
   override add(value: bigint | Token) {
     return this._add<Token>(value)

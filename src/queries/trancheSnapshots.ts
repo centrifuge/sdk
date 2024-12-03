@@ -101,22 +101,25 @@ export type TrancheSnapshot = {
   yieldSinceLastPeriod: Perquintill | null
 }
 
-export type GroupedTrancheSnapshots = {
+export type TrancheSnapshotsByDate = {
   [timestamp: string]: TrancheSnapshot[]
 }
 
-export function trancheSnapshotsPostProcess(data: SubqueryTrancheSnapshot): TrancheSnapshot[] {
-  const tranches: { [key: string]: TrancheSnapshot } = {}
+export function trancheSnapshotsPostProcess(data: SubqueryTrancheSnapshot): { [date: string]: TrancheSnapshot[] } {
+  const tranchesByDate: TrancheSnapshotsByDate = {}
+
   data?.trancheSnapshots?.nodes?.forEach((tranche) => {
-    const tid = tranche.tranche.trancheId
     const date = tranche.timestamp.slice(0, 10)
-    const key = `${date}-${tid}`
+    if (!tranchesByDate[date]) {
+      tranchesByDate[date] = []
+    }
+
     const poolCurrency = tranche.tranche.pool.currency
-    tranches[key] = {
+    const trancheSnapshot: TrancheSnapshot = {
       id: tranche.trancheId,
       timestamp: tranche.timestamp,
       poolId: tranche.tranche.poolId,
-      trancheId: tid,
+      trancheId: tranche.tranche.trancheId,
       pool: {
         currency: {
           decimals: poolCurrency.decimals,
@@ -138,6 +141,9 @@ export function trancheSnapshotsPostProcess(data: SubqueryTrancheSnapshot): Tran
       yieldYTD: new Perquintill(tranche.yieldYTD ?? 0),
       yieldSinceLastPeriod: new Perquintill(tranche.yieldSinceLastPeriod ?? 0),
     }
+
+    tranchesByDate[date].push(trancheSnapshot)
   })
-  return Object.values(tranches)
+
+  return tranchesByDate
 }

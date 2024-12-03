@@ -1,0 +1,32 @@
+name: Release and Versioning
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  create-release:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write # Highly security sensitive. Do NOT add third party actions in this job
+    steps:    
+    - uses: actions/checkout@v4
+      with:       
+        fetch-depth: 2 # Need at least 2 commits to compare versions
+
+    - name: Check if version was bumped
+      id: version_check
+      run: |
+        ./.github/ci-scripts/check-version-bump.sh
+
+    - name: Create GitHub Release   
+      if: success() && steps.version_check.outcome == 'success'
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      run: |
+        VERSION=$(node -p "require('./package.json').version")
+        gh release create "v${VERSION}" \
+          --title "Release v${VERSION}" \
+          --generate-notes \
+          --prerelease \
+          --draft
