@@ -29,5 +29,4 @@ jobs:
           --title "Release v${VERSION}" \
           --generate-notes \
           --prerelease \
-          --draft \ 
           --target "${COMMIT_SHA}"
