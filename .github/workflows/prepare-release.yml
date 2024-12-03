@@ -1,9 +1,11 @@
 name: Release and Versioning
 on:
   pull_request:
-    types: [closed]
-    branches:
-      - main
+    # types: [closed]
+    # branches:
+    #   - main
+    paths:
+      - '.github/workflows/prepare-release.yml'
 
 jobs:
   get_version:
@@ -47,18 +49,18 @@ jobs:
         id: cancel
         if: steps.bump.outputs.type == 'no-release'
         run: |
-          echo "No version bump required. Exiting successfully."
+          echo "::warning::No version bump required. Skipping release steps."
           exit 0
         continue-on-error: true
 
       - name: Configure Git
-        if: steps.cancel.outcome == 'success'
+        if: steps.bump.outputs.type != 'no-release'
         run: |
           git config --global user.name 'GitHub Action'
           git config --global user.email 'actionsbot@github.com'
 
       - name: Bump version
-        if: steps.cancel.outcome == 'success'
+        if: steps.bump.outputs.type != 'no-release'
         run: |
           if [ "${{ steps.bump.outputs.alpha }}" == "true" ]; then
             yarn version --${{ steps.bump.outputs.type }} --preid alpha
@@ -67,7 +69,7 @@ jobs:
           fi
 
       - name: Push changes
-        if: steps.cancel.outcome == 'success'
+        if: steps.bump.outputs.type != 'no-release'
         run: |
           git push
           git push --tags
