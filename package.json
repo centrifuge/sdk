@@ -33,7 +33,7 @@
     "test:simple:single": "mocha --loader=ts-node/esm --exit --timeout 60000",
     "test:single": "mocha --loader=ts-node/esm --require $(pwd)/src/tests/setup.ts --exit --timeout 60000",
     "test:ci": "yarn test --reporter mocha-multi-reporters --reporter-options configFile=mocha-reporter-config.json",
-    "test:coverage": "nyc --nycrc-path .nycrc mocha --loader=ts-node/esm --require $(pwd)/src/tests/setup.ts --exit --timeout 60000 'src/**/*.test.ts' --recursive"
+    "test:coverage": "nyc yarn test:ci"
   },
   "dependencies": {
     "decimal.js-light": "^2.5.1",
