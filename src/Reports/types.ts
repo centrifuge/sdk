@@ -170,5 +170,5 @@ export type AssetTransactionReportFilter = {
   from?: string
   to?: string
   assetId?: string
-  transactionType?: AssetTransactionType
+  transactionType?: 'created' | 'financed' | 'repaid' | 'priced' | 'closed' | 'cashTransfer' | 'all'
 }

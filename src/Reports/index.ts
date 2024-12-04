@@ -69,7 +69,7 @@ export class Reports extends Entity {
   /**
    * Reports are split into two types:
    * - A `Report` is a standard report: balanceSheet, cashflow, profitAndLoss
-   * - A `DataReport` is a custom report: investorTransactions
+   * - A `DataReport` is a custom report: investorTransactions, assetTransactions
    */
   _generateReport<T>(type: Report, filter?: ReportFilter): Query<T[]>
   _generateReport<T>(type: DataReport, filter?: DataReportFilter): Query<T[]>

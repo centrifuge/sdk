@@ -9,7 +9,11 @@ import { mockAssetTransactions } from '../tests/mocks/mockAssetTransactions.js'
 import { PoolSnapshot } from '../queries/poolSnapshots.js'
 import { Currency } from '../utils/BigInt.js'
 import { PoolFeeSnapshot, PoolFeeSnapshotsByDate } from '../queries/poolFeeSnapshots.js'
-import { ProfitAndLossReportPrivateCredit, ProfitAndLossReportPublicCredit } from './types.js'
+import {
+  AssetTransactionReportFilter,
+  ProfitAndLossReportPrivateCredit,
+  ProfitAndLossReportPublicCredit,
+} from './types.js'
 import { InvestorTransaction } from '../queries/investorTransactions.js'
 
 describe('Processor', () => {
@@ -476,6 +480,34 @@ describe('Processor', () => {
         assetTransactions: mockAssetTransactions,
       })
       expect(result).to.have.lengthOf(3)
+    })
+    it('should filter by assetId', () => {
+      const result = processor.assetTransactions(
+        {
+          assetTransactions: mockAssetTransactions,
+        },
+        { assetId: 'asset-1' }
+      )
+      expect(result).to.have.lengthOf(2)
+    })
+    it('should filter by transaction type', () => {
+      const types: { type: AssetTransactionReportFilter['transactionType']; expected: number }[] = [
+        { type: 'created', expected: 0 },
+        { type: 'financed', expected: 1 },
+        { type: 'repaid', expected: 1 },
+        { type: 'priced', expected: 0 },
+        { type: 'closed', expected: 0 },
+        { type: 'cashTransfer', expected: 1 },
+      ]
+      for (const { type, expected } of types) {
+        const result = processor.assetTransactions(
+          {
+            assetTransactions: mockAssetTransactions,
+          },
+          { transactionType: type }
+        )
+        expect(result).to.have.lengthOf(expected)
+      }
     })
   })
   describe('applyGrouping', () => {

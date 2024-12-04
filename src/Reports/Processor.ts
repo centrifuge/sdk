@@ -213,10 +213,31 @@ export class Processor {
   assetTransactions(data: AssetTransactionsData, filter?: AssetTransactionReportFilter): AssetTransactionReport[] {
     return data.assetTransactions
       .filter((day) => {
-        return (
-          (!filter?.assetId || filter.assetId === day.asset.id) &&
-          (!filter?.transactionType || filter.transactionType === day.type)
-        )
+        if (!filter?.transactionType || filter.transactionType === 'all') {
+          return true
+        }
+        if (filter.transactionType === 'created') {
+          return day.type === 'CREATED'
+        }
+        if (filter.transactionType === 'financed') {
+          return day.type === 'BORROWED'
+        }
+        if (filter.transactionType === 'repaid') {
+          return day.type === 'REPAID'
+        }
+        if (filter.transactionType === 'priced') {
+          return day.type === 'PRICED'
+        }
+        if (filter.transactionType === 'closed') {
+          return day.type === 'CLOSED'
+        }
+        if (filter.transactionType === 'cashTransfer') {
+          return day.type === 'CASH_TRANSFER'
+        }
+        return true
+      })
+      .filter((day) => {
+        return !filter?.assetId || filter.assetId === day.asset.id.split('-')[1]
       })
       .map((day) => ({
         type: 'assetTransactions',
