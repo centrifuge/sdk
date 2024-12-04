@@ -1,20 +1,15 @@
-[![Codecov](https://codecov.io/gh/centrifuge/sdk/graph/badge.svg?token=Q2yU8QfefP)](https://codecov.io/gh/centrifuge/sdk)
-[![Build CI status](https://github.com/centrifuge/sdk/actions/workflows/build-test-report.yml/badge.svg)](https://github.com/centrifuge/sdk/actions/workflows/build-test-report.yml)
+# Centrifuge SDK [![Codecov](https://codecov.io/gh/centrifuge/sdk/graph/badge.svg?token=Q2yU8QfefP)](https://codecov.io/gh/centrifuge/sdk) [![Build CI status](https://github.com/centrifuge/sdk/actions/workflows/build-test-report.yml/badge.svg)](https://github.com/centrifuge/sdk/actions/workflows/build-test-report.yml) [![Latest Release](https://img.shields.io/github/v/release/centrifuge/sdk?sort=semver)](https://github.com/centrifuge/sdk/releases/latest)
 
-<!-- [![npm version](https://badge.fury.io/js/@centrifuge%2Fsdk.svg)](https://www.npmjs.com/package/@centrifuge/sdk) -->
-
-[![Latest Release](https://img.shields.io/github/v/release/centrifuge/sdk?sort=semver)](https://github.com/centrifuge/sdk/releases/latest)
-
-# Centrifuge JavaScript SDK
-
-CentrifugeSDK provides a JavaScript client to interact with the Centrifuge ecosystem. It provides a comprehensive interface to easily create and manage pools, nfts, loans and metadata.
+The Centrifuge SDK is a JavaScript client for interacting with the [Centrifuge](https://centrifuge.io) ecosystem. It provides a comprehensive, fully typed library to integrate investments and redemptions, generate financial reports, manage pools, and much more.
 
 ## Installation
 
-CentrifugeSDK uses [Viem](https://viem.sh/) under the hood. It's necessary to install it alongside the SDK.
+Centrifuge SDK uses [Viem](https://viem.sh/) under the hood. It's necessary to install it alongside the SDK.
 
 ```bash
 npm install --save @centrifuge/sdk viem
+# or
+yarn install @centrifuge/sdk viem
 ```
 
 ## Init and config
@@ -27,7 +22,7 @@ import Centrifuge from '@centrifuge/sdk'
 const centrifuge = new Centrifuge()
 ```
 
-The following config options can be passed on initilization of CentrifugeSDK:
+The following config options can be passed on initialization of the SDK:
 
 - `environment: 'mainnet' | 'demo' | 'dev'`
   - Optional
@@ -66,7 +61,7 @@ To perform transactions, you need to set a signer on the `centrifuge` instance.
 centrifuge.setSigner(signer)
 ```
 
-`signer` can be a [EIP1193](https://eips.ethereum.org/EIPS/eip-1193)-compatible provider or a Viem [LocalAccount](https://viem.sh/docs/accounts/local)
+`signer` can be a [EIP1193](https://eips.ethereum.org/EIPS/eip-1193)-compatible provider or a Viem [LocalAccount](https://viem.sh/docs/accounts/local).
 
 With this you can call transaction methods. Similar to queries they can be awaited to get their final result, or subscribed to get get status updates.
 
