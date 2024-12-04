@@ -1,6 +1,7 @@
 import { AssetTransaction, AssetTransactionType } from '../queries/assetTransactions.js'
 import { InvestorTransaction, SubqueryInvestorTransactionType } from '../queries/investorTransactions.js'
 import { PoolFeeSnapshotsByDate } from '../queries/poolFeeSnapshots.js'
+import { PoolFeeTransaction } from '../queries/poolFeeTransactions.js'
 import { PoolSnapshot } from '../queries/poolSnapshots.js'
 import { TrancheSnapshotsByDate } from '../queries/trancheSnapshots.js'
 import { PoolMetadata } from '../types/poolMetadata.js'
@@ -171,4 +172,24 @@ export type AssetTransactionReportFilter = {
   to?: string
   assetId?: string
   transactionType?: 'created' | 'financed' | 'repaid' | 'priced' | 'closed' | 'cashTransfer' | 'all'
+}
+
+/**
+ * Fee transactions types
+ */
+export type FeeTransactionsData = {
+  poolFeeTransactions: PoolFeeTransaction[]
+}
+
+export type FeeTransactionReport = {
+  type: 'feeTransactions'
+  timestamp: string
+  feeId: string
+  amount: Currency
+}
+
+export type FeeTransactionReportFilter = {
+  from?: string
+  to?: string
+  transactionType?: 'directChargeMade' | 'directChargeCanceled' | 'accrued' | 'paid' | 'all'
 }

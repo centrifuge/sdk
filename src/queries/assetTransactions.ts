@@ -105,22 +105,22 @@ type SubqueryAssetTransactions = {
 
 export const assetTransactionsPostProcess = (data: SubqueryAssetTransactions): AssetTransaction[] => {
   return (
-    data.assetTransactions.nodes.map((day) => {
-      const decimals = day.pool.currency.decimals
+    data.assetTransactions.nodes.map((tx) => {
+      const decimals = tx.pool.currency.decimals
       return {
-        ...day,
-        settlementPrice: day.settlementPrice ? new Price(day.settlementPrice) : null,
-        amount: new Currency(day?.amount ?? 0n, decimals),
-        principalAmount: day.principalAmount ? new Currency(day.principalAmount, decimals) : undefined,
-        interestAmount: day.interestAmount ? new Currency(day.interestAmount, decimals) : undefined,
-        realizedProfitFifo: day.realizedProfitFifo ? new Currency(day.realizedProfitFifo, decimals) : undefined,
-        sumRealizedProfitFifo: day.asset.sumRealizedProfitFifo
-          ? new Currency(day.asset.sumRealizedProfitFifo, decimals)
+        ...tx,
+        settlementPrice: tx.settlementPrice ? new Price(tx.settlementPrice) : null,
+        amount: new Currency(tx?.amount ?? 0n, decimals),
+        principalAmount: tx.principalAmount ? new Currency(tx.principalAmount, decimals) : undefined,
+        interestAmount: tx.interestAmount ? new Currency(tx.interestAmount, decimals) : undefined,
+        realizedProfitFifo: tx.realizedProfitFifo ? new Currency(tx.realizedProfitFifo, decimals) : undefined,
+        sumRealizedProfitFifo: tx.asset.sumRealizedProfitFifo
+          ? new Currency(tx.asset.sumRealizedProfitFifo, decimals)
           : undefined,
-        unrealizedProfitAtMarketPrice: day.asset.unrealizedProfitAtMarketPrice
-          ? new Currency(day.asset.unrealizedProfitAtMarketPrice, decimals)
+        unrealizedProfitAtMarketPrice: tx.asset.unrealizedProfitAtMarketPrice
+          ? new Currency(tx.asset.unrealizedProfitAtMarketPrice, decimals)
           : undefined,
-        timestamp: new Date(`${day.timestamp}+00:00`),
+        timestamp: new Date(`${tx.timestamp}+00:00`),
       }
     }) || ([] satisfies AssetTransaction[])
   )

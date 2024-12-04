@@ -1,6 +1,7 @@
 import { expect } from 'chai'
 import { processor } from './Processor.js'
 import { mockPoolSnapshots } from '../tests/mocks/mockPoolSnapshots.js'
+import { mockFeeTransactions } from '../tests/mocks/mockPoolFeeTransactions.js'
 import { mockTrancheSnapshots } from '../tests/mocks/mockTrancheSnapshots.js'
 import { mockPoolFeeSnapshots } from '../tests/mocks/mockPoolFeeSnapshot.js'
 import { mockPoolMetadata } from '../tests/mocks/mockPoolMetadata.js'
@@ -510,6 +511,19 @@ describe('Processor', () => {
       }
     })
   })
+
+  describe('fee transactions processor', () => {
+    it('should return empty array when no transactions found', () => {
+      expect(processor.feeTransactions({ poolFeeTransactions: [] })).to.deep.equal([])
+    })
+    it('should process fee transactions correctly', () => {
+      const result = processor.feeTransactions({ poolFeeTransactions: mockFeeTransactions })
+      expect(result).to.have.lengthOf(2)
+    })
+    // TODO: add tests for filtering by transaction type
+    // find mapping for transaction type
+  })
+
   describe('applyGrouping', () => {
     const applyGrouping = processor['applyGrouping']
     const mockData = [

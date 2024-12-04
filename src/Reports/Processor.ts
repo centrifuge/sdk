@@ -14,6 +14,9 @@ import {
   AssetTransactionReport,
   AssetTransactionsData,
   AssetTransactionReportFilter,
+  FeeTransactionsData,
+  FeeTransactionReportFilter,
+  FeeTransactionReport,
 } from './types.js'
 
 export class Processor {
@@ -212,41 +215,57 @@ export class Processor {
 
   assetTransactions(data: AssetTransactionsData, filter?: AssetTransactionReportFilter): AssetTransactionReport[] {
     return data.assetTransactions
-      .filter((day) => {
+      .filter((tx) => {
         if (!filter?.transactionType || filter.transactionType === 'all') {
           return true
         }
         if (filter.transactionType === 'created') {
-          return day.type === 'CREATED'
+          return tx.type === 'CREATED'
         }
         if (filter.transactionType === 'financed') {
-          return day.type === 'BORROWED'
+          return tx.type === 'BORROWED'
         }
         if (filter.transactionType === 'repaid') {
-          return day.type === 'REPAID'
+          return tx.type === 'REPAID'
         }
         if (filter.transactionType === 'priced') {
-          return day.type === 'PRICED'
+          return tx.type === 'PRICED'
         }
         if (filter.transactionType === 'closed') {
-          return day.type === 'CLOSED'
+          return tx.type === 'CLOSED'
         }
         if (filter.transactionType === 'cashTransfer') {
-          return day.type === 'CASH_TRANSFER'
+          return tx.type === 'CASH_TRANSFER'
         }
         return true
       })
-      .filter((day) => {
-        return !filter?.assetId || filter.assetId === day.asset.id.split('-')[1]
+      .filter((tx) => {
+        return !filter?.assetId || filter.assetId === tx.asset.id.split('-')[1]
       })
-      .map((day) => ({
+      .map((tx) => ({
         type: 'assetTransactions',
-        timestamp: day.timestamp.toISOString(),
-        assetId: day.asset.id,
-        epoch: day.epochId,
-        transactionType: day.type,
-        amount: day.amount,
-        transactionHash: day.hash,
+        timestamp: tx.timestamp.toISOString(),
+        assetId: tx.asset.id,
+        epoch: tx.epochId,
+        transactionType: tx.type,
+        amount: tx.amount,
+        transactionHash: tx.hash,
+      }))
+  }
+
+  feeTransactions(data: FeeTransactionsData, filter?: FeeTransactionReportFilter): FeeTransactionReport[] {
+    return data.poolFeeTransactions
+      .filter((tx) => {
+        if (!filter?.transactionType || filter.transactionType === 'all') {
+          return true
+        }
+        return filter.transactionType === tx.type
+      })
+      .map((tx) => ({
+        type: 'feeTransactions',
+        timestamp: tx.timestamp,
+        feeId: tx.feeId,
+        amount: tx.amount,
       }))
   }
 
