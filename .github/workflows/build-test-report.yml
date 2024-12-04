@@ -57,5 +57,5 @@ jobs:
           directory: ./coverage
           token: ${{ secrets.CODECOV_TOKEN }}
           # flags: unittests
-          name: sdk-coverage-with-nyc
+          name: sdk-coverage
           fail_ci_if_error: true          

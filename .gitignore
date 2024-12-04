@@ -26,5 +26,4 @@ yarn-error.log
 # Tests and coverage
 coverage/
 test-results.xml
-.nyc_output
 report/
