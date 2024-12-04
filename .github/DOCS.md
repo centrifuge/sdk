@@ -15,7 +15,6 @@ This workflow is responsible for versioning and preparing releases based on pull
 
 - **Alpha Versioning**: When a PR includes the `alpha` label, versions are created with an `-alpha.N` suffix (e.g., `1.2.3-alpha.1`, `1.2.3-alpha.2`). This continues until the alpha label is removed, at which point the version returns to standard semantic versioning.
 
-
 ### 2. `build-test-report.yml`
 
 This workflow handles building, testing, and reporting.
@@ -56,4 +55,3 @@ This workflow handles the publishing of releases to NPM.
 2. **Draft Release Creation**: The `create-release.yml` workflow creates a draft release if `package.json` contains a new version on the `main` branch.
 
 3. **Publishing**: When a release is published on GitHub (moved from draft to released), the `publish-release.yml` workflow is triggered. It builds the project and publishes it to NPM, ensuring the package is available for public use.
-
