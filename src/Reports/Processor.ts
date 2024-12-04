@@ -1,3 +1,5 @@
+import { AssetTransaction } from '../queries/assetTransactions.js'
+import { InvestorTransaction } from '../queries/investorTransactions.js'
 import { Currency, Price, Token } from '../utils/BigInt.js'
 import { groupByPeriod } from '../utils/date.js'
 import {
@@ -154,7 +156,7 @@ export class Processor {
   ): InvestorTransactionsReport[] {
     if (!data.investorTransactions?.length) return []
 
-    const validTypes = new Set([
+    const validTypes: Set<InvestorTransaction['type']> = new Set([
       'INVEST_ORDER_UPDATE',
       'REDEEM_ORDER_UPDATE',
       'INVEST_ORDER_CANCEL',
@@ -172,101 +174,87 @@ export class Processor {
     const filterAddress = filter?.address?.toLowerCase()
     const filterNetwork = filter?.network === 'all' ? null : filter?.network
 
-    return data.investorTransactions
-      .filter((day) => {
-        // Type check
-        if (filter?.transactionType === 'orders') {
-          return day.type.includes('ORDER')
-        }
-        if (filter?.transactionType === 'executions') {
-          return day.type.includes('EXECUTION')
-        }
-        if (filter?.transactionType === 'transfers') {
-          return day.type.includes('COLLECT') || day.type.includes('TRANSFER')
-        }
-        if (filter?.transactionType === 'all' || !filter?.transactionType) {
-          return validTypes.has(day.type)
-        }
-        return false
-      })
-      .filter((day) => {
-        return (
-          (!filterNetwork || filterNetwork === (day.chainId || 'centrifuge')) &&
-          (!filter?.tokenId || filter.tokenId === day.trancheId) &&
-          (!filterAddress ||
-            day.accountId.toLowerCase() === filterAddress ||
-            day.evmAddress?.toLowerCase() === filterAddress)
-        )
-      })
-      .map((day) => ({
-        type: 'investorTransactions',
-        timestamp: day.timestamp.toISOString(),
-        chainId: day.chainId,
-        account: day.evmAddress ?? day.accountId,
-        epoch: day.epochNumber?.toString() ?? '',
-        transactionType: day.type,
-        currencyAmount: day.currencyAmount,
-        trancheTokenAmount: day.tokenAmount,
-        trancheTokenId: day.trancheId,
-        price: day.tokenPrice ?? '',
-        transactionHash: day.hash,
-      }))
+    return data.investorTransactions.reduce<InvestorTransactionsReport[]>((acc, day) => {
+      const typeMatches =
+        (filter?.transactionType === 'orders' && day.type.includes('ORDER')) ||
+        (filter?.transactionType === 'executions' && day.type.includes('EXECUTION')) ||
+        (filter?.transactionType === 'transfers' && (day.type.includes('COLLECT') || day.type.includes('TRANSFER'))) ||
+        ((!filter?.transactionType || filter?.transactionType === 'all') && validTypes.has(day.type))
+
+      const filterMatches =
+        (!filterNetwork || filterNetwork === (day.chainId || 'centrifuge')) &&
+        (!filter?.tokenId || filter.tokenId === day.trancheId) &&
+        (!filterAddress ||
+          day.accountId.toLowerCase() === filterAddress ||
+          day.evmAddress?.toLowerCase() === filterAddress)
+
+      if (typeMatches && filterMatches) {
+        acc.push({
+          type: 'investorTransactions',
+          timestamp: day.timestamp.toISOString(),
+          chainId: day.chainId,
+          account: day.evmAddress ?? day.accountId,
+          epoch: day.epochNumber?.toString() ?? '',
+          transactionType: day.type,
+          currencyAmount: day.currencyAmount,
+          trancheTokenAmount: day.tokenAmount,
+          trancheTokenId: day.trancheId,
+          price: day.tokenPrice ?? '',
+          transactionHash: day.hash,
+        })
+      }
+
+      return acc
+    }, [])
   }
 
   assetTransactions(data: AssetTransactionsData, filter?: AssetTransactionReportFilter): AssetTransactionReport[] {
-    return data.assetTransactions
-      .filter((tx) => {
-        if (!filter?.transactionType || filter.transactionType === 'all') {
-          return true
-        }
-        if (filter.transactionType === 'created') {
-          return tx.type === 'CREATED'
-        }
-        if (filter.transactionType === 'financed') {
-          return tx.type === 'BORROWED'
-        }
-        if (filter.transactionType === 'repaid') {
-          return tx.type === 'REPAID'
-        }
-        if (filter.transactionType === 'priced') {
-          return tx.type === 'PRICED'
-        }
-        if (filter.transactionType === 'closed') {
-          return tx.type === 'CLOSED'
-        }
-        if (filter.transactionType === 'cashTransfer') {
-          return tx.type === 'CASH_TRANSFER'
-        }
-        return true
-      })
-      .filter((tx) => {
-        return !filter?.assetId || filter.assetId === tx.asset.id.split('-')[1]
-      })
-      .map((tx) => ({
-        type: 'assetTransactions',
-        timestamp: tx.timestamp.toISOString(),
-        assetId: tx.asset.id,
-        epoch: tx.epochId,
-        transactionType: tx.type,
-        amount: tx.amount,
-        transactionHash: tx.hash,
-      }))
+    const typeMap: Record<
+      NonNullable<Exclude<AssetTransactionReportFilter['transactionType'], 'all'>>,
+      AssetTransaction['type']
+    > = {
+      created: 'CREATED',
+      financed: 'BORROWED',
+      repaid: 'REPAID',
+      priced: 'PRICED',
+      closed: 'CLOSED',
+      cashTransfer: 'CASH_TRANSFER',
+    } as const
+
+    return data.assetTransactions.reduce<AssetTransactionReport[]>((acc, tx) => {
+      const typeMatches =
+        !filter?.transactionType || filter.transactionType === 'all' || tx.type === typeMap[filter.transactionType]
+
+      const assetMatches = !filter?.assetId || filter.assetId === tx.asset.id.split('-')[1]
+
+      if (typeMatches && assetMatches) {
+        acc.push({
+          type: 'assetTransactions',
+          timestamp: tx.timestamp.toISOString(),
+          assetId: tx.asset.id,
+          epoch: tx.epochId,
+          transactionType: tx.type,
+          amount: tx.amount,
+          transactionHash: tx.hash,
+        })
+      }
+
+      return acc
+    }, [])
   }
 
   feeTransactions(data: FeeTransactionsData, filter?: FeeTransactionReportFilter): FeeTransactionReport[] {
-    return data.poolFeeTransactions
-      .filter((tx) => {
-        if (!filter?.transactionType || filter.transactionType === 'all') {
-          return true
-        }
-        return filter.transactionType === tx.type
-      })
-      .map((tx) => ({
-        type: 'feeTransactions',
-        timestamp: tx.timestamp,
-        feeId: tx.feeId,
-        amount: tx.amount,
-      }))
+    return data.poolFeeTransactions.reduce<FeeTransactionReport[]>((acc, tx) => {
+      if (!filter?.transactionType || filter.transactionType === 'all' || filter.transactionType === tx.type) {
+        acc.push({
+          type: 'feeTransactions',
+          timestamp: tx.timestamp,
+          feeId: tx.feeId,
+          amount: tx.amount,
+        })
+      }
+      return acc
+    }, [])
   }
 
   /**

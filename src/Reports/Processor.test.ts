@@ -487,7 +487,7 @@ describe('Processor', () => {
         {
           assetTransactions: mockAssetTransactions,
         },
-        { assetId: 'asset-1' }
+        { assetId: '1' }
       )
       expect(result).to.have.lengthOf(2)
     })

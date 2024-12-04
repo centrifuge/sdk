@@ -18,7 +18,7 @@ export const mockAssetTransactions: AssetTransaction[] = [
     realizedProfitFifo: Currency.fromFloat(0, 6),
     unrealizedProfitAtMarketPrice: Currency.fromFloat(0, 6),
     asset: {
-      id: 'asset-1',
+      id: 'poolId-1',
       metadata: 'Asset 1 metadata',
       type: AssetType.OnchainCash,
       currentPrice: '1000000000000000000', // 1.0
@@ -40,7 +40,7 @@ export const mockAssetTransactions: AssetTransaction[] = [
     realizedProfitFifo: Currency.fromFloat(1000, 6),
     unrealizedProfitAtMarketPrice: undefined,
     asset: {
-      id: 'asset-1',
+      id: 'poolId-1',
       metadata: 'Asset 1 metadata',
       type: AssetType.OnchainCash,
       currentPrice: '1000000000000000000', // 1.0
@@ -62,18 +62,18 @@ export const mockAssetTransactions: AssetTransaction[] = [
     realizedProfitFifo: undefined,
     unrealizedProfitAtMarketPrice: undefined,
     asset: {
-      id: 'asset-2',
+      id: 'poolId-2',
       metadata: 'Asset 2 metadata',
       type: AssetType.OffchainCash,
       currentPrice: null,
     },
     fromAsset: {
-      id: 'asset-1',
+      id: 'poolId-1',
       metadata: 'Asset 1 metadata',
       type: AssetType.OnchainCash,
     },
     toAsset: {
-      id: 'asset-2',
+      id: 'poolId-2',
       metadata: 'Asset 2 metadata',
       type: AssetType.OffchainCash,
     },
