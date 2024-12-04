@@ -34,9 +34,7 @@ jobs:
         run: yarn build
       
       - name: Run tests
-        run: |
-          yarn test:ci
-          yarn test:coverage
+        run: yarn test:coverage
         env:
           TENDERLY_ACCESS_KEY: ${{ secrets.TENDERLY_ACCESS_KEY }}
           PROJECT_SLUG: ${{ secrets.PROJECT_SLUG }}
@@ -50,6 +48,7 @@ jobs:
           name: test-results
           path: |
             report/
+            coverage/lcov-report/
           retention-days: 15
 
       - name: Upload coverage to Codecov
@@ -58,5 +57,5 @@ jobs:
           directory: ./coverage
           token: ${{ secrets.CODECOV_TOKEN }}
           # flags: unittests
-          name: sdk-coverage-with-nyc
+          name: sdk-coverage
           fail_ci_if_error: true          

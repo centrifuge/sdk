@@ -1,7 +1,0 @@
-{
-  "reporter": ["text", "lcov"],
-  "extension": [".ts"],
-  "include": ["src/**/*.ts"],
-  "exclude": ["**/*.test.ts", "src/tests/**", "src/index.ts"],
-  "all": true
-}
