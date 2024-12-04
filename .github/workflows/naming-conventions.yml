@@ -40,10 +40,6 @@ jobs:
       pull-requests: write
       contents: read
     steps:
-      - name: Debug outputs from title-n-label-check
-        run: |
-          echo "Title Error: ${{ needs.title-n-label-check.outputs.title_error }}"
-          echo "Labels Valid: ${{ needs.title-n-label-check.outputs.labels_valid }}"
 
       - name: Find existing PR title error comment
         uses: peter-evans/find-comment@v2
