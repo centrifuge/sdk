@@ -1,4 +1,4 @@
-import { AssetTransaction, AssetType, AssetTransactionType } from '../../queries/assetTransactions.js'
+import { AssetTransaction, AssetType, AssetTransactionType } from '../../IndexerQueries/assetTransactions.js'
 import { Currency, Price } from '../../utils/BigInt.js'
 
 export const mockAssetTransactions: AssetTransaction[] = [

@@ -7,15 +7,15 @@ import { mockPoolFeeSnapshots } from '../tests/mocks/mockPoolFeeSnapshot.js'
 import { mockPoolMetadata } from '../tests/mocks/mockPoolMetadata.js'
 import { mockInvestorTransactions } from '../tests/mocks/mockInvestorTransactions.js'
 import { mockAssetTransactions } from '../tests/mocks/mockAssetTransactions.js'
-import { PoolSnapshot } from '../queries/poolSnapshots.js'
+import { PoolSnapshot } from '../IndexerQueries/poolSnapshots.js'
 import { Currency, Price, Token } from '../utils/BigInt.js'
-import { PoolFeeSnapshot, PoolFeeSnapshotsByDate } from '../queries/poolFeeSnapshots.js'
+import { PoolFeeSnapshot, PoolFeeSnapshotsByDate } from '../IndexerQueries/poolFeeSnapshots.js'
 import {
   AssetTransactionReportFilter,
   ProfitAndLossReportPrivateCredit,
   ProfitAndLossReportPublicCredit,
 } from '../types/reports.js'
-import { InvestorTransaction } from '../queries/investorTransactions.js'
+import { InvestorTransaction } from '../IndexerQueries/investorTransactions.js'
 
 describe('Processor', () => {
   describe('balanceSheet processor', () => {

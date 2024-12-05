@@ -1,5 +1,5 @@
 import { Currency } from '../../utils/BigInt.js'
-import { PoolSnapshot } from '../../queries/poolSnapshots.js'
+import { PoolSnapshot } from '../../IndexerQueries/poolSnapshots.js'
 
 export const mockPoolSnapshots: PoolSnapshot[] = [
   {

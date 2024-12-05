@@ -1,16 +1,5 @@
 import { Entity } from '../Entity.js'
 import { Centrifuge } from '../Centrifuge.js'
-import { PoolSnapshotFilter, poolSnapshotsPostProcess, poolSnapshotsQuery } from '../queries/poolSnapshots.js'
-import {
-  TrancheSnapshotFilter,
-  trancheSnapshotsPostProcess,
-  trancheSnapshotsQuery,
-} from '../queries/trancheSnapshots.js'
-import {
-  poolFeeTransactionQuery,
-  poolFeeTransactionPostProcess,
-  PoolFeeTransactionFilter,
-} from '../queries/poolFeeTransactions.js'
 import { combineLatest } from 'rxjs'
 import { processor } from './Processor.js'
 
@@ -33,26 +22,16 @@ import {
   FeeTransactionReportFilter,
 } from '../types/reports.js'
 import { Query } from '../types/query.js'
-import {
-  PoolFeeSnapshotFilter,
-  poolFeeSnapshotQuery,
-  poolFeeSnapshotsPostProcess,
-} from '../queries/poolFeeSnapshots.js'
 import { Pool } from '../Pool.js'
-import { investorTransactionsPostProcess } from '../queries/investorTransactions.js'
-import { InvestorTransactionFilter, investorTransactionsQuery } from '../queries/investorTransactions.js'
-import {
-  AssetTransactionFilter,
-  assetTransactionsPostProcess,
-  assetTransactionsQuery,
-} from '../queries/assetTransactions.js'
-
+import { IndexerQueries } from '../IndexerQueries/index.js'
 export class Reports extends Entity {
+  private queries: IndexerQueries
   constructor(
     centrifuge: Centrifuge,
     public pool: Pool
   ) {
     super(centrifuge, ['reports', pool.id])
+    this.queries = new IndexerQueries(centrifuge, pool)
   }
 
   balanceSheet(filter?: ReportFilter) {
@@ -114,27 +93,27 @@ export class Reports extends Entity {
 
         const metadata$ = this.pool.metadata()
 
-        const poolSnapshots$ = this.poolSnapshotsQuery({
+        const poolSnapshots$ = this.queries.poolSnapshotsQuery({
           ...dateFilter,
           poolId: { equalTo: this.pool.id },
         })
-        const trancheSnapshots$ = this.trancheSnapshotsQuery({
+        const trancheSnapshots$ = this.queries.trancheSnapshotsQuery({
           ...dateFilter,
           tranche: { poolId: { equalTo: this.pool.id } },
         })
-        const poolFeeSnapshots$ = this.poolFeeSnapshotsQuery({
+        const poolFeeSnapshots$ = this.queries.poolFeeSnapshotsQuery({
           ...dateFilter,
           poolFeeId: { includes: this.pool.id },
         })
-        const investorTransactions$ = this.investorTransactionsQuery({
+        const investorTransactions$ = this.queries.investorTransactionsQuery({
           ...dateFilter,
           poolId: { equalTo: this.pool.id },
         })
-        const assetTransactions$ = this.assetTransactionsQuery({
+        const assetTransactions$ = this.queries.assetTransactionsQuery({
           ...dateFilter,
           poolId: { equalTo: this.pool.id },
         })
-        const poolFeeTransactions$ = this.poolFeeTransactionsQuery({
+        const poolFeeTransactions$ = this.queries.poolFeeTransactionsQuery({
           ...dateFilter,
           poolFee: { poolId: { equalTo: this.pool.id } },
         })
@@ -187,29 +166,5 @@ export class Reports extends Entity {
         valueCacheTime: 120,
       }
     )
-  }
-
-  poolFeeSnapshotsQuery(filter?: PoolFeeSnapshotFilter) {
-    return this._root._queryIndexer(poolFeeSnapshotQuery, { filter }, poolFeeSnapshotsPostProcess)
-  }
-
-  poolSnapshotsQuery(filter?: PoolSnapshotFilter) {
-    return this._root._queryIndexer(poolSnapshotsQuery, { filter }, poolSnapshotsPostProcess)
-  }
-
-  trancheSnapshotsQuery(filter?: TrancheSnapshotFilter) {
-    return this._root._queryIndexer(trancheSnapshotsQuery, { filter }, trancheSnapshotsPostProcess)
-  }
-
-  investorTransactionsQuery(filter?: InvestorTransactionFilter) {
-    return this._root._queryIndexer(investorTransactionsQuery, { filter }, investorTransactionsPostProcess)
-  }
-
-  assetTransactionsQuery(filter?: AssetTransactionFilter) {
-    return this._root._queryIndexer(assetTransactionsQuery, { filter }, assetTransactionsPostProcess)
-  }
-
-  poolFeeTransactionsQuery(filter?: PoolFeeTransactionFilter) {
-    return this._root._queryIndexer(poolFeeTransactionQuery, { filter }, poolFeeTransactionPostProcess)
   }
 }

@@ -1,4 +1,4 @@
-import { InvestorTransaction } from '../../queries/investorTransactions.js'
+import { InvestorTransaction } from '../../IndexerQueries/investorTransactions.js'
 import { Price } from '../../utils/BigInt.js'
 
 import { Currency } from '../../utils/BigInt.js'

@@ -1,5 +1,5 @@
 import { Currency } from '../../utils/BigInt.js'
-import { PoolFeeTransaction } from '../../queries/poolFeeTransactions.js'
+import { PoolFeeTransaction } from '../../IndexerQueries/poolFeeTransactions.js'
 export const mockFeeTransactions = [
   {
     feeId: 'fee-1',

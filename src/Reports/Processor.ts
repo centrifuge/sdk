@@ -1,5 +1,5 @@
-import { AssetTransaction } from '../queries/assetTransactions.js'
-import { InvestorTransaction } from '../queries/investorTransactions.js'
+import { AssetTransaction } from '../IndexerQueries/assetTransactions.js'
+import { InvestorTransaction } from '../IndexerQueries/investorTransactions.js'
 import { Currency, Price, Token } from '../utils/BigInt.js'
 import { groupByPeriod } from '../utils/date.js'
 import {
@@ -23,7 +23,7 @@ import {
   TokenPriceReportFilter,
   TokenPriceData,
 } from '../types/reports.js'
-import { PoolFeeTransaction } from '../queries/poolFeeTransactions.js'
+import { PoolFeeTransaction } from '../IndexerQueries/poolFeeTransactions.js'
 
 export class Processor {
   /**
