@@ -6,18 +6,27 @@ export type PoolFeeTransactionFilter = Partial<
 
 export type PoolFeeTransaction = {
   feeId: string
-  type: string
+  type: SubqueryPoolFeeTransactionType
   timestamp: string
   blockNumber: string
   epochNumber: number
   amount: Currency
 }
 
+export type SubqueryPoolFeeTransactionType =
+  | 'PROPOSED'
+  | 'ADDED'
+  | 'REMOVED'
+  | 'CHARGED'
+  | 'UNCHARGED'
+  | 'ACCRUED'
+  | 'PAID'
+
 export type SubqueryPoolFeeTransaction = {
   poolFeeTransactions: {
     nodes: {
       id: string
-      type: string
+      type: SubqueryPoolFeeTransactionType
       timestamp: string
       blockNumber: string
       epochNumber: number
@@ -37,7 +46,7 @@ export type SubqueryPoolFeeTransaction = {
 export function poolFeeTransactionPostProcess(data: SubqueryPoolFeeTransaction): PoolFeeTransaction[] {
   return data.poolFeeTransactions.nodes.map((tx) => ({
     feeId: tx.id,
-    type: tx.type,
+    type: tx.type as PoolFeeTransaction['type'],
     timestamp: tx.timestamp,
     blockNumber: tx.blockNumber,
     epochNumber: tx.epochNumber,

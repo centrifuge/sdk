@@ -80,7 +80,7 @@ export class Reports extends Entity {
   /**
    * Reports are split into two types:
    * - A `Report` is a standard report: balanceSheet, cashflow, profitAndLoss
-   * - A `DataReport` is a custom report: investorTransactions, assetTransactions
+   * - A `DataReport` is a custom report: investorTransactions, assetTransactions, feeTransactions, tokenPrice
    */
   _generateReport<T>(type: Report, filter?: ReportFilter): Query<T[]>
   _generateReport<T>(type: DataReport, filter?: DataReportFilter): Query<T[]>
@@ -105,7 +105,6 @@ export class Reports extends Entity {
             lessThanOrEqualTo: to && `${to.split('T')[0]}T23:59:59.999Z`,
           },
         }
-        console.log('🚀 ~ dateFilter:', dateFilter)
 
         const metadata$ = this.pool.metadata()
 

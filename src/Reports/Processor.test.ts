@@ -14,7 +14,7 @@ import {
   AssetTransactionReportFilter,
   ProfitAndLossReportPrivateCredit,
   ProfitAndLossReportPublicCredit,
-} from './types.js'
+} from '../types/reports.js'
 import { InvestorTransaction } from '../queries/investorTransactions.js'
 
 describe('Processor', () => {
@@ -520,8 +520,42 @@ describe('Processor', () => {
       const result = processor.feeTransactions({ poolFeeTransactions: mockFeeTransactions })
       expect(result).to.have.lengthOf(2)
     })
-    // TODO: add tests for filtering by transaction type
-    // find mapping for transaction type
+    it('should filter by transaction type all', () => {
+      const result = processor.feeTransactions({ poolFeeTransactions: mockFeeTransactions }, { transactionType: 'all' })
+      expect(result).to.have.lengthOf(2)
+    })
+    it('should filter by transaction type accrued', () => {
+      const result = processor.feeTransactions(
+        { poolFeeTransactions: mockFeeTransactions },
+        { transactionType: 'accrued' }
+      )
+      expect(result).to.have.lengthOf(1)
+    })
+    it('should filter by transaction type paid', () => {
+      const result = processor.feeTransactions(
+        { poolFeeTransactions: mockFeeTransactions },
+        { transactionType: 'paid' }
+      )
+      expect(result).to.have.lengthOf(1)
+    })
+    it('should return an empty array when no filters match', () => {
+      const result = processor.feeTransactions(
+        { poolFeeTransactions: mockFeeTransactions },
+        { transactionType: 'directChargeMade' }
+      )
+      expect(result).to.deep.equal([])
+    })
+  })
+
+  describe('token price processor', () => {
+    it('should process token price correctly', () => {
+      const result = processor.tokenPrice({ trancheSnapshots: mockTrancheSnapshots })
+      expect(result).to.have.lengthOf(2)
+    })
+    it('should group by month', () => {
+      const result = processor.tokenPrice({ trancheSnapshots: mockTrancheSnapshots }, { groupBy: 'month' })
+      expect(result).to.have.lengthOf(1)
+    })
   })
 
   describe('applyGrouping', () => {

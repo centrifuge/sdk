@@ -23,6 +23,7 @@ import {
   TokenPriceReportFilter,
   TokenPriceData,
 } from '../types/reports.js'
+import { PoolFeeTransaction } from '../queries/poolFeeTransactions.js'
 
 export class Processor {
   /**
@@ -253,8 +254,23 @@ export class Processor {
     data: FeeTransactionsData,
     filter?: Omit<FeeTransactionReportFilter, 'to' | 'from'>
   ): FeeTransactionReport[] {
+    const feeTransactionTypes: {
+      [key in PoolFeeTransaction['type']]: string
+    } = {
+      PROPOSED: 'proposed',
+      ADDED: 'added',
+      REMOVED: 'removed',
+      CHARGED: 'directChargeMade',
+      UNCHARGED: 'directChargeCancelled',
+      ACCRUED: 'accrued',
+      PAID: 'paid',
+    }
     return data.poolFeeTransactions.reduce<FeeTransactionReport[]>((acc, tx) => {
-      if (!filter?.transactionType || filter.transactionType === 'all' || filter.transactionType === tx.type) {
+      if (
+        !filter?.transactionType ||
+        filter.transactionType === 'all' ||
+        filter.transactionType === feeTransactionTypes[tx.type]
+      ) {
         acc.push({
           type: 'feeTransactions',
           timestamp: tx.timestamp,
@@ -278,7 +294,7 @@ export class Processor {
       })),
     }))
 
-    return groupByPeriod<TokenPriceReport>(items, filter?.groupBy ?? 'day', 'latest')
+    return this.applyGrouping<TokenPriceReport>(items, filter?.groupBy ?? 'day', 'latest')
   }
 
   /**

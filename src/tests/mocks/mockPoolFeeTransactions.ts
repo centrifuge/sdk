@@ -1,9 +1,9 @@
 import { Currency } from '../../utils/BigInt.js'
-
+import { PoolFeeTransaction } from '../../queries/poolFeeTransactions.js'
 export const mockFeeTransactions = [
   {
     feeId: 'fee-1',
-    type: 'ACCRUED',
+    type: 'ACCRUED' as PoolFeeTransaction['type'],
     timestamp: '2024-01-01T00:00:00Z',
     blockNumber: '1',
     epochNumber: 1,
@@ -11,7 +11,7 @@ export const mockFeeTransactions = [
   },
   {
     feeId: 'fee-2',
-    type: 'PAID',
+    type: 'PAID' as PoolFeeTransaction['type'],
     timestamp: '2024-01-02T00:00:00Z',
     blockNumber: '2',
     epochNumber: 2,
