@@ -1,3 +1,4 @@
+import { AssetSnapshot } from '../IndexerQueries/assetSnapshots.js'
 import { AssetTransaction, AssetTransactionType } from '../IndexerQueries/assetTransactions.js'
 import { InvestorTransaction, SubqueryInvestorTransactionType } from '../IndexerQueries/investorTransactions.js'
 import { PoolFeeSnapshotsByDate } from '../IndexerQueries/poolFeeSnapshots.js'
@@ -5,7 +6,7 @@ import { PoolFeeTransaction } from '../IndexerQueries/poolFeeTransactions.js'
 import { PoolSnapshot } from '../IndexerQueries/poolSnapshots.js'
 import { TrancheSnapshotsByDate } from '../IndexerQueries/trancheSnapshots.js'
 import { PoolMetadata } from '../types/poolMetadata.js'
-import { Price, Token } from '../utils/BigInt.js'
+import { Price, Rate, Token } from '../utils/BigInt.js'
 import { Currency } from '../utils/BigInt.js'
 import { GroupBy } from '../utils/date.js'
 
@@ -21,7 +22,7 @@ export type DataReportFilter = {
 }
 
 export type Report = 'balanceSheet' | 'cashflow' | 'profitAndLoss'
-export type DataReport = 'investorTransactions' | 'assetTransactions' | 'feeTransactions' | 'tokenPrice'
+export type DataReport = 'investorTransactions' | 'assetTransactions' | 'feeTransactions' | 'tokenPrice' | 'assetList'
 
 /**
  * Balance sheet type
@@ -211,4 +212,54 @@ export type TokenPriceReportFilter = {
   from?: string
   to?: string
   groupBy?: GroupBy
+}
+
+/**
+ * Asset list types
+ */
+export type AssetListData = {
+  assetSnapshots: AssetSnapshot[]
+  metadata: PoolMetadata | undefined
+}
+
+export type AssetListReportBase = {
+  type: 'assetList'
+  timestamp: string
+  assetId: string
+  presentValue: Currency | undefined
+}
+
+export type AssetListReportPublicCredit = {
+  subtype: 'publicCredit'
+  faceValue: Currency | undefined
+  outstandingQuantity: Currency | undefined
+  currentPrice: Price | undefined
+  maturityDate: string | undefined
+  unrealizedProfit: Currency | undefined
+  realizedProfit: Currency | undefined
+}
+
+export type AssetListReportPrivateCredit = {
+  subtype: 'privateCredit'
+  outstandingPrincipal: Currency | undefined
+  outstandingInterest: Currency | undefined
+  repaidPrincipal: Currency | undefined
+  repaidInterest: Currency | undefined
+  repaidUnscheduled: Currency | undefined
+  originationDate: number | undefined
+  maturityDate: string | undefined
+  valuationMethod: string | undefined
+  advanceRate: Rate | undefined
+  collateralValue: Currency | undefined
+  probabilityOfDefault: Rate | undefined
+  lossGivenDefault: Rate | undefined
+  discountRate: Rate | undefined
+}
+
+export type AssetListReport = AssetListReportBase & (AssetListReportPublicCredit | AssetListReportPrivateCredit)
+
+export type AssetListReportFilter = {
+  from?: string
+  to?: string
+  status?: 'ongoing' | 'repaid' | 'overdue' | 'all'
 }

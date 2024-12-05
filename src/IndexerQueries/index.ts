@@ -20,6 +20,7 @@ import { investorTransactionsPostProcess, investorTransactionsQuery } from './in
 import { InvestorTransactionFilter } from './investorTransactions.js'
 import { AssetTransactionFilter } from './assetTransactions.js'
 import { PoolFeeTransactionFilter } from './poolFeeTransactions.js'
+import { AssetSnapshotFilter, assetSnapshotsPostProcess, assetSnapshotsQuery } from './assetSnapshots.js'
 
 export class IndexerQueries extends Entity {
   constructor(
@@ -51,5 +52,9 @@ export class IndexerQueries extends Entity {
 
   poolFeeTransactionsQuery(filter?: PoolFeeTransactionFilter) {
     return this._root._queryIndexer(poolFeeTransactionQuery, { filter }, poolFeeTransactionPostProcess)
+  }
+
+  assetSnapshotsQuery(filter?: AssetSnapshotFilter) {
+    return this._root._queryIndexer(assetSnapshotsQuery, { filter }, assetSnapshotsPostProcess)
   }
 }

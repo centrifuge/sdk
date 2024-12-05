@@ -20,6 +20,8 @@ import {
   TokenPriceReportFilter,
   FeeTransactionReport,
   FeeTransactionReportFilter,
+  AssetListReportFilter,
+  AssetListReport,
 } from '../types/reports.js'
 import { Query } from '../types/query.js'
 import { Pool } from '../Pool.js'
@@ -62,6 +64,10 @@ export class Reports extends Entity {
     return this._generateReport<FeeTransactionReport>('feeTransactions', filter)
   }
 
+  assetList(filter?: AssetListReportFilter) {
+    return this._generateReport<AssetListReport>('assetList', filter)
+  }
+
   /**
    * Reports are split into two types:
    * - A `Report` is a standard report: balanceSheet, cashflow, profitAndLoss
@@ -81,6 +87,7 @@ export class Reports extends Entity {
         filter?.tokenId,
         filter?.transactionType,
         filter?.assetId,
+        filter?.status,
       ],
       () => {
         const { from, to, ...restFilter } = filter ?? {}
@@ -116,6 +123,10 @@ export class Reports extends Entity {
         const poolFeeTransactions$ = this.queries.poolFeeTransactionsQuery({
           ...dateFilter,
           poolFee: { poolId: { equalTo: this.pool.id } },
+        })
+        const assetSnapshots$ = this.queries.assetSnapshotsQuery({
+          ...dateFilter,
+          asset: { poolId: { equalTo: this.pool.id } },
         })
 
         switch (type) {
@@ -157,6 +168,10 @@ export class Reports extends Entity {
           case 'tokenPrice':
             return combineLatest([trancheSnapshots$]).pipe(
               map(([trancheSnapshots]) => processor.tokenPrice({ trancheSnapshots }, restFilter) as T[])
+            )
+          case 'assetList':
+            return combineLatest([assetSnapshots$, metadata$]).pipe(
+              map(([assetSnapshots, metadata]) => processor.assetList({ assetSnapshots, metadata }, restFilter) as T[])
             )
           default:
             throw new Error(`Unsupported report type: ${type}`)

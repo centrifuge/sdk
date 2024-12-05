@@ -22,6 +22,11 @@ import {
   TokenPriceReport,
   TokenPriceReportFilter,
   TokenPriceData,
+  AssetListReport,
+  AssetListReportFilter,
+  AssetListData,
+  AssetListReportPublicCredit,
+  AssetListReportPrivateCredit,
 } from '../types/reports.js'
 import { PoolFeeTransaction } from '../IndexerQueries/poolFeeTransactions.js'
 
@@ -301,6 +306,70 @@ export class Processor {
     }))
 
     return this.applyGrouping<TokenPriceReport>(items, filter?.groupBy ?? 'day', 'latest')
+  }
+
+  assetList(data: AssetListData, filter?: Omit<AssetListReportFilter, 'to' | 'from'>): AssetListReport[] {
+    if (!data.assetSnapshots?.length) return []
+    return data.assetSnapshots
+      .filter((snapshot) => {
+        if (snapshot.valuationMethod?.toLowerCase() === 'cash') return false
+        const isMaturityDatePassed = snapshot?.actualMaturityDate
+          ? new Date() > new Date(snapshot.actualMaturityDate)
+          : false
+        const isDebtZero = snapshot?.outstandingDebt?.isZero()
+
+        if (filter?.status === 'ongoing') {
+          return snapshot.status === 'ACTIVE' && !isMaturityDatePassed && !isDebtZero
+        } else if (filter?.status === 'repaid') {
+          return isMaturityDatePassed && isDebtZero
+        } else if (filter?.status === 'overdue') {
+          return isMaturityDatePassed && !isDebtZero
+        } else return true
+      })
+      .sort((a, b) => {
+        // Sort by actualMaturityDate in descending order
+        const dateA = new Date(a.actualMaturityDate || 0).getTime()
+        const dateB = new Date(b.actualMaturityDate || 0).getTime()
+        return dateB - dateA
+      })
+      .map((snapshot) => {
+        const subtype = data.metadata?.pool.asset.class === 'Public credit' ? 'publicCredit' : 'privateCredit'
+        const items =
+          subtype === 'publicCredit'
+            ? ({
+                subtype,
+                faceValue: snapshot.faceValue,
+                outstandingQuantity: snapshot.outstandingQuantity,
+                currentPrice: snapshot.currentPrice,
+                maturityDate: snapshot.actualMaturityDate,
+                unrealizedProfit: snapshot.unrealizedProfitAtMarketPrice,
+                realizedProfit: snapshot.sumRealizedProfitFifo,
+              } satisfies AssetListReportPublicCredit)
+            : ({
+                subtype,
+                outstandingPrincipal: snapshot.outstandingPrincipal,
+                outstandingInterest: snapshot.outstandingInterest,
+                repaidPrincipal: snapshot.totalRepaidPrincipal,
+                repaidInterest: snapshot.totalRepaidInterest,
+                repaidUnscheduled: snapshot.totalRepaidUnscheduled,
+                originationDate: snapshot.actualOriginationDate,
+                maturityDate: snapshot.actualMaturityDate,
+                valuationMethod: snapshot.valuationMethod,
+                advanceRate: snapshot.advanceRate,
+                collateralValue: snapshot.collateralValue,
+                probabilityOfDefault: snapshot.probabilityOfDefault,
+                lossGivenDefault: snapshot.lossGivenDefault,
+                discountRate: snapshot.discountRate,
+              } satisfies AssetListReportPrivateCredit)
+        return {
+          type: 'assetList',
+          transactionType: snapshot.status,
+          timestamp: snapshot.timestamp,
+          assetId: snapshot.assetId,
+          presentValue: snapshot.presentValue,
+          ...items,
+        }
+      })
   }
 
   /**

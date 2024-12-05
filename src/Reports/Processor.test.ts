@@ -7,6 +7,7 @@ import { mockPoolFeeSnapshots } from '../tests/mocks/mockPoolFeeSnapshot.js'
 import { mockPoolMetadata } from '../tests/mocks/mockPoolMetadata.js'
 import { mockInvestorTransactions } from '../tests/mocks/mockInvestorTransactions.js'
 import { mockAssetTransactions } from '../tests/mocks/mockAssetTransactions.js'
+import { mockAssetSnapshots } from '../tests/mocks/mockAssetSnapshots.js'
 import { PoolSnapshot } from '../IndexerQueries/poolSnapshots.js'
 import { Currency, Price, Token } from '../utils/BigInt.js'
 import { PoolFeeSnapshot, PoolFeeSnapshotsByDate } from '../IndexerQueries/poolFeeSnapshots.js'
@@ -16,6 +17,7 @@ import {
   ProfitAndLossReportPublicCredit,
 } from '../types/reports.js'
 import { InvestorTransaction } from '../IndexerQueries/investorTransactions.js'
+import { AssetSnapshot } from '../IndexerQueries/assetSnapshots.js'
 
 describe('Processor', () => {
   describe('balanceSheet processor', () => {
@@ -589,6 +591,79 @@ describe('Processor', () => {
     it('should group by month', () => {
       const result = processor.tokenPrice({ trancheSnapshots: mockTrancheSnapshots }, { groupBy: 'month' })
       expect(result).to.have.lengthOf(1)
+    })
+  })
+
+  describe('asset list processor', () => {
+    it('should return empty array when no snapshots found', () => {
+      expect(processor.assetList({ assetSnapshots: [], metadata: undefined })).to.deep.equal([])
+    })
+    it('should process asset list correctly', () => {
+      const result = processor.assetList({ assetSnapshots: mockAssetSnapshots, metadata: mockPoolMetadata })
+      expect(result).to.have.lengthOf(2)
+    })
+    it('should filter by status ongoing', () => {
+      const result = processor.assetList(
+        { assetSnapshots: mockAssetSnapshots, metadata: mockPoolMetadata },
+        { status: 'ongoing' }
+      )
+      expect(result).to.have.lengthOf(2)
+    })
+    it('should filter by status repaid', () => {
+      const result = processor.assetList(
+        { assetSnapshots: mockAssetSnapshots, metadata: mockPoolMetadata },
+        { status: 'repaid' }
+      )
+      expect(result).to.have.lengthOf(0)
+    })
+    it('should filter by status overdue', () => {
+      const mockAssetSnapshotsOverdue = [
+        ...mockAssetSnapshots,
+        { ...mockAssetSnapshots[0], actualMaturityDate: '2023-01-01' } as AssetSnapshot,
+      ]
+      const result = processor.assetList(
+        { assetSnapshots: mockAssetSnapshotsOverdue, metadata: mockPoolMetadata },
+        { status: 'overdue' }
+      )
+      expect(result).to.have.lengthOf(1)
+    })
+    it('should return the correct data for private credit pools', () => {
+      const result = processor.assetList(
+        { assetSnapshots: mockAssetSnapshots, metadata: mockPoolMetadata },
+        { status: 'ongoing' }
+      )
+      expect(result).to.have.lengthOf(2)
+      expect(result?.[0]).to.have.property('outstandingPrincipal')
+      expect(result?.[0]).to.have.property('outstandingInterest')
+      expect(result?.[0]).to.have.property('repaidPrincipal')
+      expect(result?.[0]).to.have.property('repaidInterest')
+      expect(result?.[0]).to.have.property('repaidUnscheduled')
+      expect(result?.[0]).to.have.property('originationDate')
+      expect(result?.[0]).to.have.property('maturityDate')
+      expect(result?.[0]).to.have.property('valuationMethod')
+      expect(result?.[0]).to.have.property('advanceRate')
+      expect(result?.[0]).to.have.property('collateralValue')
+      expect(result?.[0]).to.have.property('probabilityOfDefault')
+      expect(result?.[0]).to.have.property('lossGivenDefault')
+      expect(result?.[0]).to.have.property('discountRate')
+    })
+    it('should return the correct data for public credit pools', () => {
+      const result = processor.assetList(
+        {
+          assetSnapshots: mockAssetSnapshots,
+          metadata: {
+            ...mockPoolMetadata,
+            pool: { ...mockPoolMetadata.pool, asset: { ...mockPoolMetadata.pool.asset, class: 'Public credit' } },
+          },
+        },
+        { status: 'ongoing' }
+      )
+      expect(result).to.have.lengthOf(2)
+      expect(result?.[0]).to.have.property('faceValue')
+      expect(result?.[0]).to.have.property('outstandingQuantity')
+      expect(result?.[0]).to.have.property('currentPrice')
+      expect(result?.[0]).to.have.property('unrealizedProfit')
+      expect(result?.[0]).to.have.property('realizedProfit')
     })
   })
 
