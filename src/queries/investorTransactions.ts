@@ -16,7 +16,7 @@ export type InvestorTransaction = {
   tokenAmount: Currency
   tokenPrice: Price
   transactionFee: Currency
-  chainId: number
+  chainId: number | 'centrifuge'
   evmAddress?: string
   hash: string
 }
@@ -71,7 +71,7 @@ export const investorTransactionsPostProcess = (data: SubqueryInvestorTransactio
       poolId: tx.poolId,
       timestamp: new Date(tx.timestamp),
       accountId: tx.accountId,
-      chainId: Number(tx.account.chainId),
+      chainId: tx.account.chainId === '0' ? 'centrifuge' : Number(tx.account.chainId),
       evmAddress: tx.account.evmAddress,
       trancheId: tx.trancheId.split('-')[1] ?? '',
       epochNumber: tx.epochNumber,

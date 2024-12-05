@@ -130,7 +130,7 @@ export type InvestorTransactionsData = {
 export type InvestorTransactionsReport = {
   type: 'investorTransactions'
   timestamp: string
-  chainId: number
+  chainId: number | 'centrifuge'
   account: string
   epoch: string
   transactionType: SubqueryInvestorTransactionType
@@ -205,7 +205,7 @@ export type TokenPriceData = {
 export type TokenPriceReport = {
   type: 'tokenPrice'
   timestamp: string
-  tranches: { name: string; price: Price; supply: Token; timestamp: string }[]
+  tranches: { id: string; price: Price; supply: Token; timestamp: string }[]
 }
 
 export type TokenPriceReportFilter = {

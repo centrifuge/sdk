@@ -8,7 +8,7 @@ import { mockPoolMetadata } from '../tests/mocks/mockPoolMetadata.js'
 import { mockInvestorTransactions } from '../tests/mocks/mockInvestorTransactions.js'
 import { mockAssetTransactions } from '../tests/mocks/mockAssetTransactions.js'
 import { PoolSnapshot } from '../queries/poolSnapshots.js'
-import { Currency } from '../utils/BigInt.js'
+import { Currency, Price, Token } from '../utils/BigInt.js'
 import { PoolFeeSnapshot, PoolFeeSnapshotsByDate } from '../queries/poolFeeSnapshots.js'
 import {
   AssetTransactionReportFilter,
@@ -234,6 +234,7 @@ describe('Processor', () => {
       expect(result?.[0]).to.have.property('realizedPL')
     })
   })
+
   describe('profit and loss processor', () => {
     const mockPLPoolSnapshots: PoolSnapshot[] = [
       {
@@ -366,6 +367,7 @@ describe('Processor', () => {
       expect(result[0]?.fees?.[0]?.timestamp.slice(0, 10)).to.equal('2024-01-01')
     })
   })
+
   describe('investor transactions processor', () => {
     it('should return empty array when no transactions found', () => {
       expect(processor.investorTransactions({ investorTransactions: [] })).to.deep.equal([])
@@ -429,10 +431,36 @@ describe('Processor', () => {
         {
           investorTransactions: mockInvestorTransactionsWithNetwork,
         },
-        { network: 1 }
+        { network: 2 }
+      )
+      expect(result).to.have.lengthOf(1)
+      expect(result[0]?.chainId).to.equal(2)
+    })
+    it('should filter by all networks', () => {
+      const result = processor.investorTransactions(
+        {
+          investorTransactions: mockInvestorTransactions,
+        },
+        { network: 'all' }
       )
       expect(result).to.have.lengthOf(2)
-      expect(result[0]?.chainId).to.equal(1)
+    })
+    it('should filter by centrifuge network', () => {
+      const mockInvestorTransactionsWithCentrifuge = [
+        ...mockInvestorTransactions,
+        {
+          ...mockInvestorTransactions[0],
+          chainId: 'centrifuge',
+        } as InvestorTransaction,
+      ]
+      const result = processor.investorTransactions(
+        {
+          investorTransactions: mockInvestorTransactionsWithCentrifuge,
+        },
+        { network: 'centrifuge' }
+      )
+      expect(result).to.have.lengthOf(1)
+      expect(result[0]?.chainId).to.equal('centrifuge')
     })
     it('should filter by transaction type', () => {
       const result = processor.investorTransactions(
@@ -472,6 +500,7 @@ describe('Processor', () => {
       expect(result).to.deep.equal([])
     })
   })
+
   describe('asset transactions processor', () => {
     it('should return empty array when no transactions found', () => {
       expect(processor.assetTransactions({ assetTransactions: [] })).to.deep.equal([])
@@ -548,9 +577,14 @@ describe('Processor', () => {
   })
 
   describe('token price processor', () => {
+    it('should return empty array when no snapshots found', () => {
+      expect(processor.tokenPrice({ trancheSnapshots: {} })).to.deep.equal([])
+    })
     it('should process token price correctly', () => {
       const result = processor.tokenPrice({ trancheSnapshots: mockTrancheSnapshots })
       expect(result).to.have.lengthOf(2)
+      expect(result[0]?.tranches[0]?.price?.toDecimal().toString()).to.equal('1')
+      expect(result[0]?.tranches[0]?.id).to.equal('senior')
     })
     it('should group by month', () => {
       const result = processor.tokenPrice({ trancheSnapshots: mockTrancheSnapshots }, { groupBy: 'month' })
@@ -590,20 +624,28 @@ describe('Processor', () => {
       expect(grouped).to.deep.equal([{ a: Currency.fromFloat(30, 6), timestamp: '2024-01-01' }])
     })
     it('should return latest item when strategy is latest and grouping is month', () => {
-      const extendedMockData = [...mockData, { a: Currency.fromFloat(30, 6), timestamp: '2024-02-01' }]
+      const extendedMockData = [
+        { a: Price.fromFloat(10), timestamp: '2024-01-01' },
+        { a: Price.fromFloat(20), timestamp: '2024-01-01' },
+        { a: Price.fromFloat(30), timestamp: '2024-02-01' },
+      ]
       const grouped = applyGrouping(extendedMockData, 'month', 'latest')
       const expected = [
-        { a: Currency.fromFloat(20, 6), timestamp: '2024-01-01' },
-        { a: Currency.fromFloat(30, 6), timestamp: '2024-02-01' },
+        { a: Price.fromFloat(20), timestamp: '2024-01-01' },
+        { a: Price.fromFloat(30), timestamp: '2024-02-01' },
       ]
       expect(grouped).to.deep.equal(expected)
     })
     it('should aggregate values when strategy is sum and grouping is month', () => {
-      const extendedMockData = [...mockData, { a: Currency.fromFloat(30, 6), timestamp: '2024-02-01' }]
+      const extendedMockData = [
+        { a: Token.fromFloat(10, 6), timestamp: '2024-01-01' },
+        { a: Token.fromFloat(20, 6), timestamp: '2024-01-01' },
+        { a: Token.fromFloat(30, 6), timestamp: '2024-02-01' },
+      ]
       const grouped = applyGrouping(extendedMockData, 'month', 'sum')
       const expected = [
-        { a: Currency.fromFloat(30, 6), timestamp: '2024-01-01' },
-        { a: Currency.fromFloat(30, 6), timestamp: '2024-02-01' },
+        { a: Token.fromFloat(30, 6), timestamp: '2024-01-01' },
+        { a: Token.fromFloat(30, 6), timestamp: '2024-02-01' },
       ]
       expect(grouped).to.deep.equal(expected)
     })

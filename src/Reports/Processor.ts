@@ -33,6 +33,7 @@ export class Processor {
    * @returns Processed balance sheet report at the end of each period
    */
   balanceSheet(data: BalanceSheetData, filter?: Omit<ReportFilter, 'to' | 'from'>): BalanceSheetReport[] {
+    if (!data.poolSnapshots?.length) return []
     const items: BalanceSheetReport[] = data?.poolSnapshots?.map((snapshot) => {
       const tranches = data.trancheSnapshots[this.getDateKey(snapshot.timestamp)] ?? []
       if (tranches.length === 0) throw new Error('No tranches found for snapshot')
@@ -68,6 +69,7 @@ export class Processor {
    * @returns Processed cashflow report at the end of each period
    */
   cashflow(data: CashflowData, filter?: Omit<ReportFilter, 'to' | 'from'>): CashflowReport[] {
+    if (!data.poolSnapshots?.length) return []
     const subtype = data.metadata?.pool.asset.class === 'Public credit' ? 'publicCredit' : 'privateCredit'
     const items: CashflowReport[] = data.poolSnapshots.map((day) => {
       const poolFees =
@@ -115,6 +117,7 @@ export class Processor {
    * @returns Processed profit and loss report at the end of each period
    */
   profitAndLoss(data: ProfitAndLossData, filter?: Omit<ReportFilter, 'to' | 'from'>): ProfitAndLossReport[] {
+    if (!data.poolSnapshots?.length) return []
     const items: ProfitAndLossReport[] = data.poolSnapshots.map((day) => {
       const subtype = data.metadata?.pool.asset.class === 'Public credit' ? 'publicCredit' : 'privateCredit'
       const profitAndLossFromAsset =
@@ -186,7 +189,7 @@ export class Processor {
         ((!filter?.transactionType || filter?.transactionType === 'all') && validTypes.has(day.type))
 
       const filterMatches =
-        (!filterNetwork || filterNetwork === (day.chainId || 'centrifuge')) &&
+        (!filterNetwork || filterNetwork === day.chainId) &&
         (!filter?.tokenId || filter.tokenId === day.trancheId) &&
         (!filterAddress ||
           day.accountId.toLowerCase() === filterAddress ||
@@ -216,6 +219,7 @@ export class Processor {
     data: AssetTransactionsData,
     filter?: Omit<AssetTransactionReportFilter, 'to' | 'from'>
   ): AssetTransactionReport[] {
+    if (!data.assetTransactions?.length) return []
     const typeMap: Record<
       NonNullable<Exclude<AssetTransactionReportFilter['transactionType'], 'all'>>,
       AssetTransaction['type']
@@ -254,6 +258,7 @@ export class Processor {
     data: FeeTransactionsData,
     filter?: Omit<FeeTransactionReportFilter, 'to' | 'from'>
   ): FeeTransactionReport[] {
+    if (!data.poolFeeTransactions?.length) return []
     const feeTransactionTypes: {
       [key in PoolFeeTransaction['type']]: string
     } = {
@@ -283,12 +288,13 @@ export class Processor {
   }
 
   tokenPrice(data: TokenPriceData, filter?: Omit<TokenPriceReportFilter, 'to' | 'from'>): TokenPriceReport[] {
+    if (!data.trancheSnapshots) return []
     const items = Object.entries(data.trancheSnapshots).map(([timestamp, snapshots]) => ({
       type: 'tokenPrice' as const,
       timestamp: timestamp,
       tranches: snapshots.map((snapshot) => ({
         timestamp: snapshot.timestamp,
-        name: snapshot.pool.currency.symbol,
+        id: snapshot.trancheId,
         price: snapshot.price ?? new Price(0n),
         supply: snapshot.tokenSupply,
       })),

@@ -263,4 +263,79 @@ describe('Reports', () => {
       expect(report.length).to.equal(2)
     })
   })
+
+  describe('fee transactions report', () => {
+    it('should fetch fee transactions report', async () => {
+      const anemoyPoolId = '4139607887'
+      const pool = await centrifuge.pool(anemoyPoolId)
+      const report = await pool.reports.feeTransactions({
+        from: '2024-12-01T22:11:29.776Z',
+        to: '2024-12-03T22:11:29.776Z',
+      })
+      expect(report.length).to.equal(4)
+    })
+    it('should filter by transaction type paid', async () => {
+      const anemoyPoolId = '4139607887'
+      const pool = await centrifuge.pool(anemoyPoolId)
+      const report = await pool.reports.feeTransactions({
+        from: '2024-07-23T22:11:29.776Z',
+        to: '2024-07-26T22:11:29.776Z',
+        transactionType: 'paid',
+      })
+      expect(report.length).to.equal(2)
+    })
+    it('should filter by transaction type directChargeMade', async () => {
+      const anemoyPoolId = '4139607887'
+      const pool = await centrifuge.pool(anemoyPoolId)
+      const report = await pool.reports.feeTransactions({
+        from: '2024-03-28T22:11:29.776Z',
+        to: '2024-12-26T22:11:29.776Z',
+        transactionType: 'directChargeMade',
+      })
+      expect(report.length).to.equal(0)
+    })
+  })
+
+  describe('token price report', () => {
+    it('should fetch token price report', async () => {
+      const anemoyPoolId = '4139607887'
+      const pool = await centrifuge.pool(anemoyPoolId)
+      const report = await pool.reports.tokenPrice({
+        from: '2024-01-01T22:11:29.776Z',
+        to: '2024-01-03T22:11:29.776Z',
+      })
+      expect(report.length).to.equal(2)
+    })
+    it('should group by month', async () => {
+      const anemoyPoolId = '4139607887'
+      const pool = await centrifuge.pool(anemoyPoolId)
+      const report = await pool.reports.tokenPrice({
+        from: '2024-01-01T22:11:29.776Z',
+        to: '2024-02-03T22:11:29.776Z',
+        groupBy: 'month',
+      })
+      expect(report.length).to.equal(2)
+    })
+    it('should group by quarter', async () => {
+      const anemoyPoolId = '4139607887'
+      const pool = await centrifuge.pool(anemoyPoolId)
+      const report = await pool.reports.tokenPrice({
+        from: '2024-01-01T22:11:29.776Z',
+        to: '2024-12-03T22:11:29.776Z',
+        groupBy: 'quarter',
+      })
+      console.log('🚀 ~ report:', report)
+      expect(report.length).to.equal(4)
+    })
+    it('should group by year', async () => {
+      const anemoyPoolId = '4139607887'
+      const pool = await centrifuge.pool(anemoyPoolId)
+      const report = await pool.reports.tokenPrice({
+        from: '2024-01-01T22:11:29.776Z',
+        to: '2024-12-03T22:11:29.776Z',
+        groupBy: 'year',
+      })
+      expect(report.length).to.equal(1)
+    })
+  })
 })

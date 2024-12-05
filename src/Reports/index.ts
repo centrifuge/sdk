@@ -29,6 +29,8 @@ import {
   AssetTransactionReportFilter,
   TokenPriceReport,
   TokenPriceReportFilter,
+  FeeTransactionReport,
+  FeeTransactionReportFilter,
 } from '../types/reports.js'
 import { Query } from '../types/query.js'
 import {
@@ -75,6 +77,10 @@ export class Reports extends Entity {
 
   tokenPrice(filter?: TokenPriceReportFilter) {
     return this._generateReport<TokenPriceReport>('tokenPrice', filter)
+  }
+
+  feeTransactions(filter?: FeeTransactionReportFilter) {
+    return this._generateReport<FeeTransactionReport>('feeTransactions', filter)
   }
 
   /**
