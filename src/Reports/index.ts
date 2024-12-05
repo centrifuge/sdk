@@ -29,7 +29,7 @@ import {
   AssetTransactionReportFilter,
   TokenPriceReport,
   TokenPriceReportFilter,
-} from './types.js'
+} from '../types/reports.js'
 import { Query } from '../types/query.js'
 import {
   PoolFeeSnapshotFilter,

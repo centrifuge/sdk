@@ -22,7 +22,7 @@ import {
   TokenPriceReport,
   TokenPriceReportFilter,
   TokenPriceData,
-} from './types.js'
+} from '../types/reports.js'
 
 export class Processor {
   /**

@@ -2,7 +2,7 @@ import { expect } from 'chai'
 import { Centrifuge } from '../Centrifuge.js'
 import { spy } from 'sinon'
 import { Reports } from '../Reports/index.js'
-import { ReportFilter } from './types.js'
+import { ReportFilter } from '../types/reports.js'
 import { processor } from './Processor.js'
 
 describe('Reports', () => {
