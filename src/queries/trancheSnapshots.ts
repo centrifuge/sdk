@@ -76,7 +76,7 @@ export type SubqueryTrancheSnapshot = {
 
 export type TrancheSnapshot = {
   id: string
-  price: Price | null
+  price: Price
   timestamp: string
   trancheId: string
   poolId: string
@@ -126,7 +126,7 @@ export function trancheSnapshotsPostProcess(data: SubqueryTrancheSnapshot): { [d
           symbol: poolCurrency.symbol,
         },
       },
-      price: tranche.tokenPrice ? new Price(tranche.tokenPrice) : null,
+      price: new Price(tranche.tokenPrice ?? 0),
       tokenSupply: new Token(tranche.tokenSupply, poolCurrency.decimals),
       fulfilledInvestOrders: new Currency(tranche.sumFulfilledInvestOrdersByPeriod, poolCurrency.decimals),
       fulfilledRedeemOrders: new Currency(tranche.sumFulfilledRedeemOrdersByPeriod, poolCurrency.decimals),

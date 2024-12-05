@@ -624,28 +624,37 @@ describe('Processor', () => {
       expect(grouped).to.deep.equal([{ a: Currency.fromFloat(30, 6), timestamp: '2024-01-01' }])
     })
     it('should return latest item when strategy is latest and grouping is month', () => {
-      const extendedMockData = [
-        { a: Price.fromFloat(10), timestamp: '2024-01-01' },
-        { a: Price.fromFloat(20), timestamp: '2024-01-01' },
-        { a: Price.fromFloat(30), timestamp: '2024-02-01' },
-      ]
+      const extendedMockData = [...mockData, { a: Currency.fromFloat(30, 6), timestamp: '2024-02-01' }]
       const grouped = applyGrouping(extendedMockData, 'month', 'latest')
       const expected = [
-        { a: Price.fromFloat(20), timestamp: '2024-01-01' },
-        { a: Price.fromFloat(30), timestamp: '2024-02-01' },
+        { a: Currency.fromFloat(20, 6), timestamp: '2024-01-01' },
+        { a: Currency.fromFloat(30, 6), timestamp: '2024-02-01' },
       ]
       expect(grouped).to.deep.equal(expected)
     })
-    it('should aggregate values when strategy is sum and grouping is month', () => {
+    it('should aggregate values when strategy is sum and grouping is month (Token)', () => {
       const extendedMockData = [
         { a: Token.fromFloat(10, 6), timestamp: '2024-01-01' },
-        { a: Token.fromFloat(20, 6), timestamp: '2024-01-01' },
+        { a: Token.fromFloat(20, 6), timestamp: '2024-01-02' },
         { a: Token.fromFloat(30, 6), timestamp: '2024-02-01' },
       ]
       const grouped = applyGrouping(extendedMockData, 'month', 'sum')
       const expected = [
-        { a: Token.fromFloat(30, 6), timestamp: '2024-01-01' },
+        { a: Token.fromFloat(30, 6), timestamp: '2024-01-02' },
         { a: Token.fromFloat(30, 6), timestamp: '2024-02-01' },
+      ]
+      expect(grouped).to.deep.equal(expected)
+    })
+    it('should aggregate values when strategy is sum and grouping is month (Price)', () => {
+      const extendedMockData = [
+        { a: Price.fromFloat(10), timestamp: '2024-01-01' },
+        { a: Price.fromFloat(20), timestamp: '2024-01-02' },
+        { a: Price.fromFloat(30), timestamp: '2024-02-01' },
+      ]
+      const grouped = applyGrouping(extendedMockData, 'month', 'sum')
+      const expected = [
+        { a: Price.fromFloat(30), timestamp: '2024-01-02' },
+        { a: Price.fromFloat(30), timestamp: '2024-02-01' },
       ]
       expect(grouped).to.deep.equal(expected)
     })

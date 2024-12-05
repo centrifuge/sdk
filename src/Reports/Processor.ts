@@ -288,14 +288,14 @@ export class Processor {
   }
 
   tokenPrice(data: TokenPriceData, filter?: Omit<TokenPriceReportFilter, 'to' | 'from'>): TokenPriceReport[] {
-    if (!data.trancheSnapshots) return []
+    if (Object.values(data.trancheSnapshots).length === 0) return []
     const items = Object.entries(data.trancheSnapshots).map(([timestamp, snapshots]) => ({
       type: 'tokenPrice' as const,
       timestamp: timestamp,
       tranches: snapshots.map((snapshot) => ({
         timestamp: snapshot.timestamp,
         id: snapshot.trancheId,
-        price: snapshot.price ?? new Price(0n),
+        price: snapshot.price,
         supply: snapshot.tokenSupply,
       })),
     }))
