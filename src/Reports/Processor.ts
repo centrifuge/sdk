@@ -19,6 +19,9 @@ import {
   FeeTransactionsData,
   FeeTransactionReportFilter,
   FeeTransactionReport,
+  TokenPriceReport,
+  TokenPriceReportFilter,
+  TokenPriceData,
 } from './types.js'
 
 export class Processor {
@@ -28,7 +31,7 @@ export class Processor {
    * @param filter Optional filtering and grouping options
    * @returns Processed balance sheet report at the end of each period
    */
-  balanceSheet(data: BalanceSheetData, filter?: ReportFilter): BalanceSheetReport[] {
+  balanceSheet(data: BalanceSheetData, filter?: Omit<ReportFilter, 'to' | 'from'>): BalanceSheetReport[] {
     const items: BalanceSheetReport[] = data?.poolSnapshots?.map((snapshot) => {
       const tranches = data.trancheSnapshots[this.getDateKey(snapshot.timestamp)] ?? []
       if (tranches.length === 0) throw new Error('No tranches found for snapshot')
@@ -63,7 +66,7 @@ export class Processor {
    * @param filter Optional filtering and grouping options
    * @returns Processed cashflow report at the end of each period
    */
-  cashflow(data: CashflowData, filter?: ReportFilter): CashflowReport[] {
+  cashflow(data: CashflowData, filter?: Omit<ReportFilter, 'to' | 'from'>): CashflowReport[] {
     const subtype = data.metadata?.pool.asset.class === 'Public credit' ? 'publicCredit' : 'privateCredit'
     const items: CashflowReport[] = data.poolSnapshots.map((day) => {
       const poolFees =
@@ -110,7 +113,7 @@ export class Processor {
    * @param filter Optional filtering and grouping options
    * @returns Processed profit and loss report at the end of each period
    */
-  profitAndLoss(data: ProfitAndLossData, filter?: ReportFilter): ProfitAndLossReport[] {
+  profitAndLoss(data: ProfitAndLossData, filter?: Omit<ReportFilter, 'to' | 'from'>): ProfitAndLossReport[] {
     const items: ProfitAndLossReport[] = data.poolSnapshots.map((day) => {
       const subtype = data.metadata?.pool.asset.class === 'Public credit' ? 'publicCredit' : 'privateCredit'
       const profitAndLossFromAsset =
@@ -152,7 +155,7 @@ export class Processor {
 
   investorTransactions(
     data: InvestorTransactionsData,
-    filter?: InvestorTransactionsReportFilter
+    filter?: Omit<InvestorTransactionsReportFilter, 'to' | 'from'>
   ): InvestorTransactionsReport[] {
     if (!data.investorTransactions?.length) return []
 
@@ -208,7 +211,10 @@ export class Processor {
     }, [])
   }
 
-  assetTransactions(data: AssetTransactionsData, filter?: AssetTransactionReportFilter): AssetTransactionReport[] {
+  assetTransactions(
+    data: AssetTransactionsData,
+    filter?: Omit<AssetTransactionReportFilter, 'to' | 'from'>
+  ): AssetTransactionReport[] {
     const typeMap: Record<
       NonNullable<Exclude<AssetTransactionReportFilter['transactionType'], 'all'>>,
       AssetTransaction['type']
@@ -243,7 +249,10 @@ export class Processor {
     }, [])
   }
 
-  feeTransactions(data: FeeTransactionsData, filter?: FeeTransactionReportFilter): FeeTransactionReport[] {
+  feeTransactions(
+    data: FeeTransactionsData,
+    filter?: Omit<FeeTransactionReportFilter, 'to' | 'from'>
+  ): FeeTransactionReport[] {
     return data.poolFeeTransactions.reduce<FeeTransactionReport[]>((acc, tx) => {
       if (!filter?.transactionType || filter.transactionType === 'all' || filter.transactionType === tx.type) {
         acc.push({
@@ -255,6 +264,21 @@ export class Processor {
       }
       return acc
     }, [])
+  }
+
+  tokenPrice(data: TokenPriceData, filter?: Omit<TokenPriceReportFilter, 'to' | 'from'>): TokenPriceReport[] {
+    const items = Object.entries(data.trancheSnapshots).map(([timestamp, snapshots]) => ({
+      type: 'tokenPrice' as const,
+      timestamp: timestamp,
+      tranches: snapshots.map((snapshot) => ({
+        timestamp: snapshot.timestamp,
+        name: snapshot.pool.currency.symbol,
+        price: snapshot.price ?? new Price(0n),
+        supply: snapshot.tokenSupply,
+      })),
+    }))
+
+    return groupByPeriod<TokenPriceReport>(items, filter?.groupBy ?? 'day', 'latest')
   }
 
   /**
@@ -270,7 +294,7 @@ export class Processor {
   private applyGrouping<
     T extends {
       timestamp: string
-      [key: string]: Currency | string | { [key: string]: any } | number | undefined
+      [key: string]: Currency | Price | Token | string | number | undefined | any[] | { [key: string]: any }
     },
   >(items: T[], groupBy: ReportFilter['groupBy'] = 'day', strategy: 'latest' | 'sum' = 'latest'): T[] {
     if (strategy === 'latest') {

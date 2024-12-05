@@ -27,6 +27,8 @@ import {
   InvestorTransactionsReportFilter,
   AssetTransactionReport,
   AssetTransactionReportFilter,
+  TokenPriceReport,
+  TokenPriceReportFilter,
 } from './types.js'
 import { Query } from '../types/query.js'
 import {
@@ -71,6 +73,10 @@ export class Reports extends Entity {
     return this._generateReport<AssetTransactionReport>('assetTransactions', filter)
   }
 
+  tokenPrice(filter?: TokenPriceReportFilter) {
+    return this._generateReport<TokenPriceReport>('tokenPrice', filter)
+  }
+
   /**
    * Reports are split into two types:
    * - A `Report` is a standard report: balanceSheet, cashflow, profitAndLoss
@@ -92,12 +98,14 @@ export class Reports extends Entity {
         filter?.assetId,
       ],
       () => {
+        const { from, to, ...restFilter } = filter ?? {}
         const dateFilter = {
           timestamp: {
-            greaterThan: filter?.from,
-            lessThanOrEqualTo: filter?.to && `${filter.to.split('T')[0]}T23:59:59.999Z`,
+            greaterThan: from,
+            lessThanOrEqualTo: to && `${to.split('T')[0]}T23:59:59.999Z`,
           },
         }
+        console.log('🚀 ~ dateFilter:', dateFilter)
 
         const metadata$ = this.pool.metadata()
 
@@ -131,34 +139,40 @@ export class Reports extends Entity {
             return combineLatest([poolSnapshots$, trancheSnapshots$]).pipe(
               map(
                 ([poolSnapshots, trancheSnapshots]) =>
-                  processor.balanceSheet({ poolSnapshots, trancheSnapshots }, filter) as T[]
+                  processor.balanceSheet({ poolSnapshots, trancheSnapshots }, restFilter) as T[]
               )
             )
           case 'cashflow':
             return combineLatest([poolSnapshots$, poolFeeSnapshots$, metadata$]).pipe(
               map(
                 ([poolSnapshots, poolFeeSnapshots, metadata]) =>
-                  processor.cashflow({ poolSnapshots, poolFeeSnapshots, metadata }, filter) as T[]
+                  processor.cashflow({ poolSnapshots, poolFeeSnapshots, metadata }, restFilter) as T[]
               )
             )
           case 'profitAndLoss':
             return combineLatest([poolSnapshots$, poolFeeSnapshots$, metadata$]).pipe(
               map(
                 ([poolSnapshots, poolFeeSnapshots, metadata]) =>
-                  processor.profitAndLoss({ poolSnapshots, poolFeeSnapshots, metadata }, filter) as T[]
+                  processor.profitAndLoss({ poolSnapshots, poolFeeSnapshots, metadata }, restFilter) as T[]
               )
             )
           case 'investorTransactions':
             return combineLatest([investorTransactions$, metadata$]).pipe(
-              map(([investorTransactions]) => processor.investorTransactions({ investorTransactions }, filter) as T[])
+              map(
+                ([investorTransactions]) => processor.investorTransactions({ investorTransactions }, restFilter) as T[]
+              )
             )
           case 'assetTransactions':
             return combineLatest([assetTransactions$, metadata$]).pipe(
-              map(([assetTransactions]) => processor.assetTransactions({ assetTransactions }, filter) as T[])
+              map(([assetTransactions]) => processor.assetTransactions({ assetTransactions }, restFilter) as T[])
             )
           case 'feeTransactions':
             return combineLatest([poolFeeTransactions$]).pipe(
-              map(([poolFeeTransactions]) => processor.feeTransactions({ poolFeeTransactions }, filter) as T[])
+              map(([poolFeeTransactions]) => processor.feeTransactions({ poolFeeTransactions }, restFilter) as T[])
+            )
+          case 'tokenPrice':
+            return combineLatest([trancheSnapshots$]).pipe(
+              map(([trancheSnapshots]) => processor.tokenPrice({ trancheSnapshots }, restFilter) as T[])
             )
           default:
             throw new Error(`Unsupported report type: ${type}`)

@@ -5,7 +5,7 @@ import { PoolFeeTransaction } from '../queries/poolFeeTransactions.js'
 import { PoolSnapshot } from '../queries/poolSnapshots.js'
 import { TrancheSnapshotsByDate } from '../queries/trancheSnapshots.js'
 import { PoolMetadata } from '../types/poolMetadata.js'
-import { Price } from '../utils/BigInt.js'
+import { Price, Token } from '../utils/BigInt.js'
 import { Currency } from '../utils/BigInt.js'
 import { GroupBy } from '../utils/date.js'
 
@@ -21,7 +21,7 @@ export type DataReportFilter = {
 }
 
 export type Report = 'balanceSheet' | 'cashflow' | 'profitAndLoss'
-export type DataReport = 'investorTransactions' | 'assetTransactions'
+export type DataReport = 'investorTransactions' | 'assetTransactions' | 'feeTransactions' | 'tokenPrice'
 
 /**
  * Balance sheet type
@@ -135,6 +135,7 @@ export type InvestorTransactionsReport = {
   epoch: string
   transactionType: SubqueryInvestorTransactionType
   currencyAmount: Currency
+  // TODO: probably needs to be an array of tranches
   trancheTokenId: string
   trancheTokenAmount: Currency
   price: Price
@@ -192,4 +193,23 @@ export type FeeTransactionReportFilter = {
   from?: string
   to?: string
   transactionType?: 'directChargeMade' | 'directChargeCanceled' | 'accrued' | 'paid' | 'all'
+}
+
+/**
+ * Token price types
+ */
+export type TokenPriceData = {
+  trancheSnapshots: TrancheSnapshotsByDate
+}
+
+export type TokenPriceReport = {
+  type: 'tokenPrice'
+  timestamp: string
+  tranches: { name: string; price: Price; supply: Token; timestamp: string }[]
+}
+
+export type TokenPriceReportFilter = {
+  from?: string
+  to?: string
+  groupBy?: GroupBy
 }
