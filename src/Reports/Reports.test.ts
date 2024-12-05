@@ -324,7 +324,6 @@ describe('Reports', () => {
         to: '2024-12-03T22:11:29.776Z',
         groupBy: 'quarter',
       })
-      console.log('🚀 ~ report:', report)
       expect(report.length).to.equal(4)
     })
     it('should group by year', async () => {

@@ -135,7 +135,6 @@ export type InvestorTransactionsReport = {
   epoch: string
   transactionType: SubqueryInvestorTransactionType
   currencyAmount: Currency
-  // TODO: probably needs to be an array of tranches
   trancheTokenId: string
   trancheTokenAmount: Currency
   price: Price
