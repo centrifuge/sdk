@@ -26,6 +26,11 @@ import {
 import { Query } from '../types/query.js'
 import { Pool } from '../Pool.js'
 import { IndexerQueries } from '../IndexerQueries/index.js'
+
+const DEFAULT_FILTER: ReportFilter = {
+  from: '2024-01-01T00:00:00.000Z',
+  to: new Date().toISOString(),
+}
 export class Reports extends Entity {
   private queries: IndexerQueries
   constructor(
@@ -93,8 +98,8 @@ export class Reports extends Entity {
         const { from, to, ...restFilter } = filter ?? {}
         const dateFilter = {
           timestamp: {
-            greaterThan: from,
-            lessThanOrEqualTo: to && `${to.split('T')[0]}T23:59:59.999Z`,
+            greaterThan: from ?? DEFAULT_FILTER.from,
+            lessThanOrEqualTo: (to && `${to.split('T')[0]}T23:59:59.999Z`) ?? DEFAULT_FILTER.to,
           },
         }
 

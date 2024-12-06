@@ -337,4 +337,37 @@ describe('Reports', () => {
       expect(report.length).to.equal(1)
     })
   })
+
+  describe('asset list report', () => {
+    it('should fetch asset list report', async () => {
+      const anemoyPoolId = '4139607887'
+      const pool = await centrifuge.pool(anemoyPoolId)
+      const report = await pool.reports.assetList({
+        from: '2024-01-01T22:11:29.776Z',
+        to: '2024-01-03T22:11:29.776Z',
+      })
+      expect(report.length).to.equal(4)
+      expect(report?.[0]?.subtype).to.equal('privateCredit')
+    })
+    it('should filter by status ongoing', async () => {
+      const anemoyPoolId = '4139607887'
+      const pool = await centrifuge.pool(anemoyPoolId)
+      const report = await pool.reports.assetList({
+        status: 'ongoing',
+        from: '2024-01-01T00:00:00.000Z',
+        to: '2024-01-06T23:59:59.999Z',
+      })
+      expect(report.length).to.equal(0)
+    })
+    it('should filter by status overdue', async () => {
+      const anemoyPoolId = '4139607887'
+      const pool = await centrifuge.pool(anemoyPoolId)
+      const report = await pool.reports.assetList({
+        status: 'overdue',
+        from: '2024-01-01T00:00:00.000Z',
+        to: '2024-01-06T23:59:59.999Z',
+      })
+      expect(report.length).to.equal(6)
+    })
+  })
 })
