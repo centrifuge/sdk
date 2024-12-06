@@ -24,9 +24,9 @@ export abstract class BigIntWrapper {
 }
 
 export class DecimalWrapper extends BigIntWrapper {
-  readonly decimals: number
+  readonly decimals: number = 27
 
-  constructor(value: Numeric | bigint, decimals: number) {
+  constructor(value: Numeric | bigint, decimals: number = 27) {
     super(value)
     this.decimals = decimals
   }

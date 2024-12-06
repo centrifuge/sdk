@@ -1,5 +1,5 @@
 import { Currency } from '../../utils/BigInt.js'
-import { PoolFeeSnapshotsByDate } from '../../queries/poolFeeSnapshots.js'
+import { PoolFeeSnapshotsByDate } from '../../IndexerQueries/poolFeeSnapshots.js'
 
 export const mockPoolFeeSnapshots: PoolFeeSnapshotsByDate = {
   '2024-01-01': [
