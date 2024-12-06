@@ -8,6 +8,7 @@ import { mockPoolMetadata } from '../tests/mocks/mockPoolMetadata.js'
 import { mockInvestorTransactions } from '../tests/mocks/mockInvestorTransactions.js'
 import { mockAssetTransactions } from '../tests/mocks/mockAssetTransactions.js'
 import { mockAssetSnapshots } from '../tests/mocks/mockAssetSnapshots.js'
+import { mockInvestorCurrencyBalances } from '../tests/mocks/mockInvestorCurrencyBalance.js'
 import { PoolSnapshot } from '../IndexerQueries/poolSnapshots.js'
 import { Currency, Price, Token } from '../utils/BigInt.js'
 import { PoolFeeSnapshot, PoolFeeSnapshotsByDate } from '../IndexerQueries/poolFeeSnapshots.js'
@@ -664,6 +665,42 @@ describe('Processor', () => {
       expect(result?.[0]).to.have.property('currentPrice')
       expect(result?.[0]).to.have.property('unrealizedProfit')
       expect(result?.[0]).to.have.property('realizedProfit')
+    })
+  })
+
+  describe('investor list processor', () => {
+    it('should return empty array when no balances found', () => {
+      expect(processor.investorList({ trancheCurrencyBalance: [] })).to.deep.equal([])
+    })
+    it('should filter by network', () => {
+      const result = processor.investorList({ trancheCurrencyBalance: mockInvestorCurrencyBalances }, { network: 1 })
+      expect(result).to.have.lengthOf(1)
+    })
+    it('should filter by centrifuge network', () => {
+      const result = processor.investorList(
+        { trancheCurrencyBalance: mockInvestorCurrencyBalances },
+        { network: 'centrifuge' }
+      )
+      expect(result).to.have.lengthOf(1)
+    })
+    it('should filter by address', () => {
+      const result = processor.investorList(
+        { trancheCurrencyBalance: mockInvestorCurrencyBalances },
+        { address: '0x123' }
+      )
+      expect(result).to.have.lengthOf(1)
+    })
+    it('should filter by trancheId', () => {
+      const result = processor.investorList(
+        { trancheCurrencyBalance: mockInvestorCurrencyBalances },
+        { trancheId: 'tranche-1' }
+      )
+      expect(result).to.have.lengthOf(2)
+      const result2 = processor.investorList(
+        { trancheCurrencyBalance: mockInvestorCurrencyBalances },
+        { trancheId: 'tranche-2' }
+      )
+      expect(result2).to.have.lengthOf(0)
     })
   })
 

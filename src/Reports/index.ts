@@ -22,6 +22,8 @@ import {
   FeeTransactionReportFilter,
   AssetListReportFilter,
   AssetListReport,
+  InvestorListReportFilter,
+  InvestorListReport,
 } from '../types/reports.js'
 import { Query } from '../types/query.js'
 import { Pool } from '../Pool.js'
@@ -73,10 +75,14 @@ export class Reports extends Entity {
     return this._generateReport<AssetListReport>('assetList', filter)
   }
 
+  investorList(filter?: InvestorListReportFilter) {
+    return this._generateReport<InvestorListReport>('investorList', filter)
+  }
+
   /**
    * Reports are split into two types:
    * - A `Report` is a standard report: balanceSheet, cashflow, profitAndLoss
-   * - A `DataReport` is a custom report: investorTransactions, assetTransactions, feeTransactions, tokenPrice
+   * - A `DataReport` is a custom report: investorTransactions, assetTransactions, feeTransactions, tokenPrice, assetList, investorList
    */
   _generateReport<T>(type: Report, filter?: ReportFilter): Query<T[]>
   _generateReport<T>(type: DataReport, filter?: DataReportFilter): Query<T[]>
@@ -133,6 +139,14 @@ export class Reports extends Entity {
           ...dateFilter,
           asset: { poolId: { equalTo: this.pool.id } },
         })
+        const trancheCurrencyBalance$ = this.queries.trancheCurrencyBalanceQuery(
+          {
+            pool: { id: { equalTo: this.pool.id } },
+          },
+          {
+            currency: { pool: { id: { equalTo: this.pool.id } } },
+          }
+        )
 
         switch (type) {
           case 'balanceSheet':
@@ -177,6 +191,10 @@ export class Reports extends Entity {
           case 'assetList':
             return combineLatest([assetSnapshots$, metadata$]).pipe(
               map(([assetSnapshots, metadata]) => processor.assetList({ assetSnapshots, metadata }, restFilter) as T[])
+            )
+          case 'investorList':
+            return combineLatest([trancheCurrencyBalance$]).pipe(
+              map(([trancheCurrencyBalance]) => processor.investorList({ trancheCurrencyBalance }, restFilter) as T[])
             )
           default:
             throw new Error(`Unsupported report type: ${type}`)

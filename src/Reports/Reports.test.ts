@@ -370,4 +370,43 @@ describe('Reports', () => {
       expect(report.length).to.equal(6)
     })
   })
+
+  describe('investor list report', () => {
+    it('should fetch investor list report', async () => {
+      const anemoyPoolId = '4139607887'
+      const pool = await centrifuge.pool(anemoyPoolId)
+      const report = await pool.reports.investorList()
+      expect(report.length).to.equal(7)
+    })
+    it('should filter by network', async () => {
+      const anemoyPoolId = '4139607887'
+      const pool = await centrifuge.pool(anemoyPoolId)
+      const report = await pool.reports.investorList({ network: 1 })
+      expect(report.length).to.equal(3)
+    })
+    it('should filter by network centrifuge', async () => {
+      const anemoyPoolId = '4139607887'
+      const pool = await centrifuge.pool(anemoyPoolId)
+      const report = await pool.reports.investorList({ network: 'centrifuge' })
+      expect(report.length).to.equal(1)
+    })
+    it('should filter by network all', async () => {
+      const anemoyPoolId = '4139607887'
+      const pool = await centrifuge.pool(anemoyPoolId)
+      const report = await pool.reports.investorList({ network: 'all' })
+      expect(report.length).to.equal(7)
+    })
+    it('should filter by tranche', async () => {
+      const anemoyPoolId = '4139607887'
+      const pool = await centrifuge.pool(anemoyPoolId)
+      const report = await pool.reports.investorList({ trancheId: '0x97aa65f23e7be09fcd62d0554d2e9273' })
+      expect(report.length).to.equal(7)
+    })
+    it('should filter by address', async () => {
+      const anemoyPoolId = '4139607887'
+      const pool = await centrifuge.pool(anemoyPoolId)
+      const report = await pool.reports.investorList({ address: '0x6f94eb271ceb5a33aeab5bb8b8edea8ecf35ee86' })
+      expect(report.length).to.equal(1)
+    })
+  })
 })

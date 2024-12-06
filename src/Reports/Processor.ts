@@ -1,6 +1,6 @@
 import { AssetTransaction } from '../IndexerQueries/assetTransactions.js'
 import { InvestorTransaction } from '../IndexerQueries/investorTransactions.js'
-import { Currency, Price, Token } from '../utils/BigInt.js'
+import { Currency, Price, Rate, Token } from '../utils/BigInt.js'
 import { groupByPeriod } from '../utils/date.js'
 import {
   BalanceSheetData,
@@ -27,6 +27,9 @@ import {
   AssetListData,
   AssetListReportPublicCredit,
   AssetListReportPrivateCredit,
+  InvestorListData,
+  InvestorListReportFilter,
+  InvestorListReport,
 } from '../types/reports.js'
 import { PoolFeeTransaction } from '../IndexerQueries/poolFeeTransactions.js'
 
@@ -368,6 +371,42 @@ export class Processor {
           assetId: snapshot.assetId,
           presentValue: snapshot.presentValue,
           ...items,
+        }
+      })
+  }
+
+  investorList(data: InvestorListData, filter?: Omit<InvestorListReportFilter, 'to' | 'from'>): InvestorListReport[] {
+    if (!data.trancheCurrencyBalance?.length) return []
+
+    const filterNetwork = filter?.network === 'all' ? null : filter?.network
+    const filterAddress = filter?.address?.toLowerCase()
+
+    return data.trancheCurrencyBalance
+      .filter((investor) => {
+        const networkMatches = !filterNetwork || filterNetwork === investor.chainId
+        const addressMatches =
+          !filterAddress ||
+          investor.accountId.toLowerCase() === filterAddress ||
+          investor.evmAddress?.toLowerCase() === filterAddress
+        const trancheMatches = !filter?.trancheId || filter.trancheId === investor.trancheId
+        const hasPosition =
+          !filter?.address && (!investor.balance.isZero() || !investor.claimableTrancheTokens.isZero())
+
+        return networkMatches && addressMatches && trancheMatches && (hasPosition || filter?.address)
+      })
+      .map((balance) => {
+        const totalPositions = data.trancheCurrencyBalance.reduce((sum, investor) => {
+          return sum.add(investor.balance).add(investor.claimableTrancheTokens)
+        }, new Currency(0))
+        return {
+          type: 'investorList',
+          chainId: balance.chainId,
+          accountId: balance.accountId,
+          evmAddress: balance.evmAddress,
+          position: balance.balance.add(balance.claimableTrancheTokens),
+          poolPercentage: new Rate(balance.balance.add(balance.claimableTrancheTokens.div(totalPositions)).toBigInt()),
+          pendingInvest: balance.pendingInvestCurrency,
+          pendingRedeem: balance.pendingRedeemTrancheTokens,
         }
       })
   }

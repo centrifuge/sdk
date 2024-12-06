@@ -1,26 +1,28 @@
-import { poolFeeTransactionPostProcess } from './poolFeeTransactions.js'
-
-import { poolSnapshotsPostProcess, poolSnapshotsQuery } from './poolSnapshots.js'
-
-import { poolFeeSnapshotsPostProcess } from './poolFeeSnapshots.js'
-
-import { poolFeeSnapshotQuery } from './poolFeeSnapshots.js'
-
 import { Entity } from '../Entity.js'
-
 import { Centrifuge } from '../Centrifuge.js'
+import {
+  poolFeeTransactionPostProcess,
+  poolFeeTransactionQuery,
+  PoolFeeTransactionFilter,
+} from './poolFeeTransactions.js'
+import { poolSnapshotsPostProcess, poolSnapshotsQuery, PoolSnapshotFilter } from './poolSnapshots.js'
+import { poolFeeSnapshotsPostProcess, PoolFeeSnapshotFilter, poolFeeSnapshotQuery } from './poolFeeSnapshots.js'
 import { Pool } from '../Pool.js'
-import { PoolFeeSnapshotFilter } from './poolFeeSnapshots.js'
-import { PoolSnapshotFilter } from './poolSnapshots.js'
-import { trancheSnapshotsPostProcess, trancheSnapshotsQuery } from './trancheSnapshots.js'
-import { TrancheSnapshotFilter } from './trancheSnapshots.js'
-import { assetTransactionsPostProcess, assetTransactionsQuery } from './assetTransactions.js'
-import { poolFeeTransactionQuery } from './poolFeeTransactions.js'
-import { investorTransactionsPostProcess, investorTransactionsQuery } from './investorTransactions.js'
-import { InvestorTransactionFilter } from './investorTransactions.js'
-import { AssetTransactionFilter } from './assetTransactions.js'
-import { PoolFeeTransactionFilter } from './poolFeeTransactions.js'
+import { trancheSnapshotsPostProcess, trancheSnapshotsQuery, TrancheSnapshotFilter } from './trancheSnapshots.js'
+import { assetTransactionsPostProcess, assetTransactionsQuery, AssetTransactionFilter } from './assetTransactions.js'
+import {
+  investorTransactionsPostProcess,
+  investorTransactionsQuery,
+  InvestorTransactionFilter,
+} from './investorTransactions.js'
 import { AssetSnapshotFilter, assetSnapshotsPostProcess, assetSnapshotsQuery } from './assetSnapshots.js'
+import {
+  trancheCurrencyBalancePostProcessor,
+  trancheCurrencyBalanceQuery,
+  TrancheCurrencyBalanceFilter,
+  TrancheBalanceFilter,
+  CurrencyBalanceFilter,
+} from './trancheCurrencyBalance.js'
 
 export class IndexerQueries extends Entity {
   constructor(
@@ -56,5 +58,13 @@ export class IndexerQueries extends Entity {
 
   assetSnapshotsQuery(filter?: AssetSnapshotFilter) {
     return this._root._queryIndexer(assetSnapshotsQuery, { filter }, assetSnapshotsPostProcess)
+  }
+
+  trancheCurrencyBalanceQuery(filterTranches?: TrancheBalanceFilter, filterCurrencies?: CurrencyBalanceFilter) {
+    return this._root._queryIndexer(
+      trancheCurrencyBalanceQuery,
+      { filterTranches, filterCurrencies },
+      trancheCurrencyBalancePostProcessor
+    )
   }
 }

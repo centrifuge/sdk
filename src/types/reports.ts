@@ -4,6 +4,7 @@ import { InvestorTransaction, SubqueryInvestorTransactionType } from '../Indexer
 import { PoolFeeSnapshotsByDate } from '../IndexerQueries/poolFeeSnapshots.js'
 import { PoolFeeTransaction } from '../IndexerQueries/poolFeeTransactions.js'
 import { PoolSnapshot } from '../IndexerQueries/poolSnapshots.js'
+import { TrancheCurrencyBalance } from '../IndexerQueries/trancheCurrencyBalance.js'
 import { TrancheSnapshotsByDate } from '../IndexerQueries/trancheSnapshots.js'
 import { PoolMetadata } from '../types/poolMetadata.js'
 import { Price, Rate, Token } from '../utils/BigInt.js'
@@ -22,7 +23,13 @@ export type DataReportFilter = {
 }
 
 export type Report = 'balanceSheet' | 'cashflow' | 'profitAndLoss'
-export type DataReport = 'investorTransactions' | 'assetTransactions' | 'feeTransactions' | 'tokenPrice' | 'assetList'
+export type DataReport =
+  | 'investorTransactions'
+  | 'assetTransactions'
+  | 'feeTransactions'
+  | 'tokenPrice'
+  | 'assetList'
+  | 'investorList'
 
 /**
  * Balance sheet type
@@ -262,4 +269,29 @@ export type AssetListReportFilter = {
   from?: string
   to?: string
   status?: 'ongoing' | 'repaid' | 'overdue' | 'all'
+}
+
+/**
+ * Investor list types
+ */
+export type InvestorListData = {
+  trancheCurrencyBalance: TrancheCurrencyBalance[]
+}
+export type InvestorListReport = {
+  type: 'investorList'
+  chainId: number | 'centrifuge' | 'all'
+  accountId: string
+  evmAddress?: string
+  position: Currency
+  poolPercentage: Rate
+  pendingInvest: Currency
+  pendingRedeem: Currency
+}
+
+export type InvestorListReportFilter = {
+  from?: string
+  to?: string
+  trancheId?: string
+  network?: number | 'centrifuge' | 'all'
+  address?: string
 }
