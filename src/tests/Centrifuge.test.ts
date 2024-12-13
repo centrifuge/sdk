@@ -78,7 +78,7 @@ describe('Centrifuge', () => {
 
     it('should cache the latest value by default', async () => {
       let subscribedTimes = 0
-      const query1 = context.centrifuge._query(null, () =>
+      const query1 = context.centrifuge._query([Math.random()], () =>
         defer(() => {
           subscribedTimes++
           return lazy(1)
@@ -93,9 +93,18 @@ describe('Centrifuge', () => {
       expect(value3).to.equal(1)
     })
 
+    it("should't cache the value when no keys are passed", async () => {
+      let value = 0
+      const query = context.centrifuge._query(null, () => defer(() => lazy(++value)))
+      const value1 = await query
+      const value2 = await query
+      expect(value1).to.equal(1)
+      expect(value2).to.equal(2)
+    })
+
     it("should invalidate the cache when there's no subscribers for a while on an infinite observable", async () => {
       const subject = new Subject()
-      const query1 = context.centrifuge._query(null, () => subject)
+      const query1 = context.centrifuge._query([Math.random()], () => subject)
       setTimeout(() => subject.next(1), 10)
       const value1 = await query1
       setTimeout(() => subject.next(2), 10)
@@ -113,7 +122,7 @@ describe('Centrifuge', () => {
 
     it('should invalidate the cache when a finite observable completes, when given a `valueCacheTime`', async () => {
       let value = 0
-      const query1 = context.centrifuge._query(null, () => defer(() => lazy(++value)), { valueCacheTime: 1 })
+      const query1 = context.centrifuge._query([Math.random()], () => defer(() => lazy(++value)), { valueCacheTime: 1 })
       const value1 = await query1
       const value2 = await query1
       clock.tick(1_000)
@@ -126,7 +135,7 @@ describe('Centrifuge', () => {
     it("shouldn't cache the latest value when `cache` is `false`", async () => {
       let value = 0
       const query1 = context.centrifuge._query(
-        null,
+        [Math.random()],
         () =>
           defer(() => {
             value++
@@ -144,7 +153,7 @@ describe('Centrifuge', () => {
 
     it("shouldn't reset the cache with a longer `observableCacheTime`", async () => {
       let value = 0
-      const query1 = context.centrifuge._query(null, () => defer(() => lazy(++value)), {
+      const query1 = context.centrifuge._query([Math.random()], () => defer(() => lazy(++value)), {
         observableCacheTime: Infinity,
       })
       const value1 = await query1
@@ -156,7 +165,7 @@ describe('Centrifuge', () => {
 
     it('should push new data for new subscribers to old subscribers', async () => {
       let value = 0
-      const query1 = context.centrifuge._query(null, () => defer(() => lazy(++value)), { valueCacheTime: 1 })
+      const query1 = context.centrifuge._query([Math.random()], () => defer(() => lazy(++value)), { valueCacheTime: 1 })
       let lastValue: number | null = null
       const subscription = query1.subscribe((next) => (lastValue = next))
       await query1
@@ -168,8 +177,8 @@ describe('Centrifuge', () => {
     })
 
     it('should cache nested queries', async () => {
-      const query1 = context.centrifuge._query(['key1'], () => interval(50).pipe(map((i) => i + 1)))
-      const query2 = context.centrifuge._query(['key2'], () => interval(50).pipe(map((i) => (i + 1) * 2)))
+      const query1 = context.centrifuge._query([Math.random()], () => interval(50).pipe(map((i) => i + 1)))
+      const query2 = context.centrifuge._query([Math.random()], () => interval(50).pipe(map((i) => (i + 1) * 2)))
       const query3 = context.centrifuge._query(null, () =>
         combineLatest([query1, query2]).pipe(map(([v1, v2]) => v1 + v2))
       )
@@ -184,8 +193,8 @@ describe('Centrifuge', () => {
 
     it('should update dependant queries with values from dependencies', async () => {
       let i = 0
-      const query1 = context.centrifuge._query(['key3'], () => of(++i), { valueCacheTime: 120 })
-      const query2 = context.centrifuge._query(['key4'], () => query1.pipe(map((v1) => v1 * 10)))
+      const query1 = context.centrifuge._query([Math.random()], () => of(++i), { valueCacheTime: 120 })
+      const query2 = context.centrifuge._query([Math.random()], () => query1.pipe(map((v1) => v1 * 10)))
       const value1 = await query2
       clock.tick(150_000)
       const value3 = await query2
@@ -196,7 +205,7 @@ describe('Centrifuge', () => {
     it('should recreate the shared observable when the cached value is expired', async () => {
       let i = 0
       const query1 = context.centrifuge._query(
-        null,
+        [Math.random()],
         () =>
           defer(async function* () {
             yield await lazy(`${++i}-A`)
