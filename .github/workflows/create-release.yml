@@ -17,10 +17,11 @@ jobs:
     - name: Check if version was bumped
       id: version_check
       run: |
-        ./.github/ci-scripts/check-version-bump.sh
+        OUTPUT=$(./.github/ci-scripts/check-version-bump.sh)
+        echo "::warning::$OUTPUT"
 
     - name: Create GitHub Release   
-      if: success() && steps.version_check.outcome == 'success'
+      if: steps.version_check.outcome == 'success'
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       run: |
