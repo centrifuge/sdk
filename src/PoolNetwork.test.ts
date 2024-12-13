@@ -38,4 +38,28 @@ describe('PoolNetwork', () => {
     // Calls should get batched
     expect(fetchSpy.getCalls().length).to.equal(1)
   })
+
+  it('should deploy a tranche', async () => {
+    const poolId = '1287682503'
+    const trancheId = '0x02bbf52e452ddb47103913051212382c'
+    const pool = new Pool(context.centrifuge, poolId)
+    const poolNetwork = new PoolNetwork(context.centrifuge, pool, 11155111)
+
+    const canTrancheBeDeployed = await poolNetwork.canTrancheBeDeployed(trancheId)
+    expect(canTrancheBeDeployed).to.equal(true)
+
+    const result = await poolNetwork.deployTranche(trancheId)
+    expect(result.type).to.equal('TransactionConfirmed')
+  })
+
+  it('should deploy a vault', async () => {
+    const poolId = '1287682503'
+    const trancheId = '0x02bbf52e452ddb47103913051212382c'
+    const pool = new Pool(context.centrifuge, poolId)
+    const poolNetwork = new PoolNetwork(context.centrifuge, pool, 11155111)
+    const tUSD = '0x8503b4452Bf6238cC76CdbEE223b46d7196b1c93'
+
+    const result = await poolNetwork.deployVault(trancheId, tUSD)
+    expect(result.type).to.equal('TransactionConfirmed')
+  })
 })

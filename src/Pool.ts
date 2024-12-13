@@ -2,8 +2,8 @@ import { catchError, combineLatest, map, of, switchMap, timeout } from 'rxjs'
 import type { Centrifuge } from './Centrifuge.js'
 import { Entity } from './Entity.js'
 import { PoolNetwork } from './PoolNetwork.js'
-import { PoolMetadata } from './types/poolMetadata.js'
 import { Reports } from './Reports/index.js'
+import { PoolMetadata } from './types/poolMetadata.js'
 
 export class Pool extends Entity {
   constructor(
@@ -80,7 +80,9 @@ export class Pool extends Entity {
           return combineLatest(
             networks.map((network) =>
               network.isActive().pipe(
-                timeout(8000),
+                // Because this is fetching from multiple networks and we're waiting on all of them before returning a value,
+                // we want a timeout in case one of the endpoints is too slow
+                timeout({ first: 5000 }),
                 catchError(() => {
                   return of(false)
                 })
