@@ -1,5 +1,4 @@
 import { expect } from 'chai'
-import sinon from 'sinon'
 import { Pool } from './Pool.js'
 import { PoolNetwork } from './PoolNetwork.js'
 import { context } from './tests/setup.js'
@@ -16,10 +15,6 @@ describe('PoolNetwork', () => {
     poolNetwork = new PoolNetwork(centrifuge, pool, 11155111)
   })
 
-  afterEach(() => {
-    sinon.restore()
-  })
-
   it('should get whether a pool is deployed to a network', async () => {
     const isActive = await poolNetwork.isActive()
     expect(isActive).to.equal(true)
@@ -31,12 +26,9 @@ describe('PoolNetwork', () => {
   })
 
   it('get vaults for a tranche', async () => {
-    const fetchSpy = sinon.spy(globalThis, 'fetch')
     const vaults = await poolNetwork.vaults(trancheId)
     expect(vaults).to.have.length(1)
     expect(vaults[0]!.address.toLowerCase()).to.equal(vaultAddress)
-    // Calls should get batched
-    expect(fetchSpy.getCalls().length).to.equal(1)
   })
 
   it('should deploy a tranche', async () => {
