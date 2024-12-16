@@ -4,7 +4,7 @@ import { context } from './tests/setup.js'
 
 const poolId = '2779829532'
 const trancheId = '0xac6bffc5fd68f7772ceddec7b0a316ca'
-const vaultAddress = '0x05eb35c2e4fa21fb06d3fab92916191b254b3504'
+const asset = '0x8503b4452Bf6238cC76CdbEE223b46d7196b1c93'
 
 describe('Pool', () => {
   let pool: Pool
@@ -21,7 +21,7 @@ describe('Pool', () => {
   })
 
   it('can query a vault', async () => {
-    const vault = await pool.vault(11155111, trancheId, vaultAddress)
+    const vault = await pool.vault(11155111, trancheId, asset)
     expect(vault).to.not.be.undefined
   })
 })
