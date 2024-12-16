@@ -88,7 +88,7 @@ const subscription = pool.closeEpoch().subscribe(
 
 Investments for a pool are done via [ERC-7540 Tokenized Vaults](https://eips.ethereum.org/EIPS/eip-7540). Vaults can be deployed for a tranche on any supported network, for any supported currency
 
-Retrieve a vault by querying it from the Pool:
+Retrieve a vault by querying it from the pool:
 
 ```js
 const pool = await centrifuge.pool('1')
