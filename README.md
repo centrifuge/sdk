@@ -86,7 +86,7 @@ const subscription = pool.closeEpoch().subscribe(
 
 ## Investments
 
-Investments for a pool are done via vaults. Vaults can be deployed for a tranche on any supported chain for any supported currency.
+Investments for a pool are done via [ERC-7540 Tokenized Vaults](https://eips.ethereum.org/EIPS/eip-7540). Vaults can be deployed for a tranche on any supported network, for any supported currency
 
 Retrieve a vault by querying it from the Pool:
 
