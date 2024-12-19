@@ -20,14 +20,17 @@ jobs:
       env:
         GH_TOKEN: ${{ github.token }}      
       run: |
-        echo "::group::Output PR # and labels"
         LAST_PR_NUMBER=$(gh pr list --state merged --json number --jq '.[0].number')
         LABELS=$(gh pr view "$LAST_PR_NUMBER" --json labels --jq '.labels[].name')
         echo "::notice::PR used to check version bump: #$LAST_PR_NUMBER"
         echo "::notice::PR labels: "[${LABELS//$'\n'/,}]""
-        echo "::endgroup::"
 
-        RELEASE_TYPE=$(./.github/ci-scripts/pr-label-check.sh)
+        RELEASE_TYPE=$(./.github/ci-scripts/pr-label-check.sh) || exit_code=$?
+        if [ "$exit_code" -ne 0 ]; then
+          echo "::error::PR #"$LAST_PR_NUMBER" has more than one release label"
+          exit $exit_code
+        fi
+
         echo "version=$RELEASE_TYPE" >> $GITHUB_OUTPUT
         echo "::group::Output version"
         echo "::notice::Release type: $RELEASE_TYPE"
@@ -54,8 +57,9 @@ jobs:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       run: |
         VERSION=$(node -p "require('./package.json').version")
-        gh release create "v${VERSION}" \
-          --title "Release v${VERSION}" \
-          --generate-notes \
-          --prerelease \
-          --target "${COMMIT_SHA}"
+        echo "Would execute command:"
+        echo "gh release create \"v${VERSION}\" \\"
+        echo "  --title \"Release v${VERSION}\" \\"
+        echo "  --generate-notes \\"
+        echo "  --prerelease \\"
+        echo "  --target \"${COMMIT_SHA}\""
