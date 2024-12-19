@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# Function to check if a specific label exists in the list
+# Function to check if a specific label exists in a list
 contains_label() {
   local label="$1"
   shift
@@ -25,12 +25,21 @@ IFS=$'\n' read -rd '' -a label_array <<<"$labels"
 LABELS_TO_CHECK=("major" "minor" "patch" "no-release" "alpha")
 
 # Check for the specified labels
+found_labels=0
 for label in "${LABELS_TO_CHECK[@]}"; do
   if contains_label "$label" "${label_array[@]}"; then
     echo "$label"
-    exit 0
+    ((found_labels++))
   fi
 done
 
+# If more than one label is found, print an error and exit with failure
+if (( found_labels > 1 )); then
+  echo "Error: More than one release label found."
+  exit 1
+fi
+
 # If no specified label is found, return 'no-release'
-echo "no-release"
+if (( found_labels == 0 )); then
+  echo "no-release"
+fi
