@@ -17,6 +17,8 @@ jobs:
 
     - name: Check last PR labels
       id: check_labels
+      env:
+        GH_TOKEN: ${{ github.token }}      
       run: |
         LAST_PR_NUMBER=$(gh pr list --state merged --json number --jq '.[0].number')
         LABELS=$(gh pr view "$LAST_PR_NUMBER" --json labels --jq '.labels[].name')
