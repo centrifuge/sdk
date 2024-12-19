@@ -7,12 +7,11 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
-      pull-requests: read
+      pull-requests: write
     steps:
       - name: Check PR Title follows conventional commit naming
         id: check-pr-naming
         uses: amannn/action-semantic-pull-request@v5
-        # continue-on-error: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
@@ -20,26 +19,11 @@ jobs:
           requireScope: false
 
       - uses: docker://agilepathway/pull-request-label-checker:v1.6.56
-        # continue-on-error: true
         # https://github.com/agilepathway/label-checker
         id: check-pr-labels
         with:
           one_of: major,minor,patch,no-release,alpha
           repo_token: ${{ secrets.GITHUB_TOKEN }}
-
-    outputs:
-      labels_valid: ${{ steps.check-pr-labels.outputs.label_check }} # 'success' or 'failure'
-      title_error: ${{ steps.check-pr-naming.outputs.error_message }} # null or error message
-
-
-  handle-comments:
-    runs-on: ubuntu-latest
-    if: always()
-    needs: title-n-label-check
-    permissions:
-      pull-requests: write
-      contents: read
-    steps:
 
       - name: Find existing PR title error comment
         uses: peter-evans/find-comment@v2
@@ -73,9 +57,9 @@ jobs:
             Details:
             
             ```
-            ${{ needs.title-n-label-check.outputs.title_error }}
+            ${{ steps.check-pr-naming.outputs.error_message }}
           edit-mode: replace
-        if: needs.title-n-label-check.outputs.title_error != null
+        if: steps.check-pr-naming.outputs.error_message != null
 
       - name: Remove title error comment
         env:
@@ -86,7 +70,7 @@ jobs:
             -H "Authorization: token $GITHUB_TOKEN" \
             -H "Accept: application/vnd.github.v3+json" \
             https://api.github.com/repos/${{ github.repository }}/issues/comments/$COMMENT_ID
-        if: needs.title-n-label-check.outputs.title_error == null        
+        if: steps.check-pr-naming.outputs.error_message == null        
 
       - name: Add PR label error comment
         id: pr-label-error
@@ -100,7 +84,7 @@ jobs:
             PR must have ONLY one of the following labels: major, minor, patch, no-release, alpha.
             Check the logs for more details: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
           edit-mode: replace
-        if: needs.title-n-label-check.outputs.labels_valid != 'success'
+        if: steps.check-pr-labels.outputs.label_check != 'success'
 
       - name: Remove label error comment
         env:
@@ -111,4 +95,4 @@ jobs:
             -H "Authorization: token $GITHUB_TOKEN" \
             -H "Accept: application/vnd.github.v3+json" \
             https://api.github.com/repos/${{ github.repository }}/issues/comments/$COMMENT_ID
-        if: needs.title-n-label-check.outputs.labels_valid == 'success'
+        if: steps.check-pr-labels.outputs.label_check == 'success'
