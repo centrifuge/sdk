@@ -41,14 +41,14 @@ jobs:
 
     - name: Bump version
       id: bump
-      if: steps.check_labels.outputs.RELEASE_TYPE != 'no-release'
+      if: steps.check_labels.outputs.version != 'no-release'
       run: |
         git config user.name "GitHub Actions"
         git config user.email "actions@github.com"
-        if [ "${{ steps.check_labels.outputs.RELEASE_TYPE }}" == "alpha" ]; then
+        if [ "${{ steps.check_labels.outputs.version }}" == "alpha" ]; then
           npm version -m "[bot] New pkg version: %s" --preid=alpha prerelease
         else
-          npm version -m "[bot] New pkg version: %s" ${{ steps.check_labels.outputs.RELEASE_TYPE }}
+          npm version -m "[bot] New pkg version: %s" ${{ steps.check_labels.outputs.version }}
         fi
 
     - name: Create GitHub Release   
@@ -57,9 +57,8 @@ jobs:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       run: |
         VERSION=$(node -p "require('./package.json').version")
-        echo "Would execute command:"
-        echo "gh release create \"v${VERSION}\" \\"
-        echo "  --title \"Release v${VERSION}\" \\"
-        echo "  --generate-notes \\"
-        echo "  --prerelease \\"
-        echo "  --target \"${COMMIT_SHA}\""
+        gh release create "v${VERSION}" \
+          --title "Release v${VERSION}" \
+          --generate-notes \
+          --prerelease \
+          --target "${GITHUB_SHA}"
