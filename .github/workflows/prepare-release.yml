@@ -29,12 +29,6 @@ jobs:
         with:
           node-version: '20'
 
-      - name: Enable Corepack
-        run: corepack enable
-
-      - name: Set Yarn version
-        run: yarn set version 4.5.0
-
       - name: Check PR version labels
         id: bump
         run: |
@@ -74,7 +68,7 @@ jobs:
 
       - name: Bump version
         if: steps.bump.outputs.type != 'no-release'
-        run: yarn version ${{ steps.bump.outputs.type }}
+        run: npm version ${{ steps.bump.outputs.type }}
 
       - name: Push changes
         if: steps.bump.outputs.type != 'no-release'     
