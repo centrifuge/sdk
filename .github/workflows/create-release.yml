@@ -3,7 +3,6 @@ on:
   push:
     branches:
       - main
-      - fix_yarn_version_cli
 
 jobs:
   create-release:
