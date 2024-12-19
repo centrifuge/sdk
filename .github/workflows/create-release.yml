@@ -14,14 +14,44 @@ jobs:
       with:       
         fetch-depth: 2 # Need at least 2 commits to compare versions
 
-    - name: Check if version was bumped
-      id: version_check
+    - name: Check last PR labels
+      id: check_labels
+      env:
+        GH_TOKEN: ${{ github.token }}      
       run: |
-        OUTPUT=$(./.github/ci-scripts/check-version-bump.sh)
-        echo "::warning::$OUTPUT"
+        LAST_PR_NUMBER=$(gh pr list --state merged --json number --jq '.[0].number')
+        LABELS=$(gh pr view "$LAST_PR_NUMBER" --json labels --jq '.labels[].name')
+        echo "::notice::PR used to check version bump: #$LAST_PR_NUMBER"
+        echo "::notice::PR labels: "[${LABELS//$'\n'/,}]""
+
+        RELEASE_TYPE=$(./.github/ci-scripts/pr-label-check.sh) || exit_code=$?
+        if [ "$exit_code" -ne 0 ]; then
+          echo "::error::PR #"$LAST_PR_NUMBER" has more than one release label"
+          exit $exit_code
+        fi
+
+        echo "version=$RELEASE_TYPE" >> $GITHUB_OUTPUT
+        echo "::group::Output version"
+        echo "::notice::Release type: $RELEASE_TYPE"
+        if [ "$RELEASE_TYPE" == "no-release" ]; then
+          echo "::notice::PR is not flagged for release, skipping other steps"
+        fi        
+        echo "::endgroup::"
+
+    - name: Bump version
+      id: bump
+      if: steps.check_labels.outputs.version != 'no-release'
+      run: |
+        git config user.name "GitHub Actions"
+        git config user.email "actions@github.com"
+        if [ "${{ steps.check_labels.outputs.version }}" == "alpha" ]; then
+          npm version -m "[bot] New pkg version: %s" --preid=alpha prerelease
+        else
+          npm version -m "[bot] New pkg version: %s" ${{ steps.check_labels.outputs.version }}
+        fi
 
     - name: Create GitHub Release   
-      if: steps.version_check.outcome == 'success'
+      if: steps.bump.outcome == 'success'
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       run: |
@@ -30,4 +60,4 @@ jobs:
           --title "Release v${VERSION}" \
           --generate-notes \
           --prerelease \
-          --target "${COMMIT_SHA}"
+          --target "${GITHUB_SHA}"
