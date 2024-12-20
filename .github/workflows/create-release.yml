@@ -29,7 +29,8 @@ jobs:
           # Check commits between merge-base and current HEAD
           COMMITS=$(git log $MERGE_BASE..HEAD --format=%B)
           if echo "$COMMITS" | grep -q "\[bot\] New pkg version:"; then
-            echo "Version was already bumped in this branch"
+            VERSION_COMMIT=$(echo "$COMMITS" | grep "\[bot\] New pkg version:" | head -n 1)
+            echo "::warning::Version was already bumped in this branch with commit message: $VERSION_COMMIT"
             echo "skip_bump=true" >> $GITHUB_OUTPUT
           else
             echo "No version bump found in branch commits"
