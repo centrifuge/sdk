@@ -3,7 +3,6 @@ on:
   push:
     branches:
       - main
-      - fix_yarn_version_cli
   pull_request_review:
     types: [submitted]      
 
@@ -20,7 +19,7 @@ jobs:
 
     - name: Check if version was already bumped
       id: version_check
-      # if: github.event.review.state == 'approved'
+      if: github.event.review.state == 'approved'
       run: |
         # Find the commit where the branch diverged from main
         git fetch origin main
