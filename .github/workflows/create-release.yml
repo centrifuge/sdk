@@ -3,6 +3,7 @@ on:
   push:
     branches:
       - main
+      - fix_yarn_version_cli
   pull_request_review:
     types: [submitted]      
 
@@ -14,13 +15,14 @@ jobs:
     steps:    
     - uses: actions/checkout@v4
       with:       
-        fetch-depth: 2
+        fetch-depth: 0
+        ref: ${{ github.event.pull_request.head.ref || github.ref_name }} 
 
     - name: Check last PR labels
       id: check_labels
       env:
         GH_TOKEN: ${{ github.token }}      
-      if: github.event.review.state == 'approved'
+      # if: github.event.review.state == 'approved'
       run: |
         LAST_PR_NUMBER=$(gh pr list --state merged --json number --jq '.[0].number')
         LABELS=$(gh pr view "$LAST_PR_NUMBER" --json labels --jq '.labels[].name')
@@ -43,7 +45,7 @@ jobs:
 
     - name: Bump version
       id: bump
-      if: github.event.review.state == 'approved' && steps.check_labels.outputs.version != 'no-release'
+      # if: github.event.review.state == 'approved' && steps.check_labels.outputs.version != 'no-release'
       run: |
         git config user.name "GitHub Actions"
         git config user.email "actions@github.com"
