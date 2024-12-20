@@ -3,7 +3,6 @@ on:
   push:
     branches:
       - main
-      - more-reports
   pull_request_review:
     types: [submitted]      
 
@@ -55,12 +54,18 @@ jobs:
         echo "::notice::PR used to check version bump: #$PR_NUMBER"
         echo "::notice::PR labels: "[${LABELS//$'\n'/,}]""
 
+        echo "::notice::Running pr-label-check.sh..."
+        # Make script executable
+        chmod +x ./.github/ci-scripts/pr-label-check.sh
+        
         # Run the script and capture both output and exit code
-        RELEASE_TYPE=$(./.github/ci-scripts/pr-label-check.sh 2>&1) || {
+        RELEASE_TYPE=$(./.github/ci-scripts/pr-label-check.sh $PR_NUMBER 2>&1) || {
           # If script exits with non-zero, output the error and exit
-          echo "::error::$RELEASE_TYPE"
+          echo "::error::Script failed with output: $RELEASE_TYPE"
           exit 1
         }
+
+        echo "::notice::Script returned release type: '$RELEASE_TYPE'"
 
         # Only proceed if we have a valid release type
         if [ -z "$RELEASE_TYPE" ]; then
