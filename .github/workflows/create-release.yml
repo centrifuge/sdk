@@ -57,7 +57,7 @@ jobs:
         git push
 
     - name: Create GitHub Release   
-      if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+      if: github.event_name == 'push' && github.ref == 'refs/heads/main' && steps.check_labels.outputs.version != 'no-release'
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       run: |
