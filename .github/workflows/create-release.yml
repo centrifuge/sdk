@@ -54,7 +54,6 @@ jobs:
         echo "::notice::PR used to check version bump: #$PR_NUMBER"
         echo "::notice::PR labels: "[${LABELS//$'\n'/,}]""
 
-        echo "::notice::Running pr-label-check.sh..."
         # Make script executable
         chmod +x ./.github/ci-scripts/pr-label-check.sh
         
@@ -65,8 +64,6 @@ jobs:
           exit 1
         }
 
-        echo "::notice::Script returned release type: '$RELEASE_TYPE'"
-
         # Only proceed if we have a valid release type
         if [ -z "$RELEASE_TYPE" ]; then
           echo "::error::No valid release type determined"
@@ -74,12 +71,10 @@ jobs:
         fi
 
         echo "version=$RELEASE_TYPE" >> $GITHUB_OUTPUT
-        echo "::group::Output version"
         echo "::notice::Release type: $RELEASE_TYPE"
         if [ "$RELEASE_TYPE" == "no-release" ]; then
           echo "::notice::PR is not flagged for release, skipping other steps"
         fi        
-        echo "::endgroup::"
 
     - name: Bump version
       id: bump
