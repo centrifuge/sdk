@@ -211,10 +211,11 @@ export class PoolNetwork extends Entity {
    * @param asset - The investment currency address
    */
   vault(trancheId: string, asset: string) {
+    const assetAddress = asset.toLowerCase()
     return this._query(null, () =>
       this.vaults(trancheId).pipe(
         map((vaults) => {
-          const vault = vaults.find((v) => v._asset === asset)
+          const vault = vaults.find((v) => v._asset === assetAddress)
           if (!vault) throw new Error('Vault not found')
           return vault
         })
