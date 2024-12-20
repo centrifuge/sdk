@@ -20,23 +20,20 @@ jobs:
 
     - name: Check if version was already bumped
       id: version_check
+      # if: github.event.review.state == 'approved'
       run: |
-        if [ "${{ github.event_name }}" == "pull_request_review" ]; then
-          # Find the commit where the branch diverged from main
-          git fetch origin main
-          MERGE_BASE=$(git merge-base origin/main HEAD)
-          
-          # Check commits between merge-base and current HEAD
-          COMMITS=$(git log $MERGE_BASE..HEAD --format=%B)
-          if echo "$COMMITS" | grep -q "\[bot\] New pkg version:"; then
-            VERSION_COMMIT=$(echo "$COMMITS" | grep "\[bot\] New pkg version:" | head -n 1)
-            echo "::warning::Version was already bumped in this branch with commit message: $VERSION_COMMIT"
-            echo "skip_bump=true" >> $GITHUB_OUTPUT
-          else
-            echo "No version bump found in branch commits"
-            echo "skip_bump=false" >> $GITHUB_OUTPUT
-          fi
+        # Find the commit where the branch diverged from main
+        git fetch origin main
+        MERGE_BASE=$(git merge-base origin/main HEAD)
+        
+        # Check commits between merge-base and current HEAD
+        COMMITS=$(git log $MERGE_BASE..HEAD --format=%B)
+        if echo "$COMMITS" | grep -q "\[bot\] New pkg version:"; then
+          VERSION_COMMIT=$(echo "$COMMITS" | grep "\[bot\] New pkg version:" | head -n 1)
+          echo "::warning::Version was already bumped in this branch with commit message: $VERSION_COMMIT"
+          echo "skip_bump=true" >> $GITHUB_OUTPUT
         else
+          echo "No version bump found in branch commits"
           echo "skip_bump=false" >> $GITHUB_OUTPUT
         fi
 
