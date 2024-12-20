@@ -431,11 +431,13 @@ export class Centrifuge {
       const sharedSubject = new Subject<Observable<T>>()
       function createShared(): Observable<T> {
         const $shared = observableCallback().pipe(
-          shareReplayWithDelayedReset({
-            bufferSize: (options?.cache ?? true) ? 1 : 0,
-            resetDelay: (options?.cache === false ? 0 : (options?.observableCacheTime ?? 60)) * 1000,
-            windowTime: (options?.valueCacheTime ?? Infinity) * 1000,
-          })
+          keys
+            ? shareReplayWithDelayedReset({
+                bufferSize: (options?.cache ?? true) ? 1 : 0,
+                resetDelay: (options?.cache === false ? 0 : (options?.observableCacheTime ?? 60)) * 1000,
+                windowTime: (options?.valueCacheTime ?? Infinity) * 1000,
+              })
+            : map((val) => val)
         )
         sharedSubject.next($shared)
         return $shared
