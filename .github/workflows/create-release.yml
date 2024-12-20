@@ -3,6 +3,7 @@ on:
   push:
     branches:
       - main
+      - more-reports
   pull_request_review:
     types: [submitted]      
 
@@ -54,16 +55,12 @@ jobs:
         echo "::notice::PR used to check version bump: #$PR_NUMBER"
         echo "::notice::PR labels: "[${LABELS//$'\n'/,}]""
 
-        # Store the script output and exit code properly
-        RELEASE_TYPE=""
-        exit_code=0
-        RELEASE_TYPE=$(./.github/ci-scripts/pr-label-check.sh) || exit_code=$?
-        
-        # Check if the script failed
-        if [ $exit_code -ne 0 ]; then
-          echo "::error::PR #$PR_NUMBER has more than one release label"
-          exit $exit_code
-        fi
+        # Run the script and capture both output and exit code
+        RELEASE_TYPE=$(./.github/ci-scripts/pr-label-check.sh 2>&1) || {
+          # If script exits with non-zero, output the error and exit
+          echo "::error::$RELEASE_TYPE"
+          exit 1
+        }
 
         # Only proceed if we have a valid release type
         if [ -z "$RELEASE_TYPE" ]; then
