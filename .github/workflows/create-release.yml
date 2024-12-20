@@ -3,6 +3,7 @@ on:
   push:
     branches:
       - main
+      - fix_yarn_version_cli
   pull_request_review:
     types: [submitted]      
 
@@ -21,13 +22,17 @@ jobs:
       id: version_check
       run: |
         if [ "${{ github.event_name }}" == "pull_request_review" ]; then
-          CURRENT_SHA=$(git rev-parse HEAD)
-          COMMITS=$(git log --format=%B -n 10)
+          # Find the commit where the branch diverged from main
+          git fetch origin main
+          MERGE_BASE=$(git merge-base origin/main HEAD)
+          
+          # Check commits between merge-base and current HEAD
+          COMMITS=$(git log $MERGE_BASE..HEAD --format=%B)
           if echo "$COMMITS" | grep -q "\[bot\] New pkg version:"; then
             echo "Version was already bumped in this branch"
             echo "skip_bump=true" >> $GITHUB_OUTPUT
           else
-            echo "No version bump found in recent commits"
+            echo "No version bump found in branch commits"
             echo "skip_bump=false" >> $GITHUB_OUTPUT
           fi
         else
