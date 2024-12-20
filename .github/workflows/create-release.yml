@@ -54,10 +54,21 @@ jobs:
         echo "::notice::PR used to check version bump: #$PR_NUMBER"
         echo "::notice::PR labels: "[${LABELS//$'\n'/,}]""
 
+        # Store the script output and exit code properly
+        RELEASE_TYPE=""
+        exit_code=0
         RELEASE_TYPE=$(./.github/ci-scripts/pr-label-check.sh) || exit_code=$?
-        if [ "$exit_code" -ne 0 ]; then
-          echo "::error::PR #"$PR_NUMBER" has more than one release label"
+        
+        # Check if the script failed
+        if [ $exit_code -ne 0 ]; then
+          echo "::error::PR #$PR_NUMBER has more than one release label"
           exit $exit_code
+        fi
+
+        # Only proceed if we have a valid release type
+        if [ -z "$RELEASE_TYPE" ]; then
+          echo "::error::No valid release type determined"
+          exit 1
         fi
 
         echo "version=$RELEASE_TYPE" >> $GITHUB_OUTPUT
