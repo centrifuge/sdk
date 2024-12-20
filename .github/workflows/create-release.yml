@@ -3,21 +3,24 @@ on:
   push:
     branches:
       - main
+  pull_request_review:
+    types: [submitted]      
 
 jobs:
   create-release:
     runs-on: ubuntu-latest
     permissions:
-      contents: write # Highly security sensitive. Do NOT add third party actions in this job
+      contents: write
     steps:    
     - uses: actions/checkout@v4
       with:       
-        fetch-depth: 2 # Need at least 2 commits to compare versions
+        fetch-depth: 2
 
     - name: Check last PR labels
       id: check_labels
       env:
         GH_TOKEN: ${{ github.token }}      
+      if: github.event.review.state == 'approved'
       run: |
         LAST_PR_NUMBER=$(gh pr list --state merged --json number --jq '.[0].number')
         LABELS=$(gh pr view "$LAST_PR_NUMBER" --json labels --jq '.labels[].name')
@@ -40,7 +43,7 @@ jobs:
 
     - name: Bump version
       id: bump
-      if: steps.check_labels.outputs.version != 'no-release'
+      if: github.event.review.state == 'approved' && steps.check_labels.outputs.version != 'no-release'
       run: |
         git config user.name "GitHub Actions"
         git config user.email "actions@github.com"
@@ -49,9 +52,10 @@ jobs:
         else
           npm version -m "[bot] New pkg version: %s" ${{ steps.check_labels.outputs.version }}
         fi
+        git push
 
     - name: Create GitHub Release   
-      if: steps.bump.outcome == 'success'
+      if: github.event_name == 'push' && github.ref == 'refs/heads/main'
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       run: |
