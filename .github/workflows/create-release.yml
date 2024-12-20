@@ -44,7 +44,7 @@ jobs:
       env:
         GH_TOKEN: ${{ github.token }}      
       run: |
-        if [ "${{ github.event_name }}" == "pull_request" ]; then
+        if [ "${{ github.event_name }}" == "pull_request_review" ]; then
           PR_NUMBER=${{ github.event.pull_request.number }}
         else
           PR_NUMBER=$(gh pr list --state merged --json number --jq '.[0].number')
