@@ -3,25 +3,87 @@ on:
   push:
     branches:
       - main
+  pull_request_review:
+    types: [submitted]      
 
 jobs:
   create-release:
     runs-on: ubuntu-latest
     permissions:
-      contents: write # Highly security sensitive. Do NOT add third party actions in this job
+      contents: write
     steps:    
     - uses: actions/checkout@v4
       with:       
-        fetch-depth: 2 # Need at least 2 commits to compare versions
+        fetch-depth: 0
+        ref: ${{ github.event.pull_request.head.ref || github.ref_name }}
 
-    - name: Check if version was bumped
+    - name: Check if version was already bumped
       id: version_check
+      if: github.event.review.state == 'approved'
       run: |
-        OUTPUT=$(./.github/ci-scripts/check-version-bump.sh)
-        echo "::warning::$OUTPUT"
+        # Find the commit where the branch diverged from main
+        git fetch origin main
+        MERGE_BASE=$(git merge-base origin/main HEAD)
+        
+        # Check commits between merge-base and current HEAD
+        COMMITS=$(git log $MERGE_BASE..HEAD --format=%B)
+        if echo "$COMMITS" | grep -q "\[bot\] New pkg version:"; then
+          VERSION_COMMIT=$(echo "$COMMITS" | grep "\[bot\] New pkg version:" | head -n 1)
+          echo "::warning::Version was already bumped in this branch with commit message: $VERSION_COMMIT"
+          echo "skip_bump=true" >> $GITHUB_OUTPUT
+        else
+          echo "No version bump found in branch commits"
+          echo "skip_bump=false" >> $GITHUB_OUTPUT
+        fi
+
+    - name: Check last PR labels
+      id: check_labels
+      if: |
+        steps.version_check.outputs.skip_bump != 'true' && 
+        github.event.review.state == 'approved'
+      env:
+        GH_TOKEN: ${{ github.token }}      
+      run: |
+        LAST_PR_NUMBER=$(gh pr list --state merged --json number --jq '.[0].number')
+        LABELS=$(gh pr view "$LAST_PR_NUMBER" --json labels --jq '.labels[].name')
+        echo "::notice::PR used to check version bump: #$LAST_PR_NUMBER"
+        echo "::notice::PR labels: "[${LABELS//$'\n'/,}]""
+
+        RELEASE_TYPE=$(./.github/ci-scripts/pr-label-check.sh) || exit_code=$?
+        if [ "$exit_code" -ne 0 ]; then
+          echo "::error::PR #"$LAST_PR_NUMBER" has more than one release label"
+          exit $exit_code
+        fi
+
+        echo "version=$RELEASE_TYPE" >> $GITHUB_OUTPUT
+        echo "::group::Output version"
+        echo "::notice::Release type: $RELEASE_TYPE"
+        if [ "$RELEASE_TYPE" == "no-release" ]; then
+          echo "::notice::PR is not flagged for release, skipping other steps"
+        fi        
+        echo "::endgroup::"
+
+    - name: Bump version
+      id: bump
+      if: |
+        steps.version_check.outputs.skip_bump != 'true' && 
+        steps.check_labels.outputs.version != 'no-release' &&
+        github.event.review.state == 'approved'
+      run: |
+        git config user.name "GitHub Actions"
+        git config user.email "actions@github.com"
+        if [ "${{ steps.check_labels.outputs.version }}" == "alpha" ]; then
+          npm version -m "[bot] New pkg version: %s" --preid=alpha prerelease
+        else
+          npm version -m "[bot] New pkg version: %s" ${{ steps.check_labels.outputs.version }}
+        fi
+        git push
 
     - name: Create GitHub Release   
-      if: steps.version_check.outcome == 'success'
+      if: |
+        github.event_name == 'push' && 
+        github.ref == 'refs/heads/main' && 
+        steps.check_labels.outputs.version != 'no-release'
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       run: |
@@ -30,4 +92,4 @@ jobs:
           --title "Release v${VERSION}" \
           --generate-notes \
           --prerelease \
-          --target "${COMMIT_SHA}"
+          --target "${GITHUB_SHA}"
