@@ -36,7 +36,7 @@ jobs:
           echo "skip_bump=false" >> $GITHUB_OUTPUT
         fi
 
-    - name: Check last PR labels
+    - name: Check PR labels
       id: check_labels
       if: |
         steps.version_check.outputs.skip_bump != 'true' && 
@@ -44,14 +44,19 @@ jobs:
       env:
         GH_TOKEN: ${{ github.token }}      
       run: |
-        LAST_PR_NUMBER=$(gh pr list --state merged --json number --jq '.[0].number')
-        LABELS=$(gh pr view "$LAST_PR_NUMBER" --json labels --jq '.labels[].name')
-        echo "::notice::PR used to check version bump: #$LAST_PR_NUMBER"
+        if [ "${{ github.event_name }}" == "pull_request" ]; then
+          PR_NUMBER=${{ github.event.pull_request.number }}
+        else
+          PR_NUMBER=$(gh pr list --state merged --json number --jq '.[0].number')
+        fi
+
+        LABELS=$(gh pr view "$PR_NUMBER" --json labels --jq '.labels[].name')
+        echo "::notice::PR used to check version bump: #$PR_NUMBER"
         echo "::notice::PR labels: "[${LABELS//$'\n'/,}]""
 
         RELEASE_TYPE=$(./.github/ci-scripts/pr-label-check.sh) || exit_code=$?
         if [ "$exit_code" -ne 0 ]; then
-          echo "::error::PR #"$LAST_PR_NUMBER" has more than one release label"
+          echo "::error::PR #"$PR_NUMBER" has more than one release label"
           exit $exit_code
         fi
 
