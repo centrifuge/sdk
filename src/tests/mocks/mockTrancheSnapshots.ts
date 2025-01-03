@@ -1,6 +1,6 @@
 import { Price, Currency, Perquintill } from '../../utils/BigInt.js'
 
-import { TrancheSnapshotsByDate } from '../../queries/trancheSnapshots.js'
+import { TrancheSnapshotsByDate } from '../../IndexerQueries/trancheSnapshots.js'
 
 export const mockTrancheSnapshots: TrancheSnapshotsByDate = {
   '2024-01-01': [

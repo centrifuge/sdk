@@ -1,4 +1,6 @@
-import { Currency } from '../utils/BigInt.js'
+import { AssetTransaction } from '../IndexerQueries/assetTransactions.js'
+import { InvestorTransaction } from '../IndexerQueries/investorTransactions.js'
+import { Currency, Price, Rate, Token } from '../utils/BigInt.js'
 import { groupByPeriod } from '../utils/date.js'
 import {
   BalanceSheetData,
@@ -8,7 +10,28 @@ import {
   ProfitAndLossReport,
   ProfitAndLossData,
   ReportFilter,
-} from './types.js'
+  InvestorTransactionsData,
+  InvestorTransactionsReport,
+  InvestorTransactionsReportFilter,
+  AssetTransactionReport,
+  AssetTransactionsData,
+  AssetTransactionReportFilter,
+  FeeTransactionsData,
+  FeeTransactionReportFilter,
+  FeeTransactionReport,
+  TokenPriceReport,
+  TokenPriceReportFilter,
+  TokenPriceData,
+  AssetListReport,
+  AssetListReportFilter,
+  AssetListData,
+  AssetListReportPublicCredit,
+  AssetListReportPrivateCredit,
+  InvestorListData,
+  InvestorListReportFilter,
+  InvestorListReport,
+} from '../types/reports.js'
+import { PoolFeeTransaction } from '../IndexerQueries/poolFeeTransactions.js'
 
 export class Processor {
   /**
@@ -17,7 +40,8 @@ export class Processor {
    * @param filter Optional filtering and grouping options
    * @returns Processed balance sheet report at the end of each period
    */
-  balanceSheet(data: BalanceSheetData, filter?: ReportFilter): BalanceSheetReport[] {
+  balanceSheet(data: BalanceSheetData, filter?: Omit<ReportFilter, 'to' | 'from'>): BalanceSheetReport[] {
+    if (!data.poolSnapshots?.length) return []
     const items: BalanceSheetReport[] = data?.poolSnapshots?.map((snapshot) => {
       const tranches = data.trancheSnapshots[this.getDateKey(snapshot.timestamp)] ?? []
       if (tranches.length === 0) throw new Error('No tranches found for snapshot')
@@ -52,7 +76,8 @@ export class Processor {
    * @param filter Optional filtering and grouping options
    * @returns Processed cashflow report at the end of each period
    */
-  cashflow(data: CashflowData, filter?: ReportFilter): CashflowReport[] {
+  cashflow(data: CashflowData, filter?: Omit<ReportFilter, 'to' | 'from'>): CashflowReport[] {
+    if (!data.poolSnapshots?.length) return []
     const subtype = data.metadata?.pool.asset.class === 'Public credit' ? 'publicCredit' : 'privateCredit'
     const items: CashflowReport[] = data.poolSnapshots.map((day) => {
       const poolFees =
@@ -99,7 +124,8 @@ export class Processor {
    * @param filter Optional filtering and grouping options
    * @returns Processed profit and loss report at the end of each period
    */
-  profitAndLoss(data: ProfitAndLossData, filter?: ReportFilter): ProfitAndLossReport[] {
+  profitAndLoss(data: ProfitAndLossData, filter?: Omit<ReportFilter, 'to' | 'from'>): ProfitAndLossReport[] {
+    if (!data.poolSnapshots?.length) return []
     const items: ProfitAndLossReport[] = data.poolSnapshots.map((day) => {
       const subtype = data.metadata?.pool.asset.class === 'Public credit' ? 'publicCredit' : 'privateCredit'
       const profitAndLossFromAsset =
@@ -139,6 +165,252 @@ export class Processor {
     return this.applyGrouping<ProfitAndLossReport>(items, filter?.groupBy, 'sum')
   }
 
+  investorTransactions(
+    data: InvestorTransactionsData,
+    filter?: Omit<InvestorTransactionsReportFilter, 'to' | 'from'>
+  ): InvestorTransactionsReport[] {
+    if (!data.investorTransactions?.length) return []
+
+    const validTypes: Set<InvestorTransaction['type']> = new Set([
+      'INVEST_ORDER_UPDATE',
+      'REDEEM_ORDER_UPDATE',
+      'INVEST_ORDER_CANCEL',
+      'REDEEM_ORDER_CANCEL',
+      'INVEST_EXECUTION',
+      'REDEEM_EXECUTION',
+      'INVEST_COLLECT',
+      'REDEEM_COLLECT',
+      'INVEST_LP_COLLECT',
+      'REDEEM_LP_COLLECT',
+      'TRANSFER_IN',
+      'TRANSFER_OUT',
+    ])
+
+    const filterAddress = filter?.address?.toLowerCase()
+    const filterNetwork = filter?.network === 'all' ? null : filter?.network
+
+    return data.investorTransactions.reduce<InvestorTransactionsReport[]>((acc, day) => {
+      const typeMatches =
+        (filter?.transactionType === 'orders' && day.type.includes('ORDER')) ||
+        (filter?.transactionType === 'executions' && day.type.includes('EXECUTION')) ||
+        (filter?.transactionType === 'transfers' && (day.type.includes('COLLECT') || day.type.includes('TRANSFER'))) ||
+        ((!filter?.transactionType || filter?.transactionType === 'all') && validTypes.has(day.type))
+
+      const filterMatches =
+        (!filterNetwork || filterNetwork === day.chainId) &&
+        (!filter?.tokenId || filter.tokenId === day.trancheId) &&
+        (!filterAddress ||
+          day.accountId.toLowerCase() === filterAddress ||
+          day.evmAddress?.toLowerCase() === filterAddress)
+
+      if (typeMatches && filterMatches) {
+        acc.push({
+          type: 'investorTransactions',
+          timestamp: day.timestamp.toISOString(),
+          chainId: day.chainId,
+          account: day.evmAddress ?? day.accountId,
+          epoch: day.epochNumber?.toString() ?? '',
+          transactionType: day.type,
+          currencyAmount: day.currencyAmount,
+          trancheTokenAmount: day.tokenAmount,
+          trancheTokenId: day.trancheId,
+          price: day.tokenPrice ?? '',
+          transactionHash: day.hash,
+        })
+      }
+
+      return acc
+    }, [])
+  }
+
+  assetTransactions(
+    data: AssetTransactionsData,
+    filter?: Omit<AssetTransactionReportFilter, 'to' | 'from'>
+  ): AssetTransactionReport[] {
+    if (!data.assetTransactions?.length) return []
+    const typeMap: Record<
+      NonNullable<Exclude<AssetTransactionReportFilter['transactionType'], 'all'>>,
+      AssetTransaction['type']
+    > = {
+      created: 'CREATED',
+      financed: 'BORROWED',
+      repaid: 'REPAID',
+      priced: 'PRICED',
+      closed: 'CLOSED',
+      cashTransfer: 'CASH_TRANSFER',
+    } as const
+
+    return data.assetTransactions.reduce<AssetTransactionReport[]>((acc, tx) => {
+      const typeMatches =
+        !filter?.transactionType || filter.transactionType === 'all' || tx.type === typeMap[filter.transactionType]
+
+      const assetMatches = !filter?.assetId || filter.assetId === tx.asset.id.split('-')[1]
+
+      if (typeMatches && assetMatches) {
+        acc.push({
+          type: 'assetTransactions',
+          timestamp: tx.timestamp.toISOString(),
+          assetId: tx.asset.id,
+          epoch: tx.epochId,
+          transactionType: tx.type,
+          amount: tx.amount,
+          transactionHash: tx.hash,
+        })
+      }
+
+      return acc
+    }, [])
+  }
+
+  feeTransactions(
+    data: FeeTransactionsData,
+    filter?: Omit<FeeTransactionReportFilter, 'to' | 'from'>
+  ): FeeTransactionReport[] {
+    if (!data.poolFeeTransactions?.length) return []
+    const feeTransactionTypes: {
+      [key in PoolFeeTransaction['type']]: string
+    } = {
+      PROPOSED: 'proposed',
+      ADDED: 'added',
+      REMOVED: 'removed',
+      CHARGED: 'directChargeMade',
+      UNCHARGED: 'directChargeCancelled',
+      ACCRUED: 'accrued',
+      PAID: 'paid',
+    }
+    return data.poolFeeTransactions.reduce<FeeTransactionReport[]>((acc, tx) => {
+      if (
+        !filter?.transactionType ||
+        filter.transactionType === 'all' ||
+        filter.transactionType === feeTransactionTypes[tx.type]
+      ) {
+        acc.push({
+          type: 'feeTransactions',
+          timestamp: tx.timestamp,
+          feeId: tx.feeId,
+          amount: tx.amount,
+        })
+      }
+      return acc
+    }, [])
+  }
+
+  tokenPrice(data: TokenPriceData, filter?: Omit<TokenPriceReportFilter, 'to' | 'from'>): TokenPriceReport[] {
+    if (Object.values(data.trancheSnapshots).length === 0) return []
+    const items = Object.entries(data.trancheSnapshots).map(([timestamp, snapshots]) => ({
+      type: 'tokenPrice' as const,
+      timestamp: timestamp,
+      tranches: snapshots.map((snapshot) => ({
+        timestamp: snapshot.timestamp,
+        id: snapshot.trancheId,
+        price: snapshot.price,
+        supply: snapshot.tokenSupply,
+      })),
+    }))
+
+    return this.applyGrouping<TokenPriceReport>(items, filter?.groupBy ?? 'day', 'latest')
+  }
+
+  assetList(data: AssetListData, filter?: Omit<AssetListReportFilter, 'to' | 'from'>): AssetListReport[] {
+    if (!data.assetSnapshots?.length) return []
+    return data.assetSnapshots
+      .filter((snapshot) => {
+        if (snapshot.valuationMethod?.toLowerCase() === 'cash') return false
+        const isMaturityDatePassed = snapshot?.actualMaturityDate
+          ? new Date() > new Date(snapshot.actualMaturityDate)
+          : false
+        const isDebtZero = snapshot?.outstandingDebt?.isZero()
+
+        if (filter?.status === 'ongoing') {
+          return snapshot.status === 'ACTIVE' && !isMaturityDatePassed && !isDebtZero
+        } else if (filter?.status === 'repaid') {
+          return isMaturityDatePassed && isDebtZero
+        } else if (filter?.status === 'overdue') {
+          return isMaturityDatePassed && !isDebtZero
+        } else return true
+      })
+      .sort((a, b) => {
+        // Sort by actualMaturityDate in descending order
+        const dateA = new Date(a.actualMaturityDate || 0).getTime()
+        const dateB = new Date(b.actualMaturityDate || 0).getTime()
+        return dateB - dateA
+      })
+      .map((snapshot) => {
+        const subtype = data.metadata?.pool.asset.class === 'Public credit' ? 'publicCredit' : 'privateCredit'
+        const items =
+          subtype === 'publicCredit'
+            ? ({
+                subtype,
+                faceValue: snapshot.faceValue,
+                outstandingQuantity: snapshot.outstandingQuantity,
+                currentPrice: snapshot.currentPrice,
+                maturityDate: snapshot.actualMaturityDate,
+                unrealizedProfit: snapshot.unrealizedProfitAtMarketPrice,
+                realizedProfit: snapshot.sumRealizedProfitFifo,
+              } satisfies AssetListReportPublicCredit)
+            : ({
+                subtype,
+                outstandingPrincipal: snapshot.outstandingPrincipal,
+                outstandingInterest: snapshot.outstandingInterest,
+                repaidPrincipal: snapshot.totalRepaidPrincipal,
+                repaidInterest: snapshot.totalRepaidInterest,
+                repaidUnscheduled: snapshot.totalRepaidUnscheduled,
+                originationDate: snapshot.actualOriginationDate,
+                maturityDate: snapshot.actualMaturityDate,
+                valuationMethod: snapshot.valuationMethod,
+                advanceRate: snapshot.advanceRate,
+                collateralValue: snapshot.collateralValue,
+                probabilityOfDefault: snapshot.probabilityOfDefault,
+                lossGivenDefault: snapshot.lossGivenDefault,
+                discountRate: snapshot.discountRate,
+              } satisfies AssetListReportPrivateCredit)
+        return {
+          type: 'assetList',
+          transactionType: snapshot.status,
+          timestamp: snapshot.timestamp,
+          assetId: snapshot.assetId,
+          presentValue: snapshot.presentValue,
+          ...items,
+        }
+      })
+  }
+
+  investorList(data: InvestorListData, filter?: Omit<InvestorListReportFilter, 'to' | 'from'>): InvestorListReport[] {
+    if (!data.trancheCurrencyBalance?.length) return []
+
+    const filterNetwork = filter?.network === 'all' ? null : filter?.network
+    const filterAddress = filter?.address?.toLowerCase()
+
+    return data.trancheCurrencyBalance
+      .filter((investor) => {
+        const networkMatches = !filterNetwork || filterNetwork === investor.chainId
+        const addressMatches =
+          !filterAddress ||
+          investor.accountId.toLowerCase() === filterAddress ||
+          investor.evmAddress?.toLowerCase() === filterAddress
+        const trancheMatches = !filter?.trancheId || filter.trancheId === investor.trancheId
+        const hasPosition =
+          !filter?.address && (!investor.balance.isZero() || !investor.claimableTrancheTokens.isZero())
+
+        return networkMatches && addressMatches && trancheMatches && (hasPosition || filter?.address)
+      })
+      .map((balance) => {
+        const totalPositions = data.trancheCurrencyBalance.reduce((sum, investor) => {
+          return sum.add(investor.balance).add(investor.claimableTrancheTokens)
+        }, new Currency(0))
+        return {
+          type: 'investorList',
+          chainId: balance.chainId,
+          accountId: balance.accountId,
+          evmAddress: balance.evmAddress,
+          position: balance.balance.add(balance.claimableTrancheTokens),
+          poolPercentage: new Rate(balance.balance.add(balance.claimableTrancheTokens.div(totalPositions)).toBigInt()),
+          pendingInvest: balance.pendingInvestCurrency,
+          pendingRedeem: balance.pendingRedeemTrancheTokens,
+        }
+      })
+  }
+
   /**
    * Apply grouping to a report.
    * @param items Report items
@@ -146,13 +418,13 @@ export class Processor {
    * @param strategy Grouping strategy, sum aggregates data by period, latest returns the latest item in the period
    * @returns Grouped report
    *
-   * Note: if strategy is 'sum', only Currency values that are not nested are aggregated, all
+   * Note: if strategy is 'sum', only Decimal values that are not nested are aggregated, all
    * other values are overwritten with the last value in the period
    */
   private applyGrouping<
     T extends {
       timestamp: string
-      [key: string]: Currency | string | { [key: string]: any } | undefined
+      [key: string]: Currency | Price | Token | string | number | undefined | any[] | { [key: string]: any }
     },
   >(items: T[], groupBy: ReportFilter['groupBy'] = 'day', strategy: 'latest' | 'sum' = 'latest'): T[] {
     if (strategy === 'latest') {
@@ -163,13 +435,25 @@ export class Processor {
     return groups.map((group) => {
       const base = { ...group[group.length - 1] } as T
 
-      // Aggregate Currency values
+      // Aggregate Decimal values
       for (const key in base) {
         const value = base[key as keyof T]
         if (value instanceof Currency) {
           base[key as keyof T] = group.reduce(
             (sum, item) => sum.add(item[key as keyof T] as Currency),
             new Currency(0n, value.decimals)
+          ) as T[keyof T]
+        }
+        if (value instanceof Token) {
+          base[key as keyof T] = group.reduce(
+            (sum, item) => sum.add(item[key as keyof T] as Token),
+            new Token(0n, value.decimals)
+          ) as T[keyof T]
+        }
+        if (value instanceof Price) {
+          base[key as keyof T] = group.reduce(
+            (sum, item) => sum.add(item[key as keyof T] as Price),
+            new Price(0n)
           ) as T[keyof T]
         }
       }

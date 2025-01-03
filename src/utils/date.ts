@@ -8,12 +8,13 @@ export function getPeriod(date: Date, groupBy: GroupBy): string | undefined {
     case 'day':
       return date.toISOString().slice(0, 10)
     case 'month':
-      return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`
+      const utcDate = new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate()))
+      return `${utcDate.getUTCFullYear()}-${String(utcDate.getUTCMonth() + 1).padStart(2, '0')}`
     case 'quarter':
-      const quarter = Math.floor(date.getMonth() / 3) + 1
-      return `${date.getFullYear()}-Q${quarter}`
+      const quarter = Math.floor(date.getUTCMonth() / 3) + 1
+      return `${date.getUTCFullYear()}-Q${quarter}`
     case 'year':
-      return date.getFullYear().toString()
+      return date.getUTCFullYear().toString()
     default:
       return undefined
   }

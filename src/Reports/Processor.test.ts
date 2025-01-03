@@ -1,13 +1,24 @@
 import { expect } from 'chai'
 import { processor } from './Processor.js'
 import { mockPoolSnapshots } from '../tests/mocks/mockPoolSnapshots.js'
+import { mockFeeTransactions } from '../tests/mocks/mockPoolFeeTransactions.js'
 import { mockTrancheSnapshots } from '../tests/mocks/mockTrancheSnapshots.js'
 import { mockPoolFeeSnapshots } from '../tests/mocks/mockPoolFeeSnapshot.js'
 import { mockPoolMetadata } from '../tests/mocks/mockPoolMetadata.js'
-import { PoolSnapshot } from '../queries/poolSnapshots.js'
-import { Currency } from '../utils/BigInt.js'
-import { PoolFeeSnapshot, PoolFeeSnapshotsByDate } from '../queries/poolFeeSnapshots.js'
-import { ProfitAndLossReportPrivateCredit, ProfitAndLossReportPublicCredit } from './types.js'
+import { mockInvestorTransactions } from '../tests/mocks/mockInvestorTransactions.js'
+import { mockAssetTransactions } from '../tests/mocks/mockAssetTransactions.js'
+import { mockAssetSnapshots } from '../tests/mocks/mockAssetSnapshots.js'
+import { mockInvestorCurrencyBalances } from '../tests/mocks/mockInvestorCurrencyBalance.js'
+import { PoolSnapshot } from '../IndexerQueries/poolSnapshots.js'
+import { Currency, Price, Token } from '../utils/BigInt.js'
+import { PoolFeeSnapshot, PoolFeeSnapshotsByDate } from '../IndexerQueries/poolFeeSnapshots.js'
+import {
+  AssetTransactionReportFilter,
+  ProfitAndLossReportPrivateCredit,
+  ProfitAndLossReportPublicCredit,
+} from '../types/reports.js'
+import { InvestorTransaction } from '../IndexerQueries/investorTransactions.js'
+import { AssetSnapshot } from '../IndexerQueries/assetSnapshots.js'
 
 describe('Processor', () => {
   describe('balanceSheet processor', () => {
@@ -226,6 +237,7 @@ describe('Processor', () => {
       expect(result?.[0]).to.have.property('realizedPL')
     })
   })
+
   describe('profit and loss processor', () => {
     const mockPLPoolSnapshots: PoolSnapshot[] = [
       {
@@ -277,7 +289,18 @@ describe('Processor', () => {
       )
     })
 
-    it('should process private credit pool correctly', () => {
+    it('should handle undefined metadata', () => {
+      const result = processor.profitAndLoss({
+        poolSnapshots: mockPLPoolSnapshots,
+        poolFeeSnapshots: mockPLFeeSnapshots,
+        metadata: undefined,
+      })
+      expect(result).to.have.lengthOf(2)
+      const firstDay = result[0]
+      expect(firstDay?.subtype).to.equal('privateCredit') // should default to privateCredit
+    })
+
+    it('should process private credit pool data correctly', () => {
       const result = processor.profitAndLoss({
         poolSnapshots: mockPLPoolSnapshots,
         poolFeeSnapshots: mockPLFeeSnapshots,
@@ -347,6 +370,340 @@ describe('Processor', () => {
       expect(result[0]?.fees?.[0]?.timestamp.slice(0, 10)).to.equal('2024-01-01')
     })
   })
+
+  describe('investor transactions processor', () => {
+    it('should return empty array when no transactions found', () => {
+      expect(processor.investorTransactions({ investorTransactions: [] })).to.deep.equal([])
+    })
+
+    it('should process investor transactions correctly without filters', () => {
+      const result = processor.investorTransactions({
+        investorTransactions: mockInvestorTransactions,
+      })
+
+      expect(result).to.have.lengthOf(2)
+      const firstTx = result[0]
+
+      expect(firstTx?.timestamp.slice(0, 10)).to.equal('2024-01-01')
+      expect(firstTx?.chainId).to.equal(1)
+      expect(firstTx?.account).to.equal('0x123a')
+      expect(firstTx?.epoch).to.equal('1')
+      expect(firstTx?.transactionType).to.equal('INVEST_ORDER_UPDATE')
+      expect(firstTx?.currencyAmount.toFloat()).to.equal(1.0)
+      expect(firstTx?.trancheTokenAmount.toFloat()).to.equal(0.9)
+      expect(firstTx?.price.toString()).to.equal('1100000000000000000')
+      expect(firstTx?.transactionHash).to.equal('0xabc')
+    })
+
+    it('should filter by tokenId', () => {
+      const mockInvestorTransactionsWithJunior = [
+        ...mockInvestorTransactions,
+        {
+          ...mockInvestorTransactions[0],
+          trancheId: 'junior',
+        } as InvestorTransaction,
+      ]
+      const result = processor.investorTransactions(
+        {
+          investorTransactions: mockInvestorTransactionsWithJunior,
+        },
+        { tokenId: 'senior' }
+      )
+      expect(result).to.have.lengthOf(2)
+      expect(result[0]?.trancheTokenId).to.equal('senior')
+    })
+    it('should filter by address', () => {
+      const result = processor.investorTransactions(
+        {
+          investorTransactions: mockInvestorTransactions,
+        },
+        { address: '0x123a' }
+      )
+      expect(result).to.have.lengthOf(1)
+      expect(result[0]?.account).to.equal('0x123a')
+    })
+    it('should filter by network', () => {
+      const mockInvestorTransactionsWithNetwork = [
+        ...mockInvestorTransactions,
+        {
+          ...mockInvestorTransactions[0],
+          chainId: 2,
+        } as InvestorTransaction,
+      ]
+      const result = processor.investorTransactions(
+        {
+          investorTransactions: mockInvestorTransactionsWithNetwork,
+        },
+        { network: 2 }
+      )
+      expect(result).to.have.lengthOf(1)
+      expect(result[0]?.chainId).to.equal(2)
+    })
+    it('should filter by all networks', () => {
+      const result = processor.investorTransactions(
+        {
+          investorTransactions: mockInvestorTransactions,
+        },
+        { network: 'all' }
+      )
+      expect(result).to.have.lengthOf(2)
+    })
+    it('should filter by centrifuge network', () => {
+      const mockInvestorTransactionsWithCentrifuge = [
+        ...mockInvestorTransactions,
+        {
+          ...mockInvestorTransactions[0],
+          chainId: 'centrifuge',
+        } as InvestorTransaction,
+      ]
+      const result = processor.investorTransactions(
+        {
+          investorTransactions: mockInvestorTransactionsWithCentrifuge,
+        },
+        { network: 'centrifuge' }
+      )
+      expect(result).to.have.lengthOf(1)
+      expect(result[0]?.chainId).to.equal('centrifuge')
+    })
+    it('should filter by transaction type', () => {
+      const result = processor.investorTransactions(
+        {
+          investorTransactions: mockInvestorTransactions,
+        },
+        { transactionType: 'orders' }
+      )
+      expect(result).to.have.lengthOf(1)
+      expect(result[0]?.transactionType).to.equal('INVEST_ORDER_UPDATE')
+    })
+    it('should filter by network and transaction type', () => {
+      const mockInvestorTransactionsWithNetworkAndOrders = [
+        ...mockInvestorTransactions,
+        {
+          ...mockInvestorTransactions[0],
+          chainId: 2,
+        } as InvestorTransaction,
+      ]
+      const result = processor.investorTransactions(
+        {
+          investorTransactions: mockInvestorTransactionsWithNetworkAndOrders,
+        },
+        { network: 1, transactionType: 'orders' }
+      )
+      expect(result).to.have.lengthOf(1)
+      expect(result[0]?.chainId).to.equal(1)
+      expect(result[0]?.transactionType).to.equal('INVEST_ORDER_UPDATE')
+    })
+    it('should return an empty array when no filters match', () => {
+      const result = processor.investorTransactions(
+        {
+          investorTransactions: mockInvestorTransactions,
+        },
+        { network: 2, transactionType: 'executions' }
+      )
+      expect(result).to.deep.equal([])
+    })
+  })
+
+  describe('asset transactions processor', () => {
+    it('should return empty array when no transactions found', () => {
+      expect(processor.assetTransactions({ assetTransactions: [] })).to.deep.equal([])
+    })
+    it('should process asset transactions correctly without filters', () => {
+      const result = processor.assetTransactions({
+        assetTransactions: mockAssetTransactions,
+      })
+      expect(result).to.have.lengthOf(3)
+    })
+    it('should filter by assetId', () => {
+      const result = processor.assetTransactions(
+        {
+          assetTransactions: mockAssetTransactions,
+        },
+        { assetId: '1' }
+      )
+      expect(result).to.have.lengthOf(2)
+    })
+    it('should filter by transaction type', () => {
+      const types: { type: AssetTransactionReportFilter['transactionType']; expected: number }[] = [
+        { type: 'created', expected: 0 },
+        { type: 'financed', expected: 1 },
+        { type: 'repaid', expected: 1 },
+        { type: 'priced', expected: 0 },
+        { type: 'closed', expected: 0 },
+        { type: 'cashTransfer', expected: 1 },
+      ]
+      for (const { type, expected } of types) {
+        const result = processor.assetTransactions(
+          {
+            assetTransactions: mockAssetTransactions,
+          },
+          { transactionType: type }
+        )
+        expect(result).to.have.lengthOf(expected)
+      }
+    })
+  })
+
+  describe('fee transactions processor', () => {
+    it('should return empty array when no transactions found', () => {
+      expect(processor.feeTransactions({ poolFeeTransactions: [] })).to.deep.equal([])
+    })
+    it('should process fee transactions correctly', () => {
+      const result = processor.feeTransactions({ poolFeeTransactions: mockFeeTransactions })
+      expect(result).to.have.lengthOf(2)
+    })
+    it('should filter by transaction type all', () => {
+      const result = processor.feeTransactions({ poolFeeTransactions: mockFeeTransactions }, { transactionType: 'all' })
+      expect(result).to.have.lengthOf(2)
+    })
+    it('should filter by transaction type accrued', () => {
+      const result = processor.feeTransactions(
+        { poolFeeTransactions: mockFeeTransactions },
+        { transactionType: 'accrued' }
+      )
+      expect(result).to.have.lengthOf(1)
+    })
+    it('should filter by transaction type paid', () => {
+      const result = processor.feeTransactions(
+        { poolFeeTransactions: mockFeeTransactions },
+        { transactionType: 'paid' }
+      )
+      expect(result).to.have.lengthOf(1)
+    })
+    it('should return an empty array when no filters match', () => {
+      const result = processor.feeTransactions(
+        { poolFeeTransactions: mockFeeTransactions },
+        { transactionType: 'directChargeMade' }
+      )
+      expect(result).to.deep.equal([])
+    })
+  })
+
+  describe('token price processor', () => {
+    it('should return empty array when no snapshots found', () => {
+      expect(processor.tokenPrice({ trancheSnapshots: {} })).to.deep.equal([])
+    })
+    it('should process token price correctly', () => {
+      const result = processor.tokenPrice({ trancheSnapshots: mockTrancheSnapshots })
+      expect(result).to.have.lengthOf(2)
+      expect(result[0]?.tranches[0]?.price?.toDecimal().toString()).to.equal('1')
+      expect(result[0]?.tranches[0]?.id).to.equal('senior')
+    })
+    it('should group by month', () => {
+      const result = processor.tokenPrice({ trancheSnapshots: mockTrancheSnapshots }, { groupBy: 'month' })
+      expect(result).to.have.lengthOf(1)
+    })
+  })
+
+  describe('asset list processor', () => {
+    it('should return empty array when no snapshots found', () => {
+      expect(processor.assetList({ assetSnapshots: [], metadata: undefined })).to.deep.equal([])
+    })
+    it('should process asset list correctly', () => {
+      const result = processor.assetList({ assetSnapshots: mockAssetSnapshots, metadata: mockPoolMetadata })
+      expect(result).to.have.lengthOf(2)
+    })
+    it('should filter by status ongoing', () => {
+      const result = processor.assetList(
+        { assetSnapshots: mockAssetSnapshots, metadata: mockPoolMetadata },
+        { status: 'ongoing' }
+      )
+      expect(result).to.have.lengthOf(2)
+    })
+    it('should filter by status repaid', () => {
+      const result = processor.assetList(
+        { assetSnapshots: mockAssetSnapshots, metadata: mockPoolMetadata },
+        { status: 'repaid' }
+      )
+      expect(result).to.have.lengthOf(0)
+    })
+    it('should filter by status overdue', () => {
+      const mockAssetSnapshotsOverdue = [
+        ...mockAssetSnapshots,
+        { ...mockAssetSnapshots[0], actualMaturityDate: '2023-01-01' } as AssetSnapshot,
+      ]
+      const result = processor.assetList(
+        { assetSnapshots: mockAssetSnapshotsOverdue, metadata: mockPoolMetadata },
+        { status: 'overdue' }
+      )
+      expect(result).to.have.lengthOf(1)
+    })
+    it('should return the correct data for private credit pools', () => {
+      const result = processor.assetList(
+        { assetSnapshots: mockAssetSnapshots, metadata: mockPoolMetadata },
+        { status: 'ongoing' }
+      )
+      expect(result).to.have.lengthOf(2)
+      expect(result?.[0]).to.have.property('outstandingPrincipal')
+      expect(result?.[0]).to.have.property('outstandingInterest')
+      expect(result?.[0]).to.have.property('repaidPrincipal')
+      expect(result?.[0]).to.have.property('repaidInterest')
+      expect(result?.[0]).to.have.property('repaidUnscheduled')
+      expect(result?.[0]).to.have.property('originationDate')
+      expect(result?.[0]).to.have.property('maturityDate')
+      expect(result?.[0]).to.have.property('valuationMethod')
+      expect(result?.[0]).to.have.property('advanceRate')
+      expect(result?.[0]).to.have.property('collateralValue')
+      expect(result?.[0]).to.have.property('probabilityOfDefault')
+      expect(result?.[0]).to.have.property('lossGivenDefault')
+      expect(result?.[0]).to.have.property('discountRate')
+    })
+    it('should return the correct data for public credit pools', () => {
+      const result = processor.assetList(
+        {
+          assetSnapshots: mockAssetSnapshots,
+          metadata: {
+            ...mockPoolMetadata,
+            pool: { ...mockPoolMetadata.pool, asset: { ...mockPoolMetadata.pool.asset, class: 'Public credit' } },
+          },
+        },
+        { status: 'ongoing' }
+      )
+      expect(result).to.have.lengthOf(2)
+      expect(result?.[0]).to.have.property('faceValue')
+      expect(result?.[0]).to.have.property('outstandingQuantity')
+      expect(result?.[0]).to.have.property('currentPrice')
+      expect(result?.[0]).to.have.property('unrealizedProfit')
+      expect(result?.[0]).to.have.property('realizedProfit')
+    })
+  })
+
+  describe('investor list processor', () => {
+    it('should return empty array when no balances found', () => {
+      expect(processor.investorList({ trancheCurrencyBalance: [] })).to.deep.equal([])
+    })
+    it('should filter by network', () => {
+      const result = processor.investorList({ trancheCurrencyBalance: mockInvestorCurrencyBalances }, { network: 1 })
+      expect(result).to.have.lengthOf(1)
+    })
+    it('should filter by centrifuge network', () => {
+      const result = processor.investorList(
+        { trancheCurrencyBalance: mockInvestorCurrencyBalances },
+        { network: 'centrifuge' }
+      )
+      expect(result).to.have.lengthOf(1)
+    })
+    it('should filter by address', () => {
+      const result = processor.investorList(
+        { trancheCurrencyBalance: mockInvestorCurrencyBalances },
+        { address: '0x123' }
+      )
+      expect(result).to.have.lengthOf(1)
+    })
+    it('should filter by trancheId', () => {
+      const result = processor.investorList(
+        { trancheCurrencyBalance: mockInvestorCurrencyBalances },
+        { trancheId: 'tranche-1' }
+      )
+      expect(result).to.have.lengthOf(2)
+      const result2 = processor.investorList(
+        { trancheCurrencyBalance: mockInvestorCurrencyBalances },
+        { trancheId: 'tranche-2' }
+      )
+      expect(result2).to.have.lengthOf(0)
+    })
+  })
+
   describe('applyGrouping', () => {
     const applyGrouping = processor['applyGrouping']
     const mockData = [
@@ -387,12 +744,29 @@ describe('Processor', () => {
       ]
       expect(grouped).to.deep.equal(expected)
     })
-    it('should aggregate values when strategy is sum and grouping is month', () => {
-      const extendedMockData = [...mockData, { a: Currency.fromFloat(30, 6), timestamp: '2024-02-01' }]
+    it('should aggregate values when strategy is sum and grouping is month (Token)', () => {
+      const extendedMockData = [
+        { a: Token.fromFloat(10, 6), timestamp: '2024-01-01' },
+        { a: Token.fromFloat(20, 6), timestamp: '2024-01-02' },
+        { a: Token.fromFloat(30, 6), timestamp: '2024-02-01' },
+      ]
       const grouped = applyGrouping(extendedMockData, 'month', 'sum')
       const expected = [
-        { a: Currency.fromFloat(30, 6), timestamp: '2024-01-01' },
-        { a: Currency.fromFloat(30, 6), timestamp: '2024-02-01' },
+        { a: Token.fromFloat(30, 6), timestamp: '2024-01-02' },
+        { a: Token.fromFloat(30, 6), timestamp: '2024-02-01' },
+      ]
+      expect(grouped).to.deep.equal(expected)
+    })
+    it('should aggregate values when strategy is sum and grouping is month (Price)', () => {
+      const extendedMockData = [
+        { a: Price.fromFloat(10), timestamp: '2024-01-01' },
+        { a: Price.fromFloat(20), timestamp: '2024-01-02' },
+        { a: Price.fromFloat(30), timestamp: '2024-02-01' },
+      ]
+      const grouped = applyGrouping(extendedMockData, 'month', 'sum')
+      const expected = [
+        { a: Price.fromFloat(30), timestamp: '2024-01-02' },
+        { a: Price.fromFloat(30), timestamp: '2024-02-01' },
       ]
       expect(grouped).to.deep.equal(expected)
     })
