@@ -1,5 +1,13 @@
 #!/bin/bash
 
+# Check if PR number is provided
+if [ -z "$1" ]; then
+  echo "Error: PR number is required."
+  exit 1
+fi
+
+PR_NUMBER="$1"
+
 # Function to check if a specific label exists in a list
 contains_label() {
   local label="$1"
@@ -12,11 +20,8 @@ contains_label() {
   return 1
 }
 
-# Fetch the most recent merged PR number
-LAST_PR_NUMBER=$(gh pr list --state merged --json number --jq '.[0].number')
-
 # Fetch the labels of the PR
-labels=$(gh pr view "$LAST_PR_NUMBER" --json labels --jq '.labels[].name')
+labels=$(gh pr view "$PR_NUMBER" --json labels --jq '.labels[].name')
 
 # Convert labels to an array
 IFS=$'\n' read -rd '' -a label_array <<<"$labels"

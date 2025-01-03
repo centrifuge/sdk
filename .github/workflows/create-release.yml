@@ -44,7 +44,7 @@ jobs:
       env:
         GH_TOKEN: ${{ github.token }}      
       run: |
-        if [ "${{ github.event_name }}" == "pull_request" ]; then
+        if [ "${{ github.event_name }}" == "pull_request_review" ]; then
           PR_NUMBER=${{ github.event.pull_request.number }}
         else
           PR_NUMBER=$(gh pr list --state merged --json number --jq '.[0].number')
@@ -54,19 +54,27 @@ jobs:
         echo "::notice::PR used to check version bump: #$PR_NUMBER"
         echo "::notice::PR labels: "[${LABELS//$'\n'/,}]""
 
-        RELEASE_TYPE=$(./.github/ci-scripts/pr-label-check.sh) || exit_code=$?
-        if [ "$exit_code" -ne 0 ]; then
-          echo "::error::PR #"$PR_NUMBER" has more than one release label"
-          exit $exit_code
+        # Make script executable
+        chmod +x ./.github/ci-scripts/pr-label-check.sh
+        
+        # Run the script and capture both output and exit code
+        RELEASE_TYPE=$(./.github/ci-scripts/pr-label-check.sh $PR_NUMBER 2>&1) || {
+          # If script exits with non-zero, output the error and exit
+          echo "::error::Script failed with output: $RELEASE_TYPE"
+          exit 1
+        }
+
+        # Only proceed if we have a valid release type
+        if [ -z "$RELEASE_TYPE" ]; then
+          echo "::error::No valid release type determined"
+          exit 1
         fi
 
         echo "version=$RELEASE_TYPE" >> $GITHUB_OUTPUT
-        echo "::group::Output version"
         echo "::notice::Release type: $RELEASE_TYPE"
         if [ "$RELEASE_TYPE" == "no-release" ]; then
           echo "::notice::PR is not flagged for release, skipping other steps"
         fi        
-        echo "::endgroup::"
 
     - name: Bump version
       id: bump
