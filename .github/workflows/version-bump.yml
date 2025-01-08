@@ -4,7 +4,7 @@ on:
     branches:
       - main
   pull_request:
-    types: [opened, reopened, labeled]
+    types: [opened, reopened, labeled, synchronize]
 
 jobs:
   version-bump:
@@ -61,6 +61,7 @@ jobs:
             npm version -m "[bot] New pkg version: %s" ${{ steps.check_labels.outputs.version }}
           fi
           git push
+          gh pr comment ${{ github.event.pull_request.number }} --body "Auto-bumped version for release, this cannot be the last commit as bots can't trigger the workflows to pass the PR checks"
         fi
 
     - name: Revert version bump
