@@ -27,7 +27,6 @@ jobs:
         PR_NUMBER=${{ github.event.pull_request.number }}
         echo "::notice::PR used to check version bump: #$PR_NUMBER"
         LABELS=$(gh pr view "$PR_NUMBER" --json labels --jq '.labels[].name')
-        echo "::notice::PR labels: "[${LABELS//$'\n'/,}]""
 
         # Make script executable
         chmod +x ./.github/ci-scripts/pr-label-check.sh
@@ -87,7 +86,7 @@ jobs:
             git push
             gh pr comment ${{ github.event.pull_request.number }} --body "Reverted version bump as no-release label was detected"
           else
-            echo "Version bump has already been reverted, skipping"
+            echo "::notice::Version bump has already been reverted, skipping"
           fi
         fi
         
