@@ -3,12 +3,11 @@ on:
   push:
     branches:
       - main
-  pull_request_review:
-    types: [submitted, edited]      
+  pull_request:
 
 jobs:
   version-bump:
-    if: github.event_name == 'pull_request_review' && github.event.review.state == 'approved'
+    if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -45,7 +44,6 @@ jobs:
         fi        
 
     - name: Bump version
-      id: bump
       if: steps.check_labels.outputs.version != 'no-release'
       run: |
         BUMP_CHECK=$(./.github/ci-scripts/bump-check.sh)
@@ -60,6 +58,19 @@ jobs:
           git push
         fi
 
+    - name: Revert version bump
+      if: steps.check_labels.outputs.version == 'no-release'
+      run: |
+        MERGE_BASE=$(git merge-base origin/main HEAD)
+        COMMITS=$(git log $MERGE_BASE..HEAD --format=%H:%B)
+        VERSION_COMMIT_SHA=$(echo "$COMMITS" | grep "\[bot\] New pkg version:" | head -n 1 | cut -d':' -f1)
+
+        if [ -n "$VERSION_COMMIT_SHA" ]; then
+          git revert --no-edit $VERSION_COMMIT_SHA
+          git push
+          gh pr comment ${{ github.event.pull_request.number }} --body "Reverted version bump as no-release label was detected"
+        fi
+        
 
   create-release:
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
