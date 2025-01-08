@@ -12,7 +12,7 @@ RELEASE_TAGS=$(gh release list --json tagName --jq '.[].tagName')
 RELEASE_EXISTS=$(echo "$RELEASE_TAGS" | grep -x "v$VERSION" || true)
 
 if [ "$RELEASE_EXISTS" == "v$VERSION" ]; then
-    echo "::warning::Version $VERSION has already been released, bump again"
+    echo "::warning::Version $VERSION has already been released, bump again" >&2
     echo "true"
     exit 0
 else
@@ -24,10 +24,10 @@ else
     COMMITS=$(git log $MERGE_BASE..HEAD --format=%B)
     if echo "$COMMITS" | grep -q "\[bot\] New pkg version:"; then
         VERSION_COMMIT=$(echo "$COMMITS" | grep "\[bot\] New pkg version:" | head -n 1)
-        echo "::warning::Version was already bumped in this branch with commit message: $VERSION_COMMIT"
+        echo "::warning::Version was already bumped in this branch with commit message: $VERSION_COMMIT" >&2
         echo "false"
     else
-        echo "No version bump found in branch commits"
+        echo "No version bump found in branch commits" >&2
         echo "true"
     fi
 fi

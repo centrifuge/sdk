@@ -49,7 +49,8 @@ jobs:
         GH_TOKEN: ${{ github.token }}        
       run: |
         chmod +x ./.github/ci-scripts/bump-check.sh
-        BUMP_CHECK=$(./.github/ci-scripts/bump-check.sh)
+        # Capture only the last line of output as BUMP_CHECK
+        BUMP_CHECK=$(./.github/ci-scripts/bump-check.sh | tail -n 1)
         if [ "$BUMP_CHECK" == "true" ]; then
           git config user.name "GitHub Actions"
           git config user.email "actions@github.com"
