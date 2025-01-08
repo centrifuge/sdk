@@ -21,7 +21,8 @@ else
     MERGE_BASE=$(git merge-base origin/main HEAD)
 
     # Check commits between merge-base and current HEAD
-    COMMITS=$(git log $MERGE_BASE..HEAD --format=%B)
+    # Using %s to get only the subject line of each commit
+    COMMITS=$(git log $MERGE_BASE..HEAD --format="%s")
     
     # Count version bumps and reverts
     BUMP_COUNT=$(echo "$COMMITS" | grep -c "^\[bot\] New pkg version:" || true)
