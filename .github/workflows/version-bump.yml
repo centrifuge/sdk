@@ -46,6 +46,7 @@ jobs:
     - name: Bump version
       if: steps.check_labels.outputs.version != 'no-release'
       run: |
+        chmod +x ./.github/ci-scripts/bump-check.sh
         BUMP_CHECK=$(./.github/ci-scripts/bump-check.sh)
         if [ "$BUMP_CHECK" == "true" ]; then
           git config user.name "GitHub Actions"
