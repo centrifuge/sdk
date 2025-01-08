@@ -73,6 +73,8 @@ jobs:
         VERSION_COMMIT_SHA=$(echo "$COMMITS" | grep "\[bot\] New pkg version:" | head -n 1 | cut -d':' -f1)
 
         if [ -n "$VERSION_COMMIT_SHA" ]; then
+          git config user.name "GitHub Actions"
+          git config user.email "actions@github.com"
           git revert --no-edit $VERSION_COMMIT_SHA
           git push
           gh pr comment ${{ github.event.pull_request.number }} --body "Reverted version bump as no-release label was detected"
