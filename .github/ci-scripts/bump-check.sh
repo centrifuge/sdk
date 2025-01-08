@@ -17,17 +17,23 @@ if [ "$RELEASE_EXISTS" == "v$VERSION" ]; then
     exit 0
 else
     # Find the commit where the branch diverged from main
-    git fetch origin main
+    git fetch origin main --quiet
     MERGE_BASE=$(git merge-base origin/main HEAD)
 
     # Check commits between merge-base and current HEAD
     COMMITS=$(git log $MERGE_BASE..HEAD --format=%B)
-    if echo "$COMMITS" | grep -q "\[bot\] New pkg version:"; then
+    
+    # Count version bumps and reverts
+    BUMP_COUNT=$(echo "$COMMITS" | grep -c "^\[bot\] New pkg version:" || true)
+    REVERT_COUNT=$(echo "$COMMITS" | grep -c "^Revert.*\[bot\] New pkg version:" || true)
+    
+    # If there are more bumps than reverts, we already have a valid bump
+    if [ $BUMP_COUNT -gt $REVERT_COUNT ]; then
         VERSION_COMMIT=$(echo "$COMMITS" | grep "\[bot\] New pkg version:" | head -n 1)
         echo "::warning::Version was already bumped in this branch with commit message: $VERSION_COMMIT" >&2
         echo "false"
     else
-        echo "No version bump found in branch commits" >&2
+        # echo "No active version bump found in branch commits" >&2
         echo "true"
     fi
 fi

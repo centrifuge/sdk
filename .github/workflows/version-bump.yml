@@ -12,6 +12,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write
+      pull-requests: write
     steps:    
     - uses: actions/checkout@v4
       with:       
@@ -70,14 +71,24 @@ jobs:
       run: |
         MERGE_BASE=$(git merge-base origin/main HEAD)
         COMMITS=$(git log $MERGE_BASE..HEAD --format=%H:%B)
-        VERSION_COMMIT_SHA=$(echo "$COMMITS" | grep "\[bot\] New pkg version:" | head -n 1 | cut -d':' -f1)
-
+        
+        # Find the latest version bump commit
+        VERSION_COMMIT_SHA=$(echo "$COMMITS" | grep "^\[bot\] New pkg version:" | head -n 1 | cut -d':' -f1)
+        
         if [ -n "$VERSION_COMMIT_SHA" ]; then
-          git config user.name "GitHub Actions"
-          git config user.email "actions@github.com"
-          git revert --no-edit $VERSION_COMMIT_SHA
-          git push
-          gh pr comment ${{ github.event.pull_request.number }} --body "Reverted version bump as no-release label was detected"
+          # Count version bumps and reverts
+          BUMP_COUNT=$(echo "$COMMITS" | grep -c "^\[bot\] New pkg version:" || true)
+          REVERT_COUNT=$(echo "$COMMITS" | grep -c "^Revert.*\[bot\] New pkg version:" || true)
+
+          if [ $REVERT_COUNT -gt $BUMP_COUNT ]; then
+            git config user.name "GitHub Actions"
+            git config user.email "actions@github.com"
+            git revert --no-edit $VERSION_COMMIT_SHA
+            git push
+            gh pr comment ${{ github.event.pull_request.number }} --body "Reverted version bump as no-release label was detected"
+          else
+            echo "Version bump has already been reverted, skipping"
+          fi
         fi
         
 
