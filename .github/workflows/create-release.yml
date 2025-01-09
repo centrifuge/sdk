@@ -22,14 +22,13 @@ jobs:
         GH_TOKEN: ${{ github.token }}      
       run: |
         PR_NUMBER=${{ github.event.pull_request.number }}
-        echo "::notice::PR used to check version bump: #$PR_NUMBER"
         # Make script executable
         chmod +x ./.github/ci-scripts/pr-label-check.sh
         RELEASE_TYPE=$(./.github/ci-scripts/pr-label-check.sh $PR_NUMBER)
         echo "version=$RELEASE_TYPE" >> $GITHUB_OUTPUT
-        echo "::notice::Release label detected: $RELEASE_TYPE"
+        echo "::notice::$RELEASE_TYPE label detected on PR #$PR_NUMBER"
         if [ "$RELEASE_TYPE" == "no-release" ]; then
-          echo "::notice::PR is not flagged for release, skipping bump"
+          echo "::notice::PR is not flagged for release, skipping version bump"
         fi        
 
     - name: Bump version
