@@ -1,14 +1,11 @@
 name: Release and Versioning
 on:
-  push:
-    branches:
-      - main
   pull_request:
-    types: [opened, reopened, labeled, synchronize]
+    types: [opened, reopened, labeled, synchronize, closed]
 
 jobs:
   version-bump:
-    if: github.event_name == 'pull_request'
+    if: github.event_name == 'pull_request' && github.event.action != 'closed'
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -17,7 +14,7 @@ jobs:
     - uses: actions/checkout@v4
       with:       
         fetch-depth: 0
-        ref: ${{ github.event.pull_request.head.ref || github.ref_name }}
+        ref: ${{ github.event.pull_request.head.ref || github.ref_name }}        
 
     - name: Check PR labels
       id: check_labels
@@ -25,23 +22,13 @@ jobs:
         GH_TOKEN: ${{ github.token }}      
       run: |
         PR_NUMBER=${{ github.event.pull_request.number }}
-        echo "::notice::PR used to check version bump: #$PR_NUMBER"
-        LABELS=$(gh pr view "$PR_NUMBER" --json labels --jq '.labels[].name')
-
         # Make script executable
         chmod +x ./.github/ci-scripts/pr-label-check.sh
-        
-        # Run the script and capture both output and exit code
-        RELEASE_TYPE=$(./.github/ci-scripts/pr-label-check.sh $PR_NUMBER 2>&1) || {
-          # If script exits with non-zero, output the error and exit
-          echo "::error::Script failed with output: $RELEASE_TYPE"
-          exit 1
-        }
-
+        RELEASE_TYPE=$(./.github/ci-scripts/pr-label-check.sh $PR_NUMBER)
         echo "version=$RELEASE_TYPE" >> $GITHUB_OUTPUT
-        echo "::notice::Release label detected: $RELEASE_TYPE"
+        echo "::notice::$RELEASE_TYPE label detected on PR #$PR_NUMBER"
         if [ "$RELEASE_TYPE" == "no-release" ]; then
-          echo "::notice::PR is not flagged for release, skipping bump"
+          echo "::notice::PR is not flagged for release, skipping version bump"
         fi        
 
     - name: Bump version
@@ -92,19 +79,27 @@ jobs:
         
 
   create-release:
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    if: github.event.pull_request.merged == true && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     permissions:
       contents: write
     steps:
+      - uses: actions/checkout@v4
+
       - name: Create GitHub Release   
-        # if: steps.check_labels.outputs.version != 'no-release'
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          VERSION=$(node -p "require('./package.json').version")
-          gh release create "v${VERSION}" \
-            --title "Release v${VERSION}" \
-            --generate-notes \
-            --prerelease \
-            --target "${GITHUB_SHA}"
+          PR_NUMBER=$(gh pr list --state merged --json number --jq '.[0].number')
+          chmod +x ./.github/ci-scripts/pr-label-check.sh
+          RELEASE_TYPE=$(./.github/ci-scripts/pr-label-check.sh $PR_NUMBER)
+          echo "::notice::Last PR merged detected: #$PR_NUMBER) with release label: $RELEASE_TYPE"
+
+          if [ "$RELEASE_TYPE" != "no-release" ]; then
+            VERSION=$(node -p "require('./package.json').version")
+            gh release create "v${VERSION}" \
+              --title "Release v${VERSION}" \
+              --generate-notes \
+              --prerelease \
+              --target "${GITHUB_SHA}"
+          fi
