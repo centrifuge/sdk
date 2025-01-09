@@ -97,8 +97,8 @@ jobs:
     permissions:
       contents: write
     steps:
+      - uses: actions/checkout@v4      
       - name: Create GitHub Release   
-        # if: steps.check_labels.outputs.version != 'no-release'
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
