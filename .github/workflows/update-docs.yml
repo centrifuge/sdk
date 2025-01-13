@@ -60,4 +60,4 @@ jobs:
         if: steps.commit_check.outputs.has_changes == 'true'
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: node ./.github/ci-scripts/update-sdk-docs.js
+        run: node ./.github/ci-scripts/update-sdk-docs.cjs

@@ -46,6 +46,9 @@ async function main() {
     const repoUrl = `https://${process.env.GITHUB_TOKEN}@github.com/org/sdk-docs.git`
     await git.clone(repoUrl, './sdk-docs')
 
+    // TODO: remove: Change into the sdk-docs directory and checkout the branch
+    await git.cwd('./sdk-docs').checkout('generate-docs')
+
     // Copy docs to the target location
     await copyDocs(
       './docs', // source directory
