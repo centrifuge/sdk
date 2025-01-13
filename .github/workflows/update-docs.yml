@@ -24,6 +24,9 @@ jobs:
           corepack enable
           corepack prepare yarn@4.5.0 --activate
 
+      - name: Install dependencies
+        run: yarn install
+
       - name: Run the gen:docs command
         run: yarn gen:docs
 
