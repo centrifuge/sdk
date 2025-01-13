@@ -43,8 +43,8 @@ async function main() {
   try {
     // Clone the SDK docs repo
     const git = simpleGit()
-    const repoUrl = `https://${process.env.GITHUB_TOKEN}@github.com/org/sdk-docs.git`
-    await git.clone(repoUrl, './sdk-docs')
+    const repoUrl = `https://x-access-token:${process.env.GITHUB_TOKEN}@github.com/org/sdk-docs.git`
+    await git.clone(repoUrl, './sdk-docs', ['--branch', 'generate-docs'])
 
     // TODO: remove: Change into the sdk-docs directory and checkout the branch
     await git.cwd('./sdk-docs').checkout('generate-docs')
