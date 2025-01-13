@@ -33,6 +33,8 @@ jobs:
       - name: Check and commit changes
         id: commit_check
         run: |
+          git config user.name "GitHub Actions"
+          git config user.email "actions@github.com"
           if [[ -n "$(git status --porcelain docs)" ]]; then
             git add docs
             git commit -m "Update docs"
