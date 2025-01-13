@@ -43,6 +43,7 @@ jobs:
         run: |
           corepack enable
           corepack prepare yarn@stable --activate
+          yarn set version stable
 
       - name: Install dependencies
         if: steps.commit_check.outputs.has_changes == 'true'
