@@ -6,6 +6,7 @@ import { Reports } from './Reports/index.js'
 import { PoolMetadata } from './types/poolMetadata.js'
 
 export class Pool extends Entity {
+  /** @internal */
   constructor(
     _root: Centrifuge,
     public id: string,
@@ -19,7 +20,9 @@ export class Pool extends Entity {
   }
 
   metadata() {
-    return this.metadataHash ? this._root._queryIPFS<PoolMetadata>(this.metadataHash) : of(undefined)
+    return this.metadataHash
+      ? this._root._queryIPFS<PoolMetadata>(this.metadataHash)
+      : this._query(null, () => of(null))
   }
 
   trancheIds() {

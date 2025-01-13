@@ -1,33 +1,31 @@
-import { Entity } from '../Entity.js'
+import { combineLatest, map } from 'rxjs'
 import { Centrifuge } from '../Centrifuge.js'
-import { combineLatest } from 'rxjs'
-import { processor } from './Processor.js'
-
-import { map } from 'rxjs'
+import { Entity } from '../Entity.js'
+import { IndexerQueries } from '../IndexerQueries/index.js'
+import { Pool } from '../Pool.js'
+import { Query } from '../types/query.js'
 import {
-  BalanceSheetReport,
-  CashflowReport,
-  InvestorTransactionsReport,
-  ProfitAndLossReport,
-  ReportFilter,
-  Report,
-  DataReport,
-  DataReportFilter,
-  InvestorTransactionsReportFilter,
+  AssetListReport,
+  AssetListReportFilter,
   AssetTransactionReport,
   AssetTransactionReportFilter,
-  TokenPriceReport,
-  TokenPriceReportFilter,
+  BalanceSheetReport,
+  CashflowReport,
+  DataReport,
+  DataReportFilter,
   FeeTransactionReport,
   FeeTransactionReportFilter,
-  AssetListReportFilter,
-  AssetListReport,
-  InvestorListReportFilter,
   InvestorListReport,
+  InvestorListReportFilter,
+  InvestorTransactionsReport,
+  InvestorTransactionsReportFilter,
+  ProfitAndLossReport,
+  Report,
+  ReportFilter,
+  TokenPriceReport,
+  TokenPriceReportFilter,
 } from '../types/reports.js'
-import { Query } from '../types/query.js'
-import { Pool } from '../Pool.js'
-import { IndexerQueries } from '../IndexerQueries/index.js'
+import { processor } from './Processor.js'
 
 const DEFAULT_FILTER: ReportFilter = {
   from: '2024-01-01T00:00:00.000Z',
@@ -35,6 +33,7 @@ const DEFAULT_FILTER: ReportFilter = {
 }
 export class Reports extends Entity {
   private queries: IndexerQueries
+  /** @internal */
   constructor(
     centrifuge: Centrifuge,
     public pool: Pool
@@ -83,6 +82,8 @@ export class Reports extends Entity {
    * Reports are split into two types:
    * - A `Report` is a standard report: balanceSheet, cashflow, profitAndLoss
    * - A `DataReport` is a custom report: investorTransactions, assetTransactions, feeTransactions, tokenPrice, assetList, investorList
+   *
+   * @internal
    */
   _generateReport<T>(type: Report, filter?: ReportFilter): Query<T[]>
   _generateReport<T>(type: DataReport, filter?: DataReportFilter): Query<T[]>

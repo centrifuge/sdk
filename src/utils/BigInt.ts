@@ -31,6 +31,7 @@ export class DecimalWrapper extends BigIntWrapper {
     this.decimals = decimals
   }
 
+  /** @internal */
   static _fromFloat<T extends DecimalWrapper>(num: Numeric, decimals: number) {
     const n = Dec(num.toString()).mul(Dec(10).pow(decimals))
     if (Dec(n).gt(0) && Dec(n).lt(1)) {
@@ -47,11 +48,13 @@ export class DecimalWrapper extends BigIntWrapper {
     return this.toDecimal().toNumber()
   }
 
+  /** @internal */
   _add<T>(value: bigint | (T extends DecimalWrapper ? T : never)): T {
     const val = typeof value === 'bigint' ? value : value.toBigInt()
     return new (this.constructor as any)(this.value + val, this.decimals)
   }
 
+  /** @internal */
   _sub<T>(value: bigint | (T extends DecimalWrapper ? T : never)): T {
     const val = typeof value === 'bigint' ? value : value.toBigInt()
     return this._add<T>(-val)
@@ -63,6 +66,8 @@ export class DecimalWrapper extends BigIntWrapper {
    * Currency.fromFloat(1, 6).mul(Price.fromFloat(1.01))
    * // Price has 18 decimals
    * // returns Currency with 6 decimals (1_010_000n or 1.01)
+   *
+   * @internal
    */
   _mul<T>(value: bigint | (T extends DecimalWrapper ? T : never)): T {
     let val: any
@@ -76,6 +81,7 @@ export class DecimalWrapper extends BigIntWrapper {
     return new (this.constructor as any)(this.toDecimal().mul(val), this.decimals) as T
   }
 
+  /** @internal */
   _div<T>(value: bigint | (T extends BigIntWrapper ? T : never)): T {
     if (!value) {
       throw new Error(`Division by zero`)

@@ -7,8 +7,7 @@ import { PoolSnapshot } from '../IndexerQueries/poolSnapshots.js'
 import { TrancheCurrencyBalance } from '../IndexerQueries/trancheCurrencyBalance.js'
 import { TrancheSnapshotsByDate } from '../IndexerQueries/trancheSnapshots.js'
 import { PoolMetadata } from '../types/poolMetadata.js'
-import { Price, Rate, Token } from '../utils/BigInt.js'
-import { Currency } from '../utils/BigInt.js'
+import { Currency, Price, Rate, Token } from '../utils/BigInt.js'
 import { GroupBy } from '../utils/date.js'
 
 export interface ReportFilter {
@@ -61,7 +60,7 @@ export type BalanceSheetData = {
 /**
  * Cashflow types
  */
-type CashflowReportBase = {
+export type CashflowReportBase = {
   type: 'cashflow'
   timestamp: string
   principalPayments: Currency
@@ -76,13 +75,13 @@ type CashflowReportBase = {
   endCashBalance: { balance: Currency }
 }
 
-type CashflowReportPublicCredit = CashflowReportBase & {
+export type CashflowReportPublicCredit = CashflowReportBase & {
   subtype: 'publicCredit'
   realizedPL?: Currency
   assetPurchases?: Currency
 }
 
-type CashflowReportPrivateCredit = CashflowReportBase & {
+export type CashflowReportPrivateCredit = CashflowReportBase & {
   subtype: 'privateCredit'
   assetFinancing?: Currency
 }
@@ -92,7 +91,7 @@ export type CashflowReport = CashflowReportPublicCredit | CashflowReportPrivateC
 export type CashflowData = {
   poolSnapshots: PoolSnapshot[]
   poolFeeSnapshots: PoolFeeSnapshotsByDate
-  metadata: PoolMetadata | undefined
+  metadata: PoolMetadata | undefined | null
 }
 
 /**
@@ -125,7 +124,7 @@ export type ProfitAndLossReport = ProfitAndLossReportPublicCredit | ProfitAndLos
 export type ProfitAndLossData = {
   poolSnapshots: PoolSnapshot[]
   poolFeeSnapshots: PoolFeeSnapshotsByDate
-  metadata: PoolMetadata | undefined
+  metadata: PoolMetadata | undefined | null
 }
 
 /**
@@ -226,7 +225,7 @@ export type TokenPriceReportFilter = {
  */
 export type AssetListData = {
   assetSnapshots: AssetSnapshot[]
-  metadata: PoolMetadata | undefined
+  metadata: PoolMetadata | undefined | null
 }
 
 export type AssetListReportBase = {
