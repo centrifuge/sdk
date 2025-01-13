@@ -38,6 +38,12 @@ jobs:
         with:
           node-version: '20'
 
+      - name: Setup Yarn
+        if: steps.commit_check.outputs.has_changes == 'true'
+        run: |
+          corepack enable
+          corepack prepare yarn@stable --activate
+
       - name: Install dependencies
         if: steps.commit_check.outputs.has_changes == 'true'
         run: yarn add simple-git
