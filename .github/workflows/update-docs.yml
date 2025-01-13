@@ -1,0 +1,54 @@
+# This workflow will update the docs in the sdk-docs repo
+
+name: Update Docs
+
+on:
+  push:
+    branches:
+      - generate-docs
+
+jobs:
+  update-docs:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout the repo
+        uses: actions/checkout@v4
+
+      - name: Run the gen:docs command
+        run: yarn gen:docs
+
+      - name: Check and commit changes
+        id: commit_check
+        run: |
+          if [[ -n "$(git status --porcelain docs)" ]]; then
+            git add docs
+            git commit -m "Update docs"
+            echo "has_changes=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "has_changes=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Push the changes
+        if: steps.commit_check.outputs.has_changes == 'true'
+        run: git push
+
+      - name: Setup Node.js
+        if: steps.commit_check.outputs.has_changes == 'true'
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install dependencies
+        if: steps.commit_check.outputs.has_changes == 'true'
+        run: yarn add simple-git
+
+      - name: Setup GitHub CLI
+        if: steps.commit_check.outputs.has_changes == 'true'
+        run: |
+          gh auth login --with-token <<< "${{ secrets.GITHUB_TOKEN }}"
+
+      - name: Update docs
+        if: steps.commit_check.outputs.has_changes == 'true'
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: node ./.github/ci-scripts/update-sdk-docs.js
