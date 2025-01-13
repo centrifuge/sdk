@@ -14,6 +14,16 @@ jobs:
       - name: Checkout the repo
         uses: actions/checkout@v4
 
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Setup Yarn
+        run: |
+          corepack enable
+          corepack prepare yarn@4.5.0 --activate
+
       - name: Run the gen:docs command
         run: yarn gen:docs
 
@@ -31,19 +41,6 @@ jobs:
       - name: Push the changes
         if: steps.commit_check.outputs.has_changes == 'true'
         run: git push
-
-      - name: Setup Node.js
-        if: steps.commit_check.outputs.has_changes == 'true'
-        uses: actions/setup-node@v4
-        with:
-          node-version: '20'
-
-      - name: Setup Yarn
-        if: steps.commit_check.outputs.has_changes == 'true'
-        run: |
-          corepack enable
-          corepack prepare yarn@stable --activate
-          yarn set version stable
 
       - name: Install dependencies
         if: steps.commit_check.outputs.has_changes == 'true'
