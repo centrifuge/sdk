@@ -46,7 +46,6 @@ async function main() {
     const repoUrl = 'https://github.com/centrifuge/sdk-docs.git'
     await git.clone(repoUrl, './sdk-docs')
 
-    // Set Git identity for this repo
     await git
       .cwd('./sdk-docs')
       .addConfig('user.name', 'github-actions[bot]')
@@ -64,6 +63,10 @@ async function main() {
 
     // Add and commit changes
     await git.add('.').commit('Update SDK documentation')
+
+    // Set the authenticated remote URL before pushing
+    const authUrl = `https://x-access-token:${process.env.PAT_TOKEN}@github.com/centrifuge/sdk-docs.git`
+    await git.remote(['set-url', 'origin', authUrl])
 
     // Push the new branch
     await git.push('origin', branchName)
