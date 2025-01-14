@@ -10,7 +10,7 @@ import { PoolMetadata } from '../types/poolMetadata.js'
 import { Currency, Price, Rate, Token } from '../utils/BigInt.js'
 import { GroupBy } from '../utils/date.js'
 
-export interface ReportFilter {
+export type ReportFilter = {
   from?: string
   to?: string
   groupBy?: GroupBy

@@ -37,7 +37,7 @@ jobs:
           git config user.email "actions@github.com"
           if [[ -n "$(git status --porcelain docs)" ]]; then
             git add docs
-            git commit -m "Update docs"
+            git commit -m "[ci:bot] Update docs"
             echo "has_changes=true" >> "$GITHUB_OUTPUT"
           else
             echo "has_changes=false" >> "$GITHUB_OUTPUT"

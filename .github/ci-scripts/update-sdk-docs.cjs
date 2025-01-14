@@ -24,6 +24,13 @@ async function copyDocs(sourceDir, targetDir) {
     // Copy each file to the target directory, maintaining directory structure
     for (const file of docFiles) {
       const relativePath = path.relative(sourceDir, file)
+
+      // Skip README.md
+      if (path.basename(file) === 'README.md') {
+        console.log('Skipping README.md')
+        continue
+      }
+
       const targetPath = path.join(targetDir, relativePath)
 
       // Create the nested directory structure if it doesn't exist
@@ -41,8 +48,8 @@ async function copyDocs(sourceDir, targetDir) {
 
 async function main() {
   try {
-    // Clone the SDK docs repo
     const git = simpleGit()
+    // Clone the SDK docs repo
     const repoUrl = 'https://github.com/centrifuge/sdk-docs.git'
     await git.clone(repoUrl, './sdk-docs')
 
@@ -71,8 +78,9 @@ async function main() {
     await git.push('origin', branchName)
 
     // Create PR using GitHub CLI
-    const prTitle = 'Update SDK Documentation'
-    const prBody = 'Automated PR to update SDK documentation'
+    const prTitle = '[sdk:ci:bot]Update SDK Documentation'
+    const prBody =
+      '[sdk:ci:bot] Automated PR to update SDK documentation: [Actions](https://github.com/centrifuge/sdk/actions/workflows/update-docs.yml)'
     const prCommand = `gh pr create \
       --title "${prTitle}" \
       --body "${prBody}" \
