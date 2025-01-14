@@ -11,7 +11,7 @@ jobs:
   update-docs:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout the repo
+      - name: Checkout repo
         uses: actions/checkout@v4
 
       - name: Setup Node.js
@@ -27,7 +27,7 @@ jobs:
       - name: Install dependencies
         run: yarn install
 
-      - name: Run the gen:docs command
+      - name: Run gen:docs command
         run: yarn gen:docs
 
       - name: Check and commit changes
