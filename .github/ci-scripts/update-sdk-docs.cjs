@@ -44,10 +44,10 @@ async function main() {
     // Clone the SDK docs repo
     const git = simpleGit()
     const repoUrl = `https://x-access-token:${process.env.GITHUB_TOKEN}@github.com/centrifuge/sdk-docs.git`
-    await git.clone(repoUrl, './sdk-docs', ['--branch', 'generate-docs'])
+    await git.clone(repoUrl, './sdk-docs')
 
     // TODO: remove: Change into the sdk-docs directory and checkout the branch
-    await git.cwd('./sdk-docs').checkout('generate-docs')
+    // await git.cwd('./sdk-docs').checkout('generate-docs')
 
     // Copy docs to the target location
     await copyDocs(
