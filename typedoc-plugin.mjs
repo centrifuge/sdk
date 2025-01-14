@@ -1,6 +1,8 @@
 // @ts-check
 import url from 'node:url'
 import { MarkdownPageEvent } from 'typedoc-plugin-markdown'
+import fs from 'node:fs/promises'
+import path from 'node:path'
 
 /**
  * @param {import('typedoc-plugin-markdown').MarkdownApplication} app
@@ -8,19 +10,25 @@ import { MarkdownPageEvent } from 'typedoc-plugin-markdown'
 export function load(app) {
   app.renderer.on(MarkdownPageEvent.END, (page) => {
     page.contents = page.contents
-      // Remove the noise before the first heading
       ?.replace(/(^.*?)(?=\n?#\s)/s, '')
-      // Remove generic type parameters from headings
       .replace(/^(# .*)(\\<.*?>)/m, (_, heading) => heading.replace(/\\<.*?>/, '').trim())
       .replace('# Type Alias', '# Type')
-      // Increase the heading levels by one
       .replaceAll('# ', '## ')
     page.filename = page.filename?.replace(/\/([^\/]+)$/, '/_$1')
     page.contents = rewriteMarkdownLinks(page.contents ?? '', page.url)
   })
+
   app.renderer.postRenderAsyncJobs.push(async (renderer) => {
-    // Log the paths in a way that can be easily used with Slate
-    console.log(renderer.urls?.map((u) => u.url.replace(/\.md$/, '')).join('\n'))
+    console.log(renderer.urls?.map((u) => u.url).join('\n'))
+
+    try {
+      // Delete the README.md
+      await fs.unlink(path.join(process.cwd(), 'docs', '_README.md'))
+    } catch (error) {
+      if (error.code !== 'ENOENT') {
+        console.error('Error deleting README.md:', error)
+      }
+    }
   })
 }
 
