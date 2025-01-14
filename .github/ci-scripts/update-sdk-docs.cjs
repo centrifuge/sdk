@@ -64,8 +64,8 @@ async function main() {
       './sdk-docs/source/includes' // target directory
     )
 
-    // Create and switch to a new branch
-    const branchName = `docs-update-${new Date().toISOString().slice(0, 19).replace('T', '-')}`
+    // Create and switch to a new branch (docs-update-YYYY-MM-DD-HH-mm-ss)
+    const branchName = `docs-update-${new Date().toISOString().slice(0, 19).replace(/[:-]/g, '').replace(' ', '-')}`
     await git.checkoutLocalBranch(branchName)
 
     // Add and commit changes
