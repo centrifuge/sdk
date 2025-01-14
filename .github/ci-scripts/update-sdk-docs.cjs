@@ -64,8 +64,7 @@ async function main() {
     // Add and commit changes
     await git.add('.').commit('Update SDK documentation')
 
-    // Set the authenticated remote URL before pushing
-    const authUrl = `https://x-access-token:${process.env.PAT_TOKEN}@github.com/centrifuge/sdk-docs.git`
+    const authUrl = `https://oauth2:${process.env.PAT_TOKEN}@github.com/centrifuge/sdk-docs.git`
     await git.remote(['set-url', 'origin', authUrl])
 
     // Push the new branch
