@@ -25,7 +25,7 @@ export function load(app) {
       // Delete the README.md
       await fs.unlink(path.join(process.cwd(), 'docs', '_README.md'))
       // Delete _global.md
-      await fs.unlink(path.join(process.cwd(), 'docs', '_global.md'))
+      await fs.unlink(path.join(process.cwd(), 'docs', '_globals.md'))
     } catch (error) {
       if (error.code !== 'ENOENT') {
         console.error('Error deleting README.md:', error)
