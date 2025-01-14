@@ -46,8 +46,11 @@ async function main() {
     const repoUrl = `https://x-access-token:${process.env.GITHUB_TOKEN}@github.com/centrifuge/sdk-docs.git`
     await git.clone(repoUrl, './sdk-docs')
 
-    // TODO: remove: Change into the sdk-docs directory and checkout the branch
-    // await git.cwd('./sdk-docs').checkout('generate-docs')
+    // Set Git identity for this repo
+    await git
+      .cwd('./sdk-docs')
+      .addConfig('user.name', 'github-actions[bot]')
+      .addConfig('user.email', 'github-actions[bot]@users.noreply.github.com')
 
     // Copy docs to the target location
     await copyDocs(
@@ -57,9 +60,7 @@ async function main() {
 
     // Create and switch to a new branch
     const branchName = `docs-update-${new Date().toISOString().split('T')[0]}`
-    await git
-      .cwd('./sdk-docs') // Ensure we're in the sdk-docs directory
-      .checkoutLocalBranch(branchName)
+    await git.checkoutLocalBranch(branchName)
 
     // Add and commit changes
     await git.add('.').commit('Update SDK documentation')
