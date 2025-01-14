@@ -43,7 +43,7 @@ async function main() {
   try {
     // Clone the SDK docs repo
     const git = simpleGit()
-    const repoUrl = `https://x-access-token:${process.env.GITHUB_TOKEN}@github.com/centrifuge/sdk-docs.git`
+    const repoUrl = 'https://github.com/centrifuge/sdk-docs.git'
     await git.clone(repoUrl, './sdk-docs')
 
     // Set Git identity for this repo
@@ -76,12 +76,15 @@ async function main() {
       --body "${prBody}" \
       --base main \
       --head ${branchName} \
-      --repo "org/sdk-docs"`
+      --repo "centrifuge/sdk-docs"`
 
     const { execSync } = require('child_process')
     execSync(prCommand, {
       stdio: 'inherit',
-      env: { ...process.env },
+      env: {
+        ...process.env,
+        GH_TOKEN: process.env.PAT_TOKEN,
+      },
     })
 
     console.log('Successfully created PR with documentation updates')
