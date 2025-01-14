@@ -50,8 +50,8 @@ async function main() {
   try {
     const git = simpleGit()
     // Clone the SDK docs repo
-    const repoUrl = 'https://github.com/centrifuge/sdk-docs.git'
-    await git.clone(repoUrl, './sdk-docs')
+    const repoUrl = `https://${process.env.PAT_TOKEN}@github.com/centrifuge/sdk-docs.git`
+    await git.clone(repoUrl)
 
     await git
       .cwd('./sdk-docs')
@@ -65,20 +65,17 @@ async function main() {
     )
 
     // Create and switch to a new branch
-    const branchName = `docs-update-${new Date().toISOString().split('T')[0]}`
+    const branchName = `docs-update-${new Date().toISOString().slice(0, 19).replace('T', '-')}`
     await git.checkoutLocalBranch(branchName)
 
     // Add and commit changes
     await git.add('.').commit('Update SDK documentation')
 
-    const authUrl = `https://${process.env.PAT_TOKEN}@github.com/centrifuge/sdk-docs.git`
-    await git.remote(['set-url', 'origin', authUrl])
-
     // Push the new branch
     await git.push('origin', branchName)
 
     // Create PR using GitHub CLI
-    const prTitle = '[sdk:ci:bot]Update SDK Documentation'
+    const prTitle = '[sdk:ci:bot] Update SDK Documentation'
     const prBody =
       '[sdk:ci:bot] Automated PR to update SDK documentation: [Actions](https://github.com/centrifuge/sdk/actions/workflows/update-docs.yml)'
     const prCommand = `gh pr create \
