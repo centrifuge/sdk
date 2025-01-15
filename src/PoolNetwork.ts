@@ -14,6 +14,7 @@ import { Vault } from './Vault.js'
  * Query and interact with a pool on a specific network.
  */
 export class PoolNetwork extends Entity {
+  /** @internal */
   constructor(
     _root: Centrifuge,
     public pool: Pool,
@@ -192,9 +193,10 @@ export class PoolNetwork extends Entity {
 
   /**
    * Get all Vaults for all tranches in the pool.
+   * @returns An object of tranche ID to Vault.
    */
   vaultsByTranche() {
-    return this._query(null, () =>
+    return this._query<Record<string, Vault>>(null, () =>
       this.pool.trancheIds().pipe(
         switchMap((tranches) => {
           return combineLatest(tranches.map((trancheId) => this.vaults(trancheId))).pipe(

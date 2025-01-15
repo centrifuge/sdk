@@ -182,6 +182,10 @@ yarn test:single <path-to-file>
 yarn test:simple:single <path-to-file> # without setup file, faster and without tenderly setup
 ```
 
+## User Docs
+
+User docs are written and maintained in the [sdk-docs](https://github.com/centrifuge/sdk-docs) repository. On push to the `main` branch, a GitHub Action will run and update the docs with the auto-generated docs from this repository using ([typedoc](https://typedoc.org/)).
+
 ### PR Naming Convention
 
 PR naming should follow the [Conventional Commits](https://www.conventionalcommits.org/en/v1.0.0/) specification.

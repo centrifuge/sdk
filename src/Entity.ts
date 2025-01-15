@@ -4,9 +4,12 @@ import type { CentrifugeQueryOptions } from './types/query.js'
 
 export class Entity {
   #baseKeys: (string | number)[]
+  /** @internal */
   _transact: Centrifuge['_transact']
+  /** @internal */
   _transactSequence: Centrifuge['_transactSequence']
   constructor(
+    /** @internal */
     protected _root: Centrifuge,
     queryKeys: (string | number)[]
   ) {
@@ -15,6 +18,7 @@ export class Entity {
     this._transactSequence = this._root._transactSequence.bind(this._root)
   }
 
+  /** @internal */
   protected _query<T>(
     keys: (string | number | undefined)[] | null,
     observableCallback: () => Observable<T>,
