@@ -117,11 +117,6 @@ search: true
 
     await fs.writeFile(indexHtmlMdPath, updatedContent)
 
-    // Display results
-    console.log('\n📝 First 100 lines of updated file:')
-    console.log('----------------------------------------')
-    console.log(updatedContent.split('\n').slice(0, 100).join('\n'))
-    console.log('----------------------------------------')
     console.log(`✅ Total includes: ${allIncludes.length}`)
   } catch (error) {
     console.error('❌ Error updating index.html.md:', error)
@@ -150,6 +145,20 @@ async function createPullRequest(git, branchName) {
   })
 }
 
+async function hasChanges(git) {
+  try {
+    await git.fetch('origin', 'main')
+
+    // Get the diff between current state and main branch
+    const diff = await git.diff(['origin/main'])
+
+    return diff.length > 0
+  } catch (error) {
+    console.error('❌ Error checking for changes:', error)
+    throw error
+  }
+}
+
 async function main() {
   try {
     const git = simpleGit()
@@ -164,13 +173,18 @@ async function main() {
     await copyDocs('./docs', './sdk-docs/source/includes')
     await updateIndexHtmlMd('./docs', './sdk-docs/source/index.html.md')
 
-    const branchName = `docs-update-${new Date().toISOString().slice(0, 19).replace(/[:-]/g, '').replace(' ', '-')}`
-    await git.checkoutLocalBranch(branchName)
-    await git.add('.').commit('Update SDK documentation')
-    await git.push('origin', branchName)
+    if (await hasChanges(git)) {
+      const branchName = `docs-update-${new Date().toISOString().slice(0, 19).replace(/[:-]/g, '').replace(' ', '-')}`
+      await git.checkoutLocalBranch(branchName)
+      await git.add('.').commit('Update SDK documentation')
+      await git.push('origin', branchName)
 
-    await createPullRequest(git, branchName)
-    console.log('✅ Successfully created PR with documentation updates')
+      await createPullRequest(git, branchName)
+      console.log('✅ Successfully created PR with documentation updates')
+    } else {
+      console.log('ℹ️  No documentation changes detected')
+    }
+    process.exit(0)
   } catch (error) {
     console.error('❌ Failed to process docs:', error)
     process.exit(1)

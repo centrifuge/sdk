@@ -30,30 +30,14 @@ jobs:
       - name: Run gen:docs command
         run: yarn gen:docs
 
-      - name: Check and commit changes
-        id: commit_check
-        run: |
-          git config user.name "GitHub Actions"
-          git config user.email "actions@github.com"
-          if [[ -n "$(git status --porcelain docs)" ]]; then
-            git add docs
-            git commit -m "[ci:bot] Update docs"
-            echo "has_changes=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "has_changes=false" >> "$GITHUB_OUTPUT"
-          fi
-
       - name: Install dependencies
-        if: steps.commit_check.outputs.has_changes == 'true'
         run: yarn add simple-git
 
       - name: Setup GitHub CLI
-        if: steps.commit_check.outputs.has_changes == 'true'
         run: |
           gh auth login --with-token <<< "${{ secrets.GITHUB_TOKEN }}"
 
       - name: Update docs
-        if: steps.commit_check.outputs.has_changes == 'true'
         env:
           PAT_TOKEN: ${{ secrets.PAT_TOKEN }}
         run: node ./.github/ci-scripts/update-sdk-docs.cjs
