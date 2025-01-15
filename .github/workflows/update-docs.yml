@@ -43,10 +43,6 @@ jobs:
             echo "has_changes=false" >> "$GITHUB_OUTPUT"
           fi
 
-      - name: Push the changes
-        if: steps.commit_check.outputs.has_changes == 'true'
-        run: git push
-
       - name: Install dependencies
         if: steps.commit_check.outputs.has_changes == 'true'
         run: yarn add simple-git
