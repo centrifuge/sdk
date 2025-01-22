@@ -15,13 +15,9 @@ import {
   InvestorTransactionsReportFilter,
   OrdersListData,
   OrdersListReport,
-  ProfitAndLossData,
-  ProfitAndLossReport,
-  ReportFilter,
   TokenPriceData,
   TokenPriceReport,
   TokenPriceReportFilter,
-  TokenPriceData,
   AssetListReport,
   AssetListReportFilter,
   AssetListData,
@@ -30,6 +26,12 @@ import {
   InvestorListData,
   InvestorListReportFilter,
   InvestorListReport,
+  FeeTransactionsData,
+  FeeTransactionReportFilter,
+  FeeTransactionReport,
+  AssetTransactionReportFilter,
+  AssetTransactionsData,
+  AssetTransactionReport,
 } from '../types/reports.js'
 import { PoolFeeTransaction } from '../IndexerQueries/poolFeeTransactions.js'
 

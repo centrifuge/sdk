@@ -8,9 +8,6 @@ import {
   BalanceSheetReport,
   CashflowReport,
   InvestorTransactionsReport,
-  ProfitAndLossReport,
-  ReportFilter,
-  Report,
   DataReport,
   DataReportFilter,
   InvestorTransactionsReportFilter,
@@ -27,6 +24,8 @@ import {
   AssetListReport,
   InvestorListReportFilter,
   InvestorListReport,
+  AssetTransactionReport,
+  AssetTransactionReportFilter,
 } from '../types/reports.js'
 import { Query } from '../types/query.js'
 import { Pool } from '../Pool.js'
