@@ -14,8 +14,11 @@ import {
   DataReport,
   DataReportFilter,
   InvestorTransactionsReportFilter,
-  AssetTransactionReport,
-  AssetTransactionReportFilter,
+  OrdersListReport,
+  OrdersListReportFilter,
+  ProfitAndLossReport,
+  Report,
+  ReportFilter,
   TokenPriceReport,
   TokenPriceReportFilter,
   FeeTransactionReport,
@@ -79,10 +82,16 @@ export class Reports extends Entity {
     return this._generateReport<InvestorListReport>('investorList', filter)
   }
 
+  ordersList(filter?: OrdersListReportFilter) {
+    return this._generateReport<OrdersListReport>('ordersList', filter)
+  }
+
   /**
    * Reports are split into two types:
    * - A `Report` is a standard report: balanceSheet, cashflow, profitAndLoss
-   * - A `DataReport` is a custom report: investorTransactions, assetTransactions, feeTransactions, tokenPrice, assetList, investorList
+   * - A `DataReport` is a custom report: investorTransactions, assetTransactions, feeTransactions, tokenPrice, assetList, investorList, OrderList
+   *
+   * @internal
    */
   _generateReport<T>(type: Report, filter?: ReportFilter): Query<T[]>
   _generateReport<T>(type: DataReport, filter?: DataReportFilter): Query<T[]>
@@ -147,6 +156,13 @@ export class Reports extends Entity {
             currency: { pool: { id: { equalTo: this.pool.id } } },
           }
         )
+        const poolEpochs$ = this.queries.poolEpochsQuery({
+          closedAt: {
+            greaterThan: from ?? '2022-01-01T00:00:00.000Z',
+            lessThanOrEqualTo: (to && `${to.split('T')[0]}T23:59:59.999Z`) ?? DEFAULT_FILTER.to,
+          },
+          pool: { id: { equalTo: this.pool.id } },
+        })
 
         switch (type) {
           case 'balanceSheet':
@@ -196,6 +212,8 @@ export class Reports extends Entity {
             return combineLatest([trancheCurrencyBalance$]).pipe(
               map(([trancheCurrencyBalance]) => processor.investorList({ trancheCurrencyBalance }, restFilter) as T[])
             )
+          case 'ordersList':
+            return combineLatest([poolEpochs$]).pipe(map(([poolEpochs]) => processor.ordersList({ poolEpochs }) as T[]))
           default:
             throw new Error(`Unsupported report type: ${type}`)
         }

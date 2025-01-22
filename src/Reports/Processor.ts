@@ -13,12 +13,12 @@ import {
   InvestorTransactionsData,
   InvestorTransactionsReport,
   InvestorTransactionsReportFilter,
-  AssetTransactionReport,
-  AssetTransactionsData,
-  AssetTransactionReportFilter,
-  FeeTransactionsData,
-  FeeTransactionReportFilter,
-  FeeTransactionReport,
+  OrdersListData,
+  OrdersListReport,
+  ProfitAndLossData,
+  ProfitAndLossReport,
+  ReportFilter,
+  TokenPriceData,
   TokenPriceReport,
   TokenPriceReportFilter,
   TokenPriceData,
@@ -409,6 +409,27 @@ export class Processor {
           pendingRedeem: balance.pendingRedeemTrancheTokens,
         }
       })
+  }
+
+  ordersList(data: OrdersListData): OrdersListReport[] {
+    console.log('🚀 ~ processor ~ data:', data.poolEpochs.length)
+    if (!data.poolEpochs?.length) return []
+    const items = data.poolEpochs.map(
+      (epoch) =>
+        ({
+          type: 'ordersList',
+          epoch: epoch.epochId.split('-')[1] as string,
+          timestamp: epoch.closedAt,
+          netAssetValue: epoch.netAssetValue,
+          navPerShare: epoch.tokenPrice,
+          lockedInvestments: epoch.sumOutstandingInvestOrders,
+          lockedRedemptions: epoch.sumOutstandingRedeemOrders,
+          executedInvestments: epoch.sumFulfilledInvestOrders,
+          executedRedemptions: epoch.sumFulfilledRedeemOrders,
+          paidFees: epoch.paidFees,
+        }) satisfies OrdersListReport
+    )
+    return items
   }
 
   /**

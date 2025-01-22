@@ -9,6 +9,7 @@ import { mockInvestorTransactions } from '../tests/mocks/mockInvestorTransaction
 import { mockAssetTransactions } from '../tests/mocks/mockAssetTransactions.js'
 import { mockAssetSnapshots } from '../tests/mocks/mockAssetSnapshots.js'
 import { mockInvestorCurrencyBalances } from '../tests/mocks/mockInvestorCurrencyBalance.js'
+import { mockEpochs } from '../tests/mocks/mockEpochs.js'
 import { PoolSnapshot } from '../IndexerQueries/poolSnapshots.js'
 import { Currency, Price, Token } from '../utils/BigInt.js'
 import { PoolFeeSnapshot, PoolFeeSnapshotsByDate } from '../IndexerQueries/poolFeeSnapshots.js'
@@ -701,6 +702,24 @@ describe('Processor', () => {
         { trancheId: 'tranche-2' }
       )
       expect(result2).to.have.lengthOf(0)
+    })
+  })
+
+  describe('orders list processor', () => {
+    it('should return empty array when no epochs found', () => {
+      expect(processor.ordersList({ poolEpochs: [] })).to.deep.equal([])
+    })
+    it('should process orders list correctly', () => {
+      const result = processor.ordersList({ poolEpochs: mockEpochs })
+      expect(result).to.have.lengthOf(2)
+      expect(result[0]?.epoch).to.equal('1')
+      expect(result[0]?.netAssetValue.toString()).to.equal(Currency.fromFloat(1000, 6).toString())
+      expect(result[0]?.navPerShare.toString()).to.equal(new Price(1000000000000000000n).toString())
+      expect(result[0]?.lockedInvestments.toString()).to.equal(Currency.fromFloat(1000, 6).toString())
+      expect(result[0]?.lockedRedemptions.toString()).to.equal(Currency.fromFloat(100, 6).toString())
+      expect(result[0]?.executedInvestments.toString()).to.equal(Currency.fromFloat(900, 6).toString())
+      expect(result[0]?.executedRedemptions.toString()).to.equal(Currency.fromFloat(90, 6).toString())
+      expect(result[0]?.paidFees.toString()).to.equal(Currency.fromFloat(100, 6).toString())
     })
   })
 

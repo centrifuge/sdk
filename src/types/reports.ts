@@ -1,5 +1,6 @@
 import { AssetSnapshot } from '../IndexerQueries/assetSnapshots.js'
 import { AssetTransaction, AssetTransactionType } from '../IndexerQueries/assetTransactions.js'
+import { Epoch } from '../IndexerQueries/epochs.js'
 import { InvestorTransaction, SubqueryInvestorTransactionType } from '../IndexerQueries/investorTransactions.js'
 import { PoolFeeSnapshotsByDate } from '../IndexerQueries/poolFeeSnapshots.js'
 import { PoolFeeTransaction } from '../IndexerQueries/poolFeeTransactions.js'
@@ -30,6 +31,7 @@ export type DataReport =
   | 'tokenPrice'
   | 'assetList'
   | 'investorList'
+  | 'ordersList'
 
 /**
  * Balance sheet type
@@ -294,4 +296,28 @@ export type InvestorListReportFilter = {
   trancheId?: string
   network?: number | 'centrifuge' | 'all'
   address?: string
+}
+
+/**
+ * Orders list types
+ */
+export type OrdersListData = {
+  poolEpochs: Epoch[]
+}
+export type OrdersListReport = {
+  type: 'ordersList'
+  epoch: string
+  timestamp: string
+  netAssetValue: Currency
+  navPerShare: Price
+  lockedInvestments: Currency
+  lockedRedemptions: Currency
+  executedInvestments: Currency
+  executedRedemptions: Currency
+  paidFees: Currency
+}
+
+export type OrdersListReportFilter = {
+  from?: string
+  to?: string
 }

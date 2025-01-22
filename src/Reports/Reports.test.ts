@@ -409,4 +409,30 @@ describe('Reports', () => {
       expect(report.length).to.equal(1)
     })
   })
+  describe('orders list report', () => {
+    it('should fetch orders list report', async () => {
+      const anemoyPoolId = '4139607887'
+      const pool = await centrifuge.pool(anemoyPoolId)
+      const report = await pool.reports.ordersList({
+        from: '2024-01-01T22:11:29.776Z',
+        to: '2024-01-03T22:11:29.776Z',
+      })
+      expect(report.length).to.equal(1)
+    })
+    it('should fetch orders list report filtered by date', async () => {
+      const anemoyPoolId = '4139607887'
+      const pool = await centrifuge.pool(anemoyPoolId)
+      const report = await pool.reports.ordersList({
+        from: '2024-01-01T22:11:29.776Z',
+        to: '2024-01-03T22:11:29.776Z',
+      })
+      expect(report.length).to.equal(1)
+    })
+    it('should fetch orders list report', async () => {
+      const anemoyPoolId = '4139607887'
+      const pool = await centrifuge.pool(anemoyPoolId)
+      const report = await pool.reports.ordersList()
+      expect(report.length).to.equal(30)
+    })
+  })
 })
