@@ -63,20 +63,20 @@ describe('Reports', () => {
       const reports = new Reports(centrifuge, pool)
 
       const filter: ReportFilter = {
-        from: '2024-10-03T22:11:29.776Z',
-        to: '2024-10-06T22:11:29.776Z',
+        from: '2024-10-03',
+        to: '2024-10-06',
         groupBy: 'day',
       }
 
       const report = await reports.balanceSheet(filter)
       expect(processBalanceSheetSpy.callCount).to.equal(1)
-      expect(report.length).to.equal(3)
+      expect(report.length).to.equal(4)
 
       // Different query should fetch new data
-      const report2 = await reports.balanceSheet({ ...filter, to: '2024-10-10T22:11:29.776Z' })
+      const report2 = await reports.balanceSheet({ ...filter, to: '2024-10-10' })
 
       expect(processBalanceSheetSpy.callCount).to.equal(2)
-      expect(report2.length).to.equal(7)
+      expect(report2.length).to.equal(8)
 
       const report3 = await reports.balanceSheet({ ...filter, groupBy: 'month' })
 
@@ -461,7 +461,6 @@ describe('Reports', () => {
         from: '2024-01-01T22:11:29.776Z',
         to: '2024-01-03T22:11:29.776Z',
       })
-      console.log('🚀 ~ report:', report)
       expect(report.length).to.equal(2)
     })
     it('should filter by asset id', async () => {

@@ -48,8 +48,8 @@ export class Processor {
   balanceSheet(data: BalanceSheetData, filter?: Omit<ReportFilter, 'to' | 'from'>): BalanceSheetReport[] {
     if (!data.poolSnapshots?.length) return []
     const items: BalanceSheetReport[] = data?.poolSnapshots?.map((snapshot) => {
-      const tranches = data.trancheSnapshots[this.getDateKey(snapshot.timestamp.slice(0, 10))] ?? []
-      if (tranches.length === 0) throw new Error('No tranches found for snapshot')
+      const tranches = data.trancheSnapshots[this.getDateKey(snapshot.timestamp)] ?? []
+      if (tranches.length === 0) console.warn('No tranche snapshots found for pool snapshot', snapshot.timestamp)
       return {
         type: 'balanceSheet',
         timestamp: snapshot.timestamp,
@@ -58,14 +58,25 @@ export class Processor {
         offchainCash: snapshot.offchainCashValue,
         accruedFees: snapshot.sumPoolFeesPendingAmount,
         netAssetValue: snapshot.netAssetValue,
-        tranches: tranches?.map((tranche) => ({
-          name: tranche.pool.currency.symbol,
-          timestamp: tranche.timestamp,
-          tokenId: tranche.trancheId,
-          tokenSupply: tranche.tokenSupply,
-          tokenPrice: tranche.price,
-          trancheValue: tranche.tokenSupply.mul(tranche?.price?.toBigInt() ?? 0n),
-        })),
+        tranches: tranches.length
+          ? tranches?.map((tranche) => ({
+              name: tranche.pool.currency.symbol,
+              timestamp: tranche.timestamp,
+              tokenId: tranche.trancheId,
+              tokenSupply: tranche.tokenSupply,
+              tokenPrice: tranche.price,
+              trancheValue: tranche.tokenSupply.mul(tranche?.price?.toBigInt() ?? 0n),
+            }))
+          : [
+              {
+                name: '',
+                timestamp: '',
+                tokenId: '',
+                tokenSupply: new Token(0n, snapshot.poolCurrency.decimals),
+                tokenPrice: new Price(0n),
+                trancheValue: new Currency(0n, snapshot.poolCurrency.decimals),
+              },
+            ],
         totalCapital: tranches.reduce(
           (acc, curr) => acc.add(curr.tokenSupply.mul(curr?.price?.toBigInt() ?? 0n).toBigInt()),
           new Currency(0, snapshot.poolCurrency.decimals)
