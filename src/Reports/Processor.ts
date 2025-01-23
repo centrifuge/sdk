@@ -32,6 +32,9 @@ import {
   AssetTransactionReportFilter,
   AssetTransactionsData,
   AssetTransactionReport,
+  AssetTimeSeriesReport,
+  AssetTimeSeriesReportFilter,
+  AssetTimeSeriesData,
 } from '../types/reports.js'
 import { PoolFeeTransaction } from '../IndexerQueries/poolFeeTransactions.js'
 
@@ -430,6 +433,31 @@ export class Processor {
           paidFees: epoch.paidFees,
         }) satisfies OrdersListReport
     )
+    return items
+  }
+
+  assetTimeSeries(
+    data: AssetTimeSeriesData,
+    filter?: Omit<AssetTimeSeriesReportFilter, 'to' | 'from'>
+  ): AssetTimeSeriesReport[] {
+    if (!data.assetSnapshots?.length) return []
+    const items = data.assetSnapshots
+      .filter((snapshot) => {
+        return (
+          (!filter?.assetId || snapshot.assetId.split('-')[1] === filter.assetId) &&
+          (!filter?.name || snapshot.name === filter.name)
+        )
+      })
+      .map(
+        (snapshot) =>
+          ({
+            type: 'assetTimeSeries',
+            timestamp: snapshot.timestamp,
+            currentPrice: snapshot.currentPrice,
+            assetId: snapshot.assetId.split('-')[1]!,
+            name: snapshot.name,
+          }) satisfies AssetTimeSeriesReport
+      )
     return items
   }
 

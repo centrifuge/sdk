@@ -26,6 +26,8 @@ import {
   InvestorListReport,
   AssetTransactionReport,
   AssetTransactionReportFilter,
+  AssetTimeSeriesReport,
+  AssetTimeSeriesReportFilter,
 } from '../types/reports.js'
 import { Query } from '../types/query.js'
 import { Pool } from '../Pool.js'
@@ -85,10 +87,14 @@ export class Reports extends Entity {
     return this._generateReport<OrdersListReport>('ordersList', filter)
   }
 
+  assetTimeSeries(filter?: AssetTimeSeriesReportFilter) {
+    return this._generateReport<AssetTimeSeriesReport>('assetTimeSeries', filter)
+  }
+
   /**
    * Reports are split into two types:
    * - A `Report` is a standard report: balanceSheet, cashflow, profitAndLoss
-   * - A `DataReport` is a custom report: investorTransactions, assetTransactions, feeTransactions, tokenPrice, assetList, investorList, OrderList
+   * - A `DataReport` is a custom report: investorTransactions, assetTransactions, feeTransactions, tokenPrice, assetList, investorList, orderList, assetTimeSeries
    *
    * @internal
    */
@@ -107,6 +113,7 @@ export class Reports extends Entity {
         filter?.transactionType,
         filter?.assetId,
         filter?.status,
+        filter?.name,
       ],
       () => {
         const { from, to, ...restFilter } = filter ?? {}
@@ -213,6 +220,10 @@ export class Reports extends Entity {
             )
           case 'ordersList':
             return combineLatest([poolEpochs$]).pipe(map(([poolEpochs]) => processor.ordersList({ poolEpochs }) as T[]))
+          case 'assetTimeSeries':
+            return combineLatest([assetSnapshots$]).pipe(
+              map(([assetSnapshots]) => processor.assetTimeSeries({ assetSnapshots }, restFilter) as T[])
+            )
           default:
             throw new Error(`Unsupported report type: ${type}`)
         }

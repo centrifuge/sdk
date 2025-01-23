@@ -442,4 +442,37 @@ describe('Reports', () => {
       expect(report.length).to.equal(27)
     })
   })
+
+  describe('asset time series report', () => {
+    it('should fetch asset time series report', async () => {
+      const anemoyPoolId = '4139607887'
+      const pool = await centrifuge.pool(anemoyPoolId)
+      const report = await pool.reports.assetTimeSeries({
+        from: '2024-01-01T22:11:29.776Z',
+        to: '2024-01-03T22:11:29.776Z',
+      })
+      expect(report.length).to.equal(5)
+    })
+    it('should filter by name', async () => {
+      const anemoyPoolId = '4139607887'
+      const pool = await centrifuge.pool(anemoyPoolId)
+      const report = await pool.reports.assetTimeSeries({
+        name: '912797HT7',
+        from: '2024-01-01T22:11:29.776Z',
+        to: '2024-01-03T22:11:29.776Z',
+      })
+      console.log('🚀 ~ report:', report)
+      expect(report.length).to.equal(2)
+    })
+    it('should filter by asset id', async () => {
+      const anemoyPoolId = '4139607887'
+      const pool = await centrifuge.pool(anemoyPoolId)
+      const report = await pool.reports.assetTimeSeries({
+        assetId: '2',
+        from: '2024-01-01T22:11:29.776Z',
+        to: '2024-01-03T22:11:29.776Z',
+      })
+      expect(report.length).to.equal(2)
+    })
+  })
 })

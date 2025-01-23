@@ -32,7 +32,7 @@ export type DataReport =
   | 'assetList'
   | 'investorList'
   | 'ordersList'
-
+  | 'assetTimeSeries'
 /**
  * Balance sheet type
  */
@@ -320,4 +320,25 @@ export type OrdersListReport = {
 export type OrdersListReportFilter = {
   from?: string
   to?: string
+}
+
+/**
+ * Asset time series types
+ */
+export type AssetTimeSeriesData = {
+  assetSnapshots: AssetSnapshot[]
+}
+export type AssetTimeSeriesReport = {
+  type: 'assetTimeSeries'
+  timestamp: string
+  currentPrice: Currency
+  assetId: string
+  name: string
+}
+
+export type AssetTimeSeriesReportFilter = {
+  from?: string
+  to?: string
+  assetId?: string
+  name?: string
 }

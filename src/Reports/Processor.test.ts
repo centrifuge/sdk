@@ -723,6 +723,18 @@ describe('Processor', () => {
     })
   })
 
+  describe('asset time series processor', () => {
+    it('should return empty array when no snapshots found', () => {
+      expect(processor.assetTimeSeries({ assetSnapshots: [] })).to.deep.equal([])
+    })
+    it('should process asset time series correctly', () => {
+      const result = processor.assetTimeSeries({ assetSnapshots: mockAssetSnapshots })
+      expect(result).to.have.lengthOf(2)
+      expect(result[0]?.assetId).to.equal('1')
+      expect(result[0]?.currentPrice.toString()).to.equal(Currency.fromFloat(1, 6).toString())
+    })
+  })
+
   describe('applyGrouping', () => {
     const applyGrouping = processor['applyGrouping']
     const mockData = [
