@@ -44,10 +44,8 @@ type SubqueryEpochs = {
 }
 
 export const epochsPostProcess = (data: SubqueryEpochs): Epoch[] => {
-  console.log('🚀 ~ epochsPostProcess ~ data:', data.epoches.nodes.length)
-  return data.epoches.nodes.map((order, index) => {
-    // const index = order.epochStates.nodes.length > 1 ? order.epochStates.nodes.length - 1 : 0
-    console.log('🚀 ~ index:', index)
+  return data.epoches.nodes.map((order) => {
+    const index = order.epochStates.nodes.length > 1 ? order.epochStates.nodes.length - 1 : 0
     const epochStates = order.epochStates.nodes[index]
     const currencyDecimals = order.pool.currency.decimals
     return {

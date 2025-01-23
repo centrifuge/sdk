@@ -157,7 +157,7 @@ export class Reports extends Entity {
         )
         const poolEpochs$ = this.queries.poolEpochsQuery({
           closedAt: {
-            greaterThan: from ?? '2022-01-01T00:00:00.000Z',
+            ...(from && { greaterThan: from }),
             lessThanOrEqualTo: (to && `${to.split('T')[0]}T23:59:59.999Z`) ?? DEFAULT_FILTER.to,
           },
           pool: { id: { equalTo: this.pool.id } },

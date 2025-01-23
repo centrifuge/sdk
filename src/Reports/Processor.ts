@@ -45,7 +45,7 @@ export class Processor {
   balanceSheet(data: BalanceSheetData, filter?: Omit<ReportFilter, 'to' | 'from'>): BalanceSheetReport[] {
     if (!data.poolSnapshots?.length) return []
     const items: BalanceSheetReport[] = data?.poolSnapshots?.map((snapshot) => {
-      const tranches = data.trancheSnapshots[this.getDateKey(snapshot.timestamp)] ?? []
+      const tranches = data.trancheSnapshots[this.getDateKey(snapshot.timestamp.slice(0, 10))] ?? []
       if (tranches.length === 0) throw new Error('No tranches found for snapshot')
       return {
         type: 'balanceSheet',
@@ -414,7 +414,6 @@ export class Processor {
   }
 
   ordersList(data: OrdersListData): OrdersListReport[] {
-    console.log('🚀 ~ processor ~ data:', data.poolEpochs.length)
     if (!data.poolEpochs?.length) return []
     const items = data.poolEpochs.map(
       (epoch) =>
