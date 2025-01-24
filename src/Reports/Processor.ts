@@ -271,6 +271,18 @@ export class Processor {
           transactionType: tx.type,
           amount: tx.amount,
           transactionHash: tx.hash,
+          fromAsset: tx.fromAsset
+            ? {
+                id: tx.fromAsset.id,
+                name: tx.fromAsset.name,
+              }
+            : undefined,
+          toAsset: tx.toAsset
+            ? {
+                id: tx.toAsset.id,
+                name: tx.toAsset.name,
+              }
+            : undefined,
         })
       }
 

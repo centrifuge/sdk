@@ -535,6 +535,19 @@ describe('Processor', () => {
         expect(result).to.have.lengthOf(expected)
       }
     })
+    it('should make sure all the fields exist', () => {
+      const result = processor.assetTransactions({ assetTransactions: mockAssetTransactions })
+      expect(result).to.have.lengthOf(3)
+      expect(result[0]).to.have.property('type')
+      expect(result[0]).to.have.property('timestamp')
+      expect(result[0]).to.have.property('assetId')
+      expect(result[0]).to.have.property('transactionType')
+      expect(result[0]).to.have.property('amount')
+      expect(result[0]).to.have.property('epoch')
+      expect(result[0]).to.have.property('transactionHash')
+      expect(result[0]).to.have.property('fromAsset') // optional
+      expect(result[1]).to.have.property('toAsset') // optional
+    })
   })
 
   describe('fee transactions processor', () => {

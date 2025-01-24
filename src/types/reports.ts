@@ -175,6 +175,14 @@ export type AssetTransactionReport = {
   transactionType: AssetTransactionType
   amount: Currency
   transactionHash: string
+  fromAsset?: {
+    id: string
+    name: string
+  }
+  toAsset?: {
+    id: string
+    name: string
+  }
 }
 
 export type AssetTransactionReportFilter = {

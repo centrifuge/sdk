@@ -29,11 +29,13 @@ export type AssetTransaction = {
     id: string
     metadata: string
     type: AssetType
+    name: string
   }
   toAsset?: {
     id: string
     metadata: string
     type: AssetType
+    name: string
   }
 }
 
