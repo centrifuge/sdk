@@ -392,6 +392,7 @@ export class Processor {
           timestamp: snapshot.timestamp,
           assetId: snapshot.assetId,
           presentValue: snapshot.presentValue,
+          name: snapshot.name,
           ...items,
         }
       })

@@ -656,6 +656,7 @@ describe('Processor', () => {
       expect(result?.[0]).to.have.property('probabilityOfDefault')
       expect(result?.[0]).to.have.property('lossGivenDefault')
       expect(result?.[0]).to.have.property('discountRate')
+      expect(result?.[0]).to.have.property('name')
     })
     it('should return the correct data for public credit pools', () => {
       const result = processor.assetList(
@@ -674,6 +675,7 @@ describe('Processor', () => {
       expect(result?.[0]).to.have.property('currentPrice')
       expect(result?.[0]).to.have.property('unrealizedProfit')
       expect(result?.[0]).to.have.property('realizedProfit')
+      expect(result?.[0]).to.have.property('name')
     })
   })
 

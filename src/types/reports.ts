@@ -247,6 +247,7 @@ export type AssetListReportBase = {
   timestamp: string
   assetId: string
   presentValue: Currency | undefined
+  name: string
 }
 
 export type AssetListReportPublicCredit = {
