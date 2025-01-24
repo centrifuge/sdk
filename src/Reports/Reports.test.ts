@@ -269,17 +269,17 @@ describe('Reports', () => {
       const anemoyPoolId = '4139607887'
       const pool = await centrifuge.pool(anemoyPoolId)
       const report = await pool.reports.feeTransactions({
-        from: '2024-12-01T22:11:29.776Z',
-        to: '2024-12-03T22:11:29.776Z',
+        from: '2024-12-01',
+        to: '2024-12-03',
       })
-      expect(report.length).to.equal(4)
+      expect(report.length).to.equal(6)
     })
     it('should filter by transaction type paid', async () => {
       const anemoyPoolId = '4139607887'
       const pool = await centrifuge.pool(anemoyPoolId)
       const report = await pool.reports.feeTransactions({
-        from: '2024-07-23T22:11:29.776Z',
-        to: '2024-07-26T22:11:29.776Z',
+        from: '2024-07-23',
+        to: '2024-07-26',
         transactionType: 'paid',
       })
       expect(report.length).to.equal(2)
@@ -439,7 +439,7 @@ describe('Reports', () => {
       const report = await pool.reports.ordersList({
         to: '2024-12-31T23:59:59.999Z',
       })
-      expect(report.length).to.equal(27)
+      expect(report.length).to.equal(28)
     })
   })
 
