@@ -321,6 +321,12 @@ export class Processor {
         id: snapshot.trancheId,
         price: snapshot.price,
         supply: snapshot.tokenSupply,
+        yieldMTD: snapshot.yieldMTD,
+        yieldQTD: snapshot.yieldQTD,
+        yieldYTD: snapshot.yieldYTD,
+        yield7daysAnnualized: snapshot.yield7DaysAnnualized,
+        yield30daysAnnualized: snapshot.yield30DaysAnnualized,
+        yield90daysAnnualized: snapshot.yield90DaysAnnualized,
       })),
     }))
 

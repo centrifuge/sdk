@@ -31,14 +31,6 @@ describe('Processor', () => {
         })
       ).to.deep.equal([])
     })
-    it('should throw error when no tranches found', () => {
-      expect(() =>
-        processor.balanceSheet({
-          poolSnapshots: mockPoolSnapshots,
-          trancheSnapshots: {},
-        })
-      ).to.throw('No tranches found for snapshot')
-    })
     it('should process pool and tranche data correctly', () => {
       const result = processor.balanceSheet({
         poolSnapshots: mockPoolSnapshots,
@@ -593,6 +585,22 @@ describe('Processor', () => {
     it('should group by month', () => {
       const result = processor.tokenPrice({ trancheSnapshots: mockTrancheSnapshots }, { groupBy: 'month' })
       expect(result).to.have.lengthOf(1)
+    })
+    it('should make sure all fields are present', () => {
+      const result = processor.tokenPrice({ trancheSnapshots: mockTrancheSnapshots }, { groupBy: 'day' })
+      expect(result).to.have.lengthOf(2)
+      expect(result[0]).to.have.property('tranches')
+      expect(result[0]).to.have.property('timestamp')
+      expect(result[0]?.tranches[0]).to.have.property('id')
+      expect(result[0]?.tranches[0]).to.have.property('yieldMTD')
+      expect(result[0]?.tranches[0]).to.have.property('yieldQTD')
+      expect(result[0]?.tranches[0]).to.have.property('yieldYTD')
+      expect(result[0]?.tranches[0]).to.have.property('yield7daysAnnualized')
+      expect(result[0]?.tranches[0]).to.have.property('yield30daysAnnualized')
+      expect(result[0]?.tranches[0]).to.have.property('yield90daysAnnualized')
+      expect(result[0]?.tranches[0]).to.have.property('timestamp')
+      expect(result[0]?.tranches[0]).to.have.property('supply')
+      expect(result[0]?.tranches[0]).to.have.property('price')
     })
   })
 

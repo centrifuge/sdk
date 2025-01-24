@@ -8,7 +8,7 @@ import { PoolSnapshot } from '../IndexerQueries/poolSnapshots.js'
 import { TrancheCurrencyBalance } from '../IndexerQueries/trancheCurrencyBalance.js'
 import { TrancheSnapshotsByDate } from '../IndexerQueries/trancheSnapshots.js'
 import { PoolMetadata } from '../types/poolMetadata.js'
-import { Price, Rate, Token } from '../utils/BigInt.js'
+import { Perquintill, Price, Rate, Token } from '../utils/BigInt.js'
 import { Currency } from '../utils/BigInt.js'
 import { GroupBy } from '../utils/date.js'
 
@@ -214,7 +214,18 @@ export type TokenPriceData = {
 export type TokenPriceReport = {
   type: 'tokenPrice'
   timestamp: string
-  tranches: { id: string; price: Price; supply: Token; timestamp: string }[]
+  tranches: {
+    id: string
+    price: Price
+    supply: Token
+    timestamp: string
+    yieldMTD: Perquintill | null
+    yieldQTD: Perquintill | null
+    yieldYTD: Perquintill | null
+    yield7daysAnnualized: Perquintill | null
+    yield30daysAnnualized: Perquintill | null
+    yield90daysAnnualized: Perquintill | null
+  }[]
 }
 
 export type TokenPriceReportFilter = {
