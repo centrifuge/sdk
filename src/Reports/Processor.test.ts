@@ -713,6 +713,19 @@ describe('Processor', () => {
       )
       expect(result2).to.have.lengthOf(0)
     })
+    it('should make sure all the fields exist', () => {
+      const result = processor.investorList({ trancheCurrencyBalance: mockInvestorCurrencyBalances })
+      expect(result).to.have.lengthOf(2)
+      expect(result[0]).to.have.property('type')
+      expect(result[0]).to.have.property('chainId')
+      expect(result[0]).to.have.property('accountId')
+      expect(result[0]).to.have.property('evmAddress')
+      expect(result[0]).to.have.property('position')
+      expect(result[0]).to.have.property('poolPercentage')
+      expect(result[0]).to.have.property('pendingInvest')
+      expect(result[0]).to.have.property('pendingRedeem')
+      expect(result[0]).to.have.property('trancheId')
+    })
   })
 
   describe('orders list processor', () => {

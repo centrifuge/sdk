@@ -19,7 +19,6 @@ import { AssetSnapshotFilter, assetSnapshotsPostProcess, assetSnapshotsQuery } f
 import {
   trancheCurrencyBalancePostProcessor,
   trancheCurrencyBalanceQuery,
-  TrancheCurrencyBalanceFilter,
   TrancheBalanceFilter,
   CurrencyBalanceFilter,
 } from './trancheCurrencyBalance.js'

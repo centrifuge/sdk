@@ -430,6 +430,7 @@ export class Processor {
           poolPercentage: new Rate(balance.balance.add(balance.claimableTrancheTokens.div(totalPositions)).toBigInt()),
           pendingInvest: balance.pendingInvestCurrency,
           pendingRedeem: balance.pendingRedeemTrancheTokens,
+          trancheId: balance.trancheId,
         }
       })
   }

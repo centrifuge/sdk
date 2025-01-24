@@ -300,6 +300,7 @@ export type InvestorListReport = {
   poolPercentage: Rate
   pendingInvest: Currency
   pendingRedeem: Currency
+  trancheId: string
 }
 
 export type InvestorListReportFilter = {
