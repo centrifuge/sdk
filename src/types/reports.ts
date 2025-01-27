@@ -1,5 +1,6 @@
 import { AssetSnapshot } from '../IndexerQueries/assetSnapshots.js'
 import { AssetTransaction, AssetTransactionType } from '../IndexerQueries/assetTransactions.js'
+import { Epoch } from '../IndexerQueries/epochs.js'
 import { InvestorTransaction, SubqueryInvestorTransactionType } from '../IndexerQueries/investorTransactions.js'
 import { PoolFeeSnapshotsByDate } from '../IndexerQueries/poolFeeSnapshots.js'
 import { PoolFeeTransaction } from '../IndexerQueries/poolFeeTransactions.js'
@@ -7,7 +8,7 @@ import { PoolSnapshot } from '../IndexerQueries/poolSnapshots.js'
 import { TrancheCurrencyBalance } from '../IndexerQueries/trancheCurrencyBalance.js'
 import { TrancheSnapshotsByDate } from '../IndexerQueries/trancheSnapshots.js'
 import { PoolMetadata } from '../types/poolMetadata.js'
-import { Price, Rate, Token } from '../utils/BigInt.js'
+import { Perquintill, Price, Rate, Token } from '../utils/BigInt.js'
 import { Currency } from '../utils/BigInt.js'
 import { GroupBy } from '../utils/date.js'
 
@@ -30,7 +31,8 @@ export type DataReport =
   | 'tokenPrice'
   | 'assetList'
   | 'investorList'
-
+  | 'ordersList'
+  | 'assetTimeSeries'
 /**
  * Balance sheet type
  */
@@ -173,6 +175,14 @@ export type AssetTransactionReport = {
   transactionType: AssetTransactionType
   amount: Currency
   transactionHash: string
+  fromAsset?: {
+    id: string
+    name: string
+  }
+  toAsset?: {
+    id: string
+    name: string
+  }
 }
 
 export type AssetTransactionReportFilter = {
@@ -212,7 +222,18 @@ export type TokenPriceData = {
 export type TokenPriceReport = {
   type: 'tokenPrice'
   timestamp: string
-  tranches: { id: string; price: Price; supply: Token; timestamp: string }[]
+  tranches: {
+    id: string
+    price: Price
+    supply: Token
+    timestamp: string
+    yieldMTD: Perquintill | null
+    yieldQTD: Perquintill | null
+    yieldYTD: Perquintill | null
+    yield7daysAnnualized: Perquintill | null
+    yield30daysAnnualized: Perquintill | null
+    yield90daysAnnualized: Perquintill | null
+  }[]
 }
 
 export type TokenPriceReportFilter = {
@@ -234,6 +255,7 @@ export type AssetListReportBase = {
   timestamp: string
   assetId: string
   presentValue: Currency | undefined
+  name: string
 }
 
 export type AssetListReportPublicCredit = {
@@ -286,6 +308,7 @@ export type InvestorListReport = {
   poolPercentage: Rate
   pendingInvest: Currency
   pendingRedeem: Currency
+  trancheId: string
 }
 
 export type InvestorListReportFilter = {
@@ -294,4 +317,49 @@ export type InvestorListReportFilter = {
   trancheId?: string
   network?: number | 'centrifuge' | 'all'
   address?: string
+}
+
+/**
+ * Orders list types
+ */
+export type OrdersListData = {
+  poolEpochs: Epoch[]
+}
+export type OrdersListReport = {
+  type: 'ordersList'
+  epoch: string
+  timestamp: string
+  netAssetValue: Currency
+  navPerShare: Price
+  lockedInvestments: Currency
+  lockedRedemptions: Currency
+  executedInvestments: Currency
+  executedRedemptions: Currency
+  paidFees: Currency
+}
+
+export type OrdersListReportFilter = {
+  from?: string
+  to?: string
+}
+
+/**
+ * Asset time series types
+ */
+export type AssetTimeSeriesData = {
+  assetSnapshots: AssetSnapshot[]
+}
+export type AssetTimeSeriesReport = {
+  type: 'assetTimeSeries'
+  timestamp: string
+  currentPrice: Currency
+  assetId: string
+  name: string
+}
+
+export type AssetTimeSeriesReportFilter = {
+  from?: string
+  to?: string
+  assetId?: string
+  name?: string
 }

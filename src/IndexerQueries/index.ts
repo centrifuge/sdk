@@ -19,10 +19,10 @@ import { AssetSnapshotFilter, assetSnapshotsPostProcess, assetSnapshotsQuery } f
 import {
   trancheCurrencyBalancePostProcessor,
   trancheCurrencyBalanceQuery,
-  TrancheCurrencyBalanceFilter,
   TrancheBalanceFilter,
   CurrencyBalanceFilter,
 } from './trancheCurrencyBalance.js'
+import { EpochFilter, epochsPostProcess, epochsQuery } from './epochs.js'
 
 export class IndexerQueries extends Entity {
   constructor(
@@ -42,6 +42,10 @@ export class IndexerQueries extends Entity {
 
   trancheSnapshotsQuery(filter?: TrancheSnapshotFilter) {
     return this._root._queryIndexer(trancheSnapshotsQuery, { filter }, trancheSnapshotsPostProcess)
+  }
+
+  poolEpochsQuery(filter?: EpochFilter) {
+    return this._root._queryIndexer(epochsQuery, { filter }, epochsPostProcess)
   }
 
   investorTransactionsQuery(filter?: InvestorTransactionFilter) {

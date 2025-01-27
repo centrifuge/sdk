@@ -63,20 +63,20 @@ describe('Reports', () => {
       const reports = new Reports(centrifuge, pool)
 
       const filter: ReportFilter = {
-        from: '2024-10-03T22:11:29.776Z',
-        to: '2024-10-06T22:11:29.776Z',
+        from: '2024-10-03',
+        to: '2024-10-06',
         groupBy: 'day',
       }
 
       const report = await reports.balanceSheet(filter)
       expect(processBalanceSheetSpy.callCount).to.equal(1)
-      expect(report.length).to.equal(3)
+      expect(report.length).to.equal(4)
 
       // Different query should fetch new data
-      const report2 = await reports.balanceSheet({ ...filter, to: '2024-10-10T22:11:29.776Z' })
+      const report2 = await reports.balanceSheet({ ...filter, to: '2024-10-10' })
 
       expect(processBalanceSheetSpy.callCount).to.equal(2)
-      expect(report2.length).to.equal(7)
+      expect(report2.length).to.equal(8)
 
       const report3 = await reports.balanceSheet({ ...filter, groupBy: 'month' })
 
@@ -96,7 +96,7 @@ describe('Reports', () => {
         groupBy: 'day',
       }
       const report = await reports.balanceSheet(filter)
-      expect(report.length).to.equal(181)
+      expect(report.length).to.equal(182)
 
       filter = {
         ...filter,
@@ -151,7 +151,7 @@ describe('Reports', () => {
         groupBy: 'day',
       }
       const report = await reports.cashflow(filter)
-      expect(report.length).to.equal(181)
+      expect(report.length).to.equal(182)
       expect(report?.[report.length - 1]?.timestamp.slice(0, 10)).to.equal('2024-06-30')
 
       filter = {
@@ -269,17 +269,17 @@ describe('Reports', () => {
       const anemoyPoolId = '4139607887'
       const pool = await centrifuge.pool(anemoyPoolId)
       const report = await pool.reports.feeTransactions({
-        from: '2024-12-01T22:11:29.776Z',
-        to: '2024-12-03T22:11:29.776Z',
+        from: '2024-12-01',
+        to: '2024-12-03',
       })
-      expect(report.length).to.equal(4)
+      expect(report.length).to.equal(6)
     })
     it('should filter by transaction type paid', async () => {
       const anemoyPoolId = '4139607887'
       const pool = await centrifuge.pool(anemoyPoolId)
       const report = await pool.reports.feeTransactions({
-        from: '2024-07-23T22:11:29.776Z',
-        to: '2024-07-26T22:11:29.776Z',
+        from: '2024-07-23',
+        to: '2024-07-26',
         transactionType: 'paid',
       })
       expect(report.length).to.equal(2)
@@ -375,38 +375,103 @@ describe('Reports', () => {
     it('should fetch investor list report', async () => {
       const anemoyPoolId = '4139607887'
       const pool = await centrifuge.pool(anemoyPoolId)
-      const report = await pool.reports.investorList()
-      expect(report.length).to.equal(7)
+      const report = await pool.reports.investorList({
+        to: '2024-12-31T23:59:59.999Z',
+      })
+      expect(report.length).to.equal(8)
     })
     it('should filter by network', async () => {
       const anemoyPoolId = '4139607887'
       const pool = await centrifuge.pool(anemoyPoolId)
-      const report = await pool.reports.investorList({ network: 1 })
+      const report = await pool.reports.investorList({ network: 1, to: '2024-12-31T23:59:59.999Z' })
       expect(report.length).to.equal(3)
     })
     it('should filter by network centrifuge', async () => {
       const anemoyPoolId = '4139607887'
       const pool = await centrifuge.pool(anemoyPoolId)
-      const report = await pool.reports.investorList({ network: 'centrifuge' })
+      const report = await pool.reports.investorList({ network: 'centrifuge', to: '2024-12-31T23:59:59.999Z' })
       expect(report.length).to.equal(1)
     })
     it('should filter by network all', async () => {
       const anemoyPoolId = '4139607887'
       const pool = await centrifuge.pool(anemoyPoolId)
-      const report = await pool.reports.investorList({ network: 'all' })
-      expect(report.length).to.equal(7)
+      const report = await pool.reports.investorList({ network: 'all', to: '2024-12-31T23:59:59.999Z' })
+      expect(report.length).to.equal(8)
     })
     it('should filter by tranche', async () => {
       const anemoyPoolId = '4139607887'
       const pool = await centrifuge.pool(anemoyPoolId)
       const report = await pool.reports.investorList({ trancheId: '0x97aa65f23e7be09fcd62d0554d2e9273' })
-      expect(report.length).to.equal(7)
+      expect(report.length).to.equal(8)
     })
     it('should filter by address', async () => {
       const anemoyPoolId = '4139607887'
       const pool = await centrifuge.pool(anemoyPoolId)
-      const report = await pool.reports.investorList({ address: '0x6f94eb271ceb5a33aeab5bb8b8edea8ecf35ee86' })
+      const report = await pool.reports.investorList({
+        address: '0x6f94eb271ceb5a33aeab5bb8b8edea8ecf35ee86',
+        to: '2024-12-31T23:59:59.999Z',
+      })
       expect(report.length).to.equal(1)
+    })
+  })
+  describe('orders list report', () => {
+    it('should fetch orders list report', async () => {
+      const anemoyPoolId = '4139607887'
+      const pool = await centrifuge.pool(anemoyPoolId)
+      const report = await pool.reports.ordersList({
+        from: '2024-01-01T22:11:29.776Z',
+        to: '2024-01-03T22:11:29.776Z',
+      })
+      expect(report.length).to.equal(1)
+    })
+    it('should fetch orders list report filtered by date', async () => {
+      const anemoyPoolId = '4139607887'
+      const pool = await centrifuge.pool(anemoyPoolId)
+      const report = await pool.reports.ordersList({
+        from: '2024-01-01T22:11:29.776Z',
+        to: '2024-01-03T22:11:29.776Z',
+      })
+      expect(report.length).to.equal(1)
+    })
+    it('should fetch orders list report', async () => {
+      const anemoyPoolId = '4139607887'
+      const pool = await centrifuge.pool(anemoyPoolId)
+      const report = await pool.reports.ordersList({
+        to: '2024-12-31T23:59:59.999Z',
+      })
+      expect(report.length).to.equal(28)
+    })
+  })
+
+  describe('asset time series report', () => {
+    it('should fetch asset time series report', async () => {
+      const anemoyPoolId = '4139607887'
+      const pool = await centrifuge.pool(anemoyPoolId)
+      const report = await pool.reports.assetTimeSeries({
+        from: '2024-01-01T22:11:29.776Z',
+        to: '2024-01-03T22:11:29.776Z',
+      })
+      expect(report.length).to.equal(5)
+    })
+    it('should filter by name', async () => {
+      const anemoyPoolId = '4139607887'
+      const pool = await centrifuge.pool(anemoyPoolId)
+      const report = await pool.reports.assetTimeSeries({
+        name: '912797HT7',
+        from: '2024-01-01T22:11:29.776Z',
+        to: '2024-01-03T22:11:29.776Z',
+      })
+      expect(report.length).to.equal(2)
+    })
+    it('should filter by asset id', async () => {
+      const anemoyPoolId = '4139607887'
+      const pool = await centrifuge.pool(anemoyPoolId)
+      const report = await pool.reports.assetTimeSeries({
+        assetId: '2',
+        from: '2024-01-01T22:11:29.776Z',
+        to: '2024-01-03T22:11:29.776Z',
+      })
+      expect(report.length).to.equal(2)
     })
   })
 })
