@@ -270,7 +270,10 @@ export class Processor {
           epoch: tx.epochId,
           transactionType: tx.type,
           amount: tx.amount,
+          principalAmount: tx.principalAmount,
+          interestAmount: tx.interestAmount,
           transactionHash: tx.hash,
+          name: tx.asset.name,
           fromAsset: tx.fromAsset
             ? {
                 id: tx.fromAsset.id,

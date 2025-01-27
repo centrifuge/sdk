@@ -173,6 +173,9 @@ export type AssetTransactionReport = {
   epoch: string
   transactionType: AssetTransactionType
   amount: Currency
+  name: string
+  principalAmount: Currency | null
+  interestAmount: Currency | null
   transactionHash: string
   fromAsset?: {
     id: string
