@@ -1,9 +1,9 @@
-import { Entity } from '../Entity.js'
+import { combineLatest, map } from 'rxjs'
 import { Centrifuge } from '../Centrifuge.js'
-import { combineLatest } from 'rxjs'
-import { processor } from './Processor.js'
-
-import { map } from 'rxjs'
+import { Entity } from '../Entity.js'
+import { IndexerQueries } from '../IndexerQueries/index.js'
+import { Pool } from '../Pool.js'
+import { Query } from '../types/query.js'
 import {
   BalanceSheetReport,
   CashflowReport,
@@ -20,18 +20,16 @@ import {
   TokenPriceReportFilter,
   FeeTransactionReport,
   FeeTransactionReportFilter,
-  AssetListReportFilter,
-  AssetListReport,
-  InvestorListReportFilter,
   InvestorListReport,
   AssetTransactionReport,
   AssetTransactionReportFilter,
   AssetTimeSeriesReport,
   AssetTimeSeriesReportFilter,
+  AssetListReportFilter,
+  AssetListReport,
+  InvestorListReportFilter,
 } from '../types/reports.js'
-import { Query } from '../types/query.js'
-import { Pool } from '../Pool.js'
-import { IndexerQueries } from '../IndexerQueries/index.js'
+import { processor } from './Processor.js'
 
 const DEFAULT_FILTER: ReportFilter = {
   from: '2024-01-01T00:00:00.000Z',
@@ -39,6 +37,7 @@ const DEFAULT_FILTER: ReportFilter = {
 }
 export class Reports extends Entity {
   private queries: IndexerQueries
+  /** @internal */
   constructor(
     centrifuge: Centrifuge,
     public pool: Pool

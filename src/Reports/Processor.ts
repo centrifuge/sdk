@@ -1,42 +1,42 @@
 import { AssetTransaction } from '../IndexerQueries/assetTransactions.js'
 import { InvestorTransaction } from '../IndexerQueries/investorTransactions.js'
-import { Currency, Price, Rate, Token } from '../utils/BigInt.js'
-import { groupByPeriod } from '../utils/date.js'
+import { PoolFeeTransaction } from '../IndexerQueries/poolFeeTransactions.js'
 import {
+  AssetListData,
+  AssetListReport,
+  AssetListReportFilter,
+  AssetListReportPrivateCredit,
+  AssetListReportPublicCredit,
+  AssetTimeSeriesData,
+  AssetTimeSeriesReport,
+  AssetTimeSeriesReportFilter,
+  AssetTransactionReport,
+  AssetTransactionReportFilter,
+  AssetTransactionsData,
   BalanceSheetData,
   BalanceSheetReport,
   CashflowData,
   CashflowReport,
-  ProfitAndLossReport,
-  ProfitAndLossData,
-  ReportFilter,
+  FeeTransactionReport,
+  FeeTransactionReportFilter,
+  FeeTransactionsData,
+  InvestorListData,
+  InvestorListReport,
+  InvestorListReportFilter,
   InvestorTransactionsData,
   InvestorTransactionsReport,
   InvestorTransactionsReportFilter,
   OrdersListData,
   OrdersListReport,
+  ProfitAndLossData,
+  ProfitAndLossReport,
+  ReportFilter,
   TokenPriceData,
   TokenPriceReport,
   TokenPriceReportFilter,
-  AssetListReport,
-  AssetListReportFilter,
-  AssetListData,
-  AssetListReportPublicCredit,
-  AssetListReportPrivateCredit,
-  InvestorListData,
-  InvestorListReportFilter,
-  InvestorListReport,
-  FeeTransactionsData,
-  FeeTransactionReportFilter,
-  FeeTransactionReport,
-  AssetTransactionReportFilter,
-  AssetTransactionsData,
-  AssetTransactionReport,
-  AssetTimeSeriesReport,
-  AssetTimeSeriesReportFilter,
-  AssetTimeSeriesData,
 } from '../types/reports.js'
-import { PoolFeeTransaction } from '../IndexerQueries/poolFeeTransactions.js'
+import { Currency, Price, Rate, Token } from '../utils/BigInt.js'
+import { groupByPeriod } from '../utils/date.js'
 
 export class Processor {
   /**
@@ -327,7 +327,7 @@ export class Processor {
     if (Object.values(data.trancheSnapshots).length === 0) return []
     const items = Object.entries(data.trancheSnapshots).map(([timestamp, snapshots]) => ({
       type: 'tokenPrice' as const,
-      timestamp: timestamp,
+      timestamp,
       tranches: snapshots.map((snapshot) => ({
         timestamp: snapshot.timestamp,
         id: snapshot.trancheId,
@@ -361,7 +361,8 @@ export class Processor {
           return isMaturityDatePassed && isDebtZero
         } else if (filter?.status === 'overdue') {
           return isMaturityDatePassed && !isDebtZero
-        } else return true
+        }
+        return true
       })
       .sort((a, b) => {
         // Sort by actualMaturityDate in descending order

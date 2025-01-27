@@ -24,7 +24,6 @@ import {
   type Abi,
   type Account as AccountType,
   type Chain,
-  type PublicClient,
   type WalletClient,
   type WatchEventOnLogsParameter,
 } from 'viem'
@@ -34,30 +33,13 @@ import { chains } from './config/chains.js'
 import type { CurrencyMetadata } from './config/lp.js'
 import { PERMIT_TYPEHASH } from './constants.js'
 import { Pool } from './Pool.js'
-import type { HexString } from './types/index.js'
+import type { Client, DerivedConfig, EnvConfig, HexString, UserProvidedConfig } from './types/index.js'
 import type { CentrifugeQueryOptions, Query } from './types/query.js'
 import type { OperationStatus, Signer, Transaction, TransactionCallbackParams } from './types/transaction.js'
 import { Currency } from './utils/BigInt.js'
 import { hashKey } from './utils/query.js'
 import { makeThenable, repeatOnEvents, shareReplayWithDelayedReset } from './utils/rx.js'
 import { doTransaction, isLocalAccount } from './utils/transaction.js'
-
-export type Config = {
-  environment: 'mainnet' | 'demo' | 'dev'
-  rpcUrls?: Record<number | string, string>
-  indexerUrl: string
-  ipfsUrl: string
-}
-
-export type UserProvidedConfig = Partial<Config>
-type EnvConfig = {
-  indexerUrl: string
-  alchemyKey: string
-  infuraKey: string
-  defaultChain: number
-  ipfsUrl: string
-}
-type DerivedConfig = Config & EnvConfig
 
 const envConfig = {
   mainnet: {
@@ -93,7 +75,7 @@ export class Centrifuge {
     return this.#config
   }
 
-  #clients = new Map<number, PublicClient<any, Chain>>()
+  #clients = new Map<number, Client>()
   getClient(chainId?: number) {
     return this.#clients.get(chainId ?? this.config.defaultChain)
   }
@@ -134,8 +116,8 @@ export class Centrifuge {
       })
   }
 
-  pool(id: string, metadataHash?: string) {
-    return this._query(null, () => of(new Pool(this, id, metadataHash)))
+  pool(id: string | number, metadataHash?: string) {
+    return this._query(null, () => of(new Pool(this, String(id), metadataHash)))
   }
 
   account(address: string, chainId?: number) {
@@ -535,6 +517,7 @@ export class Centrifuge {
    * // { type: 'SigningTransaction', title: 'Invest' }
    * // { type: 'TransactionPending', title: 'Invest', hash: '0x123...abc' }
    * // { type: 'TransactionConfirmed', title: 'Invest', hash: '0x123...abc', receipt: { ... } }
+   * ```
    *
    * @internal
    */

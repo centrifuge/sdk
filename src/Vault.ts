@@ -28,6 +28,7 @@ export class Vault extends Entity {
    * The contract address of the vault.
    */
   address: HexString
+  /** @internal */
   constructor(
     _root: Centrifuge,
     public network: PoolNetwork,
