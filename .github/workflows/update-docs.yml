@@ -5,7 +5,7 @@ name: Update Docs
 on:
   push:
     branches:
-      - docs-gen
+      - main
 
 jobs:
   update-docs:

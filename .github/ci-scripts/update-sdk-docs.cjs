@@ -135,7 +135,6 @@ async function main() {
       .cwd('./documentation')
       .addConfig('user.name', 'github-actions[bot]')
       .addConfig('user.email', 'github-actions[bot]@users.noreply.github.com')
-      .checkout('migrate-to-docusaurus') // TODO: remove this
 
     await copyDocs('./docs', './documentation/docs/developer/centrifuge-sdk/reference')
     await createCategoryFiles('./documentation/docs/developer/centrifuge-sdk/reference')
