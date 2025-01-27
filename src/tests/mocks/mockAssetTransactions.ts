@@ -45,6 +45,12 @@ export const mockAssetTransactions: AssetTransaction[] = [
       type: AssetType.OnchainCash,
       currentPrice: '1000000000000000000', // 1.0
     },
+    toAsset: {
+      id: 'poolId-2',
+      metadata: 'Asset 2 metadata',
+      type: AssetType.OffchainCash,
+      name: 'Asset 2',
+    },
   },
   {
     id: 'asset-tx-3',
@@ -71,11 +77,7 @@ export const mockAssetTransactions: AssetTransaction[] = [
       id: 'poolId-1',
       metadata: 'Asset 1 metadata',
       type: AssetType.OnchainCash,
-    },
-    toAsset: {
-      id: 'poolId-2',
-      metadata: 'Asset 2 metadata',
-      type: AssetType.OffchainCash,
+      name: 'Asset 1',
     },
   },
 ]

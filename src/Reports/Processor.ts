@@ -7,6 +7,9 @@ import {
   AssetListReportFilter,
   AssetListReportPrivateCredit,
   AssetListReportPublicCredit,
+  AssetTimeSeriesData,
+  AssetTimeSeriesReport,
+  AssetTimeSeriesReportFilter,
   AssetTransactionReport,
   AssetTransactionReportFilter,
   AssetTransactionsData,
@@ -23,6 +26,8 @@ import {
   InvestorTransactionsData,
   InvestorTransactionsReport,
   InvestorTransactionsReportFilter,
+  OrdersListData,
+  OrdersListReport,
   ProfitAndLossData,
   ProfitAndLossReport,
   ReportFilter,
@@ -44,7 +49,7 @@ export class Processor {
     if (!data.poolSnapshots?.length) return []
     const items: BalanceSheetReport[] = data?.poolSnapshots?.map((snapshot) => {
       const tranches = data.trancheSnapshots[this.getDateKey(snapshot.timestamp)] ?? []
-      if (tranches.length === 0) throw new Error('No tranches found for snapshot')
+      if (tranches.length === 0) console.warn('No tranche snapshots found for pool snapshot', snapshot.timestamp)
       return {
         type: 'balanceSheet',
         timestamp: snapshot.timestamp,
@@ -53,14 +58,25 @@ export class Processor {
         offchainCash: snapshot.offchainCashValue,
         accruedFees: snapshot.sumPoolFeesPendingAmount,
         netAssetValue: snapshot.netAssetValue,
-        tranches: tranches?.map((tranche) => ({
-          name: tranche.pool.currency.symbol,
-          timestamp: tranche.timestamp,
-          tokenId: tranche.trancheId,
-          tokenSupply: tranche.tokenSupply,
-          tokenPrice: tranche.price,
-          trancheValue: tranche.tokenSupply.mul(tranche?.price?.toBigInt() ?? 0n),
-        })),
+        tranches: tranches.length
+          ? tranches?.map((tranche) => ({
+              name: tranche.pool.currency.symbol,
+              timestamp: tranche.timestamp,
+              tokenId: tranche.trancheId,
+              tokenSupply: tranche.tokenSupply,
+              tokenPrice: tranche.price,
+              trancheValue: tranche.tokenSupply.mul(tranche?.price?.toBigInt() ?? 0n),
+            }))
+          : [
+              {
+                name: '',
+                timestamp: '',
+                tokenId: '',
+                tokenSupply: new Token(0n, snapshot.poolCurrency.decimals),
+                tokenPrice: new Price(0n),
+                trancheValue: new Currency(0n, snapshot.poolCurrency.decimals),
+              },
+            ],
         totalCapital: tranches.reduce(
           (acc, curr) => acc.add(curr.tokenSupply.mul(curr?.price?.toBigInt() ?? 0n).toBigInt()),
           new Currency(0, snapshot.poolCurrency.decimals)
@@ -255,6 +271,18 @@ export class Processor {
           transactionType: tx.type,
           amount: tx.amount,
           transactionHash: tx.hash,
+          fromAsset: tx.fromAsset
+            ? {
+                id: tx.fromAsset.id,
+                name: tx.fromAsset.name,
+              }
+            : undefined,
+          toAsset: tx.toAsset
+            ? {
+                id: tx.toAsset.id,
+                name: tx.toAsset.name,
+              }
+            : undefined,
         })
       }
 
@@ -305,6 +333,12 @@ export class Processor {
         id: snapshot.trancheId,
         price: snapshot.price,
         supply: snapshot.tokenSupply,
+        yieldMTD: snapshot.yieldMTD,
+        yieldQTD: snapshot.yieldQTD,
+        yieldYTD: snapshot.yieldYTD,
+        yield7daysAnnualized: snapshot.yield7DaysAnnualized,
+        yield30daysAnnualized: snapshot.yield30DaysAnnualized,
+        yield90daysAnnualized: snapshot.yield90DaysAnnualized,
       })),
     }))
 
@@ -371,6 +405,7 @@ export class Processor {
           timestamp: snapshot.timestamp,
           assetId: snapshot.assetId,
           presentValue: snapshot.presentValue,
+          name: snapshot.name,
           ...items,
         }
       })
@@ -408,8 +443,54 @@ export class Processor {
           poolPercentage: new Rate(balance.balance.add(balance.claimableTrancheTokens.div(totalPositions)).toBigInt()),
           pendingInvest: balance.pendingInvestCurrency,
           pendingRedeem: balance.pendingRedeemTrancheTokens,
+          trancheId: balance.trancheId,
         }
       })
+  }
+
+  ordersList(data: OrdersListData): OrdersListReport[] {
+    if (!data.poolEpochs?.length) return []
+    const items = data.poolEpochs.map(
+      (epoch) =>
+        ({
+          type: 'ordersList',
+          epoch: epoch.epochId.split('-')[1] as string,
+          timestamp: epoch.closedAt,
+          netAssetValue: epoch.netAssetValue,
+          navPerShare: epoch.tokenPrice,
+          lockedInvestments: epoch.sumOutstandingInvestOrders,
+          lockedRedemptions: epoch.sumOutstandingRedeemOrders,
+          executedInvestments: epoch.sumFulfilledInvestOrders,
+          executedRedemptions: epoch.sumFulfilledRedeemOrders,
+          paidFees: epoch.paidFees,
+        }) satisfies OrdersListReport
+    )
+    return items
+  }
+
+  assetTimeSeries(
+    data: AssetTimeSeriesData,
+    filter?: Omit<AssetTimeSeriesReportFilter, 'to' | 'from'>
+  ): AssetTimeSeriesReport[] {
+    if (!data.assetSnapshots?.length) return []
+    const items = data.assetSnapshots
+      .filter((snapshot) => {
+        return (
+          (!filter?.assetId || snapshot.assetId.split('-')[1] === filter.assetId) &&
+          (!filter?.name || snapshot.name === filter.name)
+        )
+      })
+      .map(
+        (snapshot) =>
+          ({
+            type: 'assetTimeSeries',
+            timestamp: snapshot.timestamp,
+            currentPrice: snapshot.currentPrice,
+            assetId: snapshot.assetId.split('-')[1]!,
+            name: snapshot.name,
+          }) satisfies AssetTimeSeriesReport
+      )
+    return items
   }
 
   /**

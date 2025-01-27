@@ -8,7 +8,7 @@ export type AssetSnapshot = {
   advanceRate: Rate | undefined
   assetId: string
   collateralValue: Currency | undefined
-  currentPrice: Currency | undefined
+  currentPrice: Currency
   discountRate: Rate | undefined
   faceValue: Currency | undefined
   lossGivenDefault: Rate | undefined
@@ -81,7 +81,9 @@ export const assetSnapshotsPostProcess = (data: SubqueryAssetSnapshots): AssetSn
       collateralValue: tx.asset?.collateralValue
         ? new Currency(tx.asset?.collateralValue, currencyDecimals)
         : undefined,
-      currentPrice: tx.currentPrice ? new Currency(tx.currentPrice, currencyDecimals).mul(10n ** 18n) : undefined,
+      currentPrice: tx.currentPrice
+        ? new Currency(tx.currentPrice, currencyDecimals).mul(10n ** 18n)
+        : new Currency(0n, currencyDecimals),
       discountRate: tx.asset.discountRate ? new Rate(tx.asset.discountRate) : undefined,
       faceValue:
         tx.asset.notional && tx.outstandingQuantity

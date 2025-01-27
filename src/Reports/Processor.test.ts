@@ -9,6 +9,7 @@ import { mockInvestorTransactions } from '../tests/mocks/mockInvestorTransaction
 import { mockAssetTransactions } from '../tests/mocks/mockAssetTransactions.js'
 import { mockAssetSnapshots } from '../tests/mocks/mockAssetSnapshots.js'
 import { mockInvestorCurrencyBalances } from '../tests/mocks/mockInvestorCurrencyBalance.js'
+import { mockEpochs } from '../tests/mocks/mockEpochs.js'
 import { PoolSnapshot } from '../IndexerQueries/poolSnapshots.js'
 import { Currency, Price, Token } from '../utils/BigInt.js'
 import { PoolFeeSnapshot, PoolFeeSnapshotsByDate } from '../IndexerQueries/poolFeeSnapshots.js'
@@ -29,14 +30,6 @@ describe('Processor', () => {
           trancheSnapshots: {},
         })
       ).to.deep.equal([])
-    })
-    it('should throw error when no tranches found', () => {
-      expect(() =>
-        processor.balanceSheet({
-          poolSnapshots: mockPoolSnapshots,
-          trancheSnapshots: {},
-        })
-      ).to.throw('No tranches found for snapshot')
     })
     it('should process pool and tranche data correctly', () => {
       const result = processor.balanceSheet({
@@ -542,6 +535,19 @@ describe('Processor', () => {
         expect(result).to.have.lengthOf(expected)
       }
     })
+    it('should make sure all the fields exist', () => {
+      const result = processor.assetTransactions({ assetTransactions: mockAssetTransactions })
+      expect(result).to.have.lengthOf(3)
+      expect(result[0]).to.have.property('type')
+      expect(result[0]).to.have.property('timestamp')
+      expect(result[0]).to.have.property('assetId')
+      expect(result[0]).to.have.property('transactionType')
+      expect(result[0]).to.have.property('amount')
+      expect(result[0]).to.have.property('epoch')
+      expect(result[0]).to.have.property('transactionHash')
+      expect(result[0]).to.have.property('fromAsset') // optional
+      expect(result[1]).to.have.property('toAsset') // optional
+    })
   })
 
   describe('fee transactions processor', () => {
@@ -592,6 +598,22 @@ describe('Processor', () => {
     it('should group by month', () => {
       const result = processor.tokenPrice({ trancheSnapshots: mockTrancheSnapshots }, { groupBy: 'month' })
       expect(result).to.have.lengthOf(1)
+    })
+    it('should make sure all fields are present', () => {
+      const result = processor.tokenPrice({ trancheSnapshots: mockTrancheSnapshots }, { groupBy: 'day' })
+      expect(result).to.have.lengthOf(2)
+      expect(result[0]).to.have.property('tranches')
+      expect(result[0]).to.have.property('timestamp')
+      expect(result[0]?.tranches[0]).to.have.property('id')
+      expect(result[0]?.tranches[0]).to.have.property('yieldMTD')
+      expect(result[0]?.tranches[0]).to.have.property('yieldQTD')
+      expect(result[0]?.tranches[0]).to.have.property('yieldYTD')
+      expect(result[0]?.tranches[0]).to.have.property('yield7daysAnnualized')
+      expect(result[0]?.tranches[0]).to.have.property('yield30daysAnnualized')
+      expect(result[0]?.tranches[0]).to.have.property('yield90daysAnnualized')
+      expect(result[0]?.tranches[0]).to.have.property('timestamp')
+      expect(result[0]?.tranches[0]).to.have.property('supply')
+      expect(result[0]?.tranches[0]).to.have.property('price')
     })
   })
 
@@ -647,6 +669,7 @@ describe('Processor', () => {
       expect(result?.[0]).to.have.property('probabilityOfDefault')
       expect(result?.[0]).to.have.property('lossGivenDefault')
       expect(result?.[0]).to.have.property('discountRate')
+      expect(result?.[0]).to.have.property('name')
     })
     it('should return the correct data for public credit pools', () => {
       const result = processor.assetList(
@@ -665,6 +688,7 @@ describe('Processor', () => {
       expect(result?.[0]).to.have.property('currentPrice')
       expect(result?.[0]).to.have.property('unrealizedProfit')
       expect(result?.[0]).to.have.property('realizedProfit')
+      expect(result?.[0]).to.have.property('name')
     })
   })
 
@@ -701,6 +725,49 @@ describe('Processor', () => {
         { trancheId: 'tranche-2' }
       )
       expect(result2).to.have.lengthOf(0)
+    })
+    it('should make sure all the fields exist', () => {
+      const result = processor.investorList({ trancheCurrencyBalance: mockInvestorCurrencyBalances })
+      expect(result).to.have.lengthOf(2)
+      expect(result[0]).to.have.property('type')
+      expect(result[0]).to.have.property('chainId')
+      expect(result[0]).to.have.property('accountId')
+      expect(result[0]).to.have.property('evmAddress')
+      expect(result[0]).to.have.property('position')
+      expect(result[0]).to.have.property('poolPercentage')
+      expect(result[0]).to.have.property('pendingInvest')
+      expect(result[0]).to.have.property('pendingRedeem')
+      expect(result[0]).to.have.property('trancheId')
+    })
+  })
+
+  describe('orders list processor', () => {
+    it('should return empty array when no epochs found', () => {
+      expect(processor.ordersList({ poolEpochs: [] })).to.deep.equal([])
+    })
+    it('should process orders list correctly', () => {
+      const result = processor.ordersList({ poolEpochs: mockEpochs })
+      expect(result).to.have.lengthOf(2)
+      expect(result[0]?.epoch).to.equal('1')
+      expect(result[0]?.netAssetValue.toString()).to.equal(Currency.fromFloat(1000, 6).toString())
+      expect(result[0]?.navPerShare.toString()).to.equal(new Price(1000000000000000000n).toString())
+      expect(result[0]?.lockedInvestments.toString()).to.equal(Currency.fromFloat(1000, 6).toString())
+      expect(result[0]?.lockedRedemptions.toString()).to.equal(Currency.fromFloat(100, 6).toString())
+      expect(result[0]?.executedInvestments.toString()).to.equal(Currency.fromFloat(900, 6).toString())
+      expect(result[0]?.executedRedemptions.toString()).to.equal(Currency.fromFloat(90, 6).toString())
+      expect(result[0]?.paidFees.toString()).to.equal(Currency.fromFloat(100, 6).toString())
+    })
+  })
+
+  describe('asset time series processor', () => {
+    it('should return empty array when no snapshots found', () => {
+      expect(processor.assetTimeSeries({ assetSnapshots: [] })).to.deep.equal([])
+    })
+    it('should process asset time series correctly', () => {
+      const result = processor.assetTimeSeries({ assetSnapshots: mockAssetSnapshots })
+      expect(result).to.have.lengthOf(2)
+      expect(result[0]?.assetId).to.equal('1')
+      expect(result[0]?.currentPrice.toString()).to.equal(Currency.fromFloat(1, 6).toString())
     })
   })
 

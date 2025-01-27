@@ -95,48 +95,6 @@ export type SubqueryCurrencyBalances = {
   }
 }
 
-export const trancheBalancesQuery = `
-query($filter: TrancheBalanceFilter) {
-    trancheBalances(filter: $filter) {
-    nodes {
-      accountId
-      trancheId
-      account {
-        chainId
-        evmAddress
-      }
-      pool {
-        currency {
-          decimals
-        }
-      }
-      pendingInvestCurrency
-      claimableTrancheTokens
-      sumClaimedTrancheTokens
-      pendingRedeemTrancheTokens
-      claimableCurrency
-      sumClaimedCurrency
-    }
-  }
-}`
-
-export const currencyBalancesQuery = `
-query($filter: CurrencyBalanceFilter) {
-  currencyBalances(filter: $filter) {
-    nodes {
-      accountId
-      account {
-        chainId
-        evmAddress
-      }
-      currency {
-        trancheId
-      }
-      amount
-    }
-  }
-}`
-
 export const trancheCurrencyBalanceQuery = `
 query($filterTranches: TrancheBalanceFilter, $filterCurrencies: CurrencyBalanceFilter) {
   trancheBalances(filter: $filterTranches) {

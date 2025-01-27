@@ -5,25 +5,29 @@ import { IndexerQueries } from '../IndexerQueries/index.js'
 import { Pool } from '../Pool.js'
 import { Query } from '../types/query.js'
 import {
-  AssetListReport,
-  AssetListReportFilter,
-  AssetTransactionReport,
-  AssetTransactionReportFilter,
   BalanceSheetReport,
   CashflowReport,
+  InvestorTransactionsReport,
   DataReport,
   DataReportFilter,
-  FeeTransactionReport,
-  FeeTransactionReportFilter,
-  InvestorListReport,
-  InvestorListReportFilter,
-  InvestorTransactionsReport,
   InvestorTransactionsReportFilter,
+  OrdersListReport,
+  OrdersListReportFilter,
   ProfitAndLossReport,
   Report,
   ReportFilter,
   TokenPriceReport,
   TokenPriceReportFilter,
+  FeeTransactionReport,
+  FeeTransactionReportFilter,
+  InvestorListReport,
+  AssetTransactionReport,
+  AssetTransactionReportFilter,
+  AssetTimeSeriesReport,
+  AssetTimeSeriesReportFilter,
+  AssetListReportFilter,
+  AssetListReport,
+  InvestorListReportFilter,
 } from '../types/reports.js'
 import { processor } from './Processor.js'
 
@@ -78,10 +82,18 @@ export class Reports extends Entity {
     return this._generateReport<InvestorListReport>('investorList', filter)
   }
 
+  ordersList(filter?: OrdersListReportFilter) {
+    return this._generateReport<OrdersListReport>('ordersList', filter)
+  }
+
+  assetTimeSeries(filter?: AssetTimeSeriesReportFilter) {
+    return this._generateReport<AssetTimeSeriesReport>('assetTimeSeries', filter)
+  }
+
   /**
    * Reports are split into two types:
    * - A `Report` is a standard report: balanceSheet, cashflow, profitAndLoss
-   * - A `DataReport` is a custom report: investorTransactions, assetTransactions, feeTransactions, tokenPrice, assetList, investorList
+   * - A `DataReport` is a custom report: investorTransactions, assetTransactions, feeTransactions, tokenPrice, assetList, investorList, orderList, assetTimeSeries
    *
    * @internal
    */
@@ -100,6 +112,7 @@ export class Reports extends Entity {
         filter?.transactionType,
         filter?.assetId,
         filter?.status,
+        filter?.name,
       ],
       () => {
         const { from, to, ...restFilter } = filter ?? {}
@@ -148,6 +161,13 @@ export class Reports extends Entity {
             currency: { pool: { id: { equalTo: this.pool.id } } },
           }
         )
+        const poolEpochs$ = this.queries.poolEpochsQuery({
+          closedAt: {
+            ...(from && { greaterThan: from }),
+            lessThanOrEqualTo: (to && `${to.split('T')[0]}T23:59:59.999Z`) ?? DEFAULT_FILTER.to,
+          },
+          pool: { id: { equalTo: this.pool.id } },
+        })
 
         switch (type) {
           case 'balanceSheet':
@@ -196,6 +216,12 @@ export class Reports extends Entity {
           case 'investorList':
             return combineLatest([trancheCurrencyBalance$]).pipe(
               map(([trancheCurrencyBalance]) => processor.investorList({ trancheCurrencyBalance }, restFilter) as T[])
+            )
+          case 'ordersList':
+            return combineLatest([poolEpochs$]).pipe(map(([poolEpochs]) => processor.ordersList({ poolEpochs }) as T[]))
+          case 'assetTimeSeries':
+            return combineLatest([assetSnapshots$]).pipe(
+              map(([assetSnapshots]) => processor.assetTimeSeries({ assetSnapshots }, restFilter) as T[])
             )
           default:
             throw new Error(`Unsupported report type: ${type}`)
