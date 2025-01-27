@@ -202,7 +202,7 @@ export type FeeTransactionReport = {
   type: 'feeTransactions'
   timestamp: string
   feeId: string
-  amount: Currency
+  amount: Currency | null
 }
 
 export type FeeTransactionReportFilter = {
