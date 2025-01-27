@@ -173,6 +173,9 @@ export type AssetTransactionReport = {
   epoch: string
   transactionType: AssetTransactionType
   amount: Currency
+  name: string
+  principalAmount: Currency | null
+  interestAmount: Currency | null
   transactionHash: string
   fromAsset?: {
     id: string
@@ -202,7 +205,7 @@ export type FeeTransactionReport = {
   type: 'feeTransactions'
   timestamp: string
   feeId: string
-  amount: Currency
+  amount: Currency | null
 }
 
 export type FeeTransactionReportFilter = {

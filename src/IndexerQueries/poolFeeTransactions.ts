@@ -10,7 +10,7 @@ export type PoolFeeTransaction = {
   timestamp: string
   blockNumber: string
   epochNumber: number
-  amount: Currency
+  amount: Currency | null
 }
 
 export type SubqueryPoolFeeTransactionType =
@@ -30,7 +30,7 @@ export type SubqueryPoolFeeTransaction = {
       timestamp: string
       blockNumber: string
       epochNumber: number
-      amount: string
+      amount: string | null
       poolFee: {
         feeId: string
         pool: {
@@ -50,7 +50,7 @@ export function poolFeeTransactionPostProcess(data: SubqueryPoolFeeTransaction):
     timestamp: tx.timestamp,
     blockNumber: tx.blockNumber,
     epochNumber: tx.epochNumber,
-    amount: new Currency(tx.amount, tx.poolFee.pool.currency.decimals),
+    amount: tx.amount ? new Currency(tx.amount, tx.poolFee.pool.currency.decimals) : null,
   }))
 }
 
