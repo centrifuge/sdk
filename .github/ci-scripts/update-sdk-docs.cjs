@@ -60,66 +60,31 @@ async function copyDocs(sourceDir, targetDir) {
 }
 
 /**
- * Processes and updates the index.html.md file
+ * Creates _category_.yml files in each directory with proper formatting
  */
-async function updateIndexHtmlMd(docsDir, indexHtmlMdPath) {
+async function createCategoryFiles(targetDir) {
   try {
-    const content = await fs.readFile(indexHtmlMdPath, 'utf8')
-    const docFiles = await getFilesRecursively(docsDir)
+    const directories = await fs.readdir(targetDir, { withFileTypes: true })
 
-    // Transform and validate files
-    const actualFiles = new Set(
-      docFiles.map((file) => path.relative(docsDir, file).replace(/\/_/g, '/').replace(/^_/, '').replace(/\.md$/, ''))
-    )
+    for (const dirent of directories) {
+      if (dirent.isDirectory()) {
+        const dirPath = path.join(targetDir, dirent.name)
 
-    // Extract existing includes
-    const existingIncludesMatch = content.match(/^includes:\n((?:  - .*\n)*)/m)
-    const existingIncludes = existingIncludesMatch
-      ? existingIncludesMatch[1]
-          .split('\n')
-          .map((line) => line.replace('  - ', ''))
-          .filter(Boolean)
-      : []
+        // Format the directory name
+        const label = dirent.name
+          .split('-')
+          .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+          .join(' ')
 
-    // Process new includes
-    const newIncludes = docFiles
-      .filter((file) => file.endsWith('.md'))
-      .filter((file) => !file.includes('README.md'))
-      .map((file) => {
-        const relativePath = path.relative(docsDir, file)
-        return relativePath.replace(/\/_/g, '/').replace(/^_/, '').replace(/\.md$/, '')
-      })
+        const categoryContent = `label: ${label}\n`
+        await fs.writeFile(path.join(dirPath, '_category_.yml'), categoryContent)
 
-    // Combine and validate includes
-    const allIncludes = [
-      ...existingIncludes.filter((inc) => !inc.startsWith('classes/') && !inc.startsWith('type-aliases/')),
-      ...newIncludes,
-    ]
-      .filter((value, index, self) => self.indexOf(value) === index)
-      .filter((include) => {
-        if (include.startsWith('classes/') || include.startsWith('type-aliases/')) {
-          const exists = actualFiles.has(include)
-          if (!exists) console.log(`⚠️  Warning: File not found for include: ${include}`)
-          return exists
-        }
-        return true
-      })
-
-    // Update content
-    const [frontmatterStart, ...rest] = content.split(/^includes:/m)
-    const remainingContent = rest.join('includes:').split('---')
-    const postFrontmatter = remainingContent.slice(1).join('---')
-
-    const updatedContent = `${frontmatterStart}includes:
-${allIncludes.map((file) => `  - ${file}`).join('\n')}
-search: true
----${postFrontmatter}`
-
-    await fs.writeFile(indexHtmlMdPath, updatedContent)
-
-    console.log(`✅ Total includes: ${allIncludes.length}`)
+        // Recursively process subdirectories
+        await createCategoryFiles(dirPath)
+      }
+    }
   } catch (error) {
-    console.error('❌ Error updating index.html.md:', error)
+    console.error('❌ Error creating category files:', error)
     throw error
   }
 }
@@ -162,19 +127,21 @@ async function hasChanges(git) {
 async function main() {
   try {
     const git = simpleGit()
-    const repoUrl = `https://${process.env.PAT_TOKEN}@github.com/centrifuge/sdk-docs.git`
+    const repoUrl = `https://${process.env.PAT_TOKEN}@github.com/centrifuge/documentation.git`
 
     await git.clone(repoUrl)
+
     await git
-      .cwd('./sdk-docs')
+      .cwd('./documentation')
       .addConfig('user.name', 'github-actions[bot]')
       .addConfig('user.email', 'github-actions[bot]@users.noreply.github.com')
+      .checkout('migrate-to-docusaurus') // TODO: remove this
 
-    await copyDocs('./docs', './sdk-docs/source/includes')
-    await updateIndexHtmlMd('./docs', './sdk-docs/source/index.html.md')
+    await copyDocs('./docs', './documentation/docs/developer/centrifuge-sdk/reference')
+    await createCategoryFiles('./documentation/docs/developer/centrifuge-sdk/reference')
 
     if (await hasChanges(git)) {
-      const branchName = `docs-update-${new Date().toISOString().slice(0, 19).replace(/[:-]/g, '').replace(' ', '-')}`
+      const branchName = `sdk-update-${new Date().toISOString().slice(0, 19).replace(/[:-]/g, '').replace(' ', '-')}`
       await git.checkoutLocalBranch(branchName)
       await git.add('.').commit('Update SDK documentation')
       await git.push('origin', branchName)

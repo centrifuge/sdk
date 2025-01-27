@@ -1,7 +1,6 @@
 {
   "plugin": [
-    "typedoc-plugin-markdown",
-    "./typedoc-plugin.mjs"
+    "typedoc-plugin-markdown"
   ],
   "exclude": [
     "**/README.md",
@@ -14,5 +13,6 @@
   "entryPointStrategy": "expand",
   "skipErrorChecking": true,
   "excludeExternals": true,
+  "readme": "none",
   "out": "docs"
 }
