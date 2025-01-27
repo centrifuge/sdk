@@ -22,6 +22,7 @@ export const mockAssetTransactions: AssetTransaction[] = [
       metadata: 'Asset 1 metadata',
       type: AssetType.OnchainCash,
       currentPrice: '1000000000000000000', // 1.0
+      name: 'Asset 1',
     },
   },
   {
@@ -44,6 +45,7 @@ export const mockAssetTransactions: AssetTransaction[] = [
       metadata: 'Asset 1 metadata',
       type: AssetType.OnchainCash,
       currentPrice: '1000000000000000000', // 1.0
+      name: 'Asset 1',
     },
     toAsset: {
       id: 'poolId-2',
@@ -62,8 +64,8 @@ export const mockAssetTransactions: AssetTransaction[] = [
     amount: Currency.fromFloat(5000, 6),
     settlementPrice: null,
     quantity: null,
-    principalAmount: undefined,
-    interestAmount: undefined,
+    principalAmount: null,
+    interestAmount: null,
     hash: '0xghi789',
     realizedProfitFifo: undefined,
     unrealizedProfitAtMarketPrice: undefined,
@@ -72,6 +74,7 @@ export const mockAssetTransactions: AssetTransaction[] = [
       metadata: 'Asset 2 metadata',
       type: AssetType.OffchainCash,
       currentPrice: null,
+      name: 'Asset 2',
     },
     fromAsset: {
       id: 'poolId-1',
