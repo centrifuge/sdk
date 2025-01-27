@@ -3,9 +3,8 @@
 name: Update Docs
 
 on:
-  push:
-    branches:
-      - main
+  release:
+    types: [published]
 
 jobs:
   update-docs:
