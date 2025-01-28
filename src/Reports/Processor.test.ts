@@ -145,6 +145,19 @@ describe('Processor', () => {
     it('should return empty array when no snapshots found', () => {
       expect(processor.cashflow({ poolSnapshots: [], poolFeeSnapshots: {}, metadata: undefined })).to.deep.equal([])
     })
+    it('should throw an error if no metadata is passed', () => {
+      let thrown = false
+      try {
+        processor.cashflow({
+          poolSnapshots: mockPoolSnapshots,
+          poolFeeSnapshots: mockPoolFeeSnapshots,
+          metadata: undefined,
+        })
+      } catch (e) {
+        thrown = true
+      }
+      expect(thrown).to.be.true
+    })
 
     it('should aggregate values correctly when grouping by day', () => {
       const result = processor.cashflow(
@@ -623,6 +636,15 @@ describe('Processor', () => {
   describe('asset list processor', () => {
     it('should return empty array when no snapshots found', () => {
       expect(processor.assetList({ assetSnapshots: [], metadata: undefined })).to.deep.equal([])
+    })
+    it('should throw an error if no metadata is passed', () => {
+      let thrown = false
+      try {
+        processor.assetList({ assetSnapshots: mockAssetSnapshots, metadata: undefined })
+      } catch (e) {
+        thrown = true
+      }
+      expect(thrown).to.be.true
     })
     it('should process asset list correctly', () => {
       const result = processor.assetList({ assetSnapshots: mockAssetSnapshots, metadata: mockPoolMetadata })
