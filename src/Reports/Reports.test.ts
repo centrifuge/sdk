@@ -2,7 +2,7 @@ import { expect } from 'chai'
 import { Centrifuge } from '../Centrifuge.js'
 import { spy } from 'sinon'
 import { Reports } from '../Reports/index.js'
-import { ReportFilter } from '../types/reports.js'
+import { ProfitAndLossReportPublicCredit, ReportFilter } from '../types/reports.js'
 import { processor } from './Processor.js'
 
 describe('Reports', () => {
@@ -181,13 +181,77 @@ describe('Reports', () => {
 
   describe('profit and loss report', () => {
     it('should fetch profit and loss report', async () => {
-      const pool = await centrifuge.pool('1615768079')
+      const metadataHash = 'QmPfUr7DfUPd5ALfu96R5mbR2PhRfM94vboNFNCDgbj3S8'
+      const ns3PoolId = '1615768079'
+      const pool = await centrifuge.pool(ns3PoolId, metadataHash)
       const report = await pool.reports.profitAndLoss({
         from: '2024-11-02T22:11:29.776Z',
         to: '2024-11-06T22:11:29.776Z',
         groupBy: 'day',
       })
       expect(report.length).to.equal(4)
+    })
+    it('should throw an error if an incorrect metadataHash is provided', async () => {
+      const anemoyMetadataHash = 'QmXEdkcbnvvkFakMwxoy2UbxQzg4Q5nLXVZsHQDhDVRarC'
+      const ns3PoolId = '1615768079'
+      const pool = await centrifuge.pool(ns3PoolId, anemoyMetadataHash)
+      expect(
+        await pool.reports.profitAndLoss({
+          from: '2024-11-02T22:11:29.776Z',
+          to: '2024-11-06T22:11:29.776Z',
+          groupBy: 'day',
+        })
+      ).to.be.throw
+    })
+    it('should provide the correct totalIncome for Anemoy on 01/01/2025', async () => {
+      const anemoyPoolId = '4139607887'
+      const metadataHash = 'QmXEdkcbnvvkFakMwxoy2UbxQzg4Q5nLXVZsHQDhDVRarC'
+      const pool = await centrifuge.pool(anemoyPoolId, metadataHash)
+      const report = await pool.reports.profitAndLoss({
+        from: '2025-01-01',
+        to: '2025-01-01',
+        groupBy: 'day',
+      })
+      expect((report[0] as ProfitAndLossReportPublicCredit)?.totalIncome.toString()).to.equal('4847257770')
+    })
+    it('should retrieve 6 months worth of data and group by day, month, quarter and year', async () => {
+      const anemoyPoolId = '4139607887'
+      const metadataHash = 'QmXEdkcbnvvkFakMwxoy2UbxQzg4Q5nLXVZsHQDhDVRarC'
+      const pool = await centrifuge.pool(anemoyPoolId, metadataHash)
+      const reports = new Reports(centrifuge, pool)
+      let filter: ReportFilter = {
+        from: '2024-01-01',
+        to: '2024-06-30',
+        groupBy: 'day',
+      }
+      const report = await reports.profitAndLoss(filter)
+      expect(report.length).to.equal(182)
+
+      filter = {
+        ...filter,
+        groupBy: 'month',
+      }
+      const report2 = await reports.profitAndLoss(filter)
+      expect(report2.length).to.equal(6)
+      expect(report?.[report.length - 1]?.timestamp.slice(0, 10)).to.equal('2024-06-30')
+      expect(report?.[report.length - 1]?.subtype).to.equal('publicCredit') // real data
+      expect((report?.[report.length - 1] as ProfitAndLossReportPublicCredit)?.totalIncome).to.exist
+      expect((report?.[report.length - 1] as ProfitAndLossReportPublicCredit)?.totalIncome.toString()).to.equal('0') // real data
+
+      filter = {
+        ...filter,
+        groupBy: 'quarter',
+      }
+      const report3 = await reports.profitAndLoss(filter)
+      expect(report3.length).to.equal(2)
+
+      filter = {
+        ...filter,
+        groupBy: 'year',
+      }
+      const report4 = await reports.profitAndLoss(filter)
+      expect(report4.length).to.equal(1)
+      expect(report4?.[0]?.timestamp.slice(0, 10)).to.equal('2024-06-30')
     })
   })
 

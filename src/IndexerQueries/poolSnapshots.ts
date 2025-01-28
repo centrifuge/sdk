@@ -31,6 +31,7 @@ export type PoolSnapshot = {
   poolCurrency: {
     decimals: number
   }
+  tranches: string[]
 }
 
 export type SubqueryPoolSnapshot = {
@@ -66,6 +67,11 @@ export type SubqueryPoolSnapshot = {
         id: string
         currency: {
           decimals: number
+        }
+        tranches: {
+          nodes: {
+            id: string
+          }[]
         }
       }
     }[]
@@ -107,6 +113,11 @@ query($filter: PoolSnapshotFilter) {
         id
         currency {
           decimals
+        }
+        tranches {
+          nodes {
+            id
+          }
         }
       }
     }
@@ -152,6 +163,7 @@ export function poolSnapshotsPostProcess(data: SubqueryPoolSnapshot): PoolSnapsh
         sumInterestAccruedByPeriod: new Currency(state.sumInterestAccruedByPeriod, poolCurrencyDecimals),
         sumRealizedProfitFifoByPeriod: new Currency(state.sumRealizedProfitFifoByPeriod, poolCurrencyDecimals),
         sumUnrealizedProfitByPeriod: new Currency(state.sumUnrealizedProfitByPeriod, poolCurrencyDecimals),
+        tranches: state.pool.tranches.nodes.map((tranche) => tranche.id),
       }
 
       if (currentSnapshot) {

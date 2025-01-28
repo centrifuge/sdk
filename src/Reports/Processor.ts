@@ -142,6 +142,12 @@ export class Processor {
    */
   profitAndLoss(data: ProfitAndLossData, filter?: Omit<ReportFilter, 'to' | 'from'>): ProfitAndLossReport[] {
     if (!data.poolSnapshots?.length) return []
+    // Check if the metadata tranches match the pool snapshots tranches to verify the correct metadataHash is provided
+    if (Object.keys(data.metadata?.tranches ?? {})[0] !== data.poolSnapshots[0]?.tranches[0]?.split('-')[1]) {
+      throw new Error(
+        'Metadata mismatch, provide the correct metadataHash to centrifuge.pool(<poolId>, <metadataHash>).profitAndLoss()'
+      )
+    }
     const items: ProfitAndLossReport[] = data.poolSnapshots.map((day) => {
       const subtype = data.metadata?.pool.asset.class === 'Public credit' ? 'publicCredit' : 'privateCredit'
       const profitAndLossFromAsset =
