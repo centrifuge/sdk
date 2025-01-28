@@ -143,7 +143,8 @@ describe('Reports', () => {
     })
     it('should retrieve 6 months worth of data and group by day, month, quarter and year', async () => {
       const anemoyPoolId = '4139607887'
-      const pool = await centrifuge.pool(anemoyPoolId)
+      const anemoyMetadataHash = 'QmTjbzx4mX1A9vRFxzLDZszKQSTsFbH8YgnpfmTSfWx73G'
+      const pool = await centrifuge.pool(anemoyPoolId, anemoyMetadataHash)
       const reports = new Reports(centrifuge, pool)
       let filter: ReportFilter = {
         from: '2024-01-01',
@@ -448,17 +449,19 @@ describe('Reports', () => {
   describe('asset list report', () => {
     it('should fetch asset list report', async () => {
       const anemoyPoolId = '4139607887'
-      const pool = await centrifuge.pool(anemoyPoolId)
+      const anemoyMetadataHash = 'QmTjbzx4mX1A9vRFxzLDZszKQSTsFbH8YgnpfmTSfWx73G'
+      const pool = await centrifuge.pool(anemoyPoolId, anemoyMetadataHash)
       const report = await pool.reports.assetList({
         from: '2024-01-01T22:11:29.776Z',
         to: '2024-01-03T22:11:29.776Z',
       })
       expect(report.length).to.equal(4)
-      expect(report?.[0]?.subtype).to.equal('privateCredit')
+      expect(report?.[0]?.subtype).to.equal('publicCredit')
     })
     it('should filter by status ongoing', async () => {
       const anemoyPoolId = '4139607887'
-      const pool = await centrifuge.pool(anemoyPoolId)
+      const anemoyMetadataHash = 'QmTjbzx4mX1A9vRFxzLDZszKQSTsFbH8YgnpfmTSfWx73G'
+      const pool = await centrifuge.pool(anemoyPoolId, anemoyMetadataHash)
       const report = await pool.reports.assetList({
         status: 'ongoing',
         from: '2024-01-01T00:00:00.000Z',
@@ -468,7 +471,8 @@ describe('Reports', () => {
     })
     it('should filter by status overdue', async () => {
       const anemoyPoolId = '4139607887'
-      const pool = await centrifuge.pool(anemoyPoolId)
+      const anemoyMetadataHash = 'QmTjbzx4mX1A9vRFxzLDZszKQSTsFbH8YgnpfmTSfWx73G'
+      const pool = await centrifuge.pool(anemoyPoolId, anemoyMetadataHash)
       const report = await pool.reports.assetList({
         status: 'overdue',
         from: '2024-01-01T00:00:00.000Z',
