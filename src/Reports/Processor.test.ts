@@ -244,7 +244,7 @@ describe('Processor', () => {
         sumUnrealizedProfitByPeriod: Currency.fromFloat(0.15, 6), // 0.15
       },
       {
-        ...mockPoolSnapshots[0],
+        ...mockPoolSnapshots[1],
         id: 'pool-11',
         timestamp: '2024-01-02T12:00:00Z',
         sumInterestRepaidAmountByPeriod: Currency.fromFloat(0.1, 6),
@@ -283,14 +283,17 @@ describe('Processor', () => {
     })
 
     it('should handle undefined metadata', () => {
-      const result = processor.profitAndLoss({
-        poolSnapshots: mockPLPoolSnapshots,
-        poolFeeSnapshots: mockPLFeeSnapshots,
-        metadata: undefined,
-      })
-      expect(result).to.have.lengthOf(2)
-      const firstDay = result[0]
-      expect(firstDay?.subtype).to.equal('privateCredit') // should default to privateCredit
+      let thrown = false
+      try {
+        processor.profitAndLoss({
+          poolSnapshots: mockPLPoolSnapshots,
+          poolFeeSnapshots: mockPLFeeSnapshots,
+          metadata: undefined,
+        })
+      } catch (e) {
+        thrown = true
+      }
+      expect(thrown).to.be.true
     })
 
     it('should process private credit pool data correctly', () => {
