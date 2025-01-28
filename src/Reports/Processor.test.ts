@@ -145,6 +145,19 @@ describe('Processor', () => {
     it('should return empty array when no snapshots found', () => {
       expect(processor.cashflow({ poolSnapshots: [], poolFeeSnapshots: {}, metadata: undefined })).to.deep.equal([])
     })
+    it('should throw an error if no metadata is passed', () => {
+      let thrown = false
+      try {
+        processor.cashflow({
+          poolSnapshots: mockPoolSnapshots,
+          poolFeeSnapshots: mockPoolFeeSnapshots,
+          metadata: undefined,
+        })
+      } catch (e) {
+        thrown = true
+      }
+      expect(thrown).to.be.true
+    })
 
     it('should aggregate values correctly when grouping by day', () => {
       const result = processor.cashflow(
@@ -244,7 +257,7 @@ describe('Processor', () => {
         sumUnrealizedProfitByPeriod: Currency.fromFloat(0.15, 6), // 0.15
       },
       {
-        ...mockPoolSnapshots[0],
+        ...mockPoolSnapshots[1],
         id: 'pool-11',
         timestamp: '2024-01-02T12:00:00Z',
         sumInterestRepaidAmountByPeriod: Currency.fromFloat(0.1, 6),
@@ -283,14 +296,17 @@ describe('Processor', () => {
     })
 
     it('should handle undefined metadata', () => {
-      const result = processor.profitAndLoss({
-        poolSnapshots: mockPLPoolSnapshots,
-        poolFeeSnapshots: mockPLFeeSnapshots,
-        metadata: undefined,
-      })
-      expect(result).to.have.lengthOf(2)
-      const firstDay = result[0]
-      expect(firstDay?.subtype).to.equal('privateCredit') // should default to privateCredit
+      let thrown = false
+      try {
+        processor.profitAndLoss({
+          poolSnapshots: mockPLPoolSnapshots,
+          poolFeeSnapshots: mockPLFeeSnapshots,
+          metadata: undefined,
+        })
+      } catch (e) {
+        thrown = true
+      }
+      expect(thrown).to.be.true
     })
 
     it('should process private credit pool data correctly', () => {
@@ -620,6 +636,15 @@ describe('Processor', () => {
   describe('asset list processor', () => {
     it('should return empty array when no snapshots found', () => {
       expect(processor.assetList({ assetSnapshots: [], metadata: undefined })).to.deep.equal([])
+    })
+    it('should throw an error if no metadata is passed', () => {
+      let thrown = false
+      try {
+        processor.assetList({ assetSnapshots: mockAssetSnapshots, metadata: undefined })
+      } catch (e) {
+        thrown = true
+      }
+      expect(thrown).to.be.true
     })
     it('should process asset list correctly', () => {
       const result = processor.assetList({ assetSnapshots: mockAssetSnapshots, metadata: mockPoolMetadata })

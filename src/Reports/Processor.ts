@@ -94,6 +94,11 @@ export class Processor {
    */
   cashflow(data: CashflowData, filter?: Omit<ReportFilter, 'to' | 'from'>): CashflowReport[] {
     if (!data.poolSnapshots?.length) return []
+    if (!data.metadata) {
+      throw new Error(
+        'Provide the correct metadataHash to centrifuge.pool(<poolId>, <metadataHash>).reports.cashflow()'
+      )
+    }
     const subtype = data.metadata?.pool.asset.class === 'Public credit' ? 'publicCredit' : 'privateCredit'
     const items: CashflowReport[] = data.poolSnapshots.map((day) => {
       const poolFees =
@@ -142,6 +147,12 @@ export class Processor {
    */
   profitAndLoss(data: ProfitAndLossData, filter?: Omit<ReportFilter, 'to' | 'from'>): ProfitAndLossReport[] {
     if (!data.poolSnapshots?.length) return []
+    // Check if the metadata tranches match the pool snapshots tranches to verify the correct metadataHash is provided
+    if (Object.keys(data.metadata?.tranches ?? {})[0] !== data.poolSnapshots[0]?.tranches[0]?.split('-')[1]) {
+      throw new Error(
+        'Provide the correct metadataHash to centrifuge.pool(<poolId>, <metadataHash>).reports.profitAndLoss()'
+      )
+    }
     const items: ProfitAndLossReport[] = data.poolSnapshots.map((day) => {
       const subtype = data.metadata?.pool.asset.class === 'Public credit' ? 'publicCredit' : 'privateCredit'
       const profitAndLossFromAsset =
@@ -350,6 +361,11 @@ export class Processor {
 
   assetList(data: AssetListData, filter?: Omit<AssetListReportFilter, 'to' | 'from'>): AssetListReport[] {
     if (!data.assetSnapshots?.length) return []
+    if (!data.metadata) {
+      throw new Error(
+        'Provide the correct metadataHash to centrifuge.pool(<poolId>, <metadataHash>).reports.assetList()'
+      )
+    }
     return data.assetSnapshots
       .filter((snapshot) => {
         if (snapshot.valuationMethod?.toLowerCase() === 'cash') return false

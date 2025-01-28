@@ -192,13 +192,13 @@ export class Reports extends Entity {
               )
             )
           case 'investorTransactions':
-            return combineLatest([investorTransactions$, metadata$]).pipe(
+            return combineLatest([investorTransactions$]).pipe(
               map(
                 ([investorTransactions]) => processor.investorTransactions({ investorTransactions }, restFilter) as T[]
               )
             )
           case 'assetTransactions':
-            return combineLatest([assetTransactions$, metadata$]).pipe(
+            return combineLatest([assetTransactions$]).pipe(
               map(([assetTransactions]) => processor.assetTransactions({ assetTransactions }, restFilter) as T[])
             )
           case 'feeTransactions':
