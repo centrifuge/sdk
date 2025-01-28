@@ -253,6 +253,49 @@ describe('Reports', () => {
       expect(report4.length).to.equal(1)
       expect(report4?.[0]?.timestamp.slice(0, 10)).to.equal('2024-06-30')
     })
+    it('should retrieve monthly data starting with Jan 2024', async () => {
+      const anemoyPoolId = '4139607887'
+      const metadataHash = 'QmXEdkcbnvvkFakMwxoy2UbxQzg4Q5nLXVZsHQDhDVRarC'
+      const pool = await centrifuge.pool(anemoyPoolId, metadataHash)
+      const report = await pool.reports.profitAndLoss({
+        from: '2024-01-11',
+        to: '2025-01-28',
+        groupBy: 'month',
+      })
+      expect(report.length).to.equal(13)
+      expect(report[0]?.timestamp.slice(0, 7)).to.equal('2024-01')
+      expect(report[report.length - 1]?.timestamp.slice(0, 7)).to.equal('2025-01')
+      expect(report[report.length - 2]?.timestamp.slice(0, 7)).to.equal('2024-12')
+    })
+    it('should retrieve quarterly data starting with Q3 2023', async () => {
+      const anemoyPoolId = '4139607887'
+      const metadataHash = 'QmXEdkcbnvvkFakMwxoy2UbxQzg4Q5nLXVZsHQDhDVRarC'
+      const pool = await centrifuge.pool(anemoyPoolId, metadataHash)
+      const report = await pool.reports.profitAndLoss({
+        from: '2023-01-01',
+        to: '2025-01-01',
+        groupBy: 'quarter',
+      })
+      expect(report.length).to.equal(7)
+      expect(report[0]?.timestamp.slice(0, 7)).to.equal('2023-09')
+    })
+    it('should retrieve yearly data starting in Sept 2023', async () => {
+      const anemoyPoolId = '4139607887'
+      const metadataHash = 'QmXEdkcbnvvkFakMwxoy2UbxQzg4Q5nLXVZsHQDhDVRarC'
+      const pool = await centrifuge.pool(anemoyPoolId, metadataHash)
+      const report = await pool.reports.profitAndLoss({
+        from: '2023-09-18',
+        to: '2025-01-01',
+        groupBy: 'year',
+      })
+      expect(report.length).to.equal(3)
+      expect(report[0]?.timestamp.slice(0, 10)).to.equal('2023-12-31')
+      expect(report[0]?.totalProfitAndLoss.toBigInt()).to.equal(0n)
+      expect(report[1]?.timestamp.slice(0, 10)).to.equal('2024-12-31')
+      expect(report[1]?.totalProfitAndLoss.toBigInt()).to.equal(170194942096n)
+      expect(report[2]?.timestamp.slice(0, 10)).to.equal('2025-01-01')
+      expect(report[2]?.totalProfitAndLoss.toBigInt()).to.equal(5003078970n)
+    })
   })
 
   describe('investor transactions report', () => {
