@@ -1,4 +1,4 @@
-import { Currency } from '../utils/BigInt.js'
+import { Currency, Token } from '../utils/BigInt.js'
 
 export type TrancheCurrencyBalanceFilter =
   | Partial<Record<keyof SubqueryTrancheBalances['trancheBalances']['nodes'][0], any>>
@@ -26,9 +26,9 @@ export function trancheCurrencyBalancePostProcessor(data: SubqueryTrancheBalance
         currencyDecimals
       ),
       pendingInvestCurrency: new Currency(balance.pendingInvestCurrency, currencyDecimals),
-      claimableTrancheTokens: new Currency(balance.claimableTrancheTokens, currencyDecimals),
-      sumClaimedTrancheTokens: new Currency(balance.sumClaimedTrancheTokens, currencyDecimals),
-      pendingRedeemTrancheTokens: new Currency(balance.pendingRedeemTrancheTokens, currencyDecimals),
+      claimableTrancheTokens: new Token(balance.claimableTrancheTokens, currencyDecimals),
+      sumClaimedTrancheTokens: new Token(balance.sumClaimedTrancheTokens, currencyDecimals),
+      pendingRedeemTrancheTokens: new Token(balance.pendingRedeemTrancheTokens, currencyDecimals),
       claimableCurrency: new Currency(balance.claimableCurrency, currencyDecimals),
       sumClaimedCurrency: new Currency(balance.sumClaimedCurrency, currencyDecimals),
     } satisfies TrancheCurrencyBalance

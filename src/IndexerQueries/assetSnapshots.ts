@@ -1,4 +1,4 @@
-import { Currency, Rate } from '../utils/BigInt.js'
+import { Currency, Price, Rate } from '../utils/BigInt.js'
 
 export type AssetSnapshotFilter = Partial<Record<keyof SubqueryAssetSnapshots['assetSnapshots']['nodes'][0], any>>
 
@@ -82,12 +82,12 @@ export const assetSnapshotsPostProcess = (data: SubqueryAssetSnapshots): AssetSn
         ? new Currency(tx.asset?.collateralValue, currencyDecimals)
         : undefined,
       currentPrice: tx.currentPrice
-        ? new Currency(tx.currentPrice, currencyDecimals).mul(10n ** 18n)
+        ? new Currency(tx.currentPrice, currencyDecimals)
         : new Currency(0n, currencyDecimals),
       discountRate: tx.asset.discountRate ? new Rate(tx.asset.discountRate) : undefined,
       faceValue:
         tx.asset.notional && tx.outstandingQuantity
-          ? new Currency(tx.asset.notional, currencyDecimals).mul(BigInt(tx.outstandingQuantity))
+          ? new Currency(tx.asset.notional, currencyDecimals).mul(new Price(tx.outstandingQuantity).toDecimal())
           : undefined,
       lossGivenDefault: tx.asset.lossGivenDefault ? new Rate(tx.asset.lossGivenDefault) : undefined,
       name: tx.asset.name,

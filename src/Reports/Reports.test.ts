@@ -2,7 +2,7 @@ import { expect } from 'chai'
 import { Centrifuge } from '../Centrifuge.js'
 import { spy } from 'sinon'
 import { Reports } from '../Reports/index.js'
-import { ProfitAndLossReportPublicCredit, ReportFilter } from '../types/reports.js'
+import { AssetListReportPublicCredit, ProfitAndLossReportPublicCredit, ReportFilter } from '../types/reports.js'
 import { processor } from './Processor.js'
 
 describe('Reports', () => {
@@ -121,6 +121,18 @@ describe('Reports', () => {
       const report4 = await reports.balanceSheet(filter)
       expect(report4.length).to.equal(1)
       expect(report4?.[0]?.timestamp.slice(0, 10)).to.equal('2024-06-30')
+    })
+    it('should check the total capital and tranche value with production data', async () => {
+      const anemoyPoolId = '4139607887'
+      const anemoyMetadataHash = 'QmTjbzx4mX1A9vRFxzLDZszKQSTsFbH8YgnpfmTSfWx73G'
+      const pool = await centrifuge.pool(anemoyPoolId, anemoyMetadataHash)
+      const report = await pool.reports.balanceSheet({
+        from: '2024-01-31',
+        to: '2024-01-31',
+        groupBy: 'day',
+      })
+      expect(report[0]?.totalCapital?.toString()).to.equal('4605474877478')
+      expect(report[0]?.tranches?.[0]?.trancheValue?.toString()).to.equal('4605474877478')
     })
   })
 
@@ -480,6 +492,17 @@ describe('Reports', () => {
       })
       expect(report.length).to.equal(6)
     })
+    it('should check marketPrice and faceValue with production data', async () => {
+      const anemoyPoolId = '4139607887'
+      const anemoyMetadataHash = 'QmTjbzx4mX1A9vRFxzLDZszKQSTsFbH8YgnpfmTSfWx73G'
+      const pool = await centrifuge.pool(anemoyPoolId, anemoyMetadataHash)
+      const report = await pool.reports.assetList({
+        from: '2024-01-01T00:00:00.000Z',
+        to: '2024-01-06T23:59:59.999Z',
+      })
+      expect((report[0] as AssetListReportPublicCredit).currentPrice?.toDecimal().toString()).to.equal('97.728111')
+      expect((report[0] as AssetListReportPublicCredit).faceValue?.toDecimal().toString()).to.equal('512000')
+    })
   })
 
   describe('investor list report', () => {
@@ -524,7 +547,21 @@ describe('Reports', () => {
       })
       expect(report.length).to.equal(1)
     })
+    it('should check pool percentage with production data', async () => {
+      const anemoyPoolId = '4139607887'
+      const pool = await centrifuge.pool(anemoyPoolId)
+      const report = await pool.reports.investorList({
+        from: '2024-01-01',
+        to: '2024-01-01',
+      })
+      expect(report.length).to.equal(8)
+      const investorWithMaxPercentage = report.find(
+        (investor) => investor.evmAddress === '0x6f94eb271ceb5a33aeab5bb8b8edea8ecf35ee86'
+      )
+      expect(investorWithMaxPercentage?.poolPercentage.toDecimal().toString()).to.equal('0.78048089390228782509666569')
+    })
   })
+
   describe('orders list report', () => {
     it('should fetch orders list report', async () => {
       const anemoyPoolId = '4139607887'

@@ -65,7 +65,7 @@ export class Processor {
               tokenId: tranche.trancheId,
               tokenSupply: tranche.tokenSupply,
               tokenPrice: tranche.price,
-              trancheValue: tranche.tokenSupply.mul(tranche?.price?.toBigInt() ?? 0n),
+              trancheValue: tranche.tokenSupply.mul(tranche?.price?.toDecimal() ?? 0n),
             }))
           : [
               {
@@ -78,7 +78,9 @@ export class Processor {
               },
             ],
         totalCapital: tranches.reduce(
-          (acc, curr) => acc.add(curr.tokenSupply.mul(curr?.price?.toBigInt() ?? 0n).toBigInt()),
+          (acc, curr) => {
+            return acc.add(curr.tokenSupply.mul(curr?.price?.toDecimal()))
+          },
           new Currency(0, snapshot.poolCurrency.decimals)
         ),
       }
@@ -331,6 +333,7 @@ export class Processor {
           timestamp: tx.timestamp,
           feeId: tx.feeId,
           amount: tx.amount,
+          transactionType: tx.type,
         })
       }
       return acc
@@ -353,6 +356,7 @@ export class Processor {
         yield7daysAnnualized: snapshot.yield7DaysAnnualized,
         yield30daysAnnualized: snapshot.yield30DaysAnnualized,
         yield90daysAnnualized: snapshot.yield90DaysAnnualized,
+        yieldSinceInception: snapshot.yieldSinceInception,
       })),
     }))
 
@@ -435,7 +439,6 @@ export class Processor {
 
     const filterNetwork = filter?.network === 'all' ? null : filter?.network
     const filterAddress = filter?.address?.toLowerCase()
-
     return data.trancheCurrencyBalance
       .filter((investor) => {
         const networkMatches = !filterNetwork || filterNetwork === investor.chainId
@@ -450,16 +453,22 @@ export class Processor {
         return networkMatches && addressMatches && trancheMatches && (hasPosition || filter?.address)
       })
       .map((balance) => {
-        const totalPositions = data.trancheCurrencyBalance.reduce((sum, investor) => {
-          return sum.add(investor.balance).add(investor.claimableTrancheTokens)
-        }, new Currency(0))
+        const totalPositions = data.trancheCurrencyBalance.reduce(
+          (sum, investor) => {
+            return sum.add(investor.balance).add(investor.claimableTrancheTokens)
+          },
+          new Currency(0, balance.balance.decimals)
+        )
+
         return {
           type: 'investorList',
           chainId: balance.chainId,
           accountId: balance.accountId,
           evmAddress: balance.evmAddress,
           position: balance.balance.add(balance.claimableTrancheTokens),
-          poolPercentage: new Rate(balance.balance.add(balance.claimableTrancheTokens.div(totalPositions)).toBigInt()),
+          poolPercentage: Rate.fromPercent(
+            balance.balance.toDecimal().div(totalPositions.toDecimal()).mul(100).toString()
+          ),
           pendingInvest: balance.pendingInvestCurrency,
           pendingRedeem: balance.pendingRedeemTrancheTokens,
           trancheId: balance.trancheId,
