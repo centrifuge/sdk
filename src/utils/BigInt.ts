@@ -1,4 +1,4 @@
-import { Dec, Decimal, type Numeric } from './decimal.js'
+import { Dec, Decimal, type Numeric, DecimalJsType } from './decimal.js'
 export abstract class BigIntWrapper {
   protected value: bigint
 
@@ -69,12 +69,12 @@ export class DecimalWrapper extends BigIntWrapper {
    *
    * @internal
    */
-  _mul<T>(value: bigint | (T extends DecimalWrapper ? T : never)): T {
+  _mul<T>(value: bigint | DecimalJsType | (T extends DecimalWrapper ? T : never)): T {
     let val: any
     if (typeof value === 'bigint') {
       val = Dec(value.toString())
     } else if (value instanceof Decimal) {
-      val = value
+      val = value.mul(Dec(10).pow(this.decimals))
     } else {
       val = value.toDecimal().mul(Dec(10).pow(this.decimals))
     }
@@ -82,12 +82,18 @@ export class DecimalWrapper extends BigIntWrapper {
   }
 
   /** @internal */
-  _div<T>(value: bigint | (T extends BigIntWrapper ? T : never)): T {
+  _div<T>(value: bigint | DecimalJsType | (T extends BigIntWrapper ? T : never)): T {
     if (!value) {
       throw new Error(`Division by zero`)
     }
     if (typeof value === 'bigint') {
       return new (this.constructor as any)(this.value / value, this.decimals)
+    }
+    if (value instanceof Decimal) {
+      return new (this.constructor as any)(
+        this.value / BigInt(value.mul(Dec(10).pow(this.decimals)).toDecimalPlaces(0).toString()),
+        this.decimals
+      )
     }
     return new (this.constructor as any)(this.value / value.toBigInt(), this.decimals)
   }
@@ -136,11 +142,11 @@ export class Currency extends DecimalWrapper {
     return this._sub<Currency>(value)
   }
 
-  mul(value: bigint | Currency | Price) {
+  mul(value: bigint | Currency | Price | DecimalJsType) {
     return this._mul<Currency>(value)
   }
 
-  div(value: bigint | Currency) {
+  div(value: bigint | Currency | DecimalJsType) {
     return this._div<Currency>(value)
   }
 }
@@ -161,7 +167,7 @@ export class Token extends Currency {
     return this._sub<Token>(value)
   }
 
-  override mul(value: bigint | Token) {
+  override mul(value: bigint | Token | DecimalJsType) {
     return this._mul<Token>(value)
   }
 
@@ -231,7 +237,7 @@ export class Price extends DecimalWrapper {
     return this._sub<Price>(value)
   }
 
-  mul(value: bigint | Price) {
+  mul(value: bigint | Price | DecimalJsType) {
     return this._mul<Price>(value)
   }
 
