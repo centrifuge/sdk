@@ -45,7 +45,7 @@ export type SubqueryPoolFeeTransaction = {
 
 export function poolFeeTransactionPostProcess(data: SubqueryPoolFeeTransaction): PoolFeeTransaction[] {
   return data.poolFeeTransactions.nodes.map((tx) => ({
-    feeId: tx.id,
+    feeId: tx.poolFee.feeId,
     type: tx.type as PoolFeeTransaction['type'],
     timestamp: tx.timestamp,
     blockNumber: tx.blockNumber,

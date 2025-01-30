@@ -1,4 +1,4 @@
-import DecimalLight, { type Numeric } from 'decimal.js-light'
+import DecimalLight, { type Numeric, type Decimal as DecimalJsType } from 'decimal.js-light'
 
 const Decimal = DecimalLight.default || DecimalLight
 
@@ -14,4 +14,4 @@ export function Dec(value: Numeric) {
 }
 
 export type { Numeric }
-export { Decimal }
+export { Decimal, DecimalJsType }

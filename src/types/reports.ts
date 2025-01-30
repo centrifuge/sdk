@@ -206,6 +206,7 @@ export type FeeTransactionReport = {
   timestamp: string
   feeId: string
   amount: Currency | null
+  transactionType: PoolFeeTransaction['type']
 }
 
 export type FeeTransactionReportFilter = {
@@ -235,6 +236,7 @@ export type TokenPriceReport = {
     yield7daysAnnualized: Perquintill | null
     yield30daysAnnualized: Perquintill | null
     yield90daysAnnualized: Perquintill | null
+    yieldSinceInception: Perquintill | null
   }[]
 }
 
