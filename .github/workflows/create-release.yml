@@ -108,4 +108,6 @@ jobs:
               --generate-notes \
               --target "${GITHUB_SHA}" \
               --prerelease
+          elif [ "$RELEASE_TYPE" = "no-release" ]; then
+            echo "::notice::PR is not flagged for release, skipping release creation"
           fi
