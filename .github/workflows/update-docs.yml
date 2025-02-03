@@ -1,43 +1,18 @@
-# This workflow will update the docs in the sdk-docs repo
-
-name: Update Docs
+name: Trigger Docs update
 
 on:
   push:
     branches:
-      - none
+      - main
 
 jobs:
-  update-docs:
+  trigger:
     runs-on: ubuntu-latest
+
     steps:
-      - name: Checkout repo
-        uses: actions/checkout@v4
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: '20'
-
-      - name: Setup Yarn
+      - name: Send Trigger to Repo B
         run: |
-          corepack enable
-          corepack prepare yarn@4.5.0 --activate
-
-      - name: Install dependencies
-        run: yarn install
-
-      - name: Run gen:docs command
-        run: yarn gen:docs
-
-      - name: Install dependencies
-        run: yarn add simple-git
-
-      - name: Setup GitHub CLI
-        run: |
-          gh auth login --with-token <<< "${{ secrets.GITHUB_TOKEN }}"
-
-      - name: Update docs
-        env:
-          PAT_TOKEN: ${{ secrets.PAT_TOKEN }}
-        run: node ./.github/ci-scripts/update-sdk-docs.cjs
+          curl -X POST -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
+          -H "Accept: application/vnd.github.v3+json" \
+          https://api.github.com/repos/organization/sdk-docs/dispatches \
+          -d '{"event_type": "trigger-from-apps-repo"}'
