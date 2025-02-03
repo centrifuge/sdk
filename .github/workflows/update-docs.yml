@@ -10,9 +10,11 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Send Trigger to Repo B
+      - name: Send Trigger to sdk-docs repo
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          curl -X POST -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
+          curl -X POST -H "Authorization: Bearer ${{ env.GITHUB_TOKEN }}" \
           -H "Accept: application/vnd.github.v3+json" \
           https://api.github.com/repos/organization/sdk-docs/dispatches \
-          -d '{"event_type": "trigger-from-apps-repo"}'
+          -d '{"event_type": "trigger-docs-update", "client_payload": {"secret": "${{ secrets.WEBHOOK_SECRET }}"}}'
