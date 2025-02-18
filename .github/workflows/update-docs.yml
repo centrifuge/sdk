@@ -3,7 +3,7 @@ name: Trigger Docs update
 on:
   push:
     branches:
-      - main
+      - trigger-docs
 
 jobs:
   trigger:
@@ -16,5 +16,5 @@ jobs:
         run: |
           curl -X POST -H "Authorization: Bearer ${{ env.GITHUB_TOKEN }}" \
           -H "Accept: application/vnd.github.v3+json" \
-          https://api.github.com/repos/organization/documentation/dispatches \
+          https://api.github.com/repos/centrifuge/documentation/dispatches \
           -d '{"event_type": "trigger-docs-update", "client_payload": {"secret": "${{ secrets.WEBHOOK_SECRET }}"}}'
