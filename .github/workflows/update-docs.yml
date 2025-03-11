@@ -47,10 +47,32 @@ jobs:
           
           echo "token=$access_token" >> $GITHUB_OUTPUT
           
+      - name: Debug App Permissions
+        run: |
+          echo "Checking app permissions..."
+          curl -s -H "Authorization: Bearer ${{ steps.get-access-token.outputs.token }}" \
+            -H "Accept: application/vnd.github.v3+json" \
+            https://api.github.com/installation/repositories | jq '.repositories[] | {name: .name, permissions: .permissions}'
+          
       - name: Send Trigger to docs repo
         run: |
-          curl -X POST \
+          echo "Sending repository dispatch event to centrifuge/documentation..."
+          
+          response=$(curl -s -X POST \
             -H "Authorization: Bearer ${{ steps.get-access-token.outputs.token }}" \
             -H "Accept: application/vnd.github.v3+json" \
+            -H "Content-Type: application/json" \
             https://api.github.com/repos/centrifuge/documentation/dispatches \
-            -d '{"event_type": "trigger-docs-update", "client_payload": {"secret": "${{ secrets.WEBHOOK_SECRET }}"}}'
+            -d '{"event_type": "trigger-docs-update", "client_payload": {"secret": "${{ secrets.WEBHOOK_SECRET }}"}}' \
+            -w "\n%{http_code}")
+          
+          status_code=$(echo "$response" | tail -n1)
+          response_body=$(echo "$response" | sed '$d')
+          
+          echo "Status code: $status_code"
+          if [ "$status_code" -ne 204 ]; then
+            echo "Error response: $response_body"
+            exit 1
+          else
+            echo "Repository dispatch sent successfully!"
+          fi
