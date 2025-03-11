@@ -4,6 +4,9 @@ on:
   push:
     branches:
       - trigger-docs
+  pull_request:
+    paths:
+      - '.github/workflows/update-docs.yml'
 
 jobs:
   trigger:
