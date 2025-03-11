@@ -24,14 +24,30 @@ jobs:
             token = JWT.encode(payload, private_key, "RS256")
             puts token
           ')
-          echo "::set-output name=token::$jwt"
+          echo "token=$jwt" >> $GITHUB_OUTPUT
         env:
           APP_ID: ${{ secrets.APP_ID }}
           APP_PRIVATE_KEY: ${{ secrets.APP_PRIVATE_KEY }}
           
-      - name: Send Trigger to sdk-docs repo
+      - name: Get Installation Access Token
+        id: get-access-token
         run: |
-          curl -X POST -H "Authorization: Bearer ${{ steps.generate-token.outputs.token }}" \
-          -H "Accept: application/vnd.github.v3+json" \
-          https://api.github.com/repos/centrifuge/documentation/dispatches \
-          -d '{"event_type": "trigger-docs-update", "client_payload": {"secret": "${{ secrets.WEBHOOK_SECRET }}"}}'
+          installation_id=$(curl -s -X GET \
+            -H "Authorization: Bearer ${{ steps.generate-token.outputs.token }}" \
+            -H "Accept: application/vnd.github.v3+json" \
+            "https://api.github.com/app/installations" | jq '.[] | select(.account.login=="centrifuge") | .id')
+          
+          access_token=$(curl -s -X POST \
+            -H "Authorization: Bearer ${{ steps.generate-token.outputs.token }}" \
+            -H "Accept: application/vnd.github.v3+json" \
+            "https://api.github.com/app/installations/$installation_id/access_tokens" | jq -r '.token')
+          
+          echo "token=$access_token" >> $GITHUB_OUTPUT
+          
+      - name: Send Trigger to docs repo
+        run: |
+          curl -X POST \
+            -H "Authorization: Bearer ${{ steps.get-access-token.outputs.token }}" \
+            -H "Accept: application/vnd.github.v3+json" \
+            https://api.github.com/repos/centrifuge/documentation/dispatches \
+            -d '{"event_type": "trigger-docs-update", "client_payload": {"secret": "${{ secrets.WEBHOOK_SECRET }}"}}'
