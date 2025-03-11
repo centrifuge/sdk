@@ -10,11 +10,28 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Send Trigger to sdk-docs repo
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Generate GitHub App token
+        id: generate-token
         run: |
-          curl -X POST -H "Authorization: Bearer ${{ env.GITHUB_TOKEN }}" \
+          echo "Generating GitHub App token..."
+          jwt=$(ruby -r openssl -r jwt -e '
+            payload = {
+              iat: Time.now.to_i,
+              exp: Time.now.to_i + 600,
+              iss: ENV["APP_ID"]
+            }
+            private_key = OpenSSL::PKey::RSA.new(ENV["APP_PRIVATE_KEY"])
+            token = JWT.encode(payload, private_key, "RS256")
+            puts token
+          ')
+          echo "::set-output name=token::$jwt"
+        env:
+          APP_ID: ${{ secrets.APP_ID }}
+          APP_PRIVATE_KEY: ${{ secrets.APP_PRIVATE_KEY }}
+          
+      - name: Send Trigger to sdk-docs repo
+        run: |
+          curl -X POST -H "Authorization: Bearer ${{ steps.generate-token.outputs.token }}" \
           -H "Accept: application/vnd.github.v3+json" \
           https://api.github.com/repos/centrifuge/documentation/dispatches \
           -d '{"event_type": "trigger-docs-update", "client_payload": {"secret": "${{ secrets.WEBHOOK_SECRET }}"}}'
