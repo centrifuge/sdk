@@ -67,6 +67,7 @@ const envConfig = {
 
 const defaultConfig = {
   environment: 'mainnet',
+  cache: true,
 } satisfies UserProvidedConfig
 
 export class Centrifuge {
@@ -409,14 +410,15 @@ export class Centrifuge {
    * @internal
    */
   _query<T>(keys: any[] | null, observableCallback: () => Observable<T>, options?: CentrifugeQueryOptions): Query<T> {
+    const cache = options?.cache !== false && this.#config.cache !== false
     function get() {
       const sharedSubject = new Subject<Observable<T>>()
       function createShared(): Observable<T> {
         const $shared = observableCallback().pipe(
           keys
             ? shareReplayWithDelayedReset({
-                bufferSize: (options?.cache ?? true) ? 1 : 0,
-                resetDelay: (options?.cache === false ? 0 : (options?.observableCacheTime ?? 60)) * 1000,
+                bufferSize: cache ? 1 : 0,
+                resetDelay: cache ? (options?.observableCacheTime ?? 60) * 1000 : 0,
                 windowTime: (options?.valueCacheTime ?? Infinity) * 1000,
               })
             : map((val) => val)
