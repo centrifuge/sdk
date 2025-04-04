@@ -1,5 +1,5 @@
-import { AssetTransaction, AssetType, AssetTransactionType } from '../../IndexerQueries/assetTransactions.js'
-import { Currency, Price } from '../../utils/BigInt.js'
+import { AssetTransaction, AssetTransactionType, AssetType } from '../../entities/IndexerQueries/assetTransactions.js'
+import { Balance, Price } from '../../utils/BigInt.js'
 
 export const mockAssetTransactions: AssetTransaction[] = [
   {
@@ -9,14 +9,14 @@ export const mockAssetTransactions: AssetTransaction[] = [
     accountId: 'account-1',
     epochId: 'epoch-1',
     type: 'BORROWED' as AssetTransactionType,
-    amount: Currency.fromFloat(100000, 6), // 100k
+    amount: Balance.fromFloat(100000, 6), // 100k
     settlementPrice: new Price(1000000000000000000n), // 1.0
     quantity: '100000',
-    principalAmount: Currency.fromFloat(100000, 6),
-    interestAmount: Currency.fromFloat(0, 6),
+    principalAmount: Balance.fromFloat(100000, 6),
+    interestAmount: Balance.fromFloat(0, 6),
     hash: '0xabc123',
-    realizedProfitFifo: Currency.fromFloat(0, 6),
-    unrealizedProfitAtMarketPrice: Currency.fromFloat(0, 6),
+    realizedProfitFifo: Balance.fromFloat(0, 6),
+    unrealizedProfitAtMarketPrice: Balance.fromFloat(0, 6),
     asset: {
       id: 'poolId-1',
       metadata: 'Asset 1 metadata',
@@ -31,13 +31,13 @@ export const mockAssetTransactions: AssetTransaction[] = [
     accountId: 'account-1',
     epochId: 'epoch-1',
     type: 'REPAID' as AssetTransactionType,
-    amount: Currency.fromFloat(20000, 6), // 20k
+    amount: Balance.fromFloat(20000, 6), // 20k
     settlementPrice: new Price(1000000000000000000n), // 1.0
     quantity: '20000',
-    principalAmount: Currency.fromFloat(19000, 6),
-    interestAmount: Currency.fromFloat(1000, 6),
+    principalAmount: Balance.fromFloat(19000, 6),
+    interestAmount: Balance.fromFloat(1000, 6),
     hash: '0xdef456',
-    realizedProfitFifo: Currency.fromFloat(1000, 6),
+    realizedProfitFifo: Balance.fromFloat(1000, 6),
     unrealizedProfitAtMarketPrice: undefined,
     asset: {
       id: 'poolId-1',
@@ -59,7 +59,7 @@ export const mockAssetTransactions: AssetTransaction[] = [
     accountId: 'account-1',
     epochId: 'epoch-1',
     type: 'CASH_TRANSFER' as AssetTransactionType,
-    amount: Currency.fromFloat(5000, 6),
+    amount: Balance.fromFloat(5000, 6),
     settlementPrice: null,
     quantity: null,
     principalAmount: undefined,

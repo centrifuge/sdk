@@ -1,7 +1,7 @@
 import { defer } from 'rxjs'
 import { ABI } from './abi/index.js'
 import type { Centrifuge } from './Centrifuge.js'
-import { Entity } from './Entity.js'
+import { Entity } from './entities/Entity.js'
 import type { HexString } from './types/index.js'
 import { repeatOnEvents } from './utils/rx.js'
 
@@ -54,7 +54,7 @@ export class Account extends Entity {
           address: tUSD,
           abi: ABI.Currency,
           functionName: 'transfer',
-          args: [to, amount],
+          args: [to as any, amount],
         }),
       this.chainId
     )

@@ -68,28 +68,17 @@ export const mockPoolMetadata: PoolMetadata = {
     poolStructure: 'Fake Structure',
     poolRatings: [],
   },
-  pod: {
-    indexer: 'https://fake-pod.com',
-  },
-  tranches: {
+  shareClasses: {
     '0x6756e091ae798a8e51e12e27ee8facdf': {
       minInitialInvestment: '25000000000',
-      targetAPY: '16',
+      targetApy: 16,
     },
     '0xda64aae939e4d3a981004619f1709d8f': {
       minInitialInvestment: '5000000000',
     },
   },
-  adminMultisig: {
-    signers: [
-      '5F3quVAnmP1uc2v5zLyXLH3JxNLzXeHXDg5j9ScrvbvHGuJW',
-      '5FpnSw6TPjnebvxiQfainnoS5k8gC9h7F2AyQmbVyy6RhM9E',
-      '5GqHmRkfWnKrCgoR2yfdqgsgvQj9X4rfMb7jgP4Lca1f39s9',
-    ],
-    threshold: 2,
-  },
   onboarding: {
-    tranches: {
+    shareClasses: {
       '0x6756e091ae798a8e51e12e27ee8facdf': {
         agreement: {
           uri: 'https://centrifuge.mypinata.cloud/ipfs/QmNbrzAHKKYtPCoY6g4WfxXnuWRdMdWRXm64LfQz5sYHAw',
@@ -107,7 +96,6 @@ export const mockPoolMetadata: PoolMetadata = {
     },
     kycRestrictedCountries: [],
     kybRestrictedCountries: [],
-    podReadAccess: false,
     taxInfoRequired: true,
   },
   loanTemplates: [

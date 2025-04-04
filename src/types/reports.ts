@@ -1,14 +1,17 @@
-import { AssetSnapshot } from '../IndexerQueries/assetSnapshots.js'
-import { AssetTransaction, AssetTransactionType } from '../IndexerQueries/assetTransactions.js'
-import { Epoch } from '../IndexerQueries/epochs.js'
-import { InvestorTransaction, SubqueryInvestorTransactionType } from '../IndexerQueries/investorTransactions.js'
-import { PoolFeeSnapshotsByDate } from '../IndexerQueries/poolFeeSnapshots.js'
-import { PoolFeeTransaction } from '../IndexerQueries/poolFeeTransactions.js'
-import { PoolSnapshot } from '../IndexerQueries/poolSnapshots.js'
-import { TrancheCurrencyBalance } from '../IndexerQueries/trancheCurrencyBalance.js'
-import { TrancheSnapshotsByDate } from '../IndexerQueries/trancheSnapshots.js'
+import { AssetSnapshot } from '../entities/IndexerQueries/assetSnapshots.js'
+import { AssetTransaction, AssetTransactionType } from '../entities/IndexerQueries/assetTransactions.js'
+import { Epoch } from '../entities/IndexerQueries/epochs.js'
+import {
+  InvestorTransaction,
+  SubqueryInvestorTransactionType,
+} from '../entities/IndexerQueries/investorTransactions.js'
+import { PoolFeeSnapshotsByDate } from '../entities/IndexerQueries/poolFeeSnapshots.js'
+import { PoolFeeTransaction } from '../entities/IndexerQueries/poolFeeTransactions.js'
+import { PoolSnapshot } from '../entities/IndexerQueries/poolSnapshots.js'
+import { TrancheCurrencyBalance } from '../entities/IndexerQueries/trancheCurrencyBalance.js'
+import { TrancheSnapshotsByDate } from '../entities/IndexerQueries/trancheSnapshots.js'
 import { PoolMetadata } from '../types/poolMetadata.js'
-import { Currency, Perquintill, Price, Rate, Token } from '../utils/BigInt.js'
+import { Balance, Perquintill, Price, Rate } from '../utils/BigInt.js'
 import { GroupBy } from '../utils/date.js'
 
 export type ReportFilter = {
@@ -38,20 +41,20 @@ export type DataReport =
 export type BalanceSheetReport = {
   type: 'balanceSheet'
   timestamp: string
-  assetValuation: Currency
-  onchainReserve: Currency
-  offchainCash: Currency
-  accruedFees: Currency
-  netAssetValue: Currency
+  assetValuation: Balance
+  onchainReserve: Balance
+  offchainCash: Balance
+  accruedFees: Balance
+  netAssetValue: Balance
   tranches?: {
     name: string
     timestamp: string
     tokenId: string
-    tokenSupply: Currency
+    tokenSupply: Balance
     tokenPrice: Price | null
-    trancheValue: Currency
+    trancheValue: Balance
   }[]
-  totalCapital?: Currency
+  totalCapital?: Balance
 }
 
 export type BalanceSheetData = {
@@ -65,27 +68,27 @@ export type BalanceSheetData = {
 export type CashflowReportBase = {
   type: 'cashflow'
   timestamp: string
-  principalPayments: Currency
-  interestPayments: Currency
-  netCashflowAsset: Currency // sum of cashflow from assetAcquisitions, principalPayments, interestPayments, realizedPL
-  fees: { name: string; amount: Currency; timestamp: string; feeId: string }[]
-  netCashflowAfterFees: Currency
-  investments: Currency
-  redemptions: Currency
-  activitiesCashflow: Currency // sum of cashflow from investments and redemptions
-  totalCashflow: Currency // sum of netCashflowAsset, netCashflowAfterFees and activitiesCashflow
-  endCashBalance: { balance: Currency }
+  principalPayments: Balance
+  interestPayments: Balance
+  netCashflowAsset: Balance // sum of cashflow from assetAcquisitions, principalPayments, interestPayments, realizedPL
+  fees: { name: string; amount: Balance; timestamp: string; feeId: string }[]
+  netCashflowAfterFees: Balance
+  investments: Balance
+  redemptions: Balance
+  activitiesCashflow: Balance // sum of cashflow from investments and redemptions
+  totalCashflow: Balance // sum of netCashflowAsset, netCashflowAfterFees and activitiesCashflow
+  endCashBalance: { balance: Balance }
 }
 
 export type CashflowReportPublicCredit = CashflowReportBase & {
   subtype: 'publicCredit'
-  realizedPL?: Currency
-  assetPurchases?: Currency
+  realizedPL?: Balance
+  assetPurchases?: Balance
 }
 
 export type CashflowReportPrivateCredit = CashflowReportBase & {
   subtype: 'privateCredit'
-  assetFinancing?: Currency
+  assetFinancing?: Balance
 }
 
 export type CashflowReport = CashflowReportPublicCredit | CashflowReportPrivateCredit
@@ -102,23 +105,23 @@ export type CashflowData = {
 export type ProfitAndLossReportBase = {
   type: 'profitAndLoss'
   timestamp: string
-  profitAndLossFromAsset: Currency
-  interestPayments: Currency
-  otherPayments: Currency
-  totalExpenses: Currency
-  totalProfitAndLoss: Currency
-  fees: { name: string; amount: Currency; timestamp: string; feeId: string }[]
+  profitAndLossFromAsset: Balance
+  interestPayments: Balance
+  otherPayments: Balance
+  totalExpenses: Balance
+  totalProfitAndLoss: Balance
+  fees: { name: string; amount: Balance; timestamp: string; feeId: string }[]
 }
 
 export type ProfitAndLossReportPublicCredit = ProfitAndLossReportBase & {
   subtype: 'publicCredit'
-  totalIncome: Currency
+  totalIncome: Balance
 }
 
 export type ProfitAndLossReportPrivateCredit = ProfitAndLossReportBase & {
   subtype: 'privateCredit'
-  interestAccrued: Currency
-  assetWriteOffs: Currency
+  interestAccrued: Balance
+  assetWriteOffs: Balance
 }
 
 export type ProfitAndLossReport = ProfitAndLossReportPublicCredit | ProfitAndLossReportPrivateCredit
@@ -143,9 +146,9 @@ export type InvestorTransactionsReport = {
   account: string
   epoch: string
   transactionType: SubqueryInvestorTransactionType
-  currencyAmount: Currency
+  currencyAmount: Balance
   trancheTokenId: string
-  trancheTokenAmount: Currency
+  trancheTokenAmount: Balance
   price: Price
   transactionHash: string
 }
@@ -172,7 +175,7 @@ export type AssetTransactionReport = {
   assetId: string
   epoch: string
   transactionType: AssetTransactionType
-  amount: Currency
+  amount: Balance
   transactionHash: string
   fromAsset?: {
     id: string
@@ -202,7 +205,7 @@ export type FeeTransactionReport = {
   type: 'feeTransactions'
   timestamp: string
   feeId: string
-  amount: Currency
+  amount: Balance
 }
 
 export type FeeTransactionReportFilter = {
@@ -224,7 +227,7 @@ export type TokenPriceReport = {
   tranches: {
     id: string
     price: Price
-    supply: Token
+    supply: Balance
     timestamp: string
     yieldMTD: Perquintill | null
     yieldQTD: Perquintill | null
@@ -253,32 +256,32 @@ export type AssetListReportBase = {
   type: 'assetList'
   timestamp: string
   assetId: string
-  presentValue: Currency | undefined
+  presentValue: Balance | undefined
   name: string
 }
 
 export type AssetListReportPublicCredit = {
   subtype: 'publicCredit'
-  faceValue: Currency | undefined
-  outstandingQuantity: Currency | undefined
+  faceValue: Balance | undefined
+  outstandingQuantity: Balance | undefined
   currentPrice: Price | undefined
   maturityDate: string | undefined
-  unrealizedProfit: Currency | undefined
-  realizedProfit: Currency | undefined
+  unrealizedProfit: Balance | undefined
+  realizedProfit: Balance | undefined
 }
 
 export type AssetListReportPrivateCredit = {
   subtype: 'privateCredit'
-  outstandingPrincipal: Currency | undefined
-  outstandingInterest: Currency | undefined
-  repaidPrincipal: Currency | undefined
-  repaidInterest: Currency | undefined
-  repaidUnscheduled: Currency | undefined
+  outstandingPrincipal: Balance | undefined
+  outstandingInterest: Balance | undefined
+  repaidPrincipal: Balance | undefined
+  repaidInterest: Balance | undefined
+  repaidUnscheduled: Balance | undefined
   originationDate: number | undefined
   maturityDate: string | undefined
   valuationMethod: string | undefined
   advanceRate: Rate | undefined
-  collateralValue: Currency | undefined
+  collateralValue: Balance | undefined
   probabilityOfDefault: Rate | undefined
   lossGivenDefault: Rate | undefined
   discountRate: Rate | undefined
@@ -303,10 +306,10 @@ export type InvestorListReport = {
   chainId: number | 'centrifuge' | 'all'
   accountId: string
   evmAddress?: string
-  position: Currency
+  position: Balance
   poolPercentage: Rate
-  pendingInvest: Currency
-  pendingRedeem: Currency
+  pendingInvest: Balance
+  pendingRedeem: Balance
   trancheId: string
 }
 
@@ -328,13 +331,13 @@ export type OrdersListReport = {
   type: 'ordersList'
   epoch: string
   timestamp: string
-  netAssetValue: Currency
+  netAssetValue: Balance
   navPerShare: Price
-  lockedInvestments: Currency
-  lockedRedemptions: Currency
-  executedInvestments: Currency
-  executedRedemptions: Currency
-  paidFees: Currency
+  lockedInvestments: Balance
+  lockedRedemptions: Balance
+  executedInvestments: Balance
+  executedRedemptions: Balance
+  paidFees: Balance
 }
 
 export type OrdersListReportFilter = {
@@ -351,7 +354,7 @@ export type AssetTimeSeriesData = {
 export type AssetTimeSeriesReport = {
   type: 'assetTimeSeries'
   timestamp: string
-  currentPrice: Currency
+  currentPrice: Balance
   assetId: string
   name: string
 }

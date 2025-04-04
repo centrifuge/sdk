@@ -1,7 +1,7 @@
-import { InvestorTransaction } from '../../IndexerQueries/investorTransactions.js'
+import { InvestorTransaction } from '../../entities/IndexerQueries/investorTransactions.js'
 import { Price } from '../../utils/BigInt.js'
 
-import { Currency } from '../../utils/BigInt.js'
+import { Balance } from '../../utils/BigInt.js'
 
 export const mockInvestorTransactions: InvestorTransaction[] = [
   {
@@ -14,8 +14,8 @@ export const mockInvestorTransactions: InvestorTransaction[] = [
     trancheId: 'senior',
     epochNumber: 1,
     type: 'INVEST_ORDER_UPDATE',
-    currencyAmount: new Currency(1_000_000n, 6), // 1.0
-    tokenAmount: new Currency(900_000n, 6), // 0.9
+    currencyAmount: new Balance(1_000_000n, 6), // 1.0
+    tokenAmount: new Balance(900_000n, 6), // 0.9
     tokenPrice: new Price(1_100_000_000_000_000_000n), // 1.1
     hash: '0xabc',
   } as InvestorTransaction,
@@ -29,8 +29,8 @@ export const mockInvestorTransactions: InvestorTransaction[] = [
     trancheId: 'senior',
     epochNumber: 1,
     type: 'INVEST_EXECUTION',
-    currencyAmount: new Currency(2_000_000n, 6), // 2.0
-    tokenAmount: new Currency(1_800_000n, 6), // 1.8
+    currencyAmount: new Balance(2_000_000n, 6), // 2.0
+    tokenAmount: new Balance(1_800_000n, 6), // 1.8
     tokenPrice: new Price(1_100_000_000_000_000_000n), // 1.1
     hash: '0xdef',
   } as InvestorTransaction,

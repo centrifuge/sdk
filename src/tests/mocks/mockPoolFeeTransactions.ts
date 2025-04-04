@@ -1,5 +1,5 @@
-import { Currency } from '../../utils/BigInt.js'
-import { PoolFeeTransaction } from '../../IndexerQueries/poolFeeTransactions.js'
+import { PoolFeeTransaction } from '../../entities/IndexerQueries/poolFeeTransactions.js'
+import { Balance } from '../../utils/BigInt.js'
 export const mockFeeTransactions = [
   {
     feeId: 'fee-1',
@@ -7,7 +7,7 @@ export const mockFeeTransactions = [
     timestamp: '2024-01-01T00:00:00Z',
     blockNumber: '1',
     epochNumber: 1,
-    amount: new Currency(1000000n, 6),
+    amount: new Balance(1000000n, 6),
   },
   {
     feeId: 'fee-2',
@@ -15,6 +15,6 @@ export const mockFeeTransactions = [
     timestamp: '2024-01-02T00:00:00Z',
     blockNumber: '2',
     epochNumber: 2,
-    amount: new Currency(2000000n, 6),
+    amount: new Balance(2000000n, 6),
   },
 ]

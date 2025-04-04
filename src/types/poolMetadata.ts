@@ -53,31 +53,23 @@ export type PoolMetadata = {
       reportFile?: FileType | null
     }[]
   }
-  pod?: {
-    indexer?: string | null
-  }
-  tranches: Record<
+  shareClasses: Record<
     string,
     {
       icon?: FileType | null
       minInitialInvestment?: string
-      targetAPY?: string // only junior tranche (index: 0) has targetAPY
+      targetApy?: number | null // only junior tranche (index: 0) has targetAPY
     }
   >
   loanTemplates?: {
     id: string
     createdAt: string
   }[]
-  adminMultisig?: {
-    signers: string[]
-    threshold: number
-  }
   onboarding?: {
     kybRestrictedCountries?: string[]
     kycRestrictedCountries?: string[]
     externalOnboardingUrl?: string
-    tranches: { [trancheId: string]: { agreement: FileType | undefined; openForOnboarding: boolean } }
-    podReadAccess?: boolean
+    shareClasses: { [scId: string]: { agreement: FileType | undefined; openForOnboarding: boolean } }
     taxInfoRequired?: boolean
   }
 }
