@@ -38,7 +38,7 @@ describe('Processor', () => {
       })
 
       expect(result).to.have.lengthOf(2)
-      const report = result[0]
+      const report = result[0]!
 
       expect(report.timestamp).to.equal('2024-01-01T12:00:00Z')
       expect(report.assetValuation.toBigInt()).to.equal(0n)
