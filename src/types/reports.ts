@@ -176,6 +176,9 @@ export type AssetTransactionReport = {
   epoch: string
   transactionType: AssetTransactionType
   amount: Balance
+  name: string
+  principalAmount: Balance | null
+  interestAmount: Balance | null
   transactionHash: string
   fromAsset?: {
     id: string
@@ -205,7 +208,8 @@ export type FeeTransactionReport = {
   type: 'feeTransactions'
   timestamp: string
   feeId: string
-  amount: Balance
+  amount: Balance | null
+  transactionType: PoolFeeTransaction['type']
 }
 
 export type FeeTransactionReportFilter = {
@@ -235,6 +239,7 @@ export type TokenPriceReport = {
     yield7daysAnnualized: Perquintill | null
     yield30daysAnnualized: Perquintill | null
     yield90daysAnnualized: Perquintill | null
+    yieldSinceInception: Perquintill | null
   }[]
 }
 

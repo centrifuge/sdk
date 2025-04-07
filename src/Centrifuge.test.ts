@@ -132,7 +132,7 @@ describe('Centrifuge', () => {
       expect(value3).to.equal(2)
     })
 
-    it("shouldn't cache the latest value when `cache` is `false`", async () => {
+    it("shouldn't cache the latest value when `cache` is `false` on the query", async () => {
       let value = 0
       const query1 = context.centrifuge._query(
         [Math.random()],
@@ -142,6 +142,23 @@ describe('Centrifuge', () => {
             return lazy(value)
           }),
         { cache: false }
+      )
+      const value1 = await query1
+      const value2 = await query1
+      const value3 = await firstValueFrom(query1)
+      expect(value1).to.equal(1)
+      expect(value2).to.equal(2)
+      expect(value3).to.equal(3)
+    })
+
+    it("shouldn't cache the latest value when `cache` is `false` on the Centrifuge instance", async () => {
+      const centrifuge = new Centrifuge({ environment: 'demo', cache: false })
+      let value = 0
+      const query1 = centrifuge._query([Math.random()], () =>
+        defer(() => {
+          value++
+          return lazy(value)
+        })
       )
       const value1 = await query1
       const value2 = await query1

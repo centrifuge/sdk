@@ -14,8 +14,8 @@ export type AssetTransaction = {
   amount: Balance
   settlementPrice: Price | null
   quantity: string | null
-  principalAmount: Balance | undefined
-  interestAmount: Balance | undefined
+  principalAmount: Balance | null
+  interestAmount: Balance | null
   hash: string
   realizedProfitFifo: Balance | undefined
   unrealizedProfitAtMarketPrice: Balance | undefined
@@ -24,6 +24,7 @@ export type AssetTransaction = {
     metadata: string
     type: AssetType
     currentPrice: string | null
+    name: string
   }
   fromAsset?: {
     id: string
@@ -111,10 +112,11 @@ export const assetTransactionsPostProcess = (data: SubqueryAssetTransactions): A
       const decimals = tx.pool.currency.decimals
       return {
         ...tx,
+        name: tx.asset.name,
         settlementPrice: tx.settlementPrice ? new Price(tx.settlementPrice) : null,
         amount: new Balance(tx?.amount ?? 0n, decimals),
-        principalAmount: tx.principalAmount ? new Balance(tx.principalAmount, decimals) : undefined,
-        interestAmount: tx.interestAmount ? new Balance(tx.interestAmount, decimals) : undefined,
+        principalAmount: tx.principalAmount ? new Balance(tx.principalAmount, decimals) : null,
+        interestAmount: tx.interestAmount ? new Balance(tx.interestAmount, decimals) : null,
         realizedProfitFifo: tx.realizedProfitFifo ? new Balance(tx.realizedProfitFifo, decimals) : undefined,
         sumRealizedProfitFifo: tx.asset.sumRealizedProfitFifo
           ? new Balance(tx.asset.sumRealizedProfitFifo, decimals)

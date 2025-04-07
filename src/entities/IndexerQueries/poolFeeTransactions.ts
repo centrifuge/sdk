@@ -10,7 +10,7 @@ export type PoolFeeTransaction = {
   timestamp: string
   blockNumber: string
   epochNumber: number
-  amount: Balance
+  amount: Balance | null
 }
 
 export type SubqueryPoolFeeTransactionType =
@@ -30,7 +30,7 @@ export type SubqueryPoolFeeTransaction = {
       timestamp: string
       blockNumber: string
       epochNumber: number
-      amount: string
+      amount: string | null
       poolFee: {
         feeId: string
         pool: {
@@ -45,12 +45,12 @@ export type SubqueryPoolFeeTransaction = {
 
 export function poolFeeTransactionPostProcess(data: SubqueryPoolFeeTransaction): PoolFeeTransaction[] {
   return data.poolFeeTransactions.nodes.map((tx) => ({
-    feeId: tx.id,
+    feeId: tx.poolFee.feeId,
     type: tx.type as PoolFeeTransaction['type'],
     timestamp: tx.timestamp,
     blockNumber: tx.blockNumber,
     epochNumber: tx.epochNumber,
-    amount: new Balance(tx.amount, tx.poolFee.pool.currency.decimals),
+    amount: tx.amount ? new Balance(tx.amount, tx.poolFee.pool.currency.decimals) : null,
   }))
 }
 

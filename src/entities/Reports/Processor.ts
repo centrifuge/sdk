@@ -65,7 +65,7 @@ export class Processor {
               tokenId: tranche.trancheId,
               tokenSupply: tranche.tokenSupply,
               tokenPrice: tranche.price,
-              trancheValue: tranche.tokenSupply.mul(tranche?.price?.toBigInt() ?? 0n),
+              trancheValue: tranche.tokenSupply.mul(tranche?.price?.toDecimal() ?? 0n),
             }))
           : [
               {
@@ -78,7 +78,9 @@ export class Processor {
               },
             ],
         totalCapital: tranches.reduce(
-          (acc, curr) => acc.add(curr.tokenSupply.mul(curr?.price?.toBigInt() ?? 0n).toBigInt()),
+          (acc, curr) => {
+            return acc.add(curr.tokenSupply.mul(curr?.price?.toDecimal()))
+          },
           new Balance(0, snapshot.poolCurrency.decimals)
         ),
       }
@@ -94,6 +96,11 @@ export class Processor {
    */
   cashflow(data: CashflowData, filter?: Omit<ReportFilter, 'to' | 'from'>): CashflowReport[] {
     if (!data.poolSnapshots?.length) return []
+    if (!data.metadata) {
+      throw new Error(
+        'Provide the correct metadataHash to centrifuge.pool(<poolId>, <metadataHash>).reports.cashflow()'
+      )
+    }
     const subtype = data.metadata?.pool.asset.class === 'Public credit' ? 'publicCredit' : 'privateCredit'
     const items: CashflowReport[] = data.poolSnapshots.map((day) => {
       const poolFees =
@@ -142,6 +149,12 @@ export class Processor {
    */
   profitAndLoss(data: ProfitAndLossData, filter?: Omit<ReportFilter, 'to' | 'from'>): ProfitAndLossReport[] {
     if (!data.poolSnapshots?.length) return []
+    // Check if the metadata tranches match the pool snapshots tranches to verify the correct metadataHash is provided
+    if (Object.keys(data.metadata?.shareClasses ?? {})[0] !== data.poolSnapshots[0]?.tranches[0]?.split('-')[1]) {
+      throw new Error(
+        'Provide the correct metadataHash to centrifuge.pool(<poolId>, <metadataHash>).reports.profitAndLoss()'
+      )
+    }
     const items: ProfitAndLossReport[] = data.poolSnapshots.map((day) => {
       const subtype = data.metadata?.pool.asset.class === 'Public credit' ? 'publicCredit' : 'privateCredit'
       const profitAndLossFromAsset =
@@ -270,7 +283,10 @@ export class Processor {
           epoch: tx.epochId,
           transactionType: tx.type,
           amount: tx.amount,
+          principalAmount: tx.principalAmount,
+          interestAmount: tx.interestAmount,
           transactionHash: tx.hash,
+          name: tx.asset.name,
           fromAsset: tx.fromAsset
             ? {
                 id: tx.fromAsset.id,
@@ -317,6 +333,7 @@ export class Processor {
           timestamp: tx.timestamp,
           feeId: tx.feeId,
           amount: tx.amount,
+          transactionType: tx.type,
         })
       }
       return acc
@@ -339,6 +356,7 @@ export class Processor {
         yield7daysAnnualized: snapshot.yield7DaysAnnualized,
         yield30daysAnnualized: snapshot.yield30DaysAnnualized,
         yield90daysAnnualized: snapshot.yield90DaysAnnualized,
+        yieldSinceInception: snapshot.yieldSinceInception,
       })),
     }))
 
@@ -347,6 +365,11 @@ export class Processor {
 
   assetList(data: AssetListData, filter?: Omit<AssetListReportFilter, 'to' | 'from'>): AssetListReport[] {
     if (!data.assetSnapshots?.length) return []
+    if (!data.metadata) {
+      throw new Error(
+        'Provide the correct metadataHash to centrifuge.pool(<poolId>, <metadataHash>).reports.assetList()'
+      )
+    }
     return data.assetSnapshots
       .filter((snapshot) => {
         if (snapshot.valuationMethod?.toLowerCase() === 'cash') return false
@@ -416,7 +439,6 @@ export class Processor {
 
     const filterNetwork = filter?.network === 'all' ? null : filter?.network
     const filterAddress = filter?.address?.toLowerCase()
-
     return data.trancheCurrencyBalance
       .filter((investor) => {
         const networkMatches = !filterNetwork || filterNetwork === investor.chainId
@@ -431,16 +453,22 @@ export class Processor {
         return networkMatches && addressMatches && trancheMatches && (hasPosition || filter?.address)
       })
       .map((balance) => {
-        const totalPositions = data.trancheCurrencyBalance.reduce((sum, investor) => {
-          return sum.add(investor.balance).add(investor.claimableTrancheTokens)
-        }, new Balance(0))
+        const totalPositions = data.trancheCurrencyBalance.reduce(
+          (sum, investor) => {
+            return sum.add(investor.balance).add(investor.claimableTrancheTokens)
+          },
+          new Balance(0, balance.balance.decimals)
+        )
+
         return {
           type: 'investorList',
           chainId: balance.chainId,
           accountId: balance.accountId,
           evmAddress: balance.evmAddress,
           position: balance.balance.add(balance.claimableTrancheTokens),
-          poolPercentage: new Rate(balance.balance.add(balance.claimableTrancheTokens.div(totalPositions)).toBigInt()),
+          poolPercentage: Rate.fromPercent(
+            balance.balance.toDecimal().div(totalPositions.toDecimal()).mul(100).toString()
+          ),
           pendingInvest: balance.pendingInvestCurrency,
           pendingRedeem: balance.pendingRedeemTrancheTokens,
           trancheId: balance.trancheId,

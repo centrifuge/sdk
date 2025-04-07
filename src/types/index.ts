@@ -5,6 +5,11 @@ export type Config = {
   rpcUrls?: Record<number | string, string>
   indexerUrl: string
   ipfsUrl: string
+  /**
+   * Whether to cache data
+   * @default: true
+   */
+  cache?: boolean
 }
 
 export type UserProvidedConfig = Partial<Config>

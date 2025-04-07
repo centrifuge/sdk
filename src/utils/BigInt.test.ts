@@ -89,6 +89,16 @@ describe('utils/BigInt', () => {
         expected: { bigint: 2000n, decimal: '0.002', string: '2000' },
       },
       {
+        title: 'DecimalsWrapper * Decimal',
+        input: new DecimalWrapper(1000n, 6)._mul<DecimalWrapper>(Dec(2)),
+        expected: { bigint: 2000n, decimal: '0.002', string: '2000' },
+      },
+      {
+        title: 'DecimalsWrapper * Decimal',
+        input: new DecimalWrapper(1000n, 6)._mul<DecimalWrapper>(Dec(1.111)),
+        expected: { bigint: 1111n, decimal: '0.001111', string: '1111' },
+      },
+      {
         title: 'DecimalWrapper / bigint',
         input: new DecimalWrapper(1000n, 6)._div<DecimalWrapper>(2n),
         expected: { bigint: 500n, decimal: '0.0005', string: '500' },

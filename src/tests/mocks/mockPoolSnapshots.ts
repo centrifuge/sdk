@@ -31,6 +31,7 @@ export const mockPoolSnapshots: PoolSnapshot[] = [
     poolCurrency: {
       decimals: 6,
     },
+    tranches: ['pool1-0x6756e091ae798a8e51e12e27ee8facdf', 'pool1-0xda64aae939e4d3a981004619f1709d8f'],
   },
   {
     id: 'pool-11',
@@ -61,5 +62,6 @@ export const mockPoolSnapshots: PoolSnapshot[] = [
     poolCurrency: {
       decimals: 6,
     },
+    tranches: ['pool1-0x6756e091ae798a8e51e12e27ee8facdf', 'pool1-0xda64aae939e4d3a981004619f1709d8f'],
   },
 ]
