@@ -1,8 +1,8 @@
 import { expect } from 'chai'
-import { Centrifuge } from '../Centrifuge.js'
 import { spy } from 'sinon'
+import { Centrifuge } from '../../Centrifuge.js'
+import { AssetListReportPublicCredit, ProfitAndLossReportPublicCredit, ReportFilter } from '../../types/reports.js'
 import { Reports } from '../Reports/index.js'
-import { AssetListReportPublicCredit, ProfitAndLossReportPublicCredit, ReportFilter } from '../types/reports.js'
 import { processor } from './Processor.js'
 
 describe('Reports', () => {
@@ -124,8 +124,7 @@ describe('Reports', () => {
     })
     it('should check the total capital and tranche value with production data', async () => {
       const anemoyPoolId = '4139607887'
-      const anemoyMetadataHash = 'QmTjbzx4mX1A9vRFxzLDZszKQSTsFbH8YgnpfmTSfWx73G'
-      const pool = await centrifuge.pool(anemoyPoolId, anemoyMetadataHash)
+      const pool = await centrifuge.pool(anemoyPoolId)
       const report = await pool.reports.balanceSheet({
         from: '2024-01-31',
         to: '2024-01-31',
@@ -140,8 +139,7 @@ describe('Reports', () => {
     it('should fetch cashflow report', async () => {
       const processCashflowSpy = spy(processor, 'cashflow')
       const ltfPoolId = '4139607887'
-      const lftMetadataHash = 'QmTjbzx4mX1A9vRFxzLDZszKQSTsFbH8YgnpfmTSfWx73G'
-      const pool = await centrifuge.pool(ltfPoolId, lftMetadataHash)
+      const pool = await centrifuge.pool(ltfPoolId)
       const cashflowReport = await pool.reports.cashflow({
         from: '2024-11-02T22:11:29.776Z',
         to: '2024-11-06T22:11:29.776Z',
@@ -155,8 +153,7 @@ describe('Reports', () => {
     })
     it('should retrieve 6 months worth of data and group by day, month, quarter and year', async () => {
       const anemoyPoolId = '4139607887'
-      const anemoyMetadataHash = 'QmTjbzx4mX1A9vRFxzLDZszKQSTsFbH8YgnpfmTSfWx73G'
-      const pool = await centrifuge.pool(anemoyPoolId, anemoyMetadataHash)
+      const pool = await centrifuge.pool(anemoyPoolId)
       const reports = new Reports(centrifuge, pool)
       let filter: ReportFilter = {
         from: '2024-01-01',
@@ -194,9 +191,8 @@ describe('Reports', () => {
 
   describe('profit and loss report', () => {
     it('should fetch profit and loss report', async () => {
-      const metadataHash = 'QmPfUr7DfUPd5ALfu96R5mbR2PhRfM94vboNFNCDgbj3S8'
       const ns3PoolId = '1615768079'
-      const pool = await centrifuge.pool(ns3PoolId, metadataHash)
+      const pool = await centrifuge.pool(ns3PoolId)
       const report = await pool.reports.profitAndLoss({
         from: '2024-11-02T22:11:29.776Z',
         to: '2024-11-06T22:11:29.776Z',
@@ -204,22 +200,9 @@ describe('Reports', () => {
       })
       expect(report.length).to.equal(4)
     })
-    it('should throw an error if an incorrect metadataHash is provided', async () => {
-      const anemoyMetadataHash = 'QmXEdkcbnvvkFakMwxoy2UbxQzg4Q5nLXVZsHQDhDVRarC'
-      const ns3PoolId = '1615768079'
-      const pool = await centrifuge.pool(ns3PoolId, anemoyMetadataHash)
-      expect(
-        await pool.reports.profitAndLoss({
-          from: '2024-11-02T22:11:29.776Z',
-          to: '2024-11-06T22:11:29.776Z',
-          groupBy: 'day',
-        })
-      ).to.be.throw
-    })
     it('should provide the correct totalIncome for Anemoy on 01/01/2025', async () => {
       const anemoyPoolId = '4139607887'
-      const metadataHash = 'QmXEdkcbnvvkFakMwxoy2UbxQzg4Q5nLXVZsHQDhDVRarC'
-      const pool = await centrifuge.pool(anemoyPoolId, metadataHash)
+      const pool = await centrifuge.pool(anemoyPoolId)
       const report = await pool.reports.profitAndLoss({
         from: '2025-01-01',
         to: '2025-01-01',
@@ -229,8 +212,7 @@ describe('Reports', () => {
     })
     it('should retrieve 6 months worth of data and group by day, month, quarter and year', async () => {
       const anemoyPoolId = '4139607887'
-      const metadataHash = 'QmXEdkcbnvvkFakMwxoy2UbxQzg4Q5nLXVZsHQDhDVRarC'
-      const pool = await centrifuge.pool(anemoyPoolId, metadataHash)
+      const pool = await centrifuge.pool(anemoyPoolId)
       const reports = new Reports(centrifuge, pool)
       let filter: ReportFilter = {
         from: '2024-01-01',
@@ -268,8 +250,7 @@ describe('Reports', () => {
     })
     it('should retrieve monthly data starting with Jan 2024', async () => {
       const anemoyPoolId = '4139607887'
-      const metadataHash = 'QmXEdkcbnvvkFakMwxoy2UbxQzg4Q5nLXVZsHQDhDVRarC'
-      const pool = await centrifuge.pool(anemoyPoolId, metadataHash)
+      const pool = await centrifuge.pool(anemoyPoolId)
       const report = await pool.reports.profitAndLoss({
         from: '2024-01-11',
         to: '2025-01-28',
@@ -282,8 +263,7 @@ describe('Reports', () => {
     })
     it('should retrieve quarterly data starting with Q3 2023', async () => {
       const anemoyPoolId = '4139607887'
-      const metadataHash = 'QmXEdkcbnvvkFakMwxoy2UbxQzg4Q5nLXVZsHQDhDVRarC'
-      const pool = await centrifuge.pool(anemoyPoolId, metadataHash)
+      const pool = await centrifuge.pool(anemoyPoolId)
       const report = await pool.reports.profitAndLoss({
         from: '2023-01-01',
         to: '2025-01-01',
@@ -294,8 +274,7 @@ describe('Reports', () => {
     })
     it('should retrieve yearly data starting in Sept 2023', async () => {
       const anemoyPoolId = '4139607887'
-      const metadataHash = 'QmXEdkcbnvvkFakMwxoy2UbxQzg4Q5nLXVZsHQDhDVRarC'
-      const pool = await centrifuge.pool(anemoyPoolId, metadataHash)
+      const pool = await centrifuge.pool(anemoyPoolId)
       const report = await pool.reports.profitAndLoss({
         from: '2023-09-18',
         to: '2025-01-01',
@@ -461,8 +440,7 @@ describe('Reports', () => {
   describe('asset list report', () => {
     it('should fetch asset list report', async () => {
       const anemoyPoolId = '4139607887'
-      const anemoyMetadataHash = 'QmTjbzx4mX1A9vRFxzLDZszKQSTsFbH8YgnpfmTSfWx73G'
-      const pool = await centrifuge.pool(anemoyPoolId, anemoyMetadataHash)
+      const pool = await centrifuge.pool(anemoyPoolId)
       const report = await pool.reports.assetList({
         from: '2024-01-01T22:11:29.776Z',
         to: '2024-01-03T22:11:29.776Z',
@@ -472,8 +450,7 @@ describe('Reports', () => {
     })
     it('should filter by status ongoing', async () => {
       const anemoyPoolId = '4139607887'
-      const anemoyMetadataHash = 'QmTjbzx4mX1A9vRFxzLDZszKQSTsFbH8YgnpfmTSfWx73G'
-      const pool = await centrifuge.pool(anemoyPoolId, anemoyMetadataHash)
+      const pool = await centrifuge.pool(anemoyPoolId)
       const report = await pool.reports.assetList({
         status: 'ongoing',
         from: '2024-01-01T00:00:00.000Z',
@@ -483,8 +460,7 @@ describe('Reports', () => {
     })
     it('should filter by status overdue', async () => {
       const anemoyPoolId = '4139607887'
-      const anemoyMetadataHash = 'QmTjbzx4mX1A9vRFxzLDZszKQSTsFbH8YgnpfmTSfWx73G'
-      const pool = await centrifuge.pool(anemoyPoolId, anemoyMetadataHash)
+      const pool = await centrifuge.pool(anemoyPoolId)
       const report = await pool.reports.assetList({
         status: 'overdue',
         from: '2024-01-01T00:00:00.000Z',
@@ -494,8 +470,7 @@ describe('Reports', () => {
     })
     it('should check marketPrice and faceValue with production data', async () => {
       const anemoyPoolId = '4139607887'
-      const anemoyMetadataHash = 'QmTjbzx4mX1A9vRFxzLDZszKQSTsFbH8YgnpfmTSfWx73G'
-      const pool = await centrifuge.pool(anemoyPoolId, anemoyMetadataHash)
+      const pool = await centrifuge.pool(anemoyPoolId)
       const report = await pool.reports.assetList({
         from: '2024-01-01T00:00:00.000Z',
         to: '2024-01-06T23:59:59.999Z',

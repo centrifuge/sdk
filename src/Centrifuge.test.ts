@@ -26,7 +26,7 @@ describe('Centrifuge', () => {
   })
 
   it('should fetch a pool by id', async () => {
-    const pool = await context.centrifuge.pool('4139607887')
+    const pool = await context.centrifuge.pool('562949953421313')
     expect(pool).to.exist
   })
 

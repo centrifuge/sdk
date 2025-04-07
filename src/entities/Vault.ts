@@ -12,11 +12,11 @@ import { Entity } from './Entity.js'
 import type { Pool } from './Pool.js'
 import { PoolNetwork } from './PoolNetwork.js'
 
-const ASYNC_OPERATOR_INTERFACE_ID = '0xe3bc4e65'
-const ASYNC_DEPOSIT_INTERFACE_ID = '0xce3bbe50'
-const ASYNC_REDEEM_INTERFACE_ID = '0x620ee8e4'
-const ASYNC_CANCEL_DEPOSIT_INTERFACE_ID = '0x8bf840e3'
-const ASYNC_CANCEL_REDEEM_INTERFACE_ID = '0xe76cffc7'
+// const ASYNC_OPERATOR_INTERFACE_ID = '0xe3bc4e65'
+// const ASYNC_DEPOSIT_INTERFACE_ID = '0xce3bbe50'
+// const ASYNC_REDEEM_INTERFACE_ID = '0x620ee8e4'
+// const ASYNC_CANCEL_DEPOSIT_INTERFACE_ID = '0x8bf840e3'
+// const ASYNC_CANCEL_REDEEM_INTERFACE_ID = '0xe76cffc7'
 
 /**
  * Query and interact with a vault, which is the main entry point for investing and redeeming funds.

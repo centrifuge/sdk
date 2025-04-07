@@ -1,25 +1,25 @@
 import { expect } from 'chai'
-import { processor } from './Processor.js'
-import { mockPoolSnapshots } from '../tests/mocks/mockPoolSnapshots.js'
-import { mockFeeTransactions } from '../tests/mocks/mockPoolFeeTransactions.js'
-import { mockTrancheSnapshots } from '../tests/mocks/mockTrancheSnapshots.js'
-import { mockPoolFeeSnapshots } from '../tests/mocks/mockPoolFeeSnapshot.js'
-import { mockPoolMetadata } from '../tests/mocks/mockPoolMetadata.js'
-import { mockInvestorTransactions } from '../tests/mocks/mockInvestorTransactions.js'
-import { mockAssetTransactions } from '../tests/mocks/mockAssetTransactions.js'
-import { mockAssetSnapshots } from '../tests/mocks/mockAssetSnapshots.js'
-import { mockInvestorCurrencyBalances } from '../tests/mocks/mockInvestorCurrencyBalance.js'
-import { mockEpochs } from '../tests/mocks/mockEpochs.js'
-import { PoolSnapshot } from '../IndexerQueries/poolSnapshots.js'
-import { Currency, Price, Token } from '../utils/BigInt.js'
-import { PoolFeeSnapshot, PoolFeeSnapshotsByDate } from '../IndexerQueries/poolFeeSnapshots.js'
+import { mockAssetSnapshots } from '../../tests/mocks/mockAssetSnapshots.js'
+import { mockAssetTransactions } from '../../tests/mocks/mockAssetTransactions.js'
+import { mockEpochs } from '../../tests/mocks/mockEpochs.js'
+import { mockInvestorCurrencyBalances } from '../../tests/mocks/mockInvestorCurrencyBalance.js'
+import { mockInvestorTransactions } from '../../tests/mocks/mockInvestorTransactions.js'
+import { mockPoolFeeSnapshots } from '../../tests/mocks/mockPoolFeeSnapshot.js'
+import { mockFeeTransactions } from '../../tests/mocks/mockPoolFeeTransactions.js'
+import { mockPoolMetadata } from '../../tests/mocks/mockPoolMetadata.js'
+import { mockPoolSnapshots } from '../../tests/mocks/mockPoolSnapshots.js'
+import { mockTrancheSnapshots } from '../../tests/mocks/mockTrancheSnapshots.js'
 import {
   AssetTransactionReportFilter,
   ProfitAndLossReportPrivateCredit,
   ProfitAndLossReportPublicCredit,
-} from '../types/reports.js'
-import { InvestorTransaction } from '../IndexerQueries/investorTransactions.js'
+} from '../../types/reports.js'
+import { Balance, Price } from '../../utils/BigInt.js'
 import { AssetSnapshot } from '../IndexerQueries/assetSnapshots.js'
+import { InvestorTransaction } from '../IndexerQueries/investorTransactions.js'
+import { PoolFeeSnapshot, PoolFeeSnapshotsByDate } from '../IndexerQueries/poolFeeSnapshots.js'
+import { PoolSnapshot } from '../IndexerQueries/poolSnapshots.js'
+import { processor } from './Processor.js'
 
 describe('Processor', () => {
   describe('balanceSheet processor', () => {
@@ -40,20 +40,20 @@ describe('Processor', () => {
       expect(result).to.have.lengthOf(2)
       const report = result[0]
 
-      expect(report?.timestamp).to.equal('2024-01-01T12:00:00Z')
-      expect(report?.assetValuation.toBigInt()).to.equal(0n)
-      expect(report?.onchainReserve.toBigInt()).to.equal(0n)
-      expect(report?.offchainCash.toBigInt()).to.equal(0n)
-      expect(report?.accruedFees.toBigInt()).to.equal(0n)
-      expect(report?.netAssetValue.toBigInt()).to.equal(0n)
+      expect(report.timestamp).to.equal('2024-01-01T12:00:00Z')
+      expect(report.assetValuation.toBigInt()).to.equal(0n)
+      expect(report.onchainReserve.toBigInt()).to.equal(0n)
+      expect(report.offchainCash.toBigInt()).to.equal(0n)
+      expect(report.accruedFees.toBigInt()).to.equal(0n)
+      expect(report.netAssetValue.toBigInt()).to.equal(0n)
 
-      expect(report?.tranches?.length).to.equal(2)
-      const seniorTranche = report?.tranches?.find((t) => t.tokenId === 'senior')!
-      const juniorTranche = report?.tranches?.find((t) => t.tokenId === 'junior')!
+      expect(report.tranches!.length).to.equal(2)
+      const seniorTranche = report.tranches!.find((t) => t.tokenId === 'senior')!
+      const juniorTranche = report.tranches!.find((t) => t.tokenId === 'junior')!
 
       expect(seniorTranche?.tokenPrice!.toBigInt()).to.equal(1000000000000000000n)
       expect(juniorTranche?.tokenPrice!.toBigInt()).to.equal(1120000000000000000n)
-      expect(report?.totalCapital?.toBigInt()).to.equal(0n)
+      expect(report.totalCapital?.toBigInt()).to.equal(0n)
     })
     it('should group data by day when specified', () => {
       const result = processor.balanceSheet(
@@ -89,25 +89,25 @@ describe('Processor', () => {
         ...mockPoolSnapshots[0],
         id: 'pool-10',
         timestamp: '2024-01-01T12:00:00Z',
-        sumPrincipalRepaidAmountByPeriod: Currency.fromFloat(1, 6), // 1.0
-        sumInterestRepaidAmountByPeriod: Currency.fromFloat(0.05, 6), // 0.05
-        sumBorrowedAmountByPeriod: Currency.fromFloat(2, 6), // 2.0
+        sumPrincipalRepaidAmountByPeriod: Balance.fromFloat(1, 6), // 1.0
+        sumInterestRepaidAmountByPeriod: Balance.fromFloat(0.05, 6), // 0.05
+        sumBorrowedAmountByPeriod: Balance.fromFloat(2, 6), // 2.0
       },
       {
         ...mockPoolSnapshots[0],
         id: 'pool-11',
         timestamp: '2024-01-01T18:00:00Z', // Same day, different time
-        sumPrincipalRepaidAmountByPeriod: Currency.fromFloat(0.5, 6), // 0.5
-        sumInterestRepaidAmountByPeriod: Currency.fromFloat(0.025, 6), // 0.025
-        sumBorrowedAmountByPeriod: Currency.fromFloat(1, 6), // 1.0
+        sumPrincipalRepaidAmountByPeriod: Balance.fromFloat(0.5, 6), // 0.5
+        sumInterestRepaidAmountByPeriod: Balance.fromFloat(0.025, 6), // 0.025
+        sumBorrowedAmountByPeriod: Balance.fromFloat(1, 6), // 1.0
       },
       {
         ...mockPoolSnapshots[0],
         id: 'pool-12',
         timestamp: '2024-01-02T12:00:00Z', // Next day
-        sumPrincipalRepaidAmountByPeriod: Currency.fromFloat(2, 6), // 2.0
-        sumInterestRepaidAmountByPeriod: Currency.fromFloat(0.1, 6), // 0.1
-        sumBorrowedAmountByPeriod: Currency.fromFloat(4, 6), // 4.0
+        sumPrincipalRepaidAmountByPeriod: Balance.fromFloat(2, 6), // 2.0
+        sumInterestRepaidAmountByPeriod: Balance.fromFloat(0.1, 6), // 0.1
+        sumBorrowedAmountByPeriod: Balance.fromFloat(4, 6), // 4.0
       },
     ] as PoolSnapshot[]
 
@@ -116,28 +116,28 @@ describe('Processor', () => {
         {
           ...mockPoolFeeSnapshots['2024-01-01']?.[0],
           poolFee: { name: 'serviceFee' },
-          sumPaidAmountByPeriod: new Currency(1_000_000n, 6), // 1.0
-          sumAccruedAmountByPeriod: new Currency(500_000n, 6), // 0.5
+          sumPaidAmountByPeriod: new Balance(1_000_000n, 6), // 1.0
+          sumAccruedAmountByPeriod: new Balance(500_000n, 6), // 0.5
         } as PoolFeeSnapshot,
         {
           ...mockPoolFeeSnapshots['2024-01-01']?.[1],
           poolFee: { name: 'adminFee' },
-          sumPaidAmountByPeriod: new Currency(2_000_000n, 6), // 2.0
-          sumAccruedAmountByPeriod: new Currency(1_000_000n, 6), // 1.0
+          sumPaidAmountByPeriod: new Balance(2_000_000n, 6), // 2.0
+          sumAccruedAmountByPeriod: new Balance(1_000_000n, 6), // 1.0
         } as PoolFeeSnapshot,
       ],
       '2024-01-02': [
         {
           ...mockPoolFeeSnapshots['2024-01-02']?.[0],
           poolFee: { name: 'serviceFee' },
-          sumPaidAmountByPeriod: new Currency(3_000_000n, 6), // 3.0
-          sumAccruedAmountByPeriod: new Currency(1_500_000n, 6), // 1.5
+          sumPaidAmountByPeriod: new Balance(3_000_000n, 6), // 3.0
+          sumAccruedAmountByPeriod: new Balance(1_500_000n, 6), // 1.5
         } as PoolFeeSnapshot,
         {
           ...mockPoolFeeSnapshots['2024-01-02']?.[1],
           poolFee: { name: 'adminFee' },
-          sumPaidAmountByPeriod: new Currency(4_000_000n, 6), // 4.0
-          sumAccruedAmountByPeriod: new Currency(2_000_000n, 6), // 2.0
+          sumPaidAmountByPeriod: new Balance(4_000_000n, 6), // 4.0
+          sumAccruedAmountByPeriod: new Balance(2_000_000n, 6), // 2.0
         } as PoolFeeSnapshot,
       ],
     }
@@ -153,7 +153,7 @@ describe('Processor', () => {
           poolFeeSnapshots: mockPoolFeeSnapshots,
           metadata: undefined,
         })
-      } catch (e) {
+      } catch {
         thrown = true
       }
       expect(thrown).to.be.true
@@ -250,21 +250,21 @@ describe('Processor', () => {
         ...mockPoolSnapshots[0],
         id: 'pool-10',
         timestamp: '2024-01-01T12:00:00Z',
-        sumInterestRepaidAmountByPeriod: Currency.fromFloat(0.05, 6), // 0.05
-        sumInterestAccruedByPeriod: Currency.fromFloat(0.1, 6), // 0.1
-        sumDebtWrittenOffByPeriod: Currency.fromFloat(0.02, 6), // 0.02
-        sumUnscheduledRepaidAmountByPeriod: Currency.fromFloat(0.01, 6), // 0.01
-        sumUnrealizedProfitByPeriod: Currency.fromFloat(0.15, 6), // 0.15
+        sumInterestRepaidAmountByPeriod: Balance.fromFloat(0.05, 6), // 0.05
+        sumInterestAccruedByPeriod: Balance.fromFloat(0.1, 6), // 0.1
+        sumDebtWrittenOffByPeriod: Balance.fromFloat(0.02, 6), // 0.02
+        sumUnscheduledRepaidAmountByPeriod: Balance.fromFloat(0.01, 6), // 0.01
+        sumUnrealizedProfitByPeriod: Balance.fromFloat(0.15, 6), // 0.15
       },
       {
         ...mockPoolSnapshots[1],
         id: 'pool-11',
         timestamp: '2024-01-02T12:00:00Z',
-        sumInterestRepaidAmountByPeriod: Currency.fromFloat(0.1, 6),
-        sumInterestAccruedByPeriod: Currency.fromFloat(0.2, 6),
-        sumDebtWrittenOffByPeriod: Currency.fromFloat(0.03, 6),
-        sumUnscheduledRepaidAmountByPeriod: Currency.fromFloat(0.02, 6),
-        sumUnrealizedProfitByPeriod: Currency.fromFloat(0.25, 6),
+        sumInterestRepaidAmountByPeriod: Balance.fromFloat(0.1, 6),
+        sumInterestAccruedByPeriod: Balance.fromFloat(0.2, 6),
+        sumDebtWrittenOffByPeriod: Balance.fromFloat(0.03, 6),
+        sumUnscheduledRepaidAmountByPeriod: Balance.fromFloat(0.02, 6),
+        sumUnrealizedProfitByPeriod: Balance.fromFloat(0.25, 6),
       },
     ] as PoolSnapshot[]
 
@@ -272,8 +272,8 @@ describe('Processor', () => {
       '2024-01-01': [
         {
           poolFee: { name: 'serviceFee' },
-          sumAccruedAmountByPeriod: Currency.fromFloat(0.01, 6),
-          sumChargedAmountByPeriod: Currency.fromFloat(0.02, 6),
+          sumAccruedAmountByPeriod: Balance.fromFloat(0.01, 6),
+          sumChargedAmountByPeriod: Balance.fromFloat(0.02, 6),
           timestamp: '2024-01-01T12:00:00Z',
           poolFeeId: 'pool-fee-1',
         } as PoolFeeSnapshot,
@@ -281,8 +281,8 @@ describe('Processor', () => {
       '2024-01-02': [
         {
           poolFee: { name: 'serviceFee' },
-          sumAccruedAmountByPeriod: Currency.fromFloat(0.02, 6),
-          sumChargedAmountByPeriod: Currency.fromFloat(0.03, 6),
+          sumAccruedAmountByPeriod: Balance.fromFloat(0.02, 6),
+          sumChargedAmountByPeriod: Balance.fromFloat(0.03, 6),
           timestamp: '2024-01-02T12:00:00Z',
           poolFeeId: 'pool-fee-2',
         } as PoolFeeSnapshot,
@@ -303,7 +303,7 @@ describe('Processor', () => {
           poolFeeSnapshots: mockPLFeeSnapshots,
           metadata: undefined,
         })
-      } catch (e) {
+      } catch {
         thrown = true
       }
       expect(thrown).to.be.true
@@ -641,7 +641,7 @@ describe('Processor', () => {
       let thrown = false
       try {
         processor.assetList({ assetSnapshots: mockAssetSnapshots, metadata: undefined })
-      } catch (e) {
+      } catch {
         thrown = true
       }
       expect(thrown).to.be.true
@@ -774,13 +774,13 @@ describe('Processor', () => {
       const result = processor.ordersList({ poolEpochs: mockEpochs })
       expect(result).to.have.lengthOf(2)
       expect(result[0]?.epoch).to.equal('1')
-      expect(result[0]?.netAssetValue.toString()).to.equal(Currency.fromFloat(1000, 6).toString())
+      expect(result[0]?.netAssetValue.toString()).to.equal(Balance.fromFloat(1000, 6).toString())
       expect(result[0]?.navPerShare.toString()).to.equal(new Price(1000000000000000000n).toString())
-      expect(result[0]?.lockedInvestments.toString()).to.equal(Currency.fromFloat(1000, 6).toString())
-      expect(result[0]?.lockedRedemptions.toString()).to.equal(Currency.fromFloat(100, 6).toString())
-      expect(result[0]?.executedInvestments.toString()).to.equal(Currency.fromFloat(900, 6).toString())
-      expect(result[0]?.executedRedemptions.toString()).to.equal(Currency.fromFloat(90, 6).toString())
-      expect(result[0]?.paidFees.toString()).to.equal(Currency.fromFloat(100, 6).toString())
+      expect(result[0]?.lockedInvestments.toString()).to.equal(Balance.fromFloat(1000, 6).toString())
+      expect(result[0]?.lockedRedemptions.toString()).to.equal(Balance.fromFloat(100, 6).toString())
+      expect(result[0]?.executedInvestments.toString()).to.equal(Balance.fromFloat(900, 6).toString())
+      expect(result[0]?.executedRedemptions.toString()).to.equal(Balance.fromFloat(90, 6).toString())
+      expect(result[0]?.paidFees.toString()).to.equal(Balance.fromFloat(100, 6).toString())
     })
   })
 
@@ -792,60 +792,60 @@ describe('Processor', () => {
       const result = processor.assetTimeSeries({ assetSnapshots: mockAssetSnapshots })
       expect(result).to.have.lengthOf(2)
       expect(result[0]?.assetId).to.equal('1')
-      expect(result[0]?.currentPrice.toString()).to.equal(Currency.fromFloat(1, 6).toString())
+      expect(result[0]?.currentPrice.toString()).to.equal(Balance.fromFloat(1, 6).toString())
     })
   })
 
   describe('applyGrouping', () => {
     const applyGrouping = processor['applyGrouping']
     const mockData = [
-      { a: Currency.fromFloat(10, 6), timestamp: '2024-01-01' },
-      { a: Currency.fromFloat(20, 6), timestamp: '2024-01-01' },
+      { a: Balance.fromFloat(10, 6), timestamp: '2024-01-01' },
+      { a: Balance.fromFloat(20, 6), timestamp: '2024-01-01' },
     ]
     it('should return empty array when no items found', () => {
       expect(applyGrouping([], 'day', 'sum')).to.deep.equal([])
     })
     it('should return items by day when no grouping is specified', () => {
       const latest = applyGrouping(mockData, undefined, 'latest')
-      expect(latest).to.deep.equal([{ a: Currency.fromFloat(20, 6), timestamp: '2024-01-01' }])
+      expect(latest).to.deep.equal([{ a: Balance.fromFloat(20, 6), timestamp: '2024-01-01' }])
       const summed = applyGrouping(mockData, undefined, 'sum')
-      expect(summed).to.deep.equal([{ a: Currency.fromFloat(30, 6), timestamp: '2024-01-01' }])
+      expect(summed).to.deep.equal([{ a: Balance.fromFloat(30, 6), timestamp: '2024-01-01' }])
     })
     it('should return latest item when strategy is latest', () => {
       const grouped = applyGrouping(mockData, 'day', 'latest')
-      expect(grouped).to.deep.equal([{ a: Currency.fromFloat(20, 6), timestamp: '2024-01-01' }])
+      expect(grouped).to.deep.equal([{ a: Balance.fromFloat(20, 6), timestamp: '2024-01-01' }])
     })
     it('should aggregate values when strategy is sum', () => {
       const grouped = applyGrouping(mockData, 'day', 'sum')
-      expect(grouped).to.deep.equal([{ a: Currency.fromFloat(30, 6), timestamp: '2024-01-01' }])
+      expect(grouped).to.deep.equal([{ a: Balance.fromFloat(30, 6), timestamp: '2024-01-01' }])
     })
     it('should return latest item when strategy is latest and no grouping is specified', () => {
       const grouped = applyGrouping(mockData, undefined, 'latest')
-      expect(grouped).to.deep.equal([{ a: Currency.fromFloat(20, 6), timestamp: '2024-01-01' }])
+      expect(grouped).to.deep.equal([{ a: Balance.fromFloat(20, 6), timestamp: '2024-01-01' }])
     })
     it('should aggregate values when strategy is sum and no grouping is specified', () => {
       const grouped = applyGrouping(mockData, undefined, 'sum')
-      expect(grouped).to.deep.equal([{ a: Currency.fromFloat(30, 6), timestamp: '2024-01-01' }])
+      expect(grouped).to.deep.equal([{ a: Balance.fromFloat(30, 6), timestamp: '2024-01-01' }])
     })
     it('should return latest item when strategy is latest and grouping is month', () => {
-      const extendedMockData = [...mockData, { a: Currency.fromFloat(30, 6), timestamp: '2024-02-01' }]
+      const extendedMockData = [...mockData, { a: Balance.fromFloat(30, 6), timestamp: '2024-02-01' }]
       const grouped = applyGrouping(extendedMockData, 'month', 'latest')
       const expected = [
-        { a: Currency.fromFloat(20, 6), timestamp: '2024-01-01' },
-        { a: Currency.fromFloat(30, 6), timestamp: '2024-02-01' },
+        { a: Balance.fromFloat(20, 6), timestamp: '2024-01-01' },
+        { a: Balance.fromFloat(30, 6), timestamp: '2024-02-01' },
       ]
       expect(grouped).to.deep.equal(expected)
     })
     it('should aggregate values when strategy is sum and grouping is month (Token)', () => {
       const extendedMockData = [
-        { a: Token.fromFloat(10, 6), timestamp: '2024-01-01' },
-        { a: Token.fromFloat(20, 6), timestamp: '2024-01-02' },
-        { a: Token.fromFloat(30, 6), timestamp: '2024-02-01' },
+        { a: Balance.fromFloat(10, 6), timestamp: '2024-01-01' },
+        { a: Balance.fromFloat(20, 6), timestamp: '2024-01-02' },
+        { a: Balance.fromFloat(30, 6), timestamp: '2024-02-01' },
       ]
       const grouped = applyGrouping(extendedMockData, 'month', 'sum')
       const expected = [
-        { a: Token.fromFloat(30, 6), timestamp: '2024-01-02' },
-        { a: Token.fromFloat(30, 6), timestamp: '2024-02-01' },
+        { a: Balance.fromFloat(30, 6), timestamp: '2024-01-02' },
+        { a: Balance.fromFloat(30, 6), timestamp: '2024-02-01' },
       ]
       expect(grouped).to.deep.equal(expected)
     })
@@ -866,28 +866,28 @@ describe('Processor', () => {
       const items = [
         {
           timestamp: '2024-01-01T12:00:00Z',
-          topLevelAmount: Currency.fromFloat(1, 6), // should be summed
+          topLevelAmount: Balance.fromFloat(1, 6), // should be summed
           nested: {
-            amount: Currency.fromFloat(1, 6), // should take last value
+            amount: Balance.fromFloat(1, 6), // should take last value
             description: 'first',
           },
           fees: [
             {
-              amount: Currency.fromFloat(0.5, 6), // should take last value
+              amount: Balance.fromFloat(0.5, 6), // should take last value
               name: 'fee1',
             },
           ],
         },
         {
           timestamp: '2024-01-01T18:00:00Z',
-          topLevelAmount: Currency.fromFloat(2, 6),
+          topLevelAmount: Balance.fromFloat(2, 6),
           nested: {
-            amount: Currency.fromFloat(3, 6),
+            amount: Balance.fromFloat(3, 6),
             description: 'second',
           },
           fees: [
             {
-              amount: Currency.fromFloat(0.7, 6),
+              amount: Balance.fromFloat(0.7, 6),
               name: 'fee1',
             },
           ],

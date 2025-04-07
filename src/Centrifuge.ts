@@ -301,7 +301,15 @@ export class Centrifuge {
   }
 
   pool(id: string) {
-    return this._query(null, () => this.pools().pipe(map((pools) => pools.find((pool) => pool.id === id) ?? null)))
+    return this._query(null, () =>
+      this.pools().pipe(
+        map((pools) => {
+          const pool = pools.find((pool) => pool.id === id)
+          if (!pool) throw new Error(`Pool with id ${id} not found`)
+          return pool
+        })
+      )
+    )
   }
 
   account(address: string, chainId?: number) {
