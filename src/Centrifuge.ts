@@ -251,8 +251,8 @@ export class Centrifuge {
         switchMap(({ messageDispatcher }) => {
           return this.getClient(cid)!.readContract({
             address: messageDispatcher,
-            abi: ABI.MessageProcessor,
-            functionName: 'centrifugeChainId',
+            abi: ABI.MessageDispatcher,
+            functionName: 'localCentrifugeId',
           })
         })
       )

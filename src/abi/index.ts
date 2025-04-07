@@ -4,6 +4,7 @@ import CurrencyAbi from './Currency.abi.js'
 import GatewayAbi from './Gateway.abi.js'
 import HoldingsAbi from './Holdings.abi.js'
 import InvestmentManagerAbi from './InvestmentManager.abi.js'
+import MessageDispatcherAbi from './MessageDispatcher.abi.js'
 import MessageProcessorAbi from './MessageProcessor.abi.js'
 import PoolManagerAbi from './PoolManager.abi.js'
 import PoolRegistryAbi from './PoolRegistry.abi.js'
@@ -19,6 +20,7 @@ export const ABI = {
   ShareClassManager: parseAbi(ShareClassManagerAbi),
   PoolRegistry: parseAbi(PoolRegistryAbi),
   MessageProcessor: parseAbi(MessageProcessorAbi),
+  MessageDispatcher: parseAbi(MessageDispatcherAbi),
   Currency: parseAbi(CurrencyAbi),
   RestrictionManager: parseAbi(RestrictionManagerAbi),
   Gateway: parseAbi(GatewayAbi),
