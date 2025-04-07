@@ -1,8 +1,8 @@
 import { expect } from 'chai'
 import { combineLatest, filter, firstValueFrom, last, Observable } from 'rxjs'
 import { parseEther } from 'viem/utils'
-import { context } from './tests/setup.js'
-import { type OperationConfirmedStatus } from './types/transaction.js'
+import { context } from '../tests/setup.js'
+import { type OperationConfirmedStatus } from '../types/transaction.js'
 
 describe('Account', () => {
   it('should fetch account and balances', async () => {

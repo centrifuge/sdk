@@ -1,9 +1,9 @@
 import { defer } from 'rxjs'
-import { ABI } from './abi/index.js'
-import type { Centrifuge } from './Centrifuge.js'
-import { Entity } from './entities/Entity.js'
-import type { HexString } from './types/index.js'
-import { repeatOnEvents } from './utils/rx.js'
+import { ABI } from '../abi/index.js'
+import type { Centrifuge } from '../Centrifuge.js'
+import type { HexString } from '../types/index.js'
+import { repeatOnEvents } from '../utils/rx.js'
+import { Entity } from './Entity.js'
 
 const tUSD = '0x8503b4452Bf6238cC76CdbEE223b46d7196b1c93'
 

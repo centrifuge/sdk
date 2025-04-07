@@ -31,11 +31,11 @@ import {
   type WatchEventOnLogsParameter,
 } from 'viem'
 import { ABI } from './abi/index.js'
-import { Account } from './Account.js'
 import { chains } from './config/chains.js'
 import { type CurrencyMetadata } from './config/lp.js'
 import { protocol } from './config/protocol.js'
 import { PERMIT_TYPEHASH } from './constants.js'
+import { Account } from './entities/Account.js'
 import { Pool } from './entities/Pool.js'
 import type { Client, DerivedConfig, EnvConfig, HexString, UserProvidedConfig } from './types/index.js'
 import { PoolMetadataInput } from './types/poolInput.js'
