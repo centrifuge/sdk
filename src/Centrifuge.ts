@@ -138,7 +138,7 @@ export class Centrifuge {
     return this._transactSequence(async function* ({ walletClient, signingAddress, publicClient }) {
       const addresses = await self._protocolAddresses(cid)
       const shareClassManager = addresses.multiShareClass
-      const result = yield* doTransaction('Cancel redeem order', publicClient, () =>
+      const result = yield* doTransaction('Create pool', publicClient, () =>
         walletClient.writeContract({
           address: addresses.poolRegistry,
           abi: ABI.PoolRouter,
@@ -233,16 +233,13 @@ export class Centrifuge {
       // const enableData = encodeFunctionData({
       //   abi: ABI.PoolRouter,
       //   functionName: 'setMetadata',
-      //   args: [self.address, amount.toBigInt()],
+      //   args: ["IPFS_HASH"],
       // })
       // const requestData = encodeFunctionData({
       //   abi: ABI.PoolRouter,
       //   functionName: 'addShareClass',
-      //   args: [self.address, signingAddress, estimate],
+      //   args: [SC_NAME, SC_SYMBOL, SC_SALT, ''],
       // })
-
-      // cs[c++] = abi.encodeWithSelector(poolRouter.setPoolMetadata.selector, bytes("Testing pool"));
-      // cs[c++] = abi.encodeWithSelector(poolRouter.addShareClass.selector, SC_NAME, SC_SYMBOL, SC_SALT, bytes(""));
     }, cid)
   }
 
@@ -250,9 +247,9 @@ export class Centrifuge {
     const cid = chainId ?? this.config.defaultChain
     return this._query(['centrifugeId', cid], () =>
       this._protocolAddresses(cid).pipe(
-        switchMap((addresses) => {
+        switchMap(({ messageDispatcher }) => {
           return this.getClient(cid)!.readContract({
-            address: addresses.messageProcessor,
+            address: messageDispatcher,
             abi: ABI.MessageProcessor,
             functionName: 'centrifugeChainId',
           })
@@ -265,6 +262,7 @@ export class Centrifuge {
    * Get the existing pools on the different chains.
    */
   pools() {
+    // TODO: refetch on new pool events
     return this._query(['pools'], () => {
       return combineLatest(
         this.chains.map((chainId) =>
