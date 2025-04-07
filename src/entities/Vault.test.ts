@@ -6,15 +6,15 @@ import { Pool } from './Pool.js'
 import { PoolNetwork } from './PoolNetwork.js'
 import { Vault } from './Vault.js'
 
-const poolId = '2779829532'
-const trancheId = '0xac6bffc5fd68f7772ceddec7b0a316ca'
-const asset = '0x8503b4452bf6238cc76cdbee223b46d7196b1c93'
-const vaultAddress = '0x05eb35c2e4fa21fb06d3fab92916191b254b3504'
+const poolId = '562949953421313'
+const scId = '0x00000000000000000002000000000002'
+const vaultAddress = '0x4249284a934013973a342bcfdba8d3dab4987fd3'
+const asset = '0x86eb50b22dd226fe5d1f0753a40e247fd711ad6e'
 
 // Active investor with a pending redeem order
 const investorA = '0x423420Ae467df6e90291fd0252c0A8a637C1e03f'
 // Permissioned investor with no orders
-const investorB = '0xa076b817Fade13Ee72C495910eDCe1ed953F9930'
+const investorB = '0x79320e1DAa049260B072464Cba766C12A6A3cBf5'
 // Investor with a claimable invest order
 const investorC = '0x7fAbAa12da2E30650c841AC647e3567f942fcdf5'
 // Non-permissioned investor
@@ -26,9 +26,9 @@ describe('Vault', () => {
   let vault: Vault
   beforeEach(() => {
     const { centrifuge } = context
-    const pool = new Pool(centrifuge, poolId)
+    const pool = new Pool(centrifuge, poolId, 11155111)
     const poolNetwork = new PoolNetwork(centrifuge, pool, 11155111)
-    vault = new Vault(centrifuge, poolNetwork, trancheId, asset, vaultAddress)
+    vault = new Vault(centrifuge, poolNetwork, scId, asset, vaultAddress)
   })
 
   it('get investment details for an investor', async () => {
@@ -160,8 +160,8 @@ describe('Vault', () => {
   })
 
   it('should refetch investment details after a user is added', async () => {
-    const [poolManager, restrictionManager, investmentBefore] = await Promise.all([
-      vault.network._poolManager(),
+    const [{ poolManager }, restrictionManager, investmentBefore] = await Promise.all([
+      vault._root._protocolAddresses(vault.chainId),
       vault._restrictionManager(),
       vault.investment(investorD),
     ])

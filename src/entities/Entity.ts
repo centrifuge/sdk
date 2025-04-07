@@ -10,7 +10,7 @@ export class Entity {
   _transactSequence: Centrifuge['_transactSequence']
   constructor(
     /** @internal */
-    protected _root: Centrifuge,
+    public _root: Centrifuge,
     queryKeys: (string | number)[]
   ) {
     this.#baseKeys = queryKeys

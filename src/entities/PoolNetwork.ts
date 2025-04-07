@@ -2,8 +2,7 @@ import { combineLatest, defer, map, switchMap } from 'rxjs'
 import { getContract, toHex } from 'viem'
 import { ABI } from '../abi/index.js'
 import type { Centrifuge } from '../Centrifuge.js'
-import { lpConfig } from '../config/lp.js'
-import type { HexString } from '../types/index.js'
+import { NULL_ADDRESS } from '../constants.js'
 import { repeatOnEvents } from '../utils/rx.js'
 import { Entity } from './Entity.js'
 import type { Pool } from './Pool.js'
@@ -29,16 +28,19 @@ export class PoolNetwork extends Entity {
    */
   _estimate() {
     return this._root._query(['estimate', this.chainId, this.pool.chainId], () =>
-      defer(() => {
-        const bytes = toHex(new Uint8Array([0x12]))
-        const { centrifugeRouter } = lpConfig[this.chainId]!
-        return this._root.getClient(this.chainId)!.readContract({
-          address: centrifugeRouter,
-          abi: ABI.VaultRouter,
-          functionName: 'estimate',
-          args: [this.pool.chainId, bytes],
-        }) as Promise<bigint>
-      })
+      this._root._protocolAddresses(this.chainId).pipe(
+        switchMap(({ vaultRouter }) =>
+          defer(() => {
+            const bytes = toHex(new Uint8Array([0x12]))
+            return this._root.getClient(this.chainId)!.readContract({
+              address: vaultRouter,
+              abi: ABI.VaultRouter,
+              functionName: 'estimate',
+              args: [this.pool.chainId, bytes],
+            }) as Promise<bigint>
+          })
+        )
+      )
     )
   }
 
@@ -49,20 +51,19 @@ export class PoolNetwork extends Entity {
   _share(scId: string) {
     return this._query(['share'], () =>
       this._root._protocolAddresses(this.chainId).pipe(
-        switchMap(({ vaultRouter }) =>
-          defer(
-            () =>
-              this._root.getClient(this.chainId)!.readContract({
-                address: vaultRouter,
-                abi: ABI.PoolManager,
-                functionName: 'getTranche',
-                args: [this.pool.id as any, scId as any],
-              }) as Promise<HexString>
+        switchMap(({ poolManager }) =>
+          defer(() =>
+            this._root.getClient(this.chainId)!.readContract({
+              address: poolManager,
+              abi: ABI.PoolManager,
+              functionName: 'tranche',
+              args: [this.pool.id as any, scId as any],
+            })
           ).pipe(
             repeatOnEvents(
               this._root,
               {
-                address: vaultRouter,
+                address: poolManager,
                 abi: ABI.PoolManager,
                 eventName: 'DeployTranche',
                 filter: (events) => {
@@ -95,9 +96,8 @@ export class PoolNetwork extends Entity {
   vaults(scId: string) {
     return this._query(['vaults', scId], () =>
       this._root._protocolAddresses(this.chainId).pipe(
-        switchMap(({ poolManager, vaultRouter }) =>
+        switchMap(({ poolManager, vaultRouter, currencies }) =>
           defer(async () => {
-            const { currencies } = lpConfig[this.chainId]!
             if (!currencies.length) return []
             const contract = getContract({
               address: vaultRouter,
@@ -107,6 +107,13 @@ export class PoolNetwork extends Entity {
             const results = await Promise.allSettled(
               currencies.map(async (curAddr) => {
                 const vaultAddr = await contract.read.getVault!([this.pool.id as any, scId as any, curAddr])
+                if (vaultAddr === NULL_ADDRESS) {
+                  console.warn(`Vault not found
+Pool: ${this.pool.id}
+Share Class: ${scId}
+Currency: ${curAddr}`)
+                  throw new Error('Vault not found')
+                }
                 return new Vault(this._root, this, scId, curAddr, vaultAddr)
               })
             )
@@ -136,7 +143,7 @@ export class PoolNetwork extends Entity {
    */
   vaultsByShareClass() {
     return this._query<Record<string, Vault>>(null, () =>
-      this.pool.shareClassIds().pipe(
+      this.pool._shareClassIds().pipe(
         switchMap((scId) => {
           return combineLatest(scId.map((scId) => this.vaults(scId))).pipe(
             map((vaults) => Object.fromEntries(vaults.flat().map((vault, index) => [scId[index], vault])))

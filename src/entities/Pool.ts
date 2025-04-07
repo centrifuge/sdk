@@ -7,6 +7,7 @@ import { repeatOnEvents } from '../utils/rx.js'
 import { Entity } from './Entity.js'
 import { PoolNetwork } from './PoolNetwork.js'
 import { Reports } from './Reports/index.js'
+import { ShareClass } from './ShareClass.js'
 
 export class Pool extends Entity {
   /** @internal */
@@ -61,71 +62,11 @@ export class Pool extends Entity {
     )
   }
 
-  _shareClassManager() {
-    return this._query(['shareClassManager'], () =>
-      this._root._protocolAddresses(this.chainId).pipe(
-        switchMap(({ poolRegistry }) =>
-          defer(() =>
-            this._root.getClient(this.chainId)!.readContract({
-              address: poolRegistry,
-              abi: ABI.PoolRegistry,
-              functionName: 'shareClassManager',
-              args: [this.id as any],
-            })
-          )
-        )
-      )
+  shareClasses() {
+    return this._query(null, () =>
+      this._shareClassIds().pipe(map((scIds) => scIds.map((scId) => new ShareClass(this._root, this, scId))))
     )
   }
-
-  shareClassIds() {
-    return this._query(['shareClasses'], () =>
-      this._shareClassManager().pipe(
-        switchMap((shareClassManager) =>
-          defer(async () => {
-            const count = await this._root.getClient(this.chainId)!.readContract({
-              address: shareClassManager,
-              abi: ABI.ShareClassManager,
-              functionName: 'shareClassCount',
-              args: [this.id as any],
-            })
-
-            const scIds = await Promise.all(
-              Array.from({ length: count }, (_, i) => {
-                return this._root.getClient(this.chainId)!.readContract({
-                  address: shareClassManager,
-                  abi: ABI.ShareClassManager,
-                  functionName: 'previewShareClassId',
-                  args: [this.id as any, i + 1],
-                })
-              })
-            )
-            return scIds
-          })
-        )
-      )
-    )
-  }
-
-  // trancheIds() {
-  //   return this._root._queryIndexer(
-  //     `query($poolId: String!) {
-  //       pool(id: $poolId) {
-  //         tranches {
-  //           nodes {
-  //             trancheId
-  //           }
-  //         }
-  //       }
-  //     }`,
-  //     {
-  //       poolId: this.id,
-  //     },
-  //     (data: { pool: { tranches: { nodes: { trancheId: string }[] } } }) => {
-  //       return data.pool.tranches.nodes.map((node) => node.trancheId)
-  //     }
-  //   )
-  // }
 
   /**
    * Get all networks where a pool can potentially be deployed.
@@ -182,4 +123,57 @@ export class Pool extends Entity {
   vault(chainId: number, trancheId: string, asset: string) {
     return this._query(null, () => this.network(chainId).pipe(switchMap((network) => network.vault(trancheId, asset))))
   }
+
+  /**
+   * @internal
+   */
+  _shareClassManager() {
+    return this._query(['shareClassManager'], () =>
+      this._root._protocolAddresses(this.chainId).pipe(
+        switchMap(({ poolRegistry }) =>
+          defer(() =>
+            this._root.getClient(this.chainId)!.readContract({
+              address: poolRegistry,
+              abi: ABI.PoolRegistry,
+              functionName: 'shareClassManager',
+              args: [this.id as any],
+            })
+          )
+        )
+      )
+    )
+  }
+
+  /**
+   * @internal
+   */
+  _shareClassIds() {
+    return this._query(['shareClasses'], () =>
+      this._shareClassManager().pipe(
+        switchMap((shareClassManager) =>
+          defer(async () => {
+            const count = await this._root.getClient(this.chainId)!.readContract({
+              address: shareClassManager,
+              abi: ABI.ShareClassManager,
+              functionName: 'shareClassCount',
+              args: [this.id as any],
+            })
+
+            const scIds = await Promise.all(
+              Array.from({ length: count }, (_, i) => {
+                return this._root.getClient(this.chainId)!.readContract({
+                  address: shareClassManager,
+                  abi: ABI.ShareClassManager,
+                  functionName: 'previewShareClassId',
+                  args: [this.id as any, i + 1],
+                })
+              })
+            )
+            return scIds
+          })
+        )
+      )
+    )
+  }
+
 }

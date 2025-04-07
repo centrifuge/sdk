@@ -228,6 +228,8 @@ export class Centrifuge {
 
       console.log('poolId', poolId, formattedMetadata)
 
+      // TODO: add metadata and share classes
+
       // const enableData = encodeFunctionData({
       //   abi: ABI.PoolRouter,
       //   functionName: 'setMetadata',
