@@ -147,8 +147,6 @@ export class Centrifuge {
         })
       )
 
-      console.log('result', result)
-
       const logs = parseEventLogs({
         abi: ABI.PoolRegistry,
         eventName: 'NewPool',
