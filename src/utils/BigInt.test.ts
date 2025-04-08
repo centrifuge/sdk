@@ -1,5 +1,5 @@
 import { expect } from 'chai'
-import { BigIntWrapper, Currency, DecimalWrapper, Price, Rate, Token } from './BigInt.js'
+import { Balance, BigIntWrapper, DecimalWrapper, Price, Rate } from './BigInt.js'
 import { Dec } from './decimal.js'
 
 describe('utils/BigInt', () => {
@@ -157,31 +157,31 @@ describe('utils/BigInt', () => {
       })
     })
   })
-  describe('Currency', () => {
+  describe('Balance', () => {
     const conversionCases = [
       {
         title: 'decimal',
-        input: Currency.fromFloat(Dec(1000.1), 6),
+        input: Balance.fromFloat(Dec(1000.1), 6),
         expected: { decimal: '1000.1', float: 1000.1, bigint: 1_000_100_000n, string: '1000100000' },
       },
       {
         title: 'string',
-        input: Currency.fromFloat('1000', 6),
+        input: Balance.fromFloat('1000', 6),
         expected: { decimal: '1000', float: 1000, bigint: 1_000_000_000n, string: '1000000000' },
       },
       {
         title: 'number',
-        input: Currency.fromFloat(1000, 6),
+        input: Balance.fromFloat(1000, 6),
         expected: { decimal: '1000', float: 1000, bigint: 1_000_000_000n, string: '1000000000' },
       },
       {
         title: 'bigint',
-        input: new Currency(1000n, 6),
+        input: new Balance(1000n, 6),
         expected: { decimal: '0.001', float: 0.001, bigint: 1000n, string: '1000' },
       },
     ]
     conversionCases.forEach(({ title, input, expected }) => {
-      it(`should convert ${title} to Currency`, () => {
+      it(`should convert ${title} to Balance`, () => {
         expect(input.toBigInt()).to.be.equal(expected.bigint)
         expect(input.toString()).to.be.equal(expected.string)
         expect(input.toFloat()).to.be.equal(expected.float)
@@ -190,33 +190,33 @@ describe('utils/BigInt', () => {
     })
     const arithmeticCases = [
       {
-        title: 'Currency + bigint',
-        input: new Currency(1000n, 6).add(1000n),
+        title: 'Balance + bigint',
+        input: new Balance(1000n, 6).add(1000n),
         expected: { bigint: 2000n, float: 0.002, decimal: '0.002', string: '2000' },
       },
       {
-        title: 'Currency + Currency.fromFloat',
-        input: new Currency(1000n, 6).add(Currency.fromFloat(0.001, 6)),
+        title: 'Balance + Balance.fromFloat',
+        input: new Balance(1000n, 6).add(Balance.fromFloat(0.001, 6)),
         expected: { bigint: 2000n, float: 0.002, decimal: '0.002', string: '2000' },
       },
       {
-        title: 'Currency - bigint',
-        input: new Currency(1000n, 6).sub(500n),
+        title: 'Balance - bigint',
+        input: new Balance(1000n, 6).sub(500n),
         expected: { bigint: 500n, float: 0.0005, decimal: '0.0005', string: '500' },
       },
       {
-        title: 'Currency - Currency.fromFloat',
-        input: new Currency(1000n, 6).sub(Currency.fromFloat(0.0005, 6)),
+        title: 'Balance - Balance.fromFloat',
+        input: new Balance(1000n, 6).sub(Balance.fromFloat(0.0005, 6)),
         expected: { bigint: 500n, float: 0.0005, decimal: '0.0005', string: '500' },
       },
       {
-        title: 'Currency * bigint',
-        input: new Currency(1000n, 3).mul(2000n),
+        title: 'Balance * bigint',
+        input: new Balance(1000n, 3).mul(2000n),
         expected: { bigint: 2000n, float: 2, decimal: '2', string: '2000' },
       },
       {
-        title: 'Currency * Currency',
-        input: new Currency(1_000_000_000n, 6).mul(new Currency(2_000_000_000n, 6)),
+        title: 'Balance * Balance',
+        input: new Balance(1_000_000_000n, 6).mul(new Balance(2_000_000_000n, 6)),
         expected: {
           bigint: 2_000_000_000_000n,
           float: 2000000,
@@ -225,18 +225,18 @@ describe('utils/BigInt', () => {
         },
       },
       {
-        title: 'Currency * Currency.fromFloat(float)',
-        input: new Currency(1_000_000n, 6).mul(Currency.fromFloat(1.000001, 6)),
+        title: 'Balance * Balance.fromFloat(float)',
+        input: new Balance(1_000_000n, 6).mul(Balance.fromFloat(1.000001, 6)),
         expected: { bigint: 1_000_001n, float: 1.000001, decimal: '1.000001', string: '1000001' },
       },
       {
-        title: 'Currency * Currency.fromFloat(Dec)',
-        input: new Currency(20_000_000_000_000n, 6).mul(Currency.fromFloat(Dec(1.1), 6)),
+        title: 'Balance * Balance.fromFloat(Dec)',
+        input: new Balance(20_000_000_000_000n, 6).mul(Balance.fromFloat(Dec(1.1), 6)),
         expected: { bigint: 22_000_000_000_000n, float: 22000000, decimal: '22000000', string: '22000000000000' },
       },
       {
-        title: 'Currency * Currency',
-        input: new Currency(1_566_119_435n, 6).mul(new Currency(1_000_000n, 6)),
+        title: 'Balance * Balance',
+        input: new Balance(1_566_119_435n, 6).mul(new Balance(1_000_000n, 6)),
         expected: {
           bigint: 1_566_119_435n,
           float: 1566.119435,
@@ -245,43 +245,33 @@ describe('utils/BigInt', () => {
         },
       },
       {
-        title: 'Currency * Currency',
-        input: Currency.fromFloat(1, 6).mul(new Price(1010000000000000000n)),
+        title: 'Balance * Balance',
+        input: Balance.fromFloat(1, 6).mul(new Price(1010000000000000000n)),
         expected: { bigint: 1_010_000n, float: 1.01, decimal: '1.01', string: '1010000' },
       },
       {
-        title: 'Currency * Currency',
-        input: Currency.fromFloat(1, 6).mul(Price.fromFloat(1.01)),
+        title: 'Balance * Balance',
+        input: Balance.fromFloat(1, 6).mul(Price.fromFloat(1.01)),
         expected: { bigint: 1_010_000n, float: 1.01, decimal: '1.01', string: '1010000' },
       },
       {
-        title: 'Currency / bigint',
-        input: new Currency(1000n, 6).div(2n),
+        title: 'Balance / bigint',
+        input: new Balance(1000n, 6).div(2n),
         expected: { bigint: 500n, float: 0.0005, decimal: '0.0005', string: '500' },
       },
       {
-        title: 'Currency / Currency.fromFloat',
-        input: new Currency(1000n, 6).div(Currency.fromFloat(0.000002, 6)),
+        title: 'Balance / Balance.fromFloat',
+        input: new Balance(1000n, 6).div(Balance.fromFloat(0.000002, 6)),
         expected: { bigint: 500n, float: 0.0005, decimal: '0.0005', string: '500' },
       },
       {
-        title: 'Currency * Token.toBigInt()',
-        input: new Currency(100n, 2).mul(new Token(100n, 4).toBigInt()),
-        expected: { bigint: 100n, float: 1, decimal: '1', string: '100' },
-      },
-      {
-        title: 'Currency * Token.toBigInt()',
-        input: new Currency(100n, 2).mul(Token.fromFloat(0.000001, 6).toBigInt()),
-        expected: { bigint: 1n, float: 0.01, decimal: '0.01', string: '1' },
-      },
-      {
-        title: 'Currency mulPrice Currency',
-        input: new Currency(1_000_000n, 6).mul(Price.fromFloat(1.01)),
+        title: 'Balance mulPrice Balance',
+        input: new Balance(1_000_000n, 6).mul(Price.fromFloat(1.01)),
         expected: { bigint: 1_010_000n, float: 1.01, decimal: '1.01', string: '1010000' },
       },
       {
-        title: 'Currency mulPrice Currency',
-        input: Currency.fromFloat(1, 6).mul(new Price(1010000000000000000n)),
+        title: 'Balance mulPrice Balance',
+        input: Balance.fromFloat(1, 6).mul(new Price(1010000000000000000n)),
         expected: { bigint: 1_010_000n, float: 1.01, decimal: '1.01', string: '1010000' },
       },
     ]

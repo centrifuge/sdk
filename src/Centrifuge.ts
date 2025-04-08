@@ -1,5 +1,7 @@
 import type { Observable } from 'rxjs'
 import {
+  catchError,
+  combineLatest,
   concatWith,
   defaultIfEmpty,
   defer,
@@ -11,6 +13,7 @@ import {
   of,
   Subject,
   switchMap,
+  timeout,
   using,
 } from 'rxjs'
 import { fromFetch } from 'rxjs/fetch'
@@ -28,15 +31,17 @@ import {
   type WatchEventOnLogsParameter,
 } from 'viem'
 import { ABI } from './abi/index.js'
-import { Account } from './Account.js'
 import { chains } from './config/chains.js'
-import type { CurrencyMetadata } from './config/lp.js'
+import { type CurrencyMetadata } from './config/lp.js'
+import { protocol } from './config/protocol.js'
 import { PERMIT_TYPEHASH } from './constants.js'
-import { Pool } from './Pool.js'
+import { Pool } from './entities/Pool.js'
 import type { Client, DerivedConfig, EnvConfig, HexString, UserProvidedConfig } from './types/index.js'
+import { PoolMetadataInput } from './types/poolInput.js'
+import { PoolMetadata } from './types/poolMetadata.js'
 import type { CentrifugeQueryOptions, Query } from './types/query.js'
 import type { OperationStatus, Signer, Transaction, TransactionCallbackParams } from './types/transaction.js'
-import { Currency } from './utils/BigInt.js'
+import { Balance } from './utils/BigInt.js'
 import { hashKey } from './utils/query.js'
 import { makeThenable, repeatOnEvents, shareReplayWithDelayedReset } from './utils/rx.js'
 import { doTransaction, isLocalAccount } from './utils/transaction.js'
@@ -110,6 +115,10 @@ export class Centrifuge {
         if (!rpcUrl) {
           console.warn(`No rpcUrl defined for chain ${chain.id}. Using public RPC endpoint.`)
         }
+        if (!protocol[chain.id]) {
+          console.warn(`No protocol config defined for chain ${chain.id}. Skipping.`)
+          return
+        }
         this.#clients.set(
           chain.id,
           createPublicClient<any, Chain>({ chain, transport: http(rpcUrl), batch: { multicall: true } })
@@ -117,13 +126,189 @@ export class Centrifuge {
       })
   }
 
-  pool(id: string | number, metadataHash?: string) {
-    return this._query(null, () => of(new Pool(this, String(id), metadataHash)))
+  /**
+   * Create a new pool on the given chain.
+   * @param metadataInput - The metadata for the pool
+   * @param currencyCode - The currency code for the pool
+   * @param chainId - The chain ID to create the pool on
+   */
+  createPool(metadataInput: PoolMetadataInput, currencyCode = 840, chainId?: number) {
+    const cid = chainId ?? this.config.defaultChain
+    const self = this
+    return this._transactSequence(async function* ({ walletClient, signingAddress, publicClient }) {
+      const addresses = await self._protocolAddresses(cid)
+      const shareClassManager = addresses.multiShareClass
+      const result = yield* doTransaction('Create pool', publicClient, () =>
+        walletClient.writeContract({
+          address: addresses.poolRegistry,
+          abi: ABI.PoolRouter,
+          functionName: 'createPool',
+          args: [signingAddress, BigInt(currencyCode), shareClassManager],
+        })
+      )
+
+      const logs = parseEventLogs({
+        abi: ABI.PoolRegistry,
+        eventName: 'NewPool',
+        logs: result.receipt.logs,
+      })
+
+      const poolId = logs[0]?.args.poolId
+
+      const scIds = await Promise.all(
+        Array.from({ length: metadataInput.shareClasses.length }, (_, i) => {
+          return self.getClient(cid)!.readContract({
+            address: shareClassManager,
+            abi: ABI.ShareClassManager,
+            functionName: 'previewShareClassId',
+            args: [poolId as any, i + 1],
+          })
+        })
+      )
+
+      const shareClassesById: PoolMetadata['shareClasses'] = {}
+      metadataInput.shareClasses.forEach((sc, index) => {
+        shareClassesById[scIds[index]!] = {
+          minInitialInvestment: Balance.fromFloat(sc.minInvestment, 18).toString(),
+          targetApy: sc.targetApy,
+        }
+      })
+
+      const formattedMetadata: PoolMetadata = {
+        version: 1,
+        pool: {
+          name: metadataInput.poolName,
+          icon: metadataInput.poolIcon,
+          asset: {
+            class: metadataInput.assetClass,
+            subClass: metadataInput.subAssetClass,
+          },
+          issuer: {
+            name: metadataInput.issuerName,
+            repName: metadataInput.issuerRepName,
+            description: metadataInput.issuerDescription,
+            email: metadataInput.email,
+            logo: metadataInput.issuerLogo,
+            shortDescription: metadataInput.issuerShortDescription,
+            categories: metadataInput.issuerCategories,
+          },
+          poolStructure: metadataInput.poolStructure,
+          investorType: metadataInput.investorType,
+          links: {
+            executiveSummary: metadataInput.executiveSummary,
+            forum: metadataInput.forum,
+            website: metadataInput.website,
+          },
+          details: metadataInput.details,
+          status: 'open',
+          listed: metadataInput.listed ?? true,
+          poolRatings: metadataInput.poolRatings.length > 0 ? metadataInput.poolRatings : [],
+          reports: metadataInput.report
+            ? [
+                {
+                  author: {
+                    name: metadataInput.report.author.name,
+                    title: metadataInput.report.author.title,
+                    avatar: metadataInput.report.author.avatar,
+                  },
+                  uri: metadataInput.report.uri,
+                },
+              ]
+            : [],
+        },
+        shareClasses: shareClassesById,
+        onboarding: {
+          shareClasses: metadataInput.onboarding?.shareClasses || {},
+          taxInfoRequired: metadataInput.onboarding?.taxInfoRequired,
+          externalOnboardingUrl: metadataInput.onboarding?.externalOnboardingUrl,
+        },
+      }
+
+      console.log('poolId', poolId, formattedMetadata)
+
+      // TODO: add metadata and share classes
+
+      // const enableData = encodeFunctionData({
+      //   abi: ABI.PoolRouter,
+      //   functionName: 'setMetadata',
+      //   args: ["IPFS_HASH"],
+      // })
+      // const requestData = encodeFunctionData({
+      //   abi: ABI.PoolRouter,
+      //   functionName: 'addShareClass',
+      //   args: [SC_NAME, SC_SYMBOL, SC_SALT, ''],
+      // })
+    }, cid)
   }
 
-  account(address: string, chainId?: number) {
-    return this._query(null, () => of(new Account(this, address as any, chainId ?? this.config.defaultChain)))
+  id(chainId?: number) {
+    const cid = chainId ?? this.config.defaultChain
+    return this._query(['centrifugeId', cid], () =>
+      this._protocolAddresses(cid).pipe(
+        switchMap(({ messageDispatcher }) => {
+          return this.getClient(cid)!.readContract({
+            address: messageDispatcher,
+            abi: ABI.MessageDispatcher,
+            functionName: 'localCentrifugeId',
+          })
+        })
+      )
+    )
   }
+
+  /**
+   * Get the existing pools on the different chains.
+   */
+  pools() {
+    // TODO: refetch on new pool events
+    return this._query(['pools'], () => {
+      return combineLatest(
+        this.chains.map((chainId) =>
+          combineLatest([
+            this.id(chainId),
+            this._protocolAddresses(chainId).pipe(
+              switchMap(({ poolRegistry }) =>
+                defer(() => {
+                  return this.getClient(chainId)!.readContract({
+                    address: poolRegistry,
+                    abi: ABI.PoolRegistry,
+                    functionName: 'latestId',
+                  })
+                })
+              )
+            ),
+          ]).pipe(
+            map(([centId, poolCounter]) => {
+              if (!poolCounter) return []
+              return Array.from({ length: Number(poolCounter) }, (_, i) => {
+                return new Pool(this, ((BigInt(centId) << 48n) + BigInt(i + 1)).toString(), chainId)
+              })
+            }),
+            // Because this is fetching from multiple networks and we're waiting on all of them before returning a value,
+            // we want a timeout in case one of the endpoints is too slow
+            timeout({ first: 5000 }),
+            catchError((e) => {
+              console.error('Error fetching pools', e)
+              return of([])
+            })
+          )
+        )
+      ).pipe(map((poolsPerChain) => poolsPerChain.flat()))
+    })
+  }
+
+  pool(id: string) {
+    return this._query(null, () =>
+      this.pools().pipe(
+        map((pools) => {
+          const pool = pools.find((pool) => pool.id === id)
+          if (!pool) throw new Error(`Pool with id ${id} not found`)
+          return pool
+        })
+      )
+    )
+  }
+
 
   /**
    * Get the metadata for an ERC20 token
@@ -167,7 +352,7 @@ export class Centrifuge {
    * @param chainId - The chain ID
    */
   balance(currency: string, owner: string, chainId?: number) {
-    const address = owner.toLowerCase()
+    const address = owner.toLowerCase() as HexString
     const cid = chainId ?? this.config.defaultChain
     return this._query(['balance', currency, owner, cid], () => {
       return this.currency(currency, cid).pipe(
@@ -180,7 +365,7 @@ export class Centrifuge {
                 functionName: 'balanceOf',
                 args: [address],
               })
-              .then((val: any) => new Currency(val, currencyMeta.decimals))
+              .then((val: any) => new Balance(val, currencyMeta.decimals))
           ).pipe(
             repeatOnEvents(
               this,
@@ -383,7 +568,6 @@ export class Centrifuge {
    * const chainId = 1
    *
    * // Wrap an observable that only emits one value and then completes
-   * //
    * const query = this._query(['balance', address, tUSD, chainId], () => {
    *   return defer(() => fetchBalance(address, tUSD, chainId))
    * }, { valueCacheTime: 60 })
@@ -574,5 +758,15 @@ export class Centrifuge {
     }
     const $tx = defer(transact).pipe(mergeMap((d) => (isObservable(d) ? d : of(d))))
     return makeThenable($tx, true)
+  }
+
+  _protocolAddresses(chainId: number) {
+    return this._query(['protocolAddresses', chainId], () => {
+      return defer(async () => {
+        // TODO: fetch from somewhere
+        if (!protocol[chainId]) throw new Error(`No protocol config for chain ${chainId}`)
+        return protocol[chainId]
+      })
+    })
   }
 }

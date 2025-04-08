@@ -1,9 +1,12 @@
 import { Centrifuge } from './Centrifuge.js'
 export type { CurrencyMetadata } from './config/lp.js'
-export * from './Pool.js'
-export * from './PoolNetwork.js'
-export * from './Reports/index.js'
+export * from './entities/Pool.js'
+export * from './entities/PoolNetwork.js'
+export * from './entities/Reports/index.js'
+export * from './entities/Vault.js'
 export type { Client, Config, HexString } from './types/index.js'
+export type { IssuerDetail, PoolMetadataInput, PoolReport, ShareClassInput } from './types/poolInput.js'
+export * from './types/poolMetadata.js'
 export type { Query } from './types/query.js'
 export type {
   AssetListReport,
@@ -45,9 +48,8 @@ export type {
   Signer,
   Transaction,
 } from './types/transaction.js'
-export { Currency, Perquintill, Price, Rate } from './utils/BigInt.js'
+export { Balance, Perquintill, Price, Rate } from './utils/BigInt.js'
 export type { GroupBy } from './utils/date.js'
-export * from './Vault.js'
 
 export { Centrifuge }
 export default Centrifuge

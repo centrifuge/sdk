@@ -1,4 +1,4 @@
-import { Dec, Decimal, type Numeric, DecimalJsType } from './decimal.js'
+import { Dec, Decimal, DecimalJsType, type Numeric } from './decimal.js'
 export abstract class BigIntWrapper {
   protected value: bigint
 
@@ -127,52 +127,27 @@ export class DecimalWrapper extends BigIntWrapper {
   }
 }
 
-export class Currency extends DecimalWrapper {
+export class Balance extends DecimalWrapper {
   static fromFloat(num: Numeric, decimals: number) {
-    return Currency._fromFloat<Currency>(num, decimals)
+    return Balance._fromFloat<Balance>(num, decimals)
   }
 
-  static ZERO = new Currency(0n, 0)
+  static ZERO = new Balance(0n, 0)
 
-  add(value: bigint | Currency) {
-    return this._add<Currency>(value)
+  add(value: bigint | Balance) {
+    return this._add<Balance>(value)
   }
 
-  sub(value: bigint | Currency) {
-    return this._sub<Currency>(value)
+  sub(value: bigint | Balance) {
+    return this._sub<Balance>(value)
   }
 
-  mul(value: bigint | Currency | Price | DecimalJsType) {
-    return this._mul<Currency>(value)
+  mul(value: bigint | Balance | Price | DecimalJsType) {
+    return this._mul<Balance>(value)
   }
 
-  div(value: bigint | Currency | DecimalJsType) {
-    return this._div<Currency>(value)
-  }
-}
-
-export class Token extends Currency {
-  static override fromFloat(number: Numeric, decimals: number) {
-    const n = Dec(number.toString()).mul(Dec(10).pow(decimals)).toDecimalPlaces(0).toString()
-    return new Token(n, decimals)
-  }
-
-  static override ZERO = new Token(0n, 0)
-
-  override add(value: bigint | Token) {
-    return this._add<Token>(value)
-  }
-
-  override sub(value: bigint | Token) {
-    return this._sub<Token>(value)
-  }
-
-  override mul(value: bigint | Token | DecimalJsType) {
-    return this._mul<Token>(value)
-  }
-
-  override div(value: bigint | Token) {
-    return this._div<Token>(value)
+  div(value: bigint | Balance | DecimalJsType) {
+    return this._div<Balance>(value)
   }
 }
 

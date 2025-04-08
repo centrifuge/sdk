@@ -10,7 +10,7 @@ export const lpConfig: Record<number, LPConfig> = {
   11155111: {
     centrifugeRouter: '0x723635430aa191ef5f6f856415f41b1a4d81dd7a',
     router: '0x130ce3f3c17b4458d6d4dfdf58a86aa2d261662e',
-    currencies: ['0x8503b4452Bf6238cC76CdbEE223b46d7196b1c93', '0xe2ac3c946445f9ff45ddce8acf17c93b7dd6295a'],
+    currencies: ['0x86eb50b22dd226fe5d1f0753a40e247fd711ad6e'],
   },
   84532: {
     centrifugeRouter: '0x723635430aa191ef5f6f856415f41b1a4d81dd7a',

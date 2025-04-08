@@ -1,6 +1,6 @@
-import { Price, Currency, Perquintill } from '../../utils/BigInt.js'
+import { Balance, Perquintill, Price } from '../../utils/BigInt.js'
 
-import { TrancheSnapshotsByDate } from '../../IndexerQueries/trancheSnapshots.js'
+import { TrancheSnapshotsByDate } from '../../entities/IndexerQueries/trancheSnapshots.js'
 
 export const mockTrancheSnapshots: TrancheSnapshotsByDate = {
   '2024-01-01': [
@@ -10,17 +10,17 @@ export const mockTrancheSnapshots: TrancheSnapshotsByDate = {
       timestamp: '2024-01-01T00:00:00Z',
       trancheId: 'senior',
       poolId: 'pool-1',
-      tokenSupply: new Currency(0n, 6),
+      tokenSupply: new Balance(0n, 6),
       pool: {
         currency: {
           decimals: 6,
           symbol: 'USDC',
         },
       },
-      outstandingInvestOrders: new Currency(0n, 6),
-      outstandingRedeemOrders: new Currency(0n, 6),
-      fulfilledInvestOrders: new Currency(0n, 6),
-      fulfilledRedeemOrders: new Currency(0n, 6),
+      outstandingInvestOrders: new Balance(0n, 6),
+      outstandingRedeemOrders: new Balance(0n, 6),
+      fulfilledInvestOrders: new Balance(0n, 6),
+      fulfilledRedeemOrders: new Balance(0n, 6),
       yield7DaysAnnualized: null,
       yield30DaysAnnualized: null,
       yield90DaysAnnualized: null,
@@ -36,17 +36,17 @@ export const mockTrancheSnapshots: TrancheSnapshotsByDate = {
       timestamp: '2024-01-01T00:00:00Z',
       trancheId: 'junior',
       poolId: 'pool-1',
-      tokenSupply: new Currency(0n, 6),
+      tokenSupply: new Balance(0n, 6),
       pool: {
         currency: {
           decimals: 6,
           symbol: 'USDC',
         },
       },
-      outstandingInvestOrders: new Currency(0n, 6),
-      outstandingRedeemOrders: new Currency(0n, 6),
-      fulfilledInvestOrders: new Currency(0n, 6),
-      fulfilledRedeemOrders: new Currency(0n, 6),
+      outstandingInvestOrders: new Balance(0n, 6),
+      outstandingRedeemOrders: new Balance(0n, 6),
+      fulfilledInvestOrders: new Balance(0n, 6),
+      fulfilledRedeemOrders: new Balance(0n, 6),
       yield7DaysAnnualized: null,
       yield30DaysAnnualized: null,
       yield90DaysAnnualized: null,
@@ -64,17 +64,17 @@ export const mockTrancheSnapshots: TrancheSnapshotsByDate = {
       timestamp: '2024-01-02T00:00:00Z',
       trancheId: 'senior',
       poolId: 'pool-1',
-      tokenSupply: new Currency(0n, 6),
+      tokenSupply: new Balance(0n, 6),
       pool: {
         currency: {
           decimals: 6,
           symbol: 'USDC',
         },
       },
-      outstandingInvestOrders: new Currency(0n, 6),
-      outstandingRedeemOrders: new Currency(0n, 6),
-      fulfilledInvestOrders: new Currency(0n, 6),
-      fulfilledRedeemOrders: new Currency(0n, 6),
+      outstandingInvestOrders: new Balance(0n, 6),
+      outstandingRedeemOrders: new Balance(0n, 6),
+      fulfilledInvestOrders: new Balance(0n, 6),
+      fulfilledRedeemOrders: new Balance(0n, 6),
       yield7DaysAnnualized: null,
       yield30DaysAnnualized: null,
       yield90DaysAnnualized: null,
@@ -90,17 +90,17 @@ export const mockTrancheSnapshots: TrancheSnapshotsByDate = {
       timestamp: '2024-01-02T00:00:00Z',
       trancheId: 'junior',
       poolId: 'pool-1',
-      tokenSupply: new Currency(0n, 6),
+      tokenSupply: new Balance(0n, 6),
       pool: {
         currency: {
           decimals: 6,
           symbol: 'USDC',
         },
       },
-      outstandingInvestOrders: new Currency(0n, 6),
-      outstandingRedeemOrders: new Currency(0n, 6),
-      fulfilledInvestOrders: new Currency(0n, 6),
-      fulfilledRedeemOrders: new Currency(0n, 6),
+      outstandingInvestOrders: new Balance(0n, 6),
+      outstandingRedeemOrders: new Balance(0n, 6),
+      fulfilledInvestOrders: new Balance(0n, 6),
+      fulfilledRedeemOrders: new Balance(0n, 6),
       yield7DaysAnnualized: null,
       yield30DaysAnnualized: null,
       yield90DaysAnnualized: null,

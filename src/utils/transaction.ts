@@ -12,7 +12,9 @@ export async function* doTransaction(
   const hash = await transactionCallback()
   yield { type: 'TransactionPending', title, hash }
   const receipt = await publicClient.waitForTransactionReceipt({ hash })
-  yield { type: 'TransactionConfirmed', title, hash, receipt }
+  const result = { type: 'TransactionConfirmed', title, hash, receipt } as const
+  yield result
+  return result
 }
 
 export async function* doSignMessage(
