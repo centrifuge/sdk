@@ -311,7 +311,6 @@ export class Centrifuge {
     )
   }
 
-  }
 
   /**
    * Get the metadata for an ERC20 token
