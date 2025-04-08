@@ -35,7 +35,6 @@ import { chains } from './config/chains.js'
 import { type CurrencyMetadata } from './config/lp.js'
 import { protocol } from './config/protocol.js'
 import { PERMIT_TYPEHASH } from './constants.js'
-import { Account } from './entities/Account.js'
 import { Pool } from './entities/Pool.js'
 import type { Client, DerivedConfig, EnvConfig, HexString, UserProvidedConfig } from './types/index.js'
 import { PoolMetadataInput } from './types/poolInput.js'
@@ -312,8 +311,6 @@ export class Centrifuge {
     )
   }
 
-  account(address: string, chainId?: number) {
-    return this._query(null, () => of(new Account(this, address as any, chainId ?? this.config.defaultChain)))
   }
 
   /**
