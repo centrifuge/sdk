@@ -105,7 +105,7 @@ export class PoolNetwork extends Entity {
               client: this._root.getClient(this.chainId)!,
             })
             const results = await Promise.allSettled(
-              currencies.map(async (curAddr) => {
+              currencies.map(async (curAddr: any) => {
                 const vaultAddr = await contract.read.getVault!([this.pool.id as any, scId as any, curAddr])
                 if (vaultAddr === NULL_ADDRESS) {
                   console.warn(`Vault not found for Pool: ${this.pool.id}, Share Class: ${scId}, Currency: ${curAddr}`)

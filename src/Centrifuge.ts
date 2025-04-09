@@ -6,6 +6,7 @@ import {
   defaultIfEmpty,
   defer,
   filter,
+  firstValueFrom,
   identity,
   isObservable,
   map,
@@ -31,9 +32,8 @@ import {
   type WatchEventOnLogsParameter,
 } from 'viem'
 import { ABI } from './abi/index.js'
-import { chains } from './config/chains.js'
+import { chainIdToNetwork, chains } from './config/chains.js'
 import { type CurrencyMetadata } from './config/lp.js'
-import { protocol } from './config/protocol.js'
 import { PERMIT_TYPEHASH } from './constants.js'
 import { Pool } from './entities/Pool.js'
 import type { Client, DerivedConfig, EnvConfig, HexString, UserProvidedConfig } from './types/index.js'
@@ -115,7 +115,7 @@ export class Centrifuge {
         if (!rpcUrl) {
           console.warn(`No rpcUrl defined for chain ${chain.id}. Using public RPC endpoint.`)
         }
-        if (!protocol[chain.id]) {
+        if (!chainIdToNetwork[chain.id]) {
           console.warn(`No protocol config defined for chain ${chain.id}. Skipping.`)
           return
         }
@@ -387,6 +387,15 @@ export class Centrifuge {
     })
   }
 
+  /**
+   * Fetches the contract addresses and returns an array of addresses.
+   */
+  async contracts() {
+    const chainId = this.config.defaultChain;
+    const result = await this._protocolAddresses(chainId);
+    return result.contracts;
+  }
+  
   /**
    * Returns an observable of all events on a given chain.
    * @internal
@@ -762,11 +771,31 @@ export class Centrifuge {
 
   _protocolAddresses(chainId: number) {
     return this._query(['protocolAddresses', chainId], () => {
-      return defer(async () => {
-        // TODO: fetch from somewhere
-        if (!protocol[chainId]) throw new Error(`No protocol config for chain ${chainId}`)
-        return protocol[chainId]
-      })
+      return defer(() => {
+        const network = chainIdToNetwork[chainId as keyof typeof chainIdToNetwork];
+        if (!network) {
+          throw new Error(`No protocol config mapping for chain id ${chainId}`);
+        }
+  
+        const baseUrl = 'https://raw.githubusercontent.com/centrifuge/protocol-v3/refs/heads/main/deployments';
+        const networkPath = (network === 'sepolia') ? 'testnet' : 'mainnet';
+        const url = `${baseUrl}/${networkPath}/${network}.json`;
+  
+        return firstValueFrom(
+          fromFetch(url).pipe(
+            switchMap(response => {
+              if (response.ok) {
+                return response.json();
+              } else {
+                return of({ error: true, message: `Error ${response.status}` });
+              }
+            }),
+            catchError(err => {
+              return of({ error: true, message: err.message });
+            })
+          )
+        );
+      });
     })
   }
 }
