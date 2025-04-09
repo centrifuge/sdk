@@ -35,6 +35,7 @@ import { chains } from './config/chains.js'
 import { type CurrencyMetadata } from './config/lp.js'
 import { protocol } from './config/protocol.js'
 import { PERMIT_TYPEHASH } from './constants.js'
+import { Investor } from './entities/Investor.js'
 import { Pool } from './entities/Pool.js'
 import type { Client, DerivedConfig, EnvConfig, HexString, UserProvidedConfig } from './types/index.js'
 import { PoolMetadataInput } from './types/poolInput.js'
@@ -309,6 +310,9 @@ export class Centrifuge {
     )
   }
 
+  investor(address: string) {
+    return this._query(null, () => of(new Investor(this, address as any)))
+  }
 
   /**
    * Get the metadata for an ERC20 token
@@ -326,10 +330,11 @@ export class Centrifuge {
           client: this.getClient(cid)!,
         })
         const [decimals, name, symbol, supportsPermit] = await Promise.all([
-          contract.read.decimals!() as Promise<number>,
-          contract.read.name!() as Promise<string>,
-          contract.read.symbol!() as Promise<string>,
-          contract.read.PERMIT_TYPEHASH!()
+          contract.read.decimals(),
+          contract.read.name(),
+          contract.read.symbol(),
+          contract.read
+            .PERMIT_TYPEHASH()
             .then((hash) => hash === PERMIT_TYPEHASH)
             .catch(() => false),
         ])

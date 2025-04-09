@@ -6,6 +6,7 @@ import { NULL_ADDRESS } from '../constants.js'
 import { repeatOnEvents } from '../utils/rx.js'
 import { Entity } from './Entity.js'
 import type { Pool } from './Pool.js'
+import { ShareClass } from './ShareClass.js'
 import { Vault } from './Vault.js'
 
 /**
@@ -111,7 +112,7 @@ export class PoolNetwork extends Entity {
                   console.warn(`Vault not found for Pool: ${this.pool.id}, Share Class: ${scId}, Currency: ${curAddr}`)
                   throw new Error('Vault not found')
                 }
-                return new Vault(this._root, this, scId, curAddr, vaultAddr)
+                return new Vault(this._root, this, new ShareClass(this._root, this.pool, scId), curAddr, vaultAddr)
               })
             )
             return results.filter((result) => result.status === 'fulfilled').map((result) => result.value)

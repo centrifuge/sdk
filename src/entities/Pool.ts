@@ -120,8 +120,8 @@ export class Pool extends Entity {
     })
   }
 
-  vault(chainId: number, trancheId: string, asset: string) {
-    return this._query(null, () => this.network(chainId).pipe(switchMap((network) => network.vault(trancheId, asset))))
+  vault(chainId: number, scId: string, asset: string) {
+    return this._query(null, () => this.network(chainId).pipe(switchMap((network) => network.vault(scId, asset))))
   }
 
   /**

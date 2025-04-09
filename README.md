@@ -86,13 +86,13 @@ const subscription = pool.closeEpoch().subscribe(
 
 ## Investments
 
-Investments for a pool are done via [ERC-7540 Tokenized Vaults](https://eips.ethereum.org/EIPS/eip-7540). Vaults can be deployed for a tranche on any supported network, for any supported currency
+Investments for a pool are done via [ERC-7540 Tokenized Vaults](https://eips.ethereum.org/EIPS/eip-7540). Vaults can be deployed for a share class on any supported network, for any supported currency
 
 Retrieve a vault by querying it from the pool:
 
 ```js
 const pool = await centrifuge.pool('1')
-const vault = await pool.vault(1, '0xabc...', '0xdef...') // Chain ID, tranche ID, investment currency address
+const vault = await pool.vault(1, '0xabc...', '0xdef...') // Chain ID, share class ID, investment currency address
 ```
 
 Query the state of an investment on the vault for an investor:
@@ -100,18 +100,18 @@ Query the state of an investment on the vault for an investor:
 ```js
 const investment = await vault.investment('0x123...')
 // Will return an object containing:
-// isAllowedToInvest - Whether an investor is allowed to invest in the tranche
+// isAllowedToInvest - Whether an investor is allowed to invest in the share class
 // investmentCurrency - The ERC20 token that is used to invest in the vault
 // investmentCurrencyBalance - The balance of the investor of the investment currency
 // investmentCurrencyAllowance - The allowance of the vault
-// shareCurrency - The ERC20 token that is issued to investors to account for their share in the tranche
-// shareBalance - The number of shares the investor has in the tranche
+// shareCurrency - The ERC20 token that is issued to investors to account for their share in the share class
+// shareBalance - The number of shares the investor has in the share class
 // claimableInvestShares - The number of shares an investor can claim after their invest order has been processed (partially or not)
 // claimableInvestCurrencyEquivalent - The equivalent value of the claimable shares denominated in the invest currency
 // claimableRedeemCurrency - The amout of money an investor can claim after their redeem order has been processed (partially or not)
 // claimableRedeemSharesEquivalent - The amount of shares that have been redeemed for which the investor can claim money
-// pendingInvestCurrency - The amount of money that the investor wants to invest in the tranche that has not been processed yet
-// pendingRedeemShares - The amount of shares that the investor wants to redeem from the tranche that has not been processed yet
+// pendingInvestCurrency - The amount of money that the investor wants to invest in the share class that has not been processed yet
+// pendingRedeemShares - The amount of shares that the investor wants to redeem from the share class that has not been processed yet
 // claimableCancelInvestCurrency - The amount of money an investor can claim after an invest order cancellation has been processed
 // claimableCancelRedeemShares - The amount of shares an investor can claim after a redeem order cancellation has been processed
 // hasPendingCancelInvestRequest - Whether the investor has an invest order that is in the process of being cancelled
