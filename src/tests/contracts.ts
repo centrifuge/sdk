@@ -1,43 +1,42 @@
 import { expect } from 'chai';
 import { Centrifuge } from '../Centrifuge.js';
 
-describe('Centrifuge contracts', () => {
-  it('should fetch the contract addresses when the environment is demo', async () => {
+const expectedContractKeys = [
+  'root',
+  'adminSafe',
+  'guardian',
+  'gasService',
+  'gateway',
+  'messageProcessor',
+  'messageDispatcher',
+  'poolRegistry',
+  'assetRegistry',
+  'accounting',
+  'holdings',
+  'multiShareClass',
+  'poolRouter',
+  'transientValuation',
+  'identityValuation',
+  'escrow',
+  'routerEscrow',
+  'restrictionManager',
+  'restrictedRedemptions',
+  'tokenFactory',
+  'investmentManager',
+  'vaultFactory',
+  'poolManager',
+  'vaultRouter'
+];
+
+describe('Protocol addresses', () => {
+  it('should fetch protocol addresses for the demo chain (sepolia)', async () => {
     const centrifuge = new Centrifuge({ environment: 'demo' });
-    const addresses = await centrifuge.contracts();
+    const chainId = centrifuge.config.defaultChain;
 
-    const expectedKeys = [
-      'root',
-      'adminSafe',
-      'guardian',
-      'gasService',
-      'gateway',
-      'messageProcessor',
-      'messageDispatcher',
-      'poolRegistry',
-      'assetRegistry',
-      'accounting',
-      'holdings',
-      'multiShareClass',
-      'poolRouter',
-      'transientValuation',
-      'identityValuation',
-      'escrow',
-      'routerEscrow',
-      'restrictionManager',
-      'restrictedRedemptions',
-      'tokenFactory',
-      'investmentManager',
-      'vaultFactory',
-      'poolManager',
-      'vaultRouter'
-    ];
+    const result = await centrifuge._protocolAddresses(chainId);
+    const contractKeys = Object.keys(expectedContractKeys);
 
-    expect(addresses).to.be.an('object');
-
-    expectedKeys.forEach((key) => {
-      expect(addresses).to.have.property(key);
-      expect(addresses[key as keyof typeof addresses]).to.be.a('string');
-    });
+    expect(result).to.be.an('object');
+    expect(Object.keys(result)).to.be.eql(contractKeys);
   });
 });

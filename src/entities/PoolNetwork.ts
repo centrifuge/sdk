@@ -96,7 +96,7 @@ export class PoolNetwork extends Entity {
   vaults(scId: string) {
     return this._query(['vaults', scId], () =>
       this._root._protocolAddresses(this.chainId).pipe(
-        switchMap(({ poolManager, vaultRouter, currencies }) =>
+        switchMap(({ poolManager, vaultRouter, currencies }: any) =>
           defer(async () => {
             if (!currencies.length) return []
             const contract = getContract({
@@ -114,7 +114,7 @@ export class PoolNetwork extends Entity {
                 return new Vault(this._root, this, scId, curAddr, vaultAddr)
               })
             )
-            return results.filter((result) => result.status === 'fulfilled').map((result) => result.value)
+            return results.filter((result: any) => result.status === 'fulfilled').map((result: any) => result.value)
           }).pipe(
             repeatOnEvents(
               this._root,

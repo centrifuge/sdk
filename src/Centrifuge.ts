@@ -6,7 +6,6 @@ import {
   defaultIfEmpty,
   defer,
   filter,
-  firstValueFrom,
   identity,
   isObservable,
   map,
@@ -36,7 +35,7 @@ import { chainIdToNetwork, chains } from './config/chains.js'
 import { type CurrencyMetadata } from './config/lp.js'
 import { PERMIT_TYPEHASH } from './constants.js'
 import { Pool } from './entities/Pool.js'
-import type { Client, DerivedConfig, EnvConfig, HexString, UserProvidedConfig } from './types/index.js'
+import type { Client, DerivedConfig, EnvConfig, HexString, ProtocolAddresses, UserProvidedConfig } from './types/index.js'
 import { PoolMetadataInput } from './types/poolInput.js'
 import { PoolMetadata } from './types/poolMetadata.js'
 import type { CentrifugeQueryOptions, Query } from './types/query.js'
@@ -385,15 +384,6 @@ export class Centrifuge {
         )
       )
     })
-  }
-
-  /**
-   * Fetches the contract addresses and returns an array of addresses.
-   */
-  async contracts() {
-    const chainId = this.config.defaultChain;
-    const result = await this._protocolAddresses(chainId);
-    return result.contracts;
   }
   
   /**
@@ -770,32 +760,26 @@ export class Centrifuge {
   }
 
   _protocolAddresses(chainId: number) {
-    return this._query(['protocolAddresses', chainId], () => {
-      return defer(() => {
-        const network = chainIdToNetwork[chainId as keyof typeof chainIdToNetwork];
-        if (!network) {
-          throw new Error(`No protocol config mapping for chain id ${chainId}`);
-        }
-  
-        const baseUrl = 'https://raw.githubusercontent.com/centrifuge/protocol-v3/refs/heads/main/deployments';
-        const networkPath = (network === 'sepolia') ? 'testnet' : 'mainnet';
-        const url = `${baseUrl}/${networkPath}/${network}.json`;
-  
-        return firstValueFrom(
-          fromFetch(url).pipe(
-            switchMap(response => {
-              if (response.ok) {
-                return response.json();
-              } else {
-                return of({ error: true, message: `Error ${response.status}` });
-              }
-            }),
-            catchError(err => {
-              return of({ error: true, message: err.message });
-            })
-          )
-        );
-      });
-    })
+    return this._query(["protocolAddresses", chainId], () => {
+      const network = chainIdToNetwork[chainId as keyof typeof chainIdToNetwork];
+      if (!network) {
+        throw new Error(`No protocol config mapping for chain id ${chainId}`);
+      }
+
+      const baseUrl = 'https://raw.githubusercontent.com/centrifuge/protocol-v3/refs/heads/main/deployments';
+      const networkPath = network === 'sepolia' ? 'testnet' : 'mainnet';
+      const url = `${baseUrl}/${networkPath}/${network}.json`;
+
+      return fromFetch(url).pipe(
+        switchMap(response => {
+          if (response.ok) {
+            return response.json();
+          } else {
+            throw new Error(`Error ${response.status}`);
+          }
+        }),
+        map((data: { contracts: ProtocolAddresses }) => data.contracts)
+      );
+    });
   }
 }
