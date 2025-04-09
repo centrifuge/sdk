@@ -50,5 +50,6 @@ export type ProtocolAddresses = {
   "vaultFactory":HexString,
   "poolManager":HexString,
   "vaultRouter":HexString,
+  "currencies":HexString[]
 };
 

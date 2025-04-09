@@ -25,7 +25,8 @@ const expectedContractKeys = [
   'investmentManager',
   'vaultFactory',
   'poolManager',
-  'vaultRouter'
+  'vaultRouter',
+  'currencies'
 ];
 
 describe('Protocol addresses', () => {
@@ -34,9 +35,9 @@ describe('Protocol addresses', () => {
     const chainId = centrifuge.config.defaultChain;
 
     const result = await centrifuge._protocolAddresses(chainId);
-    const contractKeys = Object.keys(expectedContractKeys);
 
     expect(result).to.be.an('object');
-    expect(Object.keys(result)).to.be.eql(contractKeys);
+    expect(Object.keys(result)).to.be.eql(expectedContractKeys);
+    expect(result.currencies).to.be.an('array');
   });
 });

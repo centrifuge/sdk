@@ -30,20 +30,21 @@ import {
   type WalletClient,
   type WatchEventOnLogsParameter,
 } from 'viem'
-import { ABI } from './abi/index.js'
-import { chainIdToNetwork, chains } from './config/chains.js'
-import { type CurrencyMetadata } from './config/lp.js'
-import { PERMIT_TYPEHASH } from './constants.js'
-import { Pool } from './entities/Pool.js'
 import type { Client, DerivedConfig, EnvConfig, HexString, ProtocolAddresses, UserProvidedConfig } from './types/index.js'
-import { PoolMetadataInput } from './types/poolInput.js'
-import { PoolMetadata } from './types/poolMetadata.js'
 import type { CentrifugeQueryOptions, Query } from './types/query.js'
 import type { OperationStatus, Signer, Transaction, TransactionCallbackParams } from './types/transaction.js'
+import { type CurrencyMetadata } from './config/lp.js'
+import { ABI } from './abi/index.js'
+import { chainIdToNetwork, chains } from './config/chains.js'
+import { PERMIT_TYPEHASH } from './constants.js'
+import { Pool } from './entities/Pool.js'
+import { PoolMetadataInput } from './types/poolInput.js'
+import { PoolMetadata } from './types/poolMetadata.js'
 import { Balance } from './utils/BigInt.js'
 import { hashKey } from './utils/query.js'
 import { makeThenable, repeatOnEvents, shareReplayWithDelayedReset } from './utils/rx.js'
 import { doTransaction, isLocalAccount } from './utils/transaction.js'
+import { currencies } from './config/protocol.js'
 
 const envConfig = {
   mainnet: {
@@ -778,7 +779,7 @@ export class Centrifuge {
             throw new Error(`Error ${response.status}`);
           }
         }),
-        map((data: { contracts: ProtocolAddresses }) => data.contracts)
+        map((data: { contracts: ProtocolAddresses }) => ({...data.contracts, currencies: currencies[chainId as keyof typeof currencies]}))
       );
     });
   }
