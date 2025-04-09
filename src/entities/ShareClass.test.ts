@@ -23,6 +23,12 @@ describe('ShareClass', () => {
     expect(details.symbol).to.equal('MMF')
     expect(details.id).to.equal(scId)
   })
+
+  it('gets the vaults', async () => {
+    const vaults = await shareClass.vaults(11155111)
+    expect(vaults.length).to.equal(1)
+    expect(vaults[0]!.shareClass.id).to.equal(scId)
+  })
 })
 
 // // Set the storage to a value that will make the tranche undeployable
