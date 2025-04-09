@@ -11,7 +11,7 @@ describe('Investor', () => {
     expect(portfolio).to.exist
   })
 
-  it('should store its checksum address', async () => {
+  it('should return its checksum address', async () => {
     const account = await context.centrifuge.investor(INVESTOR)
     expect(account.address).to.equal(getAddress(INVESTOR))
   })

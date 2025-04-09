@@ -23,30 +23,6 @@ describe('ShareClass', () => {
     expect(details.symbol).to.equal('MMF')
     expect(details.id).to.equal(scId)
   })
-
-  // it('should deploy a tranche', async () => {
-  //   const poolId = '1287682503'
-  //   const trancheId = '0x02bbf52e452ddb47103913051212382c'
-  //   const pool = new Pool(context.centrifuge, poolId, 11155111)
-  //   const ShareClass = new ShareClass(context.centrifuge, pool, 11155111)
-
-  //   const canTrancheBeDeployed = await ShareClass.canTrancheBeDeployed(trancheId)
-  //   expect(canTrancheBeDeployed).to.equal(true)
-
-  //   const result = await ShareClass.deployTranche(trancheId)
-  //   expect(result.type).to.equal('TransactionConfirmed')
-  // })
-
-  // it('should deploy a vault', async () => {
-  //   const poolId = '1287682503'
-  //   const trancheId = '0x02bbf52e452ddb47103913051212382c'
-  //   const pool = new Pool(context.centrifuge, poolId, 11155111)
-  //   const ShareClass = new ShareClass(context.centrifuge, pool, 11155111)
-  //   const tUSD = '0x8503b4452Bf6238cC76CdbEE223b46d7196b1c93'
-
-  //   const result = await ShareClass.deployVault(trancheId, tUSD)
-  //   expect(result.type).to.equal('TransactionConfirmed')
-  // })
 })
 
 // // Set the storage to a value that will make the tranche undeployable

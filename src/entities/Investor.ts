@@ -1,4 +1,4 @@
-import { of } from 'rxjs'
+import { of, switchMap } from 'rxjs'
 import { getAddress } from 'viem'
 import type { Centrifuge } from '../Centrifuge.js'
 import type { HexString } from '../types/index.js'
@@ -16,5 +16,14 @@ export class Investor extends Entity {
 
   portfolio() {
     return this._query(['portfolio'], () => of([]))
+  }
+
+  investment(poolId: string, scId: string, asset: string, chainId: number) {
+    return this._query(null, () =>
+      this._root.pool(poolId).pipe(
+        switchMap((pool) => pool.vault(chainId, scId, asset)),
+        switchMap((vault) => vault.investment(this.address))
+      )
+    )
   }
 }
