@@ -90,7 +90,7 @@ export class PoolNetwork extends Entity {
   }
 
   /**
-   * Get the deployed Vaults for a given tranche. There may exist one Vault for each allowed investment currency.
+   * Get the deployed Vaults for a given share class. There may exist one Vault for each allowed investment currency.
    * Vaults are used to submit/claim investments and redemptions.
    * @param scId - The share class ID
    */
@@ -136,7 +136,7 @@ export class PoolNetwork extends Entity {
   }
 
   /**
-   * Get all Vaults for all tranches in the pool.
+   * Get all Vaults for all share classes in the pool.
    * @returns An object of share class ID to Vault.
    */
   vaultsByShareClass() {
@@ -152,7 +152,7 @@ export class PoolNetwork extends Entity {
   }
 
   /**
-   * Get a specific Vault for a given tranche and investment currency.
+   * Get a specific Vault for a given share class and investment currency.
    * @param scId - The share class ID
    * @param asset - The investment currency address
    */

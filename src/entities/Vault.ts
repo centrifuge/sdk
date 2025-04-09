@@ -21,7 +21,7 @@ import { ShareClass } from './ShareClass.js'
 
 /**
  * Query and interact with a vault, which is the main entry point for investing and redeeming funds.
- * A vault is the combination of a network, a pool, a tranche and an investment currency.
+ * A vault is the combination of a network, a pool, a share class and an investment currency.
  */
 export class Vault extends Entity {
   pool: Pool

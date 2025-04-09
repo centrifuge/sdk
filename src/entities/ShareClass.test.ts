@@ -30,21 +30,3 @@ describe('ShareClass', () => {
     expect(vaults[0]!.shareClass.id).to.equal(scId)
   })
 })
-
-// // Set the storage to a value that will make the tranche undeployable
-// const poolLoc = mapLocation(6n, BigInt(poolId))
-// const createdAtLoc = poolLoc + BigInt(0)
-// const poolManager = await ShareClass._poolManager()
-// const client = context.centrifuge.getClient()!
-// const data = await client.setStorageAt({
-//   address: poolManager,
-//   slot: toHex(createdAtLoc),
-// })
-
-// function mapLocation(slot: bigint, key: bigint) {
-//   return hexToBigInt(keccak256(encodePacked(['uint256', 'uint256'], [key, slot])))
-// }
-
-// function arrLocation(slot: bigint, index: bigint, elementSize: bigint) {
-//   return hexToBigInt(keccak256(toHex(slot))) + index * elementSize
-// }

@@ -25,7 +25,7 @@ describe('PoolNetwork', () => {
     expect(isActive2).to.equal(false)
   })
 
-  it('get vaults for a tranche', async () => {
+  it('get vaults for a share class', async () => {
     const vaults = await poolNetwork.vaults(scId)
     expect(vaults).to.have.length(1)
     expect(vaults[0]!.address.toLowerCase()).to.equal(vaultAddress)
