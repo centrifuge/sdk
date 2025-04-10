@@ -97,9 +97,9 @@ export class PoolNetwork extends Entity {
   vaults(scId: string) {
     return this._query(['vaults', scId], () =>
       this._root._protocolAddresses(this.chainId).pipe(
-        switchMap(({ poolManager, vaultRouter, currencies }: any) =>
+        switchMap(({ poolManager, vaultRouter, currencies }) =>
           defer(async () => {
-            if (!currencies.length) return []
+            if (!currencies?.length) return []
             const contract = getContract({
               address: vaultRouter,
               abi: ABI.VaultRouter,
