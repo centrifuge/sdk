@@ -768,7 +768,7 @@ export class Centrifuge {
       }
 
       const baseUrl = 'https://raw.githubusercontent.com/centrifuge/protocol-v3/refs/heads/main/deployments';
-      const networkPath = network === 'sepolia' ? 'testnet' : 'mainnet';
+      const networkPath = this.getChainConfig(chainId).testnet ? 'testnet' : 'mainnet';
       const url = `${baseUrl}/${networkPath}/${network}.json`;
 
       return fromFetch(url).pipe(
