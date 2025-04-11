@@ -115,7 +115,7 @@ export class PoolNetwork extends Entity {
                 return new Vault(this._root, this, scId, curAddr, vaultAddr)
               })
             )
-            return results.filter((result: any) => result.status === 'fulfilled').map((result: any) => result.value)
+            return results.filter((result) => result.status === 'fulfilled').map((result: any) => result.value)
           }).pipe(
             repeatOnEvents(
               this._root,
