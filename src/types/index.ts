@@ -23,3 +23,31 @@ export type EnvConfig = {
 export type DerivedConfig = Config & EnvConfig
 export type Client = PublicClient<any, Chain>
 export type HexString = `0x${string}`
+
+export type ProtocolAddresses = {
+  root: HexString
+  adminSafe: HexString
+  guardian: HexString
+  gasService: HexString
+  gateway: HexString
+  messageProcessor: HexString
+  messageDispatcher: HexString
+  poolRegistry: HexString
+  assetRegistry: HexString
+  accounting: HexString
+  holdings: HexString
+  multiShareClass: HexString
+  poolRouter: HexString
+  transientValuation: HexString
+  identityValuation: HexString
+  escrow: HexString
+  routerEscrow: HexString
+  restrictionManager: HexString
+  restrictedRedemptions: HexString
+  tokenFactory: HexString
+  investmentManager: HexString
+  vaultFactory: HexString
+  poolManager: HexString
+  vaultRouter: HexString
+  currencies: HexString[]
+}

@@ -1,7 +1,7 @@
 {
-    "reporterEnabled": "spec, mochawesome",
-    "mochawesomeReporterOptions": {
-      "reportDir": "report",
-      "reportFilename": "test-results"
-    }
+  "reporterEnabled": "spec, mochawesome",
+  "mochawesomeReporterOptions": {
+    "reportDir": "report",
+    "reportFilename": "test-results"
+  }
 }

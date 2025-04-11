@@ -9,8 +9,9 @@ This repository contains several GitHub Actions workflows that automate various 
 This workflow handles both versioning and release creation through two separate jobs:
 
 #### Version Bump Job
+
 - **Trigger**: Runs when a pull request review is approved
-- **Version Bump**: 
+- **Version Bump**:
   - Determines version bump type based on PR labels (major, minor, patch, alpha)
   - Uses `npm version` to update version in `package.json`
   - For alpha releases, creates versions with `-alpha.N` suffix
@@ -18,6 +19,7 @@ This workflow handles both versioning and release creation through two separate 
   - Checks if version needs to be bumped again using `bump-check.sh`
 
 #### Create Release Job
+
 - **Trigger**: Runs on pushes to the `main` branch
 - **Action**: Creates a prerelease draft on GitHub with auto-generated release notes
 
@@ -57,17 +59,20 @@ Handles NPM package publishing:
 ## Release Process
 
 1. **Pull Request Stage**:
+
    - PR must have a Conventional Commits compliant title
    - PR must have exactly one release label (major, minor, patch, alpha, no-release)
    - Build and tests must pass
 
 2. **Version Bumping**:
+
    - Triggered by PR approval
    - Version is bumped based on PR label
    - Skipped if PR has `no-release` label
    - Additional checks prevent duplicate version bumps
 
 3. **Release Creation**:
+
    - Draft release is automatically created on `main` branch updates
    - Release notes are auto-generated
    - Created as a prerelease initially
@@ -82,11 +87,13 @@ Handles NPM package publishing:
 The workflow uses two helper scripts:
 
 ### `bump-check.sh`
+
 - Prevents duplicate version bumps
 - Checks if version already exists in releases
 - Verifies if version was already bumped in current branch
 
 ### `pr-label-check.sh`
+
 - Validates PR labels
 - Ensures exactly one release label is present
 - Returns the type of release or `no-release`

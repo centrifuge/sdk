@@ -7,6 +7,7 @@ import { repeatOnEvents } from '../utils/rx.js'
 import { Entity } from './Entity.js'
 import type { Pool } from './Pool.js'
 import { Vault } from './Vault.js'
+import { HexString } from '../types/index.js'
 
 /**
  * Query and interact with a pool on a specific network.
@@ -98,14 +99,14 @@ export class PoolNetwork extends Entity {
       this._root._protocolAddresses(this.chainId).pipe(
         switchMap(({ poolManager, vaultRouter, currencies }) =>
           defer(async () => {
-            if (!currencies.length) return []
+            if (!currencies?.length) return []
             const contract = getContract({
               address: vaultRouter,
               abi: ABI.VaultRouter,
               client: this._root.getClient(this.chainId)!,
             })
             const results = await Promise.allSettled(
-              currencies.map(async (curAddr) => {
+              currencies.map(async (curAddr: HexString) => {
                 const vaultAddr = await contract.read.getVault!([this.pool.id as any, scId as any, curAddr])
                 if (vaultAddr === NULL_ADDRESS) {
                   console.warn(`Vault not found for Pool: ${this.pool.id}, Share Class: ${scId}, Currency: ${curAddr}`)
@@ -114,7 +115,7 @@ export class PoolNetwork extends Entity {
                 return new Vault(this._root, this, scId, curAddr, vaultAddr)
               })
             )
-            return results.filter((result) => result.status === 'fulfilled').map((result) => result.value)
+            return results.filter((result) => result.status === 'fulfilled').map((result: any) => result.value)
           }).pipe(
             repeatOnEvents(
               this._root,
