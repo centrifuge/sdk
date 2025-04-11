@@ -1,5 +1,5 @@
 import { combineLatest, defer, map, switchMap } from 'rxjs'
-import { getContract, toHex } from 'viem'
+import { getContract } from 'viem'
 import { ABI } from '../abi/index.js'
 import type { Centrifuge } from '../Centrifuge.js'
 import { NULL_ADDRESS } from '../constants.js'
@@ -28,21 +28,7 @@ export class PoolNetwork extends Entity {
    * @internal
    */
   _estimate() {
-    return this._root._query(['estimate', this.chainId, this.pool.chainId], () =>
-      this._root._protocolAddresses(this.chainId).pipe(
-        switchMap(({ vaultRouter }) =>
-          defer(() => {
-            const bytes = toHex(new Uint8Array([0x12]))
-            return this._root.getClient(this.chainId)!.readContract({
-              address: vaultRouter,
-              abi: ABI.VaultRouter,
-              functionName: 'estimate',
-              args: [this.pool.chainId, bytes],
-            }) as Promise<bigint>
-          })
-        )
-      )
-    )
+    return this._query(null, () => this._root._estimate(this.chainId, this.pool.chainId))
   }
 
   /**

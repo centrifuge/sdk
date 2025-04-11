@@ -1,8 +1,12 @@
 import { combineLatest, defer, map, switchMap } from 'rxjs'
+import { encodeFunctionData, getContract, toHex } from 'viem'
 import { ABI } from '../abi/index.js'
 import type { Centrifuge } from '../Centrifuge.js'
-import { Balance } from '../utils/BigInt.js'
+import { AccountType } from '../types/holdings.js'
+import { Balance, Price } from '../utils/BigInt.js'
 import { repeatOnEvents } from '../utils/rx.js'
+import { doTransaction } from '../utils/transaction.js'
+import { AssetId, ShareClassId } from '../utils/types.js'
 import { Entity } from './Entity.js'
 import type { Pool } from './Pool.js'
 import { PoolNetwork } from './PoolNetwork.js'
@@ -12,13 +16,16 @@ import { PoolNetwork } from './PoolNetwork.js'
  * and allows interactions related to asynchronous deposits and redemptions.
  */
 export class ShareClass extends Entity {
+  id: ShareClassId
+
   /** @internal */
   constructor(
     _root: Centrifuge,
     public pool: Pool,
-    public id: string
+    id: string
   ) {
     super(_root, ['shareclass', id])
+    this.id = new ShareClassId(id)
   }
 
   /**
@@ -47,7 +54,167 @@ export class ShareClass extends Entity {
    * @returns The vaults of the share class on the given chain.
    */
   vaults(chainId: number) {
-    return this._query(null, () => new PoolNetwork(this._root, this.pool, chainId).vaults(this.id))
+    return this._query(null, () => new PoolNetwork(this._root, this.pool, chainId).vaults(this.id.toString()))
+  }
+
+  /**
+   * Query a holding of the share class.
+   * @param assetId The asset ID
+   * @returns The details of the holding
+   */
+  holding(assetId: AssetId) {
+    return this._query(['holding', assetId.toString()], () =>
+      this._root._protocolAddresses(this.pool.chainId).pipe(
+        switchMap(({ holdings }) =>
+          defer(async () => {
+            const contract = getContract({
+              address: holdings,
+              abi: ABI.Holdings,
+              client: this._root.getClient(this.pool.chainId)!,
+            })
+
+            const [valuation, amount, value, ...accounts] = await Promise.all([
+              contract.read.valuation([BigInt(this.pool.id), this.id.raw, assetId.raw]),
+              contract.read.amount([BigInt(this.pool.id), this.id.raw, assetId.raw]),
+              contract.read.value([BigInt(this.pool.id), this.id.raw, assetId.raw]),
+              // contract.read.isLiability(BigInt(this.pool.id), this.id.raw, assetId),
+              ...[
+                AccountType.Asset,
+                AccountType.Equity,
+                AccountType.Loss,
+                AccountType.Gain,
+                AccountType.Expense,
+                AccountType.Liability,
+              ].map((kind) => contract.read.accountId([BigInt(this.pool.id), this.id.raw, assetId.raw, kind])),
+            ])
+            return {
+              assetId,
+              valuation,
+              amount: new Balance(amount, 18),
+              value: new Balance(value, 18),
+              // isLiability,
+              accounts: {
+                [AccountType.Asset]: accounts[0] || null,
+                [AccountType.Equity]: accounts[1] || null,
+                [AccountType.Loss]: accounts[2] || null,
+                [AccountType.Gain]: accounts[3] || null,
+                [AccountType.Expense]: accounts[4] || null,
+                [AccountType.Liability]: accounts[5] || null,
+              },
+            }
+          }).pipe(
+            repeatOnEvents(
+              this._root,
+              {
+                address: holdings,
+                abi: ABI.Holdings,
+                eventName: ['Increase', 'Decrease', 'Update', 'UpdateValuation'],
+                filter: (events) => {
+                  return events.some((event) => {
+                    return event.args.scId === this.id && event.args.assetId === assetId.raw
+                  })
+                },
+              },
+              this.pool.chainId
+            )
+          )
+        )
+      )
+    )
+  }
+
+  approveDeposits(assetId: AssetId, investAmount: Balance, navPerShare: Price) {
+    const self = this
+    return this._transactSequence(async function* ({ walletClient, publicClient }) {
+      const [{ poolRouter }, holding] = await Promise.all([
+        self._root._protocolAddresses(self.pool.chainId),
+        self.holding(assetId),
+      ])
+      const approveData = encodeFunctionData({
+        abi: ABI.PoolRouter,
+        functionName: 'approveDeposits',
+        args: [self.id.raw, assetId.raw, investAmount.toBigInt(), holding.valuation],
+      })
+      const issueData = encodeFunctionData({
+        abi: ABI.PoolRouter,
+        functionName: 'issueShares',
+        args: [self.id.raw, assetId.raw, navPerShare.toBigInt()],
+      })
+      yield* doTransaction('Approve deposits', publicClient, () =>
+        walletClient.writeContract({
+          address: poolRouter,
+          abi: ABI.PoolRouter,
+          functionName: 'multicall',
+          args: [[approveData, issueData]],
+        })
+      )
+    }, this.pool.chainId)
+  }
+
+  approveRedeems(assetId: AssetId, shareAmount: Balance, navPerShare: Price) {
+    const self = this
+    return this._transactSequence(async function* ({ walletClient, publicClient }) {
+      const [{ poolRouter }, holding] = await Promise.all([
+        self._root._protocolAddresses(self.pool.chainId),
+        self.holding(assetId),
+      ])
+      const approveData = encodeFunctionData({
+        abi: ABI.PoolRouter,
+        functionName: 'approveRedeems',
+        args: [self.id.raw, assetId.raw, shareAmount.toBigInt()],
+      })
+      const issueData = encodeFunctionData({
+        abi: ABI.PoolRouter,
+        functionName: 'revokeShares',
+        args: [self.id.raw, assetId.raw, navPerShare.toBigInt(), holding.valuation],
+      })
+      yield* doTransaction('Approve redeems', publicClient, () =>
+        walletClient.writeContract({
+          address: poolRouter,
+          abi: ABI.PoolRouter,
+          functionName: 'multicall',
+          args: [[approveData, issueData]],
+        })
+      )
+    }, this.pool.chainId)
+  }
+
+  claimDeposit(assetId: AssetId, investor: string) {
+    const self = this
+    return this._transactSequence(async function* ({ walletClient, publicClient }) {
+      const [{ poolRouter }, estimate] = await Promise.all([
+        self._root._protocolAddresses(self.pool.chainId),
+        self._root._estimate(self.pool.chainId, 1), // TODO: How to get the chain of the investor?
+      ])
+      yield* doTransaction('Claim deposit', publicClient, () =>
+        walletClient.writeContract({
+          address: poolRouter,
+          abi: ABI.PoolRouter,
+          functionName: 'claimDeposit',
+          args: [BigInt(self.pool.id), self.id.raw, assetId.raw, toHex(investor, { size: 32 })],
+          value: estimate,
+        })
+      )
+    })
+  }
+
+  claimRedeem(assetId: AssetId, investor: string) {
+    const self = this
+    return this._transactSequence(async function* ({ walletClient, publicClient }) {
+      const [{ poolRouter }, estimate] = await Promise.all([
+        self._root._protocolAddresses(self.pool.chainId),
+        self._root._estimate(self.pool.chainId, 1), // TODO: How to get the chain of the investor?
+      ])
+      yield* doTransaction('Claim deposit', publicClient, () =>
+        walletClient.writeContract({
+          address: poolRouter,
+          abi: ABI.PoolRouter,
+          functionName: 'claimRedeem',
+          args: [BigInt(self.pool.id), self.id.raw, assetId.raw, toHex(investor, { size: 32 })],
+          value: estimate,
+        })
+      )
+    })
   }
 
   /** @internal */
@@ -60,7 +227,7 @@ export class ShareClass extends Entity {
               address: scm,
               abi: ABI.ShareClassManager,
               functionName: 'metadata',
-              args: [this.id as any],
+              args: [this.id.raw],
             })
             return {
               name,
@@ -97,7 +264,7 @@ export class ShareClass extends Entity {
               address: scm,
               abi: ABI.ShareClassManager,
               functionName: 'metrics',
-              args: [this.id as any],
+              args: [this.id.raw],
             })
             return {
               totalIssuance: new Balance(totalIssuance, 18),
@@ -112,7 +279,7 @@ export class ShareClass extends Entity {
                 eventName: ['RevokeShares', 'IssueShares'],
                 filter: (events) => {
                   return events.some((event) => {
-                    return event.args.scId === this.id
+                    return event.args.scId === this.id.raw
                   })
                 },
               },

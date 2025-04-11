@@ -24,6 +24,7 @@ import {
   getContract,
   http,
   parseEventLogs,
+  toHex,
   type Abi,
   type Account as AccountType,
   type Chain,
@@ -46,6 +47,7 @@ import { Balance } from './utils/BigInt.js'
 import { hashKey } from './utils/query.js'
 import { makeThenable, repeatOnEvents, shareReplayWithDelayedReset } from './utils/rx.js'
 import { doTransaction, isLocalAccount } from './utils/transaction.js'
+import { PoolId } from './utils/types.js'
 
 const envConfig = {
   mainnet: {
@@ -242,12 +244,11 @@ export class Centrifuge {
     }, cid)
   }
 
-  id(chainId?: number) {
-    const cid = chainId ?? this.config.defaultChain
-    return this._query(['centrifugeId', cid], () =>
-      this._protocolAddresses(cid).pipe(
+  id(chainId: number) {
+    return this._query(['centrifugeId', chainId], () =>
+      this._protocolAddresses(chainId).pipe(
         switchMap(({ messageDispatcher }) => {
-          return this.getClient(cid)!.readContract({
+          return this.getClient(chainId)!.readContract({
             address: messageDispatcher,
             abi: ABI.MessageDispatcher,
             functionName: 'localCentrifugeId',
@@ -281,8 +282,8 @@ export class Centrifuge {
           ]).pipe(
             map(([centId, poolCounter]) => {
               if (!poolCounter) return []
-              return Array.from({ length: Number(poolCounter) }, (_, i) => {
-                return new Pool(this, ((BigInt(centId) << 48n) + BigInt(i + 1)).toString(), chainId)
+              return Array.from({ length: poolCounter }, (_, i) => {
+                return new Pool(this, PoolId.from(centId, i + 1).toString(), chainId)
               })
             }),
             // Because this is fetching from multiple networks and we're waiting on all of them before returning a value,
@@ -773,5 +774,28 @@ export class Centrifuge {
         return protocol[chainId]
       })
     })
+  }
+
+  /**
+   * Estimates the gas cost needed to bridge the message from one chain to another,
+   * that results from a transaction
+   * @internal
+   */
+  _estimate(fromChain: number, toChain: number) {
+    return this._query(['estimate', fromChain, toChain], () =>
+      this._protocolAddresses(fromChain).pipe(
+        switchMap(({ vaultRouter }) =>
+          defer(() => {
+            const bytes = toHex(new Uint8Array([0x12]))
+            return this.getClient(fromChain)!.readContract({
+              address: vaultRouter,
+              abi: ABI.VaultRouter,
+              functionName: 'estimate',
+              args: [toChain, bytes],
+            }) as Promise<bigint>
+          })
+        )
+      )
+    )
   }
 }
