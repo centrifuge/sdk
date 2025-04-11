@@ -1,5 +1,6 @@
 import { expect } from 'chai'
 import { context } from '../tests/setup.js'
+import { AccountType } from '../types/holdings.js'
 import { Balance } from '../utils/BigInt.js'
 import { AssetId, PoolId, ShareClassId } from '../utils/types.js'
 import { Pool } from './Pool.js'
@@ -34,7 +35,12 @@ describe('ShareClass', () => {
 
   it('gets a holding', async () => {
     const holding = await shareClass.holding(assetId)
-    console.log('holding', holding)
     expect(typeof holding.valuation).to.equal('string')
+    expect(holding.assetDecimals).to.equal(6)
+    expect(holding.assetId.equals(assetId)).to.be.true
+    expect(holding.amount.decimals).to.equal(6)
+    expect(holding.value.decimals).to.equal(18)
+    expect(holding.accounts[AccountType.Asset]).not.to.be.undefined
+    expect(holding.accounts[AccountType.Equity]).not.to.be.undefined
   })
 })

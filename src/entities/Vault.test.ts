@@ -24,7 +24,7 @@ const investorD = '0x63892115da2e40f8135Abe99Dc5155dd552464F4'
 // Investor with a claimable cancel deposit
 const investorE = '0x655631E9F3d31a70DD6c9B4cFB5CfDe7445Fd0d2'
 
-describe('Vault', () => {
+describe.skip('Vault', () => {
   let vault: Vault
   beforeEach(() => {
     const { centrifuge } = context

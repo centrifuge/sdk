@@ -31,7 +31,7 @@ describe('Centrifuge', () => {
     expect(chains).to.include(chainId)
   })
 
-  describe.only('Queries', () => {
+  describe('Queries', () => {
     it('should fetch a pool by id', async () => {
       const pool = await context.centrifuge.pool(poolId)
       expect(pool).to.exist

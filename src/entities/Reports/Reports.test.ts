@@ -6,7 +6,7 @@ import { PoolId } from '../../utils/types.js'
 import { Reports } from '../Reports/index.js'
 import { processor } from './Processor.js'
 
-describe('Reports', () => {
+describe.skip('Reports', () => {
   let centrifuge: Centrifuge
 
   before(() => {

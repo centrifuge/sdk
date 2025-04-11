@@ -65,7 +65,7 @@ export class ShareClass extends Entity {
   holding(assetId: AssetId) {
     return this._query(['holding', assetId.toString()], () =>
       this._root._protocolAddresses(this.pool.chainId).pipe(
-        switchMap(({ holdings: holdingsAddr, poolRegistry: _ }) =>
+        switchMap(({ holdings: holdingsAddr, assetRegistry }) =>
           defer(async () => {
             const holdings = getContract({
               address: holdingsAddr,
@@ -73,16 +73,16 @@ export class ShareClass extends Entity {
               client: this._root.getClient(this.pool.chainId)!,
             })
 
-            const [valuation, amount, value, ...accounts] = await Promise.all([
+            const [valuation, amount, value, assetDecimals, ...accounts] = await Promise.all([
               holdings.read.valuation([this.pool.id.raw, this.id.raw, assetId.raw]),
               holdings.read.amount([this.pool.id.raw, this.id.raw, assetId.raw]),
               holdings.read.value([this.pool.id.raw, this.id.raw, assetId.raw]),
-              // this._root.getClient(this.pool.chainId)!.readContract({
-              //   address: poolRegistry,
-              //   abi: ABI.PoolRegistry,
-              //   functionName: 'decimals',
-              //   args: [assetId.raw],
-              // }),
+              this._root.getClient(this.pool.chainId)!.readContract({
+                address: assetRegistry,
+                abi: ABI.PoolRegistry,
+                functionName: 'decimals',
+                args: [assetId.raw],
+              }),
               // contract.read.isLiability((this.pool.id.raw), this.id.raw, assetId),
               ...[
                 AccountType.Asset,
@@ -95,8 +95,9 @@ export class ShareClass extends Entity {
             ])
             return {
               assetId,
+              assetDecimals,
               valuation,
-              amount: new Balance(amount, 6), // TODO: Replace with asset decimals
+              amount: new Balance(amount, assetDecimals),
               value: new Balance(value, 18), // TODO: Replace with pool currency decimals
               // isLiability,
               accounts: {
