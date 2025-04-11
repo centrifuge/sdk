@@ -23,6 +23,10 @@ describe('utils/types', () => {
       const id = new ShareClassId(scId)
       expect(id.toString()).to.equal(scId)
       expect(id.raw).to.equal(scId)
+
+      const id2 = ShareClassId.from(new PoolId(poolId), 3)
+      expect(id2.toString()).to.equal(scId)
+      expect(id2.poolId.toString()).to.equal(poolId)
     })
     it('get the Centrifuge Id', () => {
       const id = new ShareClassId(scId)
@@ -43,6 +47,12 @@ describe('utils/types', () => {
     it('get the Centrifuge Id', () => {
       const id = new AssetId(assetId)
       expect(id.centrifugeId).to.equal(2)
+    })
+    it("should get whether it's a national currency", () => {
+      const id = new AssetId(assetId)
+      expect(id.isNationalCurrency).to.equal(false)
+      const id2 = new AssetId(804)
+      expect(id2.isNationalCurrency).to.equal(true)
     })
   })
 })
