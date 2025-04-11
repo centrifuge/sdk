@@ -7,6 +7,7 @@ import { ShareClass } from './ShareClass.js'
 
 const poolId = new PoolId('562949953421313')
 const scId = new ShareClassId('0x00000000000000000002000000000002')
+const assetId = new AssetId('10384593717069655257060992658440193')
 
 describe('ShareClass', () => {
   let shareClass: ShareClass
@@ -32,7 +33,6 @@ describe('ShareClass', () => {
   })
 
   it('gets a holding', async () => {
-    const assetId = AssetId.from(2, 1)
     const holding = await shareClass.holding(assetId)
     console.log('holding', holding)
     expect(typeof holding.valuation).to.equal('string')

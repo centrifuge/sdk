@@ -172,13 +172,16 @@ describe('Vault', () => {
     context.tenderlyFork.impersonateAddress = poolManager
     context.centrifuge.setSigner(context.tenderlyFork.signer)
     const [, investmentAfter] = await Promise.all([
-      context.centrifuge._transact('Add Investor', ({ walletClient }) =>
-        walletClient.writeContract({
-          address: restrictionManager,
-          abi: ABI.RestrictionManager,
-          functionName: 'updateMember',
-          args: [investmentBefore.shareCurrency.address, investorD, Math.floor(Date.now() / 1000) + 100000],
-        })
+      context.centrifuge._transact(
+        'Add Investor',
+        ({ walletClient }) =>
+          walletClient.writeContract({
+            address: restrictionManager,
+            abi: ABI.RestrictionManager,
+            functionName: 'updateMember',
+            args: [investmentBefore.shareCurrency.address, investorD, Math.floor(Date.now() / 1000) + 100000],
+          }),
+        11155111
       ),
       firstValueFrom(vault.investment(investorD).pipe(skip(1))),
     ])

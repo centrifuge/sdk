@@ -47,7 +47,7 @@ import { Balance } from './utils/BigInt.js'
 import { hashKey } from './utils/query.js'
 import { makeThenable, repeatOnEvents, shareReplayWithDelayedReset } from './utils/rx.js'
 import { doTransaction, isLocalAccount } from './utils/transaction.js'
-import { PoolId } from './utils/types.js'
+import { AssetId, PoolId } from './utils/types.js'
 
 const envConfig = {
   mainnet: {
@@ -769,6 +769,41 @@ export class Centrifuge {
         return protocol[chainId]
       })
     })
+  }
+
+  _getQuote(
+    valuationAddress: string,
+    baseAmount: Balance,
+    baseAssetId: AssetId,
+    quoteAssetId: AssetId,
+    chainId: number
+  ) {
+    return this._query(
+      ['getQuote', baseAmount, baseAssetId.toString(), quoteAssetId.toString()],
+      () =>
+        this._protocolAddresses(chainId).pipe(
+          switchMap(({ assetRegistry }) =>
+            defer(async () => {
+              const [quote, quoteDecimals] = await Promise.all([
+                this.getClient(chainId)!.readContract({
+                  address: valuationAddress as HexString,
+                  abi: ABI.IERC7726,
+                  functionName: 'getQuote',
+                  args: [baseAmount.toBigInt(), baseAssetId.addr, quoteAssetId.addr],
+                }),
+                this.getClient(chainId)!.readContract({
+                  address: assetRegistry,
+                  abi: ABI.PoolRegistry,
+                  functionName: 'decimals',
+                  args: [quoteAssetId.raw],
+                }),
+              ])
+              return new Balance(quote, quoteDecimals)
+            })
+          )
+        ),
+      { valueCacheTime: 120 }
+    )
   }
 
   /**

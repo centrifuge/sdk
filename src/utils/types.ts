@@ -72,6 +72,9 @@ export class AssetId {
   static from(centrifugeId: number, assetCounter: number) {
     return new AssetId((BigInt(centrifugeId) << 112n) + BigInt(assetCounter))
   }
+  static fromIso(countryCode: number) {
+    return new AssetId(countryCode)
+  }
 
   #id: bigint
 
