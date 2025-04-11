@@ -29,7 +29,7 @@ export class IndexerQueries extends Entity {
     centrifuge: Centrifuge,
     public pool: Pool
   ) {
-    super(centrifuge, ['indexerQueries  ', pool.id])
+    super(centrifuge, ['indexerQueries', pool.id.toString()])
   }
 
   poolFeeSnapshotsQuery(filter?: PoolFeeSnapshotFilter) {

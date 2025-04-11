@@ -4,7 +4,13 @@ import sinon from 'sinon'
 import { createClient, custom } from 'viem'
 import { Centrifuge } from './Centrifuge.js'
 import { context } from './tests/setup.js'
+import { Balance } from './utils/BigInt.js'
 import { doSignMessage, doTransaction } from './utils/transaction.js'
+import { AssetId, PoolId } from './utils/types.js'
+
+const chainId = 11155111
+const poolId = new PoolId('562949953421313')
+const asset = '0x86eb50b22dd226fe5d1f0753a40e247fd711ad6e'
 
 describe('Centrifuge', () => {
   let clock: sinon.SinonFakeTimers
@@ -19,18 +25,51 @@ describe('Centrifuge', () => {
   })
 
   it('should be connected to sepolia', async () => {
-    const client = context.centrifuge.getClient()
-    expect(client?.chain.id).to.equal(11155111)
+    const client = context.centrifuge.getClient(chainId)
+    expect(client?.chain.id).to.equal(chainId)
     const chains = context.centrifuge.chains
-    expect(chains).to.include(11155111)
-  })
-
-  it('should fetch a pool by id', async () => {
-    const pool = await context.centrifuge.pool('562949953421313')
-    expect(pool).to.exist
+    expect(chains).to.include(chainId)
   })
 
   describe('Queries', () => {
+    it('should fetch a pool by id', async () => {
+      const pool = await context.centrifuge.pool(poolId)
+      expect(pool).to.exist
+    })
+
+    it('should fetch a currency', async () => {
+      const currency = await context.centrifuge.currency(asset, chainId)
+      expect(currency.decimals).to.equal(6)
+      expect(currency.symbol).to.equal('USDC')
+      expect(currency.name).to.equal('USD Coin')
+      expect(currency.chainId).to.equal(chainId)
+      expect(currency.address).to.equal(asset)
+      expect(currency.supportsPermit).to.be.true
+    })
+
+    it('should estimate the gas for a bridge transaction', async () => {
+      const estimate = await context.centrifuge._estimate(chainId, { chainId })
+      expect(typeof estimate).to.equal('bigint')
+
+      const estimate2 = await context.centrifuge._estimate(chainId, { centId: 2 })
+      expect(typeof estimate2).to.equal('bigint')
+    })
+
+    it('should fetch the value of an asset in relation to another one', async () => {
+      const quote = await context.centrifuge._getQuote(
+        '0x53c0339E6BC04625dF0c74D6eE788368d42Fa775',
+        Balance.fromFloat(100, 6),
+        AssetId.from(2, 1),
+        AssetId.fromIso(840),
+        chainId
+      )
+      expect(quote).to.instanceOf(Balance)
+      expect(quote.decimals).to.equal(18)
+      expect(quote.toFloat()).to.equal(100)
+    })
+  })
+
+  describe('Query', () => {
     it('should return the first value when awaited', async () => {
       const value = await context.centrifuge._query(null, () => of(1, 2, 3))
       expect(value).to.equal(1)
@@ -246,19 +285,19 @@ describe('Centrifuge', () => {
       const centrifuge = new Centrifuge({ environment: 'demo' })
       const tUSD = '0x8503b4452Bf6238cC76CdbEE223b46d7196b1c93'
       const user = '0x423420Ae467df6e90291fd0252c0A8a637C1e03f'
-      await centrifuge.balance(tUSD, user)
+      await centrifuge.balance(tUSD, user, chainId)
       // One call to get the metadata, one to get the balance, and one to poll events
       expect(fetchSpy.getCalls().length).to.equal(3)
     })
   })
 
-  describe('Transactions', () => {
+  describe('Transact', () => {
     it('should throw when no account is selected', async () => {
       const cent = new Centrifuge({
         environment: 'demo',
       })
       cent.setSigner(mockProvider({ accounts: [] }))
-      const tx = cent._transact('Test', async () => '0x1' as const)
+      const tx = cent._transact('Test', async () => '0x1' as const, chainId)
       let error
       try {
         await firstValueFrom(tx)
@@ -275,14 +314,14 @@ describe('Centrifuge', () => {
       const signer = mockProvider({ chainId: 1 })
       const spy = sinon.spy(signer, 'request')
       cent.setSigner(signer)
-      const tx = cent._transact('Test', async () => '0x1' as const)
+      const tx = cent._transact('Test', async () => '0x1' as const, chainId)
       const statuses: any = await firstValueFrom(tx.pipe(take(2), toArray()))
       expect(statuses[0]).to.eql({
         type: 'SwitchingChain',
-        chainId: 11155111,
+        chainId,
       })
       expect(spy.thirdCall.args[0].method).to.equal('wallet_switchEthereumChain')
-      expect(Number(spy.thirdCall.args[0].params[0].chainId)).to.equal(11155111)
+      expect(Number(spy.thirdCall.args[0].params[0].chainId)).to.equal(chainId)
     })
 
     it("shouldn't try to switch chains when the signer is connected to the right chain", async () => {
@@ -291,7 +330,7 @@ describe('Centrifuge', () => {
       })
       cent.setSigner(mockProvider())
 
-      const tx = cent._transact('Test', async () => '0x1' as const)
+      const tx = cent._transact('Test', async () => '0x1' as const, chainId)
       const status: any = await firstValueFrom(tx)
       expect(status.type).to.equal('SigningTransaction')
       expect(status.title).to.equal('Test')
@@ -305,7 +344,7 @@ describe('Centrifuge', () => {
       const publicClient: any = createClient({ transport: custom(mockProvider()) }).extend(() => ({
         waitForTransactionReceipt: async () => ({}),
       }))
-      const tx = cent._transactSequence(() => doTransaction('Test', publicClient, async () => '0x1'))
+      const tx = cent._transactSequence(() => doTransaction('Test', publicClient, async () => '0x1'), chainId)
       const statuses = await firstValueFrom(tx.pipe(toArray()))
       expect(statuses).to.eql([
         { type: 'SigningTransaction', title: 'Test' },
@@ -330,7 +369,7 @@ describe('Centrifuge', () => {
       const tx = cent._transactSequence(async function* () {
         yield* doSignMessage('Sign Permit', async () => '0x1')
         yield* doTransaction('Test', publicClient, async () => '0x2')
-      })
+      }, chainId)
       const statuses = await firstValueFrom(tx.pipe(toArray()))
       expect(statuses).to.eql([
         {

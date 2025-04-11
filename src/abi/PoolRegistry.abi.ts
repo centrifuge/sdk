@@ -13,6 +13,8 @@ export default [
   'event UpdatedCurrency(uint64 indexed poolId, uint128 currency)',
   'event UpdatedShareClassManager(uint64 indexed poolId, address indexed shareClassManager)',
   'function currency(uint64) view returns (uint128)',
+  'function decimals(uint64) view returns (uint8)',
+  'function decimals(uint256) view returns (uint8)',
   'function deny(address user)',
   'function exists(uint64 poolId) view returns (bool)',
   'function isAdmin(uint64, address) view returns (bool)',

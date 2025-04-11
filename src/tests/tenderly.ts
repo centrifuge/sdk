@@ -201,7 +201,7 @@ export class TenderlyFork {
           display_name: `Centrifuge Sepolia Fork ${timestamp}`,
           fork_config: {
             network_id: this.chain.id,
-            block_number: '7210089',
+            block_number: '8097514',
           },
           virtual_network_config: {
             chain_config: {

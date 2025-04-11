@@ -39,12 +39,3 @@ export const lpConfig: Record<number, LPConfig> = {
     currencies: [],
   },
 }
-
-export type CurrencyMetadata = {
-  address: HexString
-  decimals: number
-  name: string
-  symbol: string
-  chainId: number
-  supportsPermit: boolean
-}

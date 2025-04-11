@@ -2,6 +2,7 @@ import { parseAbi } from 'viem'
 import AccountingAbi from './Accounting.abi.js'
 import CurrencyAbi from './Currency.abi.js'
 import HoldingsAbi from './Holdings.abi.js'
+import IERC7726Abi from './IERC7726.abi.js'
 import InvestmentManagerAbi from './InvestmentManager.abi.js'
 import MessageDispatcherAbi from './MessageDispatcher.abi.js'
 import PoolManagerAbi from './PoolManager.abi.js'
@@ -25,4 +26,5 @@ export const ABI = {
   VaultRouter: parseAbi(VaultRouterAbi),
   Accounting: parseAbi(AccountingAbi),
   Holdings: parseAbi(HoldingsAbi),
+  IERC7726: parseAbi(IERC7726Abi),
 }

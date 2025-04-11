@@ -27,7 +27,7 @@ export function repeatOnEvents<T>(
     eventName: string | string[]
     filter?: (events: (Log<bigint, number, false, undefined, true, Abi, string> & { args: any })[]) => boolean
   },
-  chainId?: number
+  chainId: number
 ): MonoTypeOperatorFunction<T> {
   return repeat({
     delay: () =>
