@@ -65,18 +65,24 @@ export class ShareClass extends Entity {
   holding(assetId: AssetId) {
     return this._query(['holding', assetId.toString()], () =>
       this._root._protocolAddresses(this.pool.chainId).pipe(
-        switchMap(({ holdings }) =>
+        switchMap(({ holdings: holdingsAddr, poolRegistry: _ }) =>
           defer(async () => {
-            const contract = getContract({
-              address: holdings,
+            const holdings = getContract({
+              address: holdingsAddr,
               abi: ABI.Holdings,
               client: this._root.getClient(this.pool.chainId)!,
             })
 
             const [valuation, amount, value, ...accounts] = await Promise.all([
-              contract.read.valuation([this.pool.id.raw, this.id.raw, assetId.raw]),
-              contract.read.amount([this.pool.id.raw, this.id.raw, assetId.raw]),
-              contract.read.value([this.pool.id.raw, this.id.raw, assetId.raw]),
+              holdings.read.valuation([this.pool.id.raw, this.id.raw, assetId.raw]),
+              holdings.read.amount([this.pool.id.raw, this.id.raw, assetId.raw]),
+              holdings.read.value([this.pool.id.raw, this.id.raw, assetId.raw]),
+              // this._root.getClient(this.pool.chainId)!.readContract({
+              //   address: poolRegistry,
+              //   abi: ABI.PoolRegistry,
+              //   functionName: 'decimals',
+              //   args: [assetId.raw],
+              // }),
               // contract.read.isLiability((this.pool.id.raw), this.id.raw, assetId),
               ...[
                 AccountType.Asset,
@@ -85,13 +91,13 @@ export class ShareClass extends Entity {
                 AccountType.Gain,
                 AccountType.Expense,
                 AccountType.Liability,
-              ].map((kind) => contract.read.accountId([this.pool.id.raw, this.id.raw, assetId.raw, kind])),
+              ].map((kind) => holdings.read.accountId([this.pool.id.raw, this.id.raw, assetId.raw, kind])),
             ])
             return {
               assetId,
               valuation,
-              amount: new Balance(amount, 18),
-              value: new Balance(value, 18),
+              amount: new Balance(amount, 6), // TODO: Replace with asset decimals
+              value: new Balance(value, 18), // TODO: Replace with pool currency decimals
               // isLiability,
               accounts: {
                 [AccountType.Asset]: accounts[0] || null,
@@ -106,7 +112,7 @@ export class ShareClass extends Entity {
             repeatOnEvents(
               this._root,
               {
-                address: holdings,
+                address: holdingsAddr,
                 abi: ABI.Holdings,
                 eventName: ['Increase', 'Decrease', 'Update', 'UpdateValuation'],
                 filter: (events) => {
@@ -195,7 +201,7 @@ export class ShareClass extends Entity {
           value: estimate,
         })
       )
-    })
+    }, this.pool.chainId)
   }
 
   claimRedeem(assetId: AssetId, investor: string) {
@@ -214,7 +220,7 @@ export class ShareClass extends Entity {
           value: estimate,
         })
       )
-    })
+    }, this.pool.chainId)
   }
 
   /** @internal */

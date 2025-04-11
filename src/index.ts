@@ -1,5 +1,4 @@
 import { Centrifuge } from './Centrifuge.js'
-export type { CurrencyMetadata } from './config/lp.js'
 export * from './entities/Pool.js'
 export * from './entities/PoolNetwork.js'
 export * from './entities/Reports/index.js'
@@ -50,6 +49,7 @@ export type {
 } from './types/transaction.js'
 export { Balance, Perquintill, Price, Rate } from './utils/BigInt.js'
 export type { GroupBy } from './utils/date.js'
+export * from './utils/types.js'
 
 export { Centrifuge }
 export default Centrifuge

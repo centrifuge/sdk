@@ -1,7 +1,7 @@
 import { expect } from 'chai'
 import { context } from '../tests/setup.js'
 import { Balance } from '../utils/BigInt.js'
-import { PoolId, ShareClassId } from '../utils/types.js'
+import { AssetId, PoolId, ShareClassId } from '../utils/types.js'
 import { Pool } from './Pool.js'
 import { ShareClass } from './ShareClass.js'
 
@@ -29,5 +29,12 @@ describe('ShareClass', () => {
     const vaults = await shareClass.vaults(11155111)
     expect(vaults.length).to.equal(1)
     expect(vaults[0]!.shareClass.id.equals(scId)).to.be.true
+  })
+
+  it('gets a holding', async () => {
+    const assetId = AssetId.from(2, 1)
+    const holding = await shareClass.holding(assetId)
+    console.log('holding', holding)
+    expect(typeof holding.valuation).to.equal('string')
   })
 })

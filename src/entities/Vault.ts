@@ -426,7 +426,7 @@ export class Vault extends Entity {
           args: [self.address, receiverAddress as any, controllerAddress as any],
         })
       )
-    })
+    }, this.chainId)
   }
 }
 
