@@ -54,7 +54,7 @@ export class ShareClass extends Entity {
    * @returns The vaults of the share class on the given chain.
    */
   vaults(chainId: number) {
-    return this._query(null, () => new PoolNetwork(this._root, this.pool, chainId).vaults(this.id.toString()))
+    return this._query(null, () => new PoolNetwork(this._root, this.pool, chainId).vaults(this.id))
   }
 
   /**
@@ -74,10 +74,10 @@ export class ShareClass extends Entity {
             })
 
             const [valuation, amount, value, ...accounts] = await Promise.all([
-              contract.read.valuation([BigInt(this.pool.id), this.id.raw, assetId.raw]),
-              contract.read.amount([BigInt(this.pool.id), this.id.raw, assetId.raw]),
-              contract.read.value([BigInt(this.pool.id), this.id.raw, assetId.raw]),
-              // contract.read.isLiability(BigInt(this.pool.id), this.id.raw, assetId),
+              contract.read.valuation([this.pool.id.raw, this.id.raw, assetId.raw]),
+              contract.read.amount([this.pool.id.raw, this.id.raw, assetId.raw]),
+              contract.read.value([this.pool.id.raw, this.id.raw, assetId.raw]),
+              // contract.read.isLiability((this.pool.id.raw), this.id.raw, assetId),
               ...[
                 AccountType.Asset,
                 AccountType.Equity,
@@ -85,7 +85,7 @@ export class ShareClass extends Entity {
                 AccountType.Gain,
                 AccountType.Expense,
                 AccountType.Liability,
-              ].map((kind) => contract.read.accountId([BigInt(this.pool.id), this.id.raw, assetId.raw, kind])),
+              ].map((kind) => contract.read.accountId([this.pool.id.raw, this.id.raw, assetId.raw, kind])),
             ])
             return {
               assetId,
@@ -184,14 +184,14 @@ export class ShareClass extends Entity {
     return this._transactSequence(async function* ({ walletClient, publicClient }) {
       const [{ poolRouter }, estimate] = await Promise.all([
         self._root._protocolAddresses(self.pool.chainId),
-        self._root._estimate(self.pool.chainId, 1), // TODO: How to get the chain of the investor?
+        self._root._estimate(self.pool.chainId, { centId: assetId.centrifugeId }),
       ])
       yield* doTransaction('Claim deposit', publicClient, () =>
         walletClient.writeContract({
           address: poolRouter,
           abi: ABI.PoolRouter,
           functionName: 'claimDeposit',
-          args: [BigInt(self.pool.id), self.id.raw, assetId.raw, toHex(investor, { size: 32 })],
+          args: [self.pool.id.raw, self.id.raw, assetId.raw, toHex(investor, { size: 32 })],
           value: estimate,
         })
       )
@@ -203,14 +203,14 @@ export class ShareClass extends Entity {
     return this._transactSequence(async function* ({ walletClient, publicClient }) {
       const [{ poolRouter }, estimate] = await Promise.all([
         self._root._protocolAddresses(self.pool.chainId),
-        self._root._estimate(self.pool.chainId, 1), // TODO: How to get the chain of the investor?
+        self._root._estimate(self.pool.chainId, { centId: assetId.centrifugeId }),
       ])
       yield* doTransaction('Claim deposit', publicClient, () =>
         walletClient.writeContract({
           address: poolRouter,
           abi: ABI.PoolRouter,
           functionName: 'claimRedeem',
-          args: [BigInt(self.pool.id), self.id.raw, assetId.raw, toHex(investor, { size: 32 })],
+          args: [self.pool.id.raw, self.id.raw, assetId.raw, toHex(investor, { size: 32 })],
           value: estimate,
         })
       )

@@ -6,6 +6,7 @@ export class PoolId {
   }
 
   #id: bigint
+
   constructor(id: string | bigint) {
     this.#id = BigInt(id)
   }
@@ -37,6 +38,7 @@ export class ShareClassId {
   }
 
   #id: bigint
+
   constructor(id: string) {
     this.#id = BigInt(id)
   }
@@ -72,6 +74,7 @@ export class AssetId {
   }
 
   #id: bigint
+
   constructor(id: string | bigint | number) {
     this.#id = BigInt(id)
   }

@@ -4,19 +4,23 @@ import { ABI } from '../abi/index.js'
 import type { Centrifuge } from '../Centrifuge.js'
 import { PoolMetadata } from '../types/poolMetadata.js'
 import { repeatOnEvents } from '../utils/rx.js'
+import { PoolId, ShareClassId } from '../utils/types.js'
 import { Entity } from './Entity.js'
 import { PoolNetwork } from './PoolNetwork.js'
 import { Reports } from './Reports/index.js'
 import { ShareClass } from './ShareClass.js'
 
 export class Pool extends Entity {
+  id: PoolId
+
   /** @internal */
   constructor(
     _root: Centrifuge,
-    public id: string,
+    id: string | bigint,
     public chainId: number
   ) {
-    super(_root, ['pool', id])
+    super(_root, ['pool', String(id)])
+    this.id = new PoolId(id)
   }
 
   get reports() {
@@ -32,7 +36,7 @@ export class Pool extends Entity {
               address: poolRegistry,
               abi: ABI.PoolRegistry,
               functionName: 'metadata',
-              args: [this.id as any],
+              args: [this.id.raw],
             })
           }).pipe(
             switchMap((hash) => {
@@ -50,7 +54,7 @@ export class Pool extends Entity {
                 eventName: 'SetMetadata',
                 filter: (events) => {
                   return events.some((event) => {
-                    return String(event.args.poolId) === this.id
+                    return event.args.poolId === this.id.raw
                   })
                 },
               },
@@ -64,8 +68,18 @@ export class Pool extends Entity {
 
   shareClasses() {
     return this._query(null, () =>
-      this._shareClassIds().pipe(map((scIds) => scIds.map((scId) => new ShareClass(this._root, this, scId))))
+      this._shareClassIds().pipe(map((scIds) => scIds.map((scId) => new ShareClass(this._root, this, scId.raw))))
     )
+  }
+
+  shareClassesDetails() {
+    return this._query(null, () => {
+      return this.shareClasses().pipe(
+        switchMap((shareClasses) => {
+          return combineLatest(shareClasses.map((sc) => sc.details()))
+        })
+      )
+    })
   }
 
   /**
@@ -120,7 +134,7 @@ export class Pool extends Entity {
     })
   }
 
-  vault(chainId: number, scId: string, asset: string) {
+  vault(chainId: number, scId: ShareClassId, asset: string) {
     return this._query(null, () => this.network(chainId).pipe(switchMap((network) => network.vault(scId, asset))))
   }
 
@@ -136,7 +150,7 @@ export class Pool extends Entity {
               address: poolRegistry,
               abi: ABI.PoolRegistry,
               functionName: 'shareClassManager',
-              args: [this.id as any],
+              args: [this.id.raw],
             })
           )
         )
@@ -156,7 +170,7 @@ export class Pool extends Entity {
               address: shareClassManager,
               abi: ABI.ShareClassManager,
               functionName: 'shareClassCount',
-              args: [this.id as any],
+              args: [this.id.raw],
             })
 
             const scIds = await Promise.all(
@@ -165,11 +179,12 @@ export class Pool extends Entity {
                   address: shareClassManager,
                   abi: ABI.ShareClassManager,
                   functionName: 'previewShareClassId',
-                  args: [this.id as any, i + 1],
+                  args: [this.id.raw, i + 1],
                 })
               })
             )
-            return scIds
+            return scIds.map((scId) => new ShareClassId(scId))
+            // return Array.from({ length: count }, (_, i) => ShareClassId.from(this.id, i + 1))
           })
         )
       )

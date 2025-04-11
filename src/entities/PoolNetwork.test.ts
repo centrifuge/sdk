@@ -1,17 +1,18 @@
 import { expect } from 'chai'
 import { context } from '../tests/setup.js'
+import { PoolId, ShareClassId } from '../utils/types.js'
 import { Pool } from './Pool.js'
 import { PoolNetwork } from './PoolNetwork.js'
 
-const poolId = '562949953421313'
-const scId = '0x00000000000000000002000000000002'
+const poolId = new PoolId('562949953421313')
+const scId = new ShareClassId('0x00000000000000000002000000000002')
 const vaultAddress = '0x4249284a934013973a342bcfdba8d3dab4987fd3'
 
 describe('PoolNetwork', () => {
   let poolNetwork: PoolNetwork
   beforeEach(() => {
     const { centrifuge } = context
-    const pool = new Pool(centrifuge, poolId, 11155111)
+    const pool = new Pool(centrifuge, poolId.raw, 11155111)
     poolNetwork = new PoolNetwork(centrifuge, pool, 11155111)
   })
 

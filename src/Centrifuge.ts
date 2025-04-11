@@ -156,7 +156,7 @@ export class Centrifuge {
         logs: result.receipt.logs,
       })
 
-      const poolId = logs[0]?.args.poolId
+      const poolId = logs[0]!.args.poolId
 
       const scIds = await Promise.all(
         Array.from({ length: metadataInput.shareClasses.length }, (_, i) => {
@@ -164,7 +164,7 @@ export class Centrifuge {
             address: shareClassManager,
             abi: ABI.ShareClassManager,
             functionName: 'previewShareClassId',
-            args: [poolId as any, i + 1],
+            args: [poolId, i + 1],
           })
         })
       )
@@ -299,11 +299,11 @@ export class Centrifuge {
     })
   }
 
-  pool(id: string) {
+  pool(id: PoolId) {
     return this._query(null, () =>
       this.pools().pipe(
         map((pools) => {
-          const pool = pools.find((pool) => pool.id === id)
+          const pool = pools.find((pool) => pool.id.equals(id))
           if (!pool) throw new Error(`Pool with id ${id} not found`)
           return pool
         })
@@ -312,7 +312,7 @@ export class Centrifuge {
   }
 
   investor(address: string) {
-    return this._query(null, () => of(new Investor(this, address as any)))
+    return this._query(null, () => of(new Investor(this, address as HexString)))
   }
 
   /**
@@ -326,7 +326,7 @@ export class Centrifuge {
     return this._query(['currency', curAddress, cid], () =>
       defer(async () => {
         const contract = getContract({
-          address: curAddress as any,
+          address: curAddress as HexString,
           abi: ABI.Currency,
           client: this.getClient(cid)!,
         })
@@ -340,7 +340,7 @@ export class Centrifuge {
             .catch(() => false),
         ])
         return {
-          address: curAddress as any,
+          address: curAddress as HexString,
           decimals,
           name,
           symbol,
@@ -366,12 +366,12 @@ export class Centrifuge {
           defer(() =>
             this.getClient(cid)!
               .readContract({
-                address: currency as any,
+                address: currency as HexString,
                 abi: ABI.Currency,
                 functionName: 'balanceOf',
                 args: [address],
               })
-              .then((val: any) => new Balance(val, currencyMeta.decimals))
+              .then((val) => new Balance(val, currencyMeta.decimals))
           ).pipe(
             repeatOnEvents(
               this,
@@ -781,17 +781,17 @@ export class Centrifuge {
    * that results from a transaction
    * @internal
    */
-  _estimate(fromChain: number, toChain: number) {
-    return this._query(['estimate', fromChain, toChain], () =>
-      this._protocolAddresses(fromChain).pipe(
-        switchMap(({ vaultRouter }) =>
+  _estimate(fromChain: number, to: { chainId: number } | { centId: number }) {
+    return this._query(['estimate', fromChain, to], () =>
+      combineLatest([this._protocolAddresses(fromChain), 'chainId' in to ? this.id(to.chainId) : of(to.centId)]).pipe(
+        switchMap(([{ vaultRouter }, toCentId]) =>
           defer(() => {
             const bytes = toHex(new Uint8Array([0x12]))
             return this.getClient(fromChain)!.readContract({
               address: vaultRouter,
               abi: ABI.VaultRouter,
               functionName: 'estimate',
-              args: [toChain, bytes],
+              args: [toCentId, bytes],
             }) as Promise<bigint>
           })
         )

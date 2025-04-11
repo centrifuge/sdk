@@ -42,7 +42,7 @@ export class Reports extends Entity {
     centrifuge: Centrifuge,
     public pool: Pool
   ) {
-    super(centrifuge, ['reports', pool.id])
+    super(centrifuge, ['reports', pool.id.toString()])
     this.queries = new IndexerQueries(centrifuge, pool)
   }
 
