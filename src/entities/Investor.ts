@@ -10,12 +10,13 @@ export class Investor extends Entity {
 
   /** @internal */
   constructor(_root: Centrifuge, address: HexString) {
-    const addr = address.toLowerCase() as HexString
+    const addr = address.toLowerCase()
     super(_root, ['investor', addr])
     this.address = getAddress(addr)
   }
 
   portfolio() {
+    // TODO: fetch from indexer
     return this._query(['portfolio'], () => of([]))
   }
 

@@ -44,9 +44,13 @@ describe('utils/types', () => {
       expect(id.toString()).to.equal(assetId)
       expect(id.raw).to.equal(BigInt(assetId))
     })
-    it('get the Centrifuge Id', () => {
+    it('gets the Centrifuge Id', () => {
       const id = new AssetId(assetId)
       expect(id.centrifugeId).to.equal(2)
+    })
+    it('gets the address', () => {
+      const id = new AssetId(assetId)
+      expect(id.addr).to.equal('0x0000000000020000000000000000000000000001')
     })
     it("should get whether it's a national currency", () => {
       const id = new AssetId(assetId)

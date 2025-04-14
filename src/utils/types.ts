@@ -11,10 +11,6 @@ export class PoolId {
     this.#id = BigInt(id)
   }
 
-  equals(other: PoolId) {
-    return this.raw === other.raw
-  }
-
   get centrifugeId() {
     return Number(this.#id >> 48n)
   }
@@ -23,12 +19,12 @@ export class PoolId {
     return this.#id
   }
 
-  [Symbol.toPrimitive]() {
+  toString() {
     return this.#id.toString()
   }
 
-  toString() {
-    return this.#id.toString()
+  equals(other: PoolId) {
+    return this.raw === other.raw
   }
 }
 
@@ -51,20 +47,16 @@ export class ShareClassId {
     return Number(this.#id >> 112n)
   }
 
-  equals(other: ShareClassId) {
-    return this.raw === other.raw
-  }
-
   get raw() {
-    return toHex(this.#id, { size: 16 })
-  }
-
-  [Symbol.toPrimitive]() {
     return toHex(this.#id, { size: 16 })
   }
 
   toString() {
     return toHex(this.#id, { size: 16 })
+  }
+
+  equals(other: ShareClassId) {
+    return this.raw === other.raw
   }
 }
 
@@ -90,10 +82,6 @@ export class AssetId {
     return this.centrifugeId === 0
   }
 
-  equals(other: AssetId) {
-    return this.raw === other.raw
-  }
-
   get addr() {
     return toHex(this.#id, { size: 20 })
   }
@@ -102,11 +90,11 @@ export class AssetId {
     return this.#id
   }
 
-  [Symbol.toPrimitive]() {
+  toString() {
     return this.#id.toString()
   }
 
-  toString() {
-    return this.#id.toString()
+  equals(other: AssetId) {
+    return this.raw === other.raw
   }
 }
