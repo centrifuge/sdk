@@ -148,10 +148,10 @@ export class Vault extends Entity {
             this.allowance(address),
             defer(async () => {
               const client = this._root.getClient(this.chainId)!
-              const vault = getContract({ address: this.address, abi: ABI.Vault, client })
+              const vault = getContract({ address: this.address, abi: ABI.AsyncVault, client })
               const investmentManager = getContract({
-                address: addresses.investmentManager,
-                abi: ABI.InvestmentManager,
+                address: addresses.asyncRequests,
+                abi: ABI.AsyncRequests,
                 client,
               })
 
@@ -196,7 +196,7 @@ export class Vault extends Entity {
                 this._root,
                 {
                   address: [this.address, restrictionManagerAddress],
-                  abi: [ABI.Vault, ABI.RestrictionManager],
+                  abi: [ABI.AsyncVault, ABI.RestrictionManager],
                   eventName: [
                     'UpdateMember',
                     'CancelDepositClaim',
