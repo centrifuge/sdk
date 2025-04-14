@@ -60,3 +60,7 @@ export const protocol: Record<number, ProtocolContracts> = {
     currencies: ['0xd54864475D5b1a0F235A751b6fddc8bb28FD3b9b'],
   },
 }
+
+export const currencies: Record<number, HexString[]> = {
+  11155111: ['0x86eb50b22dd226fe5d1f0753a40e247fd711ad6e'],
+}

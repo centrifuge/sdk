@@ -32,22 +32,28 @@ import {
   type WalletClient,
   type WatchEventOnLogsParameter,
 } from 'viem'
-import { ABI } from './abi/index.js'
-import { chains } from './config/chains.js'
-import { protocol } from './config/protocol.js'
-import { PERMIT_TYPEHASH } from './constants.js'
-import { Investor } from './entities/Investor.js'
-import { Pool } from './entities/Pool.js'
-import type { Client, DerivedConfig, EnvConfig, HexString, UserProvidedConfig } from './types/index.js'
-import { type CurrencyDetails } from './types/index.js'
-import { PoolMetadataInput } from './types/poolInput.js'
-import { PoolMetadata } from './types/poolMetadata.js'
+import type {
+  Client,
+  CurrencyDetails,
+  DerivedConfig,
+  EnvConfig,
+  HexString,
+  ProtocolAddresses,
+  UserProvidedConfig,
+} from './types/index.js'
 import type { CentrifugeQueryOptions, Query } from './types/query.js'
 import type { OperationStatus, Signer, Transaction, TransactionCallbackParams } from './types/transaction.js'
+import { ABI } from './abi/index.js'
+import { chainIdToNetwork, chains } from './config/chains.js'
+import { PERMIT_TYPEHASH } from './constants.js'
+import { Pool } from './entities/Pool.js'
+import { PoolMetadataInput } from './types/poolInput.js'
+import { PoolMetadata } from './types/poolMetadata.js'
 import { Balance } from './utils/BigInt.js'
 import { hashKey } from './utils/query.js'
 import { makeThenable, repeatOnEvents, shareReplayWithDelayedReset } from './utils/rx.js'
 import { doTransaction, isLocalAccount } from './utils/transaction.js'
+import { currencies } from './config/protocol.js'
 import { AssetId, PoolId } from './utils/types.js'
 
 const envConfig = {
@@ -119,7 +125,7 @@ export class Centrifuge {
         if (!rpcUrl) {
           console.warn(`No rpcUrl defined for chain ${chain.id}. Using public RPC endpoint.`)
         }
-        if (!protocol[chain.id]) {
+        if (!chainIdToNetwork[chain.id]) {
           console.warn(`No protocol config defined for chain ${chain.id}. Skipping.`)
           return
         }
@@ -308,10 +314,6 @@ export class Centrifuge {
         })
       )
     )
-  }
-
-  investor(address: string) {
-    return this._query(null, () => of(new Investor(this, address as HexString)))
   }
 
   /**
@@ -763,11 +765,29 @@ export class Centrifuge {
 
   _protocolAddresses(chainId: number) {
     return this._query(['protocolAddresses', chainId], () => {
-      return defer(async () => {
-        // TODO: fetch from somewhere
-        if (!protocol[chainId]) throw new Error(`No protocol config for chain ${chainId}`)
-        return protocol[chainId]
-      })
+      const network = chainIdToNetwork[chainId as keyof typeof chainIdToNetwork]
+      const chainCurrencies = currencies[chainId]
+      if (!network) {
+        throw new Error(`No protocol config mapping for chain id ${chainId}`)
+      }
+
+      const baseUrl = 'https://raw.githubusercontent.com/centrifuge/protocol-v3/refs/heads/main/deployments'
+      const networkPath = this.getChainConfig(chainId).testnet ? 'testnet' : 'mainnet'
+      const url = `${baseUrl}/${networkPath}/${network}.json`
+
+      return fromFetch(url).pipe(
+        switchMap((response) => {
+          if (response.ok) {
+            return response.json()
+          } else {
+            throw new Error(`Error ${response.status}`)
+          }
+        }),
+        map((data: { contracts: ProtocolAddresses }) => ({
+          ...data.contracts,
+          currencies: chainCurrencies,
+        }))
+      )
     })
   }
 

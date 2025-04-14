@@ -170,5 +170,4 @@ export class Pool extends Entity {
       )
     )
   }
-
 }
