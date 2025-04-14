@@ -11,6 +11,7 @@ import { doSignMessage, doTransaction, signPermit, type Permit } from '../utils/
 import { Entity } from './Entity.js'
 import type { Pool } from './Pool.js'
 import { PoolNetwork } from './PoolNetwork.js'
+import { ShareClass } from './ShareClass.js'
 
 // const ASYNC_OPERATOR_INTERFACE_ID = '0xe3bc4e65'
 // const ASYNC_DEPOSIT_INTERFACE_ID = '0xce3bbe50'
@@ -20,7 +21,7 @@ import { PoolNetwork } from './PoolNetwork.js'
 
 /**
  * Query and interact with a vault, which is the main entry point for investing and redeeming funds.
- * A vault is the combination of a network, a pool, a tranche and an investment currency.
+ * A vault is the combination of a network, a pool, a share class and an investment currency.
  */
 export class Vault extends Entity {
   pool: Pool
@@ -38,11 +39,11 @@ export class Vault extends Entity {
   constructor(
     _root: Centrifuge,
     public network: PoolNetwork,
-    public trancheId: string,
+    public shareClass: ShareClass,
     asset: HexString,
     address: HexString
   ) {
-    super(_root, ['vault', network.chainId, network.pool.id, trancheId, asset.toLowerCase()])
+    super(_root, ['vault', network.chainId, shareClass.id.toString(), asset.toLowerCase()])
     this.chainId = network.chainId
     this.pool = network.pool
     this._asset = asset.toLowerCase() as HexString
@@ -55,7 +56,7 @@ export class Vault extends Entity {
    */
   _restrictionManager() {
     return this._query(['restrictionManager'], () =>
-      this.network._share(this.trancheId).pipe(
+      this.network._share(this.shareClass.id).pipe(
         switchMap(
           (share) =>
             this._root.getClient(this.chainId)!.readContract({
@@ -79,7 +80,7 @@ export class Vault extends Entity {
    * Get the details of the share token.
    */
   shareCurrency() {
-    return this.network.shareCurrency(this.trancheId)
+    return this.network.shareCurrency(this.shareClass.id)
   }
 
   /**
@@ -425,7 +426,7 @@ export class Vault extends Entity {
           args: [self.address, receiverAddress as any, controllerAddress as any],
         })
       )
-    })
+    }, this.chainId)
   }
 }
 

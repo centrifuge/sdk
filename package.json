@@ -34,7 +34,8 @@
     "test:single": "mocha --loader=ts-node/esm --require $(pwd)/src/tests/setup.ts --exit --timeout 60000",
     "test:ci": "yarn test --reporter mocha-multi-reporters --reporter-options configFile=mocha-reporter-config.json",
     "test:coverage": "c8 yarn test:ci",
-    "gen:docs": "typedoc"
+    "gen:docs": "typedoc",
+    "lint": "eslint src/**/*.ts"
   },
   "dependencies": {
     "decimal.js-light": "^2.5.1",
