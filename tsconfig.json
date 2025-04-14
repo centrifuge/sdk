@@ -19,6 +19,5 @@
     "allowSyntheticDefaultImports": true,
     "stripInternal": true
   },
-  "include": ["src", "src/**/*.d.ts"],
-  "exclude": ["**/*.test.ts"]
+  "include": ["src", "src/**/*.d.ts"]
 }

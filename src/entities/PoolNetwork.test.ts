@@ -4,9 +4,9 @@ import { PoolId, ShareClassId } from '../utils/types.js'
 import { Pool } from './Pool.js'
 import { PoolNetwork } from './PoolNetwork.js'
 
-const poolId = new PoolId('562949953421313')
-const scId = new ShareClassId('0x00000000000000000002000000000002')
-const vaultAddress = '0x4249284a934013973a342bcfdba8d3dab4987fd3'
+const poolId = PoolId.from(1, 1)
+const scId = ShareClassId.from(poolId, 1)
+const vaultAddress = '0x59837f61db4f18c612e112d8d07018fc4b5b5497'
 
 describe('PoolNetwork', () => {
   let poolNetwork: PoolNetwork

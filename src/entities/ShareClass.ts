@@ -1,5 +1,5 @@
 import { combineLatest, defer, map, switchMap } from 'rxjs'
-import { encodeFunctionData, getContract, toHex } from 'viem'
+import { encodeFunctionData, getContract, parseAbi, toHex } from 'viem'
 import { ABI } from '../abi/index.js'
 import type { Centrifuge } from '../Centrifuge.js'
 import { AccountType } from '../types/holdings.js'
@@ -79,7 +79,8 @@ export class ShareClass extends Entity {
               holdings.read.value([this.pool.id.raw, this.id.raw, assetId.raw]),
               this._root.getClient(this.pool.chainId)!.readContract({
                 address: hubRegistry,
-                abi: ABI.HubRegistry,
+                // Use inline ABI because of function overload
+                abi: parseAbi(['function decimals(uint256) view returns (uint8)']),
                 functionName: 'decimals',
                 args: [assetId.raw],
               }),

@@ -23,6 +23,7 @@ import {
   custom,
   getContract,
   http,
+  parseAbi,
   parseEventLogs,
   toHex,
   type Abi,
@@ -792,7 +793,8 @@ export class Centrifuge {
                 }),
                 this.getClient(chainId)!.readContract({
                   address: hubRegistry,
-                  abi: ABI.HubRegistry,
+                  // Use inline ABI because of function overload
+                  abi: parseAbi(['function decimals(uint256) view returns (uint8)']),
                   functionName: 'decimals',
                   args: [quoteAssetId.raw],
                 }),
