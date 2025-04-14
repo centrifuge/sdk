@@ -1,5 +1,5 @@
 import { combineLatest, defer, map, switchMap } from 'rxjs'
-import { encodeFunctionData, getContract, toHex } from 'viem'
+import { encodeFunctionData, getContract, parseAbi, toHex } from 'viem'
 import { ABI } from '../abi/index.js'
 import type { Centrifuge } from '../Centrifuge.js'
 import { AccountType } from '../types/holdings.js'
@@ -65,7 +65,7 @@ export class ShareClass extends Entity {
   holding(assetId: AssetId) {
     return this._query(['holding', assetId.toString()], () =>
       this._root._protocolAddresses(this.pool.chainId).pipe(
-        switchMap(({ holdings: holdingsAddr, assetRegistry }) =>
+        switchMap(({ holdings: holdingsAddr, hubRegistry }) =>
           defer(async () => {
             const holdings = getContract({
               address: holdingsAddr,
@@ -78,8 +78,9 @@ export class ShareClass extends Entity {
               holdings.read.amount([this.pool.id.raw, this.id.raw, assetId.raw]),
               holdings.read.value([this.pool.id.raw, this.id.raw, assetId.raw]),
               this._root.getClient(this.pool.chainId)!.readContract({
-                address: assetRegistry,
-                abi: ABI.PoolRegistry,
+                address: hubRegistry,
+                // Use inline ABI because of function overload
+                abi: parseAbi(['function decimals(uint256) view returns (uint8)']),
                 functionName: 'decimals',
                 args: [assetId.raw],
               }),
@@ -133,24 +134,24 @@ export class ShareClass extends Entity {
   approveDeposits(assetId: AssetId, investAmount: Balance, navPerShare: Price) {
     const self = this
     return this._transactSequence(async function* ({ walletClient, publicClient }) {
-      const [{ poolRouter }, holding] = await Promise.all([
+      const [{ hub }, holding] = await Promise.all([
         self._root._protocolAddresses(self.pool.chainId),
         self.holding(assetId),
       ])
       const approveData = encodeFunctionData({
-        abi: ABI.PoolRouter,
+        abi: ABI.Hub,
         functionName: 'approveDeposits',
-        args: [self.id.raw, assetId.raw, investAmount.toBigInt(), holding.valuation],
+        args: [self.pool.id.raw, self.id.raw, assetId.raw, investAmount.toBigInt(), holding.valuation],
       })
       const issueData = encodeFunctionData({
-        abi: ABI.PoolRouter,
+        abi: ABI.Hub,
         functionName: 'issueShares',
-        args: [self.id.raw, assetId.raw, navPerShare.toBigInt()],
+        args: [self.pool.id.raw, self.id.raw, assetId.raw, navPerShare.toBigInt()],
       })
       yield* doTransaction('Approve deposits', publicClient, () =>
         walletClient.writeContract({
-          address: poolRouter,
-          abi: ABI.PoolRouter,
+          address: hub,
+          abi: ABI.Hub,
           functionName: 'multicall',
           args: [[approveData, issueData]],
         })
@@ -161,24 +162,24 @@ export class ShareClass extends Entity {
   approveRedeems(assetId: AssetId, shareAmount: Balance, navPerShare: Price) {
     const self = this
     return this._transactSequence(async function* ({ walletClient, publicClient }) {
-      const [{ poolRouter }, holding] = await Promise.all([
+      const [{ hub }, holding] = await Promise.all([
         self._root._protocolAddresses(self.pool.chainId),
         self.holding(assetId),
       ])
       const approveData = encodeFunctionData({
-        abi: ABI.PoolRouter,
+        abi: ABI.Hub,
         functionName: 'approveRedeems',
-        args: [self.id.raw, assetId.raw, shareAmount.toBigInt()],
+        args: [self.pool.id.raw, self.id.raw, assetId.raw, shareAmount.toBigInt()],
       })
       const issueData = encodeFunctionData({
-        abi: ABI.PoolRouter,
+        abi: ABI.Hub,
         functionName: 'revokeShares',
-        args: [self.id.raw, assetId.raw, navPerShare.toBigInt(), holding.valuation],
+        args: [self.pool.id.raw, self.id.raw, assetId.raw, navPerShare.toBigInt(), holding.valuation],
       })
       yield* doTransaction('Approve redeems', publicClient, () =>
         walletClient.writeContract({
-          address: poolRouter,
-          abi: ABI.PoolRouter,
+          address: hub,
+          abi: ABI.Hub,
           functionName: 'multicall',
           args: [[approveData, issueData]],
         })
@@ -189,14 +190,14 @@ export class ShareClass extends Entity {
   claimDeposit(assetId: AssetId, investor: string) {
     const self = this
     return this._transactSequence(async function* ({ walletClient, publicClient }) {
-      const [{ poolRouter }, estimate] = await Promise.all([
+      const [{ hub }, estimate] = await Promise.all([
         self._root._protocolAddresses(self.pool.chainId),
         self._root._estimate(self.pool.chainId, { centId: assetId.centrifugeId }),
       ])
       yield* doTransaction('Claim deposit', publicClient, () =>
         walletClient.writeContract({
-          address: poolRouter,
-          abi: ABI.PoolRouter,
+          address: hub,
+          abi: ABI.Hub,
           functionName: 'claimDeposit',
           args: [self.pool.id.raw, self.id.raw, assetId.raw, toHex(investor, { size: 32 })],
           value: estimate,
@@ -208,14 +209,14 @@ export class ShareClass extends Entity {
   claimRedeem(assetId: AssetId, investor: string) {
     const self = this
     return this._transactSequence(async function* ({ walletClient, publicClient }) {
-      const [{ poolRouter }, estimate] = await Promise.all([
+      const [{ hub }, estimate] = await Promise.all([
         self._root._protocolAddresses(self.pool.chainId),
         self._root._estimate(self.pool.chainId, { centId: assetId.centrifugeId }),
       ])
       yield* doTransaction('Claim deposit', publicClient, () =>
         walletClient.writeContract({
-          address: poolRouter,
-          abi: ABI.PoolRouter,
+          address: hub,
+          abi: ABI.Hub,
           functionName: 'claimRedeem',
           args: [self.pool.id.raw, self.id.raw, assetId.raw, toHex(investor, { size: 32 })],
           value: estimate,
@@ -227,11 +228,11 @@ export class ShareClass extends Entity {
   /** @internal */
   _metadata() {
     return this._query(['metadata'], () =>
-      this.pool._shareClassManager().pipe(
-        switchMap((scm) =>
+      this._root._protocolAddresses(this.pool.chainId).pipe(
+        switchMap(({ shareClassManager }) =>
           defer(async () => {
             const [name, symbol] = await this._root.getClient(this.pool.chainId)!.readContract({
-              address: scm,
+              address: shareClassManager,
               abi: ABI.ShareClassManager,
               functionName: 'metadata',
               args: [this.id.raw],
@@ -244,7 +245,7 @@ export class ShareClass extends Entity {
             repeatOnEvents(
               this._root,
               {
-                address: scm,
+                address: shareClassManager,
                 abi: ABI.ShareClassManager,
                 eventName: 'UpdateMetadata',
                 filter: (events) => {
@@ -264,11 +265,11 @@ export class ShareClass extends Entity {
   /** @internal */
   _metrics() {
     return this._query(['metrics'], () =>
-      this.pool._shareClassManager().pipe(
-        switchMap((scm) =>
+      this._root._protocolAddresses(this.pool.chainId).pipe(
+        switchMap(({ shareClassManager }) =>
           defer(async () => {
             const [totalIssuance, navPerShare] = await this._root.getClient(this.pool.chainId)!.readContract({
-              address: scm,
+              address: shareClassManager,
               abi: ABI.ShareClassManager,
               functionName: 'metrics',
               args: [this.id.raw],
@@ -281,7 +282,7 @@ export class ShareClass extends Entity {
             repeatOnEvents(
               this._root,
               {
-                address: scm,
+                address: shareClassManager,
                 abi: ABI.ShareClassManager,
                 eventName: ['RevokeShares', 'IssueShares'],
                 filter: (events) => {

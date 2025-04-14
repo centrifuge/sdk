@@ -23,6 +23,7 @@ import {
   custom,
   getContract,
   http,
+  parseAbi,
   parseEventLogs,
   toHex,
   type Abi,
@@ -139,18 +140,17 @@ export class Centrifuge {
     const self = this
     return this._transactSequence(async function* ({ walletClient, signingAddress, publicClient }) {
       const addresses = await self._protocolAddresses(chainId)
-      const shareClassManager = addresses.multiShareClass
       const result = yield* doTransaction('Create pool', publicClient, () =>
         walletClient.writeContract({
-          address: addresses.poolRegistry,
-          abi: ABI.PoolRouter,
+          address: addresses.hubRegistry,
+          abi: ABI.Hub,
           functionName: 'createPool',
-          args: [signingAddress, BigInt(currencyCode), shareClassManager],
+          args: [signingAddress, BigInt(currencyCode)],
         })
       )
 
       const logs = parseEventLogs({
-        abi: ABI.PoolRegistry,
+        abi: ABI.HubRegistry,
         eventName: 'NewPool',
         logs: result.receipt.logs,
       })
@@ -160,7 +160,7 @@ export class Centrifuge {
       const scIds = await Promise.all(
         Array.from({ length: metadataInput.shareClasses.length }, (_, i) => {
           return self.getClient(chainId)!.readContract({
-            address: shareClassManager,
+            address: addresses.shareClassManager,
             abi: ABI.ShareClassManager,
             functionName: 'previewShareClassId',
             args: [poolId, i + 1],
@@ -231,12 +231,12 @@ export class Centrifuge {
       // TODO: add metadata and share classes
 
       // const enableData = encodeFunctionData({
-      //   abi: ABI.PoolRouter,
+      //   abi: ABI.Hub,
       //   functionName: 'setMetadata',
       //   args: ["IPFS_HASH"],
       // })
       // const requestData = encodeFunctionData({
-      //   abi: ABI.PoolRouter,
+      //   abi: ABI.Hub,
       //   functionName: 'addShareClass',
       //   args: [SC_NAME, SC_SYMBOL, SC_SALT, ''],
       // })
@@ -268,11 +268,11 @@ export class Centrifuge {
           combineLatest([
             this.id(chainId),
             this._protocolAddresses(chainId).pipe(
-              switchMap(({ poolRegistry }) =>
+              switchMap(({ hubRegistry }) =>
                 defer(() => {
                   return this.getClient(chainId)!.readContract({
-                    address: poolRegistry,
-                    abi: ABI.PoolRegistry,
+                    address: hubRegistry,
+                    abi: ABI.HubRegistry,
                     functionName: 'latestId',
                   })
                 })
@@ -782,7 +782,7 @@ export class Centrifuge {
       ['getQuote', baseAmount, baseAssetId.toString(), quoteAssetId.toString()],
       () =>
         this._protocolAddresses(chainId).pipe(
-          switchMap(({ assetRegistry }) =>
+          switchMap(({ hubRegistry }) =>
             defer(async () => {
               const [quote, quoteDecimals] = await Promise.all([
                 this.getClient(chainId)!.readContract({
@@ -792,8 +792,9 @@ export class Centrifuge {
                   args: [baseAmount.toBigInt(), baseAssetId.addr, quoteAssetId.addr],
                 }),
                 this.getClient(chainId)!.readContract({
-                  address: assetRegistry,
-                  abi: ABI.PoolRegistry,
+                  address: hubRegistry,
+                  // Use inline ABI because of function overload
+                  abi: parseAbi(['function decimals(uint256) view returns (uint8)']),
                   functionName: 'decimals',
                   args: [quoteAssetId.raw],
                 }),

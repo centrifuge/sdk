@@ -30,11 +30,11 @@ export class Pool extends Entity {
   metadata() {
     return this._query(['metadata'], () =>
       this._root._protocolAddresses(this.chainId).pipe(
-        switchMap(({ poolRegistry }) =>
+        switchMap(({ hubRegistry }) =>
           defer(() => {
             return this._root.getClient(this.chainId)!.readContract({
-              address: poolRegistry,
-              abi: ABI.PoolRegistry,
+              address: hubRegistry,
+              abi: ABI.HubRegistry,
               functionName: 'metadata',
               args: [this.id.raw],
             })
@@ -49,8 +49,8 @@ export class Pool extends Entity {
             repeatOnEvents(
               this._root,
               {
-                address: poolRegistry,
-                abi: ABI.PoolRegistry,
+                address: hubRegistry,
+                abi: ABI.HubRegistry,
                 eventName: 'SetMetadata',
                 filter: (events) => {
                   return events.some((event) => {
@@ -141,30 +141,10 @@ export class Pool extends Entity {
   /**
    * @internal
    */
-  _shareClassManager() {
-    return this._query(['shareClassManager'], () =>
-      this._root._protocolAddresses(this.chainId).pipe(
-        switchMap(({ poolRegistry }) =>
-          defer(() =>
-            this._root.getClient(this.chainId)!.readContract({
-              address: poolRegistry,
-              abi: ABI.PoolRegistry,
-              functionName: 'shareClassManager',
-              args: [this.id.raw],
-            })
-          )
-        )
-      )
-    )
-  }
-
-  /**
-   * @internal
-   */
   _shareClassIds() {
     return this._query(['shareClasses'], () =>
-      this._shareClassManager().pipe(
-        switchMap((shareClassManager) =>
+      this._root._protocolAddresses(this.chainId).pipe(
+        switchMap(({ shareClassManager }) =>
           defer(async () => {
             const count = await this._root.getClient(this.chainId)!.readContract({
               address: shareClassManager,

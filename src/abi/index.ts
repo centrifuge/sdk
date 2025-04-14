@@ -1,30 +1,32 @@
 import { parseAbi } from 'viem'
 import AccountingAbi from './Accounting.abi.js'
+import AsyncRequestsAbi from './AsyncRequests.abi.js'
+import AsyncVaultAbit from './AsyncVault.abi.js'
 import CurrencyAbi from './Currency.abi.js'
 import HoldingsAbi from './Holdings.abi.js'
+import HubAbi from './Hub.abi.js'
+import HubRegistryAbi from './HubRegistry.abi.js'
 import IERC7726Abi from './IERC7726.abi.js'
-import InvestmentManagerAbi from './InvestmentManager.abi.js'
 import MessageDispatcherAbi from './MessageDispatcher.abi.js'
 import PoolManagerAbi from './PoolManager.abi.js'
-import PoolRegistryAbi from './PoolRegistry.abi.js'
-import PoolRouterAbi from './PoolRouter.abi.js'
 import RestrictionManagerAbi from './RestrictionManager.abi.js'
 import ShareClassManagerAbi from './ShareClassManager.abi.js'
-import VaultAbi from './Vault.abi.js'
+import SyncRequestsAbi from './SyncRequests.abi.js'
 import VaultRouterAbi from './VaultRouter.abi.js'
 
 export const ABI = {
-  PoolRouter: parseAbi(PoolRouterAbi),
+  Hub: parseAbi(HubAbi),
   ShareClassManager: parseAbi(ShareClassManagerAbi),
-  PoolRegistry: parseAbi(PoolRegistryAbi),
+  HubRegistry: parseAbi(HubRegistryAbi),
   MessageDispatcher: parseAbi(MessageDispatcherAbi),
   Currency: parseAbi(CurrencyAbi),
   RestrictionManager: parseAbi(RestrictionManagerAbi),
-  InvestmentManager: parseAbi(InvestmentManagerAbi),
-  Vault: parseAbi(VaultAbi),
+  AsyncVault: parseAbi(AsyncVaultAbit),
   PoolManager: parseAbi(PoolManagerAbi),
   VaultRouter: parseAbi(VaultRouterAbi),
   Accounting: parseAbi(AccountingAbi),
   Holdings: parseAbi(HoldingsAbi),
   IERC7726: parseAbi(IERC7726Abi),
+  SyncRequests: parseAbi(SyncRequestsAbi),
+  AsyncRequests: parseAbi(AsyncRequestsAbi),
 }

@@ -44,7 +44,7 @@ export class PoolNetwork extends Entity {
             this._root.getClient(this.chainId)!.readContract({
               address: poolManager,
               abi: ABI.PoolManager,
-              functionName: 'tranche',
+              functionName: 'shareToken',
               args: [this.pool.id.raw, scId.raw],
             })
           ).pipe(
@@ -53,7 +53,7 @@ export class PoolNetwork extends Entity {
               {
                 address: poolManager,
                 abi: ABI.PoolManager,
-                eventName: 'DeployTranche',
+                eventName: 'AddShareClass',
                 filter: (events) => {
                   return events.some((event) => event.args.poolId === this.pool.id.raw && event.args.scId === scId.raw)
                 },

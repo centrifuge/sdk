@@ -3,14 +3,16 @@ import { combineLatest, defer, firstValueFrom, interval, map, of, Subject, take,
 import sinon from 'sinon'
 import { createClient, custom } from 'viem'
 import { Centrifuge } from './Centrifuge.js'
+import { protocol } from './config/protocol.js'
 import { context } from './tests/setup.js'
 import { Balance } from './utils/BigInt.js'
 import { doSignMessage, doTransaction } from './utils/transaction.js'
 import { AssetId, PoolId } from './utils/types.js'
 
 const chainId = 11155111
-const poolId = new PoolId('562949953421313')
-const asset = '0x86eb50b22dd226fe5d1f0753a40e247fd711ad6e'
+const poolId = PoolId.from(1, 1)
+const assetId = AssetId.from(1, 1)
+const asset = protocol[chainId]!.currencies[0]!
 
 describe('Centrifuge', () => {
   let clock: sinon.SinonFakeTimers
@@ -43,7 +45,7 @@ describe('Centrifuge', () => {
       expect(currency.symbol).to.equal('USDC')
       expect(currency.name).to.equal('USD Coin')
       expect(currency.chainId).to.equal(chainId)
-      expect(currency.address).to.equal(asset)
+      expect(currency.address.toLowerCase()).to.equal(asset.toLowerCase())
       expect(currency.supportsPermit).to.be.true
     })
 
@@ -57,9 +59,9 @@ describe('Centrifuge', () => {
 
     it('should fetch the value of an asset in relation to another one', async () => {
       const quote = await context.centrifuge._getQuote(
-        '0x53c0339E6BC04625dF0c74D6eE788368d42Fa775',
+        (await context.centrifuge._protocolAddresses(chainId)).identityValuation,
         Balance.fromFloat(100, 6),
-        AssetId.from(2, 1),
+        assetId,
         AssetId.fromIso(840),
         chainId
       )
