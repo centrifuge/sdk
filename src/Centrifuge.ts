@@ -32,15 +32,8 @@ import {
   type WalletClient,
   type WatchEventOnLogsParameter,
 } from 'viem'
-import type {
-  Client,
-  CurrencyDetails,
-  DerivedConfig,
-  EnvConfig,
-  HexString,
-  ProtocolAddresses,
-  UserProvidedConfig,
-} from './types/index.js'
+import type { ProtocolContracts } from './config/protocol.js'
+import type { Client, CurrencyDetails, DerivedConfig, EnvConfig, HexString, UserProvidedConfig } from './types/index.js'
 import type { CentrifugeQueryOptions, Query } from './types/query.js'
 import type { OperationStatus, Signer, Transaction, TransactionCallbackParams } from './types/transaction.js'
 import { ABI } from './abi/index.js'
@@ -783,7 +776,7 @@ export class Centrifuge {
             throw new Error(`Error ${response.status}`)
           }
         }),
-        map((data: { contracts: ProtocolAddresses }) => ({
+        map((data: { contracts: ProtocolContracts }) => ({
           ...data.contracts,
           currencies: chainCurrencies,
         }))
