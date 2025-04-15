@@ -767,7 +767,7 @@ export class Centrifuge {
     return this._query(['protocolAddresses', chainId], () => {
       const network = chainIdToNetwork[chainId as keyof typeof chainIdToNetwork]
       const chainCurrencies = currencies[chainId]
-      if (!network) {
+      if (!network || !chainCurrencies) {
         throw new Error(`No protocol config mapping for chain id ${chainId}`)
       }
 

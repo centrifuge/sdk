@@ -87,7 +87,7 @@ export class PoolNetwork extends Entity {
       this._root._protocolAddresses(this.chainId).pipe(
         switchMap(({ poolManager, vaultRouter, currencies }) =>
           defer(async () => {
-            if (!currencies) return []
+            if (!currencies.length) return []
             const contract = getContract({
               address: vaultRouter,
               abi: ABI.VaultRouter,
@@ -95,7 +95,7 @@ export class PoolNetwork extends Entity {
             })
             const results = await Promise.allSettled(
               currencies.map(async (curAddr: HexString) => {
-                const vaultAddr = await contract.read.getVault!([this.pool.id as any, scId as any, curAddr])
+                const vaultAddr = await contract.read.getVault!([this.pool.id.raw as any, scId.raw as any, curAddr])
                 if (vaultAddr === NULL_ADDRESS) {
                   console.warn(`Vault not found for Pool: ${this.pool.id}, Share Class: ${scId}, Currency: ${curAddr}`)
                   throw new Error('Vault not found')
@@ -103,7 +103,7 @@ export class PoolNetwork extends Entity {
                 return new Vault(this._root, this, new ShareClass(this._root, this.pool, scId.raw), curAddr, vaultAddr)
               })
             )
-            return results.filter((result) => result.status === 'fulfilled').map((result: any) => result.value)
+            return results.filter((result) => result.status === 'fulfilled').map((result) => result.value)
           }).pipe(
             repeatOnEvents(
               this._root,
