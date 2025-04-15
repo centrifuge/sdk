@@ -9,6 +9,7 @@ import { Entity } from './Entity.js'
 import type { Pool } from './Pool.js'
 import { ShareClass } from './ShareClass.js'
 import { Vault } from './Vault.js'
+import { HexString } from '../types/index.js'
 
 /**
  * Query and interact with a pool on a specific network.
@@ -93,8 +94,8 @@ export class PoolNetwork extends Entity {
               client: this._root.getClient(this.chainId)!,
             })
             const results = await Promise.allSettled(
-              currencies.map(async (curAddr) => {
-                const vaultAddr = await contract.read.getVault!([this.pool.id.raw, scId.raw, curAddr])
+              currencies.map(async (curAddr: HexString) => {
+                const vaultAddr = await contract.read.getVault!([this.pool.id.raw as any, scId.raw as any, curAddr])
                 if (vaultAddr === NULL_ADDRESS) {
                   console.warn(`Vault not found for Pool: ${this.pool.id}, Share Class: ${scId}, Currency: ${curAddr}`)
                   throw new Error('Vault not found')

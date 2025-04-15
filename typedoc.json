@@ -1,16 +1,7 @@
 {
-  "plugin": [
-    "typedoc-plugin-markdown",
-    "./typedoc-plugin.mjs"
-  ],
-  "exclude": [
-    "**/README.md",
-    "**/node_modules/**",
-    "**/*.test.ts"
-  ],
-  "entryPoints": [
-    "src/index.ts"
-  ],
+  "plugin": ["typedoc-plugin-markdown", "./typedoc-plugin.mjs"],
+  "exclude": ["**/README.md", "**/node_modules/**", "**/*.test.ts"],
+  "entryPoints": ["src/index.ts"],
   "entryPointStrategy": "expand",
   "skipErrorChecking": true,
   "excludeExternals": true,
