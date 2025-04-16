@@ -1,5 +1,5 @@
 import { expect } from 'chai'
-import { protocol } from '../config/protocol.js'
+import { currencies } from '../config/protocol.js'
 import { NULL_ADDRESS } from '../constants.js'
 import { context } from '../tests/setup.js'
 import { PoolId, ShareClassId } from '../utils/types.js'
@@ -8,7 +8,7 @@ import { Pool } from './Pool.js'
 const chainId = 11155111
 const poolId = PoolId.from(1, 1)
 const scId = ShareClassId.from(poolId, 1)
-const asset = protocol[chainId]!.currencies[0]!
+const asset = currencies[chainId]![0]!
 
 describe('Pool', () => {
   let pool: Pool

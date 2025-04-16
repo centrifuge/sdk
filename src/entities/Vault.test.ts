@@ -1,7 +1,7 @@
 import { expect } from 'chai'
 import { firstValueFrom, lastValueFrom, skip, skipWhile, tap, toArray } from 'rxjs'
 import { ABI } from '../abi/index.js'
-import { protocol } from '../config/protocol.js'
+import { currencies } from '../config/protocol.js'
 import { context } from '../tests/setup.js'
 import { PoolId, ShareClassId } from '../utils/types.js'
 import { Pool } from './Pool.js'
@@ -9,10 +9,11 @@ import { PoolNetwork } from './PoolNetwork.js'
 import { ShareClass } from './ShareClass.js'
 import { Vault } from './Vault.js'
 
+const chainId = 11155111
 const poolId = PoolId.from(1, 1)
 const scId = ShareClassId.from(poolId, 1)
 const vaultAddress = '0x59837f61db4f18c612e112d8d07018fc4b5b5497'
-const asset = protocol[11155111]!.currencies[0]!
+const asset = currencies[chainId]![0]!
 
 // Active investor with a pending redeem order
 const investorA = '0x423420Ae467df6e90291fd0252c0A8a637C1e03f'
@@ -29,9 +30,9 @@ describe.skip('Vault', () => {
   let vault: Vault
   beforeEach(() => {
     const { centrifuge } = context
-    const pool = new Pool(centrifuge, poolId.raw, 11155111)
+    const pool = new Pool(centrifuge, poolId.raw, chainId)
     const sc = new ShareClass(centrifuge, pool, scId.raw)
-    const poolNetwork = new PoolNetwork(centrifuge, pool, 11155111)
+    const poolNetwork = new PoolNetwork(centrifuge, pool, chainId)
     vault = new Vault(centrifuge, poolNetwork, sc, asset, vaultAddress)
   })
 
@@ -182,7 +183,7 @@ describe.skip('Vault', () => {
             functionName: 'updateMember',
             args: [investmentBefore.shareCurrency.address, investorD, Math.floor(Date.now() / 1000) + 100000],
           }),
-        11155111
+        chainId
       ),
       firstValueFrom(vault.investment(investorD).pipe(skip(1))),
     ])
