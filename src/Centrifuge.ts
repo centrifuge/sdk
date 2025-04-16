@@ -126,8 +126,8 @@ export class Centrifuge {
         if (!rpcUrl) {
           console.warn(`No rpcUrl defined for chain ${chain.id}. Using public RPC endpoint.`)
         }
-        if (!chainIdToNetwork[chain.id]) {
-          console.warn(`No protocol config defined for chain ${chain.id}. Skipping.`)
+        if (!currencies[chain.id]) {
+          console.warn(`No config defined for chain ${chain.id}. Skipping.`)
           return
         }
         this.#clients.set(
