@@ -3,7 +3,7 @@ import { combineLatest, defer, firstValueFrom, interval, map, of, Subject, take,
 import sinon from 'sinon'
 import { createClient, custom } from 'viem'
 import { Centrifuge } from './Centrifuge.js'
-import { protocol } from './config/protocol.js'
+import { currencies } from './config/protocol.js'
 import { context } from './tests/setup.js'
 import { Balance } from './utils/BigInt.js'
 import { doSignMessage, doTransaction } from './utils/transaction.js'
@@ -12,7 +12,7 @@ import { AssetId, PoolId } from './utils/types.js'
 const chainId = 11155111
 const poolId = PoolId.from(1, 1)
 const assetId = AssetId.from(1, 1)
-const asset = protocol[chainId]!.currencies[0]!
+const asset = currencies[chainId]![0]!
 
 describe('Centrifuge', () => {
   let clock: sinon.SinonFakeTimers

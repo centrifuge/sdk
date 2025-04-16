@@ -16,6 +16,13 @@ describe('utils/types', () => {
       const id = new PoolId(poolId)
       expect(id.centrifugeId).to.equal(2)
     })
+    it('can compare pool IDs', () => {
+      const id = new PoolId(poolId)
+      expect(id.equals(poolId)).to.equal(true)
+      expect(id.equals(BigInt(poolId))).to.equal(true)
+      expect(id.equals('123')).to.equal(false)
+      expect(id.equals(new PoolId(poolId))).to.equal(true)
+    })
   })
 
   describe('ShareClassId', () => {
@@ -36,6 +43,18 @@ describe('utils/types', () => {
       const id = new ShareClassId(scId)
       expect(id.poolId.toString()).to.equal(poolId)
     })
+    it('can compare share class IDs', () => {
+      const id = new ShareClassId(scId)
+      expect(id.equals(scId)).to.equal(true)
+      expect(id.equals('0x00020000000000010000000000000004')).to.equal(false)
+      expect(id.equals(new ShareClassId(scId))).to.equal(true)
+    })
+    it('should throw if the share class ID is invalid', () => {
+      expect(() => new ShareClassId('0x123')).to.throw()
+      expect(() => new ShareClassId('0x1234567890123456789012345678901234567890')).to.throw()
+      expect(() => new ShareClassId('0x0002000000000001000000000000000Z')).to.throw()
+      expect(() => new ShareClassId('00020000000000010000000000000003')).to.throw()
+    })
   })
 
   describe('AssetId', () => {
@@ -55,8 +74,14 @@ describe('utils/types', () => {
     it("should get whether it's a national currency", () => {
       const id = new AssetId(assetId)
       expect(id.isNationalCurrency).to.equal(false)
-      const id2 = new AssetId(804)
+      const id2 = AssetId.fromIso(804)
       expect(id2.isNationalCurrency).to.equal(true)
+    })
+    it('can compare asset IDs', () => {
+      const id = new AssetId(assetId)
+      expect(id.equals(assetId)).to.equal(true)
+      expect(id.equals('123')).to.equal(false)
+      expect(id.equals(new AssetId(assetId))).to.equal(true)
     })
   })
 })

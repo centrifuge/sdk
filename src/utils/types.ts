@@ -7,7 +7,7 @@ export class PoolId {
 
   #id: bigint
 
-  constructor(id: string | bigint) {
+  constructor(id: string | bigint | number) {
     this.#id = BigInt(id)
   }
 
@@ -23,8 +23,8 @@ export class PoolId {
     return this.#id.toString()
   }
 
-  equals(other: PoolId) {
-    return this.raw === other.raw
+  equals(other: PoolId | string | bigint | number) {
+    return this.raw === (other instanceof PoolId ? other : new PoolId(other)).raw
   }
 }
 
@@ -36,6 +36,9 @@ export class ShareClassId {
   #id: bigint
 
   constructor(id: string) {
+    if (!id.startsWith('0x') || id.length !== 34) {
+      throw new Error(`Invalid share class ID: ${id}`)
+    }
     this.#id = BigInt(id)
   }
 
@@ -55,8 +58,8 @@ export class ShareClassId {
     return toHex(this.#id, { size: 16 })
   }
 
-  equals(other: ShareClassId) {
-    return this.raw === other.raw
+  equals(other: ShareClassId | string) {
+    return this.raw === (other instanceof ShareClassId ? other : new ShareClassId(other)).raw
   }
 }
 
@@ -65,12 +68,12 @@ export class AssetId {
     return new AssetId((BigInt(centrifugeId) << 112n) + BigInt(assetCounter))
   }
   static fromIso(countryCode: number) {
-    return new AssetId(countryCode)
+    return new AssetId(BigInt(countryCode))
   }
 
   #id: bigint
 
-  constructor(id: string | bigint | number) {
+  constructor(id: string | bigint) {
     this.#id = BigInt(id)
   }
 
@@ -94,7 +97,7 @@ export class AssetId {
     return this.#id.toString()
   }
 
-  equals(other: AssetId) {
-    return this.raw === other.raw
+  equals(other: AssetId | string | bigint) {
+    return this.raw === (other instanceof AssetId ? other : new AssetId(other)).raw
   }
 }
