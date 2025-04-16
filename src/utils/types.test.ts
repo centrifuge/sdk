@@ -1,5 +1,6 @@
 import { expect } from 'chai'
 import { AssetId, PoolId, ShareClassId } from './types.js'
+import { NATIONAL_CURRENCY_METADATA } from './currencies.js'
 
 const poolId = '562949953421313'
 const scId = '0x00020000000000010000000000000003'
@@ -82,6 +83,12 @@ describe('utils/types', () => {
       expect(id.equals(assetId)).to.equal(true)
       expect(id.equals('123')).to.equal(false)
       expect(id.equals(new AssetId(assetId))).to.equal(true)
+    })
+    it('should get the national currency code', () => {
+      const id = new AssetId(assetId)
+      expect(id.nationalCurrencyCode).to.equal(null)
+      const id2 = AssetId.fromIso(804)
+      expect(id2.nationalCurrencyCode).to.equal(804)
     })
   })
 })
