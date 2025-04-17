@@ -1,5 +1,5 @@
 import { catchError, combineLatest, defer, map, of, switchMap, timeout } from 'rxjs'
-import { fromHex } from 'viem'
+import { fromHex, Hex } from 'viem'
 import { ABI } from '../abi/index.js'
 import type { Centrifuge } from '../Centrifuge.js'
 import { PoolMetadata } from '../types/poolMetadata.js'
@@ -9,6 +9,9 @@ import { Entity } from './Entity.js'
 import { PoolNetwork } from './PoolNetwork.js'
 import { Reports } from './Reports/index.js'
 import { ShareClass } from './ShareClass.js'
+import { doTransaction } from '../utils/transaction.js'
+import { HexString } from '../types/index.js'
+import { Balance } from '../utils/BigInt.js'
 
 export class Pool extends Entity {
   id: PoolId
@@ -64,6 +67,22 @@ export class Pool extends Entity {
         )
       )
     )
+  }
+
+  updateMetadata(hash: HexString) {
+    const self = this
+    return this._transactSequence(async function* ({ walletClient, publicClient }) {
+      const { hub } = await self._root._protocolAddresses(self.chainId)
+      yield* doTransaction('Update metadata', publicClient, () =>
+        walletClient.writeContract({
+          address: hub,
+          abi: ABI.Hub,
+          functionName: 'setPoolMetadata',
+          args: [self.id.raw, hash],
+          value: BigInt(0),
+        })
+      )
+    }, self.chainId)
   }
 
   shareClasses() {
@@ -136,6 +155,61 @@ export class Pool extends Entity {
 
   vault(chainId: number, scId: ShareClassId, asset: string) {
     return this._query(null, () => this.network(chainId).pipe(switchMap((network) => network.vault(scId, asset))))
+  }
+
+  /**
+   * Get the currency of the pool.
+   */
+  currency() {
+    return this._query(['currency'], () => {
+      return this._root._protocolAddresses(this.chainId).pipe(
+        switchMap(({ hubRegistry }) => {
+          return this._root.getClient(this.chainId)!.readContract({
+            address: hubRegistry,
+            abi: ABI.HubRegistry,
+            functionName: 'currency',
+            args: [this.id.raw],
+          })
+        })
+      )
+    })
+  }
+
+  /**
+   * Get the decimals of the pool.
+   */
+  decimals() {
+    return this._query(['decimals'], () => {
+      return this._root._protocolAddresses(this.chainId).pipe(
+        switchMap(({ hubRegistry }) => {
+          return this._root.getClient(this.chainId)!.readContract({
+            address: hubRegistry,
+            abi: ABI.HubRegistry,
+            functionName: 'decimals',
+            args: [this.id.raw],
+          })
+        })
+      )
+    })
+  }
+
+  /**
+   * Query the details of the pool.
+   * @returns The pool metadata, id, shareClasses and currency.
+   */
+  details() {
+    return this._query(null, () =>
+      combineLatest([this.metadata(), this.shareClassesDetails(), this.currency(), this.decimals()]).pipe(
+        map(([metadata, shareClasses, currency, decimals]) => {
+          return {
+            poolId: this.id,
+            metadata: metadata ?? '',
+            shareClasses,
+            currency: new Balance(currency, decimals),
+          }
+        })
+      )
+    )
   }
 
   /**
