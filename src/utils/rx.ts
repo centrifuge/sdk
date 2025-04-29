@@ -55,12 +55,17 @@ export function makeThenable<T>($query: Observable<T>, exhaust = false) {
 class ExpiringReplaySubject<T> extends ReplaySubject<T> {
   // @ts-expect-error
   protected override _subscribe(subscriber: Subscriber<T>): Subscription {
+    // Get the initial buffer length
     // @ts-expect-error
     const { _buffer } = this
     const length = _buffer.length
+
+    // The ReplaySubject will remove expired items from the buffer
     // @ts-expect-error
     const subscription = super._subscribe(subscriber)
 
+    // If the buffer is now empty, complete the subject.
+    // Necessary for `createShared()` to be called again in Centrifuge._query()
     if (length && _buffer.length === 0) {
       this.complete()
     }

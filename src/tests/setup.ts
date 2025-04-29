@@ -7,7 +7,7 @@ class TestContext {
   public tenderlyFork!: TenderlyFork
 
   get centrifuge() {
-    return this.#centrifuge ?? (this.#centrifuge = new Centrifuge({ environment: 'demo' }))
+    return this.#centrifuge ?? (this.#centrifuge = new Centrifuge({ environment: 'demo', pollingInterval: 500 }))
   }
 
   async initialize() {
@@ -17,6 +17,7 @@ class TestContext {
       rpcUrls: {
         11155111: this.tenderlyFork.rpcUrl,
       },
+      pollingInterval: 500,
     })
     this.#centrifuge.setSigner(this.tenderlyFork.signer)
   }
