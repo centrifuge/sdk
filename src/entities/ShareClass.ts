@@ -401,18 +401,25 @@ export class ShareClass extends Entity {
   _epoch(assetId: AssetId) {
     return this._query(['epoch', assetId.toString()], () =>
       this._root._protocolAddresses(this.pool.chainId).pipe(
-        switchMap(({ shareClassManager }) =>
+        switchMap(({ shareClassManager, hubRegistry }) =>
           defer(async () => {
-            const contract = getContract({
+            const scm = getContract({
               address: shareClassManager,
               abi: ABI.ShareClassManager,
               client: this._root.getClient(this.pool.chainId)!,
             })
 
-            const [epoch, pendingDeposit, pendingRedeem] = await Promise.all([
-              contract.read.epochId([this.id.raw, assetId.raw]),
-              contract.read.pendingDeposit([this.id.raw, assetId.raw]),
-              contract.read.pendingRedeem([this.id.raw, assetId.raw]),
+            const [epoch, pendingDeposit, pendingRedeem, assetDecimals] = await Promise.all([
+              scm.read.epochId([this.id.raw, assetId.raw]),
+              scm.read.pendingDeposit([this.id.raw, assetId.raw]),
+              scm.read.pendingRedeem([this.id.raw, assetId.raw]),
+              this._root.getClient(this.pool.chainId)!.readContract({
+                address: hubRegistry,
+                // Use inline ABI because of function overload
+                abi: parseAbi(['function decimals(uint256) view returns (uint8)']),
+                functionName: 'decimals',
+                args: [assetId.raw],
+              }),
             ])
 
             return {
@@ -420,7 +427,9 @@ export class ShareClass extends Entity {
               redeemEpoch: epoch[1] + 1,
               issueEpoch: epoch[2] + 1,
               revokeEpoch: epoch[3] + 1,
-              pendingDeposit: new Balance(pendingDeposit, 18),
+              // TODO: Replace with assetDecimals()
+              pendingDeposit: new Balance(pendingDeposit, assetDecimals),
+              // TODO: Replace with assetDecimals()
               pendingRedeem: new Balance(pendingRedeem, 18),
             }
           }).pipe(

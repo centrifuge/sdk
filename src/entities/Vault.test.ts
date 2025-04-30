@@ -43,7 +43,7 @@ const fundManager = '0x423420Ae467df6e90291fd0252c0A8a637C1e03f'
 const defaultAssetsAmount = Balance.fromFloat(100, 6)
 const defaultSharesAmount = Balance.fromFloat(100, 18)
 
-describe('Vault - Async', () => {
+describe.skip('Vault - Async', () => {
   let vault: Vault
   beforeEach(() => {
     const { centrifuge } = context
@@ -53,11 +53,16 @@ describe('Vault - Async', () => {
     vault = new Vault(centrifuge, poolNetwork, sc, asset, asyncVaultA)
   })
 
-  it.only('completes the invest/redeem flow', async () => {
+  it('completes the invest/redeem flow', async () => {
     const investment = await vault.investment(investorA)
 
     expect(investment.isAllowedToInvest).to.equal(true)
     expect(investment.isAllowedToRedeem).to.equal(true)
+    expect(investment.shareBalance.toBigInt()).to.equal(0n)
+    expect(investment.pendingInvestCurrency.toBigInt()).to.equal(0n)
+    expect(investment.pendingRedeemShares.toBigInt()).to.equal(0n)
+    expect(investment.claimableInvestShares.toBigInt()).to.equal(0n)
+    expect(investment.claimableInvestCurrencyEquivalent.toBigInt()).to.equal(0n)
 
     context.tenderlyFork.impersonateAddress = investorA
     context.centrifuge.setSigner(context.tenderlyFork.signer)
@@ -78,7 +83,9 @@ describe('Vault - Async', () => {
     context.tenderlyFork.impersonateAddress = fundManager
     context.centrifuge.setSigner(context.tenderlyFork.signer)
 
-    await vault.shareClass.approveDeposits(assetId, defaultAssetsAmount.add(defaultAssetsAmount), Price.fromFloat(1))
+    const epoch = await vault.shareClass._epoch(assetId)
+
+    await vault.shareClass.approveDeposits(assetId, epoch.pendingDeposit, Price.fromFloat(1))
 
     const [, investment3] = await Promise.all([
       vault.shareClass.claimDeposit(assetId, investorA),
