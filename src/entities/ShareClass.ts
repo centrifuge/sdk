@@ -300,7 +300,6 @@ export class ShareClass extends Entity {
           value: estimate,
         })
       )
-      console.log('CLAIMED on HUB')
     }, this.pool.chainId)
   }
 

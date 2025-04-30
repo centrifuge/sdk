@@ -132,7 +132,6 @@ export class Vault extends Entity {
    */
   investment(investor: string) {
     const address = investor.toLowerCase() as HexString
-    console.log('investmentscall', address)
     return this._query(['investment', address], () =>
       combineLatest([
         this.investmentCurrency(),
@@ -423,7 +422,6 @@ export class Vault extends Entity {
         self.investment(signingAddress),
         self._root._protocolAddresses(self.chainId),
       ])
-      console.log('CLAIM investment', investment)
       const receiverAddress = receiver || signingAddress
       const controllerAddress = controller || signingAddress
       const functionName = investment.claimableCancelInvestCurrency.gt(0n)

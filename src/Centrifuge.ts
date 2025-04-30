@@ -395,7 +395,7 @@ export class Centrifuge {
           () => {
             const subject = new Subject<WatchEventOnLogsParameter>()
             const unwatch = this.getClient(chainId)!.watchEvent({
-              onLogs: (logs) => (console.log('logs', performance.now()), subject.next(logs)),
+              onLogs: (logs) => subject.next(logs),
             })
             return {
               unsubscribe: unwatch,
@@ -422,7 +422,6 @@ export class Centrifuge {
           eventName: eventNames,
           logs,
         })
-        // console.log('parsed events', parsed)
         const filtered = parsed.filter((log) => (addresses.length ? addresses.includes(log.address) : true))
 
         return filtered as ((typeof filtered)[0] & { args: any })[]

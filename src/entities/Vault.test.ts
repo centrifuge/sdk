@@ -17,7 +17,6 @@ const asset = currencies[chainId]![0]!
 const poolId = PoolId.from(1, 1)
 const scId = ShareClassId.from(poolId, 1)
 const assetId = AssetId.from(1, 1)
-console.log('assetId', assetId.raw, poolId.raw, scId.raw)
 
 // Async deposit/redeem vault with freely transferable token
 const asyncVaultA = '0x914fd615c6dae76085579edec2fdda1b039184ca'
