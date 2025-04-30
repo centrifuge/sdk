@@ -1,6 +1,6 @@
 import { parseAbi } from 'viem'
 import AccountingAbi from './Accounting.abi.js'
-import AsyncRequestsAbi from './AsyncRequests.abi.js'
+import AsyncRequestsAbi from './AsyncRequestManager.abi.js'
 import AsyncVaultAbit from './AsyncVault.abi.js'
 import CurrencyAbi from './Currency.abi.js'
 import HoldingsAbi from './Holdings.abi.js'
@@ -11,7 +11,7 @@ import MessageDispatcherAbi from './MessageDispatcher.abi.js'
 import PoolManagerAbi from './PoolManager.abi.js'
 import RestrictionManagerAbi from './RestrictionManager.abi.js'
 import ShareClassManagerAbi from './ShareClassManager.abi.js'
-import SyncRequestsAbi from './SyncRequests.abi.js'
+import SyncRequestsAbi from './SyncRequestManager.abi.js'
 import VaultRouterAbi from './VaultRouter.abi.js'
 
 export const ABI = {

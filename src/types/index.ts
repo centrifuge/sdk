@@ -10,6 +10,7 @@ export type Config = {
    * @default: true
    */
   cache?: boolean
+  pollingInterval?: number
 }
 
 export type UserProvidedConfig = Partial<Config>
@@ -46,15 +47,16 @@ export type ProtocolContracts = {
   holdings: HexString
   shareClassManager: HexString
   hub: HexString
-  transientValuation: HexString
   identityValuation: HexString
-  escrow: HexString
+  poolEscrowFactory: HexString
   routerEscrow: HexString
-  restrictedTransfers: HexString
-  freelyTransferable: HexString
+  globalEscrow: HexString
+  freezeOnlyHook: HexString
+  redemptionRestrictionsHook: HexString
+  fullRestrictionsHook: HexString
   tokenFactory: HexString
-  asyncRequests: HexString
-  syncRequests: HexString
+  asyncRequestManager: HexString
+  syncRequestManager: HexString
   asyncVaultFactory: HexString
   syncDepositVaultFactory: HexString
   poolManager: HexString

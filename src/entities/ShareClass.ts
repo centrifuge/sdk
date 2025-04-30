@@ -1,9 +1,10 @@
 import { combineLatest, defer, map, switchMap } from 'rxjs'
-import { encodeFunctionData, getContract, parseAbi, toHex } from 'viem'
+import { encodeFunctionData, getContract, parseAbi } from 'viem'
 import { ABI } from '../abi/index.js'
 import type { Centrifuge } from '../Centrifuge.js'
 import { AccountType } from '../types/holdings.js'
 import { Balance, Price } from '../utils/BigInt.js'
+import { addressToBytes32 } from '../utils/index.js'
 import { repeatOnEvents } from '../utils/rx.js'
 import { doTransaction } from '../utils/transaction.js'
 import { AssetId, ShareClassId } from '../utils/types.js'
@@ -131,29 +132,116 @@ export class ShareClass extends Entity {
     )
   }
 
-  approveDeposits(assetId: AssetId, investAmount: Balance, navPerShare: Price) {
+  investorOrder(assetId: AssetId, investor: string) {
+    return this._query(['maxClaims', assetId.toString(), investor.toLowerCase()], () =>
+      this._root._protocolAddresses(this.pool.chainId).pipe(
+        switchMap(({ shareClassManager }) =>
+          defer(async () => {
+            const contract = getContract({
+              address: shareClassManager,
+              abi: ABI.ShareClassManager,
+              client: this._root.getClient(this.pool.chainId)!,
+            })
+
+            const [maxDepositClaims, maxRedeemClaims] = await Promise.all([
+              contract.read.maxDepositClaims([this.id.raw, addressToBytes32(investor), assetId.raw]),
+              contract.read.maxRedeemClaims([this.id.raw, addressToBytes32(investor), assetId.raw]),
+            ])
+            return {
+              maxDepositClaims,
+              maxRedeemClaims,
+            }
+          }).pipe(
+            repeatOnEvents(
+              this._root,
+              {
+                address: shareClassManager,
+                abi: ABI.ShareClassManager,
+                eventName: ['UpdateDepositRequest', 'UpdateRedeemRequest', 'ClaimDeposit', 'ClaimRedeem'],
+                filter: (events) => {
+                  return events.some((event) => {
+                    return (
+                      event.args.scId === this.id &&
+                      event.args.investor === addressToBytes32(investor) &&
+                      (event.args.depositAssetId === assetId.raw || event.args.payoutAssetId === assetId.raw)
+                    )
+                  })
+                },
+              },
+              this.pool.chainId
+            )
+          )
+        )
+      )
+    )
+  }
+
+  notifyAssetPrice(assetId: AssetId) {
     const self = this
     return this._transactSequence(async function* ({ walletClient, publicClient }) {
-      const [{ hub }, holding] = await Promise.all([
+      const { hub } = await self._root._protocolAddresses(self.pool.chainId)
+      // const approveData = encodeFunctionData({
+      //   abi: ABI.Hub,
+      //   functionName: 'notifyAssetPrice',
+      //   args: [self.pool.id.raw, self.id.raw, assetId.raw],
+      // })
+      yield* doTransaction('Approve deposits', publicClient, () =>
+        walletClient.writeContract({
+          address: hub,
+          abi: ABI.Hub,
+          functionName: 'notifyAssetPrice',
+          args: [self.pool.id.raw, self.id.raw, assetId.raw],
+        })
+      )
+    }, this.pool.chainId)
+  }
+
+  approveDeposits(assetId: AssetId, assetAmount: Balance, navPerShare: Price) {
+    const self = this
+    return this._transactSequence(async function* ({ walletClient, publicClient }) {
+      const [{ hub }, epoch, estimate] = await Promise.all([
         self._root._protocolAddresses(self.pool.chainId),
-        self.holding(assetId),
+        self._epoch(assetId),
+        self._root._estimate(self.pool.chainId, { centId: assetId.centrifugeId }),
       ])
+
+      // TODO: Get asset decimals and throw if mismatch with assetAmount decimals
+
+      // const updateAssetData = encodeFunctionData({
+      //   abi: ABI.Hub,
+      //   functionName: 'notifyAssetPrice',
+      //   args: [self.pool.id.raw, self.id.raw, assetId.raw],
+      // })
+      // TODO: Remove when BalanceSheet bug is fixed
+      const updateShareData = encodeFunctionData({
+        abi: ABI.Hub,
+        functionName: 'notifySharePrice',
+        args: [self.pool.id.raw, self.id.raw, 1],
+      })
       const approveData = encodeFunctionData({
         abi: ABI.Hub,
         functionName: 'approveDeposits',
-        args: [self.pool.id.raw, self.id.raw, assetId.raw, investAmount.toBigInt(), holding.valuation],
+        args: [self.pool.id.raw, self.id.raw, assetId.raw, epoch.depositEpoch, assetAmount.toBigInt()],
       })
       const issueData = encodeFunctionData({
         abi: ABI.Hub,
         functionName: 'issueShares',
-        args: [self.pool.id.raw, self.id.raw, assetId.raw, navPerShare.toBigInt()],
+        args: [self.pool.id.raw, self.id.raw, assetId.raw, epoch.issueEpoch, navPerShare.toBigInt()],
       })
       yield* doTransaction('Approve deposits', publicClient, () =>
         walletClient.writeContract({
           address: hub,
           abi: ABI.Hub,
           functionName: 'multicall',
-          args: [[approveData, issueData]],
+          args: [
+            [
+              //updateAssetData,
+              updateShareData,
+              approveData,
+              issueData,
+            ],
+          ],
+          value: estimate,
         })
       )
     }, this.pool.chainId)
@@ -162,19 +250,21 @@ export class ShareClass extends Entity {
   approveRedeems(assetId: AssetId, shareAmount: Balance, navPerShare: Price) {
     const self = this
     return this._transactSequence(async function* ({ walletClient, publicClient }) {
-      const [{ hub }, holding] = await Promise.all([
+      const [{ hub }, epoch] = await Promise.all([
         self._root._protocolAddresses(self.pool.chainId),
-        self.holding(assetId),
+        self._epoch(assetId),
       ])
+
+      // TODO: Get share decimals and throw if mismatch with shareAmount decimals
       const approveData = encodeFunctionData({
         abi: ABI.Hub,
         functionName: 'approveRedeems',
-        args: [self.pool.id.raw, self.id.raw, assetId.raw, shareAmount.toBigInt()],
+        args: [self.pool.id.raw, self.id.raw, assetId.raw, epoch.redeemEpoch, shareAmount.toBigInt()],
       })
       const issueData = encodeFunctionData({
         abi: ABI.Hub,
         functionName: 'revokeShares',
-        args: [self.pool.id.raw, self.id.raw, assetId.raw, navPerShare.toBigInt(), holding.valuation],
+        args: [self.pool.id.raw, self.id.raw, assetId.raw, epoch.revokeEpoch, navPerShare.toBigInt()],
       })
       yield* doTransaction('Approve redeems', publicClient, () =>
         walletClient.writeContract({
@@ -190,16 +280,23 @@ export class ShareClass extends Entity {
   claimDeposit(assetId: AssetId, investor: string) {
     const self = this
     return this._transactSequence(async function* ({ walletClient, publicClient }) {
-      const [{ hub }, estimate] = await Promise.all([
+      const [{ hub }, investorOrder, estimate] = await Promise.all([
         self._root._protocolAddresses(self.pool.chainId),
+        self.investorOrder(assetId, investor),
         self._root._estimate(self.pool.chainId, { centId: assetId.centrifugeId }),
       ])
       yield* doTransaction('Claim deposit', publicClient, () =>
         walletClient.writeContract({
           address: hub,
           abi: ABI.Hub,
-          functionName: 'claimDeposit',
-          args: [self.pool.id.raw, self.id.raw, assetId.raw, toHex(investor, { size: 32 })],
+          functionName: 'notifyDeposit',
+          args: [
+            self.pool.id.raw,
+            self.id.raw,
+            assetId.raw,
+            addressToBytes32(investor),
+            investorOrder.maxDepositClaims,
+          ],
           value: estimate,
         })
       )
@@ -209,16 +306,17 @@ export class ShareClass extends Entity {
   claimRedeem(assetId: AssetId, investor: string) {
     const self = this
     return this._transactSequence(async function* ({ walletClient, publicClient }) {
-      const [{ hub }, estimate] = await Promise.all([
+      const [{ hub }, investorOrder, estimate] = await Promise.all([
         self._root._protocolAddresses(self.pool.chainId),
+        self.investorOrder(assetId, investor),
         self._root._estimate(self.pool.chainId, { centId: assetId.centrifugeId }),
       ])
       yield* doTransaction('Claim deposit', publicClient, () =>
         walletClient.writeContract({
           address: hub,
           abi: ABI.Hub,
-          functionName: 'claimRedeem',
-          args: [self.pool.id.raw, self.id.raw, assetId.raw, toHex(investor, { size: 32 })],
+          functionName: 'notifyRedeem',
+          args: [self.pool.id.raw, self.id.raw, assetId.raw, addressToBytes32(investor), investorOrder.maxRedeemClaims],
           value: estimate,
         })
       )
@@ -284,10 +382,66 @@ export class ShareClass extends Entity {
               {
                 address: shareClassManager,
                 abi: ABI.ShareClassManager,
-                eventName: ['RevokeShares', 'IssueShares'],
+                eventName: ['RevokeShares', 'IssueShares', 'RemoteIssueShares', 'RemoteRevokeShares'],
                 filter: (events) => {
                   return events.some((event) => {
                     return event.args.scId === this.id.raw
+                  })
+                },
+              },
+              this.pool.chainId
+            )
+          )
+        )
+      )
+    )
+  }
+
+  /** @internal */
+  _epoch(assetId: AssetId) {
+    return this._query(['epoch', assetId.toString()], () =>
+      this._root._protocolAddresses(this.pool.chainId).pipe(
+        switchMap(({ shareClassManager, hubRegistry }) =>
+          defer(async () => {
+            const scm = getContract({
+              address: shareClassManager,
+              abi: ABI.ShareClassManager,
+              client: this._root.getClient(this.pool.chainId)!,
+            })
+
+            const [epoch, pendingDeposit, pendingRedeem, assetDecimals] = await Promise.all([
+              scm.read.epochId([this.id.raw, assetId.raw]),
+              scm.read.pendingDeposit([this.id.raw, assetId.raw]),
+              scm.read.pendingRedeem([this.id.raw, assetId.raw]),
+              this._root.getClient(this.pool.chainId)!.readContract({
+                address: hubRegistry,
+                // Use inline ABI because of function overload
+                abi: parseAbi(['function decimals(uint256) view returns (uint8)']),
+                functionName: 'decimals',
+                args: [assetId.raw],
+              }),
+            ])
+
+            return {
+              depositEpoch: epoch[0] + 1,
+              redeemEpoch: epoch[1] + 1,
+              issueEpoch: epoch[2] + 1,
+              revokeEpoch: epoch[3] + 1,
+              // TODO: Replace with assetDecimals()
+              pendingDeposit: new Balance(pendingDeposit, assetDecimals),
+              // TODO: Replace with assetDecimals()
+              pendingRedeem: new Balance(pendingRedeem, 18),
+            }
+          }).pipe(
+            repeatOnEvents(
+              this._root,
+              {
+                address: shareClassManager,
+                abi: ABI.ShareClassManager,
+                eventName: ['ApproveDeposits', 'ApproveRedeems', 'IssueShares', 'RevokeShares'],
+                filter: (events) => {
+                  return events.some((event) => {
+                    return event.args.poolId === this.pool.id
                   })
                 },
               },

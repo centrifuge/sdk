@@ -152,19 +152,7 @@ export class Pool extends Entity {
               functionName: 'shareClassCount',
               args: [this.id.raw],
             })
-
-            const scIds = await Promise.all(
-              Array.from({ length: count }, (_, i) => {
-                return this._root.getClient(this.chainId)!.readContract({
-                  address: shareClassManager,
-                  abi: ABI.ShareClassManager,
-                  functionName: 'previewShareClassId',
-                  args: [this.id.raw, i + 1],
-                })
-              })
-            )
-            return scIds.map((scId) => new ShareClassId(scId))
-            // return Array.from({ length: count }, (_, i) => ShareClassId.from(this.id, i + 1))
+            return Array.from({ length: count }, (_, i) => ShareClassId.from(this.id, i + 1))
           })
         )
       )

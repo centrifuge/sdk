@@ -1,11 +1,9 @@
-import { Decimal } from 'decimal.js-light'
 import { combineLatest, defer, map, switchMap } from 'rxjs'
 import { encodeFunctionData, getContract } from 'viem'
 import { ABI } from '../abi/index.js'
 import type { Centrifuge } from '../Centrifuge.js'
-import { lpConfig } from '../config/lp.js'
 import type { HexString } from '../types/index.js'
-import { Balance, DecimalWrapper } from '../utils/BigInt.js'
+import { Balance } from '../utils/BigInt.js'
 import { repeatOnEvents } from '../utils/rx.js'
 import { doSignMessage, doTransaction, signPermit, type Permit } from '../utils/transaction.js'
 import { Entity } from './Entity.js'
@@ -84,15 +82,15 @@ export class Vault extends Entity {
   }
 
   /**
-   * Get the allowance of the investment currency for the CentrifugeRouter,
+   * Get the allowance of the investment currency for the VaultRouter,
    * which is the contract that moves funds into the vault on behalf of the investor.
    * @param owner - The address of the owner
    */
   allowance(owner: string) {
     const address = owner.toLowerCase()
     return this._query(['allowance', address], () =>
-      this.investmentCurrency().pipe(
-        switchMap((currency) =>
+      combineLatest([this.investmentCurrency(), this._root._protocolAddresses(this.chainId)]).pipe(
+        switchMap(([currency, { vaultRouter }]) =>
           defer(() =>
             this._root
               .getClient(this.chainId)!
@@ -100,9 +98,9 @@ export class Vault extends Entity {
                 address: this._asset,
                 abi: ABI.Currency,
                 functionName: 'allowance',
-                args: [address as any, lpConfig[this.chainId]!.centrifugeRouter],
+                args: [address as HexString, vaultRouter],
               })
-              .then((val: any) => new Balance(val, currency.decimals))
+              .then((val) => new Balance(val, currency.decimals))
           ).pipe(
             repeatOnEvents(
               this._root,
@@ -150,18 +148,22 @@ export class Vault extends Entity {
               const client = this._root.getClient(this.chainId)!
               const vault = getContract({ address: this.address, abi: ABI.AsyncVault, client })
               const investmentManager = getContract({
-                address: addresses.asyncRequests,
+                address: addresses.asyncRequestManager,
                 abi: ABI.AsyncRequests,
                 client,
               })
+              const share = getContract({
+                address: shareCurrency.address,
+                abi: ABI.Currency,
+                client,
+              })
 
-              const [isAllowedToInvest, maxDeposit, maxRedeem, investment] = await Promise.all([
-                vault.read.isPermissioned!([address]) as Promise<boolean>,
-                vault.read.maxDeposit!([address]) as Promise<bigint>,
-                vault.read.maxRedeem!([address]) as Promise<bigint>,
-                investmentManager.read.investments!([this.address, address]) as Promise<
-                  [bigint, bigint, bigint, bigint, bigint, bigint, bigint, bigint, boolean, boolean]
-                >,
+              const [isAllowedToInvest, maxDeposit, maxRedeem, investment, isAllowedToRedeem] = await Promise.all([
+                vault.read.isPermissioned!([address]),
+                vault.read.maxDeposit!([address]),
+                vault.read.maxRedeem!([address]),
+                investmentManager.read.investments!([this.address, address]),
+                share.read.checkTransferRestriction!([address, addresses.globalEscrow, 0n]),
               ])
 
               const [
@@ -178,6 +180,7 @@ export class Vault extends Entity {
               ] = investment
               return {
                 isAllowedToInvest,
+                isAllowedToRedeem,
                 claimableInvestShares: new Balance(maxMint, shareCurrency.decimals),
                 claimableInvestCurrencyEquivalent: new Balance(maxDeposit, investmentCurrency.decimals),
                 claimableRedeemCurrency: new Balance(maxWithdraw, investmentCurrency.decimals),
@@ -243,18 +246,21 @@ export class Vault extends Entity {
    * Place an order to invest funds in the vault. If an order exists, it will increase the amount.
    * @param investAmount - The amount to invest in the vault
    */
-  increaseInvestOrder(investAmount: NumberInput) {
+  increaseInvestOrder(amount: Balance) {
     const self = this
     return this._transactSequence(async function* ({ walletClient, publicClient, signer, signingAddress }) {
-      const { centrifugeRouter } = lpConfig[self.chainId]!
-      const [estimate, investment] = await Promise.all([self.network._estimate(), self.investment(signingAddress)])
-      const amount = toBalance(investAmount, investment.investmentCurrency.decimals)
+      const [estimate, investment, { vaultRouter }] = await Promise.all([
+        self.network._estimate(),
+        self.investment(signingAddress),
+        self._root._protocolAddresses(self.chainId),
+      ])
       const { investmentCurrency, investmentCurrencyBalance, investmentCurrencyAllowance, isAllowedToInvest } =
         investment
       const supportsPermit = investmentCurrency.supportsPermit && 'send' in signer // eth-permit uses the deprecated send method
       const needsApproval = investmentCurrencyAllowance.lt(amount)
 
       if (!isAllowedToInvest) throw new Error('Not allowed to invest')
+      if (investmentCurrency.decimals !== amount.decimals) throw new Error('Invalid amount decimals')
       if (amount.gt(investmentCurrencyBalance)) throw new Error('Insufficient balance')
       if (!amount.gt(0n)) throw new Error('Order amount must be greater than 0')
 
@@ -268,7 +274,7 @@ export class Vault extends Entity {
               self.chainId,
               signingAddress,
               investmentCurrency.address,
-              centrifugeRouter,
+              vaultRouter,
               amount.toBigInt()
             )
           )
@@ -278,7 +284,7 @@ export class Vault extends Entity {
               address: investmentCurrency.address,
               abi: ABI.Currency,
               functionName: 'approve',
-              args: [centrifugeRouter, amount.toBigInt()],
+              args: [vaultRouter, amount.toBigInt()],
             })
           )
         }
@@ -301,7 +307,7 @@ export class Vault extends Entity {
           functionName: 'permit',
           args: [
             investmentCurrency.address,
-            centrifugeRouter,
+            vaultRouter,
             amount.toString() as any,
             permit.deadline as any,
             permit.v,
@@ -311,7 +317,7 @@ export class Vault extends Entity {
         })
       yield* doTransaction('Invest', publicClient, () =>
         walletClient.writeContract({
-          address: centrifugeRouter,
+          address: vaultRouter,
           abi: ABI.VaultRouter,
           functionName: 'multicall',
           args: [[enableData as any, requestData, permitData].filter(Boolean)],
@@ -327,14 +333,17 @@ export class Vault extends Entity {
   cancelInvestOrder() {
     const self = this
     return this._transactSequence(async function* ({ walletClient, signingAddress, publicClient }) {
-      const { centrifugeRouter } = lpConfig[self.chainId]!
-      const [estimate, investment] = await Promise.all([self.network._estimate(), self.investment(signingAddress)])
+      const [estimate, investment, { vaultRouter }] = await Promise.all([
+        self.network._estimate(),
+        self.investment(signingAddress),
+        self._root._protocolAddresses(self.chainId),
+      ])
 
       if (investment.pendingInvestCurrency.isZero()) throw new Error('No order to cancel')
 
       yield* doTransaction('Cancel invest order', publicClient, () =>
         walletClient.writeContract({
-          address: centrifugeRouter,
+          address: vaultRouter,
           abi: ABI.VaultRouter,
           functionName: 'cancelDepositRequest',
           args: [self.address],
@@ -348,19 +357,23 @@ export class Vault extends Entity {
    * Place an order to redeem funds from the vault. If an order exists, it will increase the amount.
    * @param redeemAmount - The amount of shares to redeem
    */
-  increaseRedeemOrder(redeemAmount: NumberInput) {
+  increaseRedeemOrder(amount: Balance) {
     const self = this
     return this._transactSequence(async function* ({ walletClient, signingAddress, publicClient }) {
-      const { centrifugeRouter } = lpConfig[self.chainId]!
-      const [estimate, investment] = await Promise.all([self.network._estimate(), self.investment(signingAddress)])
-      const amount = toBalance(redeemAmount, investment.shareCurrency.decimals)
+      const [estimate, investment, { vaultRouter }] = await Promise.all([
+        self.network._estimate(),
+        self.investment(signingAddress),
+        self._root._protocolAddresses(self.chainId),
+      ])
 
+      if (!investment.isAllowedToRedeem) throw new Error('Not allowed to redeem')
+      if (investment.investmentCurrency.decimals !== amount.decimals) throw new Error('Invalid amount decimals')
       if (amount.gt(investment.shareBalance)) throw new Error('Insufficient balance')
       if (!amount.gt(0n)) throw new Error('Order amount must be greater than 0')
 
       yield* doTransaction('Redeem', publicClient, () =>
         walletClient.writeContract({
-          address: centrifugeRouter,
+          address: vaultRouter,
           abi: ABI.VaultRouter,
           functionName: 'requestRedeem',
           args: [self.address, amount.toBigInt(), signingAddress, signingAddress],
@@ -376,14 +389,17 @@ export class Vault extends Entity {
   cancelRedeemOrder() {
     const self = this
     return this._transactSequence(async function* ({ walletClient, signingAddress, publicClient }) {
-      const { centrifugeRouter } = lpConfig[self.chainId]!
-      const [estimate, investment] = await Promise.all([self.network._estimate(), self.investment(signingAddress)])
+      const [estimate, investment, { vaultRouter }] = await Promise.all([
+        self.network._estimate(),
+        self.investment(signingAddress),
+        self._root._protocolAddresses(self.chainId),
+      ])
 
       if (investment.pendingRedeemShares.isZero()) throw new Error('No order to cancel')
 
       yield* doTransaction('Cancel redeem order', publicClient, () =>
         walletClient.writeContract({
-          address: centrifugeRouter,
+          address: vaultRouter,
           abi: ABI.VaultRouter,
           functionName: 'cancelRedeemRequest',
           args: [self.address],
@@ -397,13 +413,15 @@ export class Vault extends Entity {
    * Claim any outstanding fund shares after an investment has gone through, or funds after an redemption has gone through.
    * @param receiver - The address that should receive the funds. If not provided, the investor's address is used.
    * @param controller - The address of the user that has invested. Allows someone else to claim on behalf of the user
-   *  if the user has set the CentrifugeRouter as an operator on the vault. If not provided, the investor's address is used.
+   *  if the user has set the VaultRouter as an operator on the vault. If not provided, the investor's address is used.
    */
   claim(receiver?: string, controller?: string) {
     const self = this
     return this._transactSequence(async function* ({ walletClient, signingAddress, publicClient }) {
-      const { centrifugeRouter } = lpConfig[self.chainId]!
-      const investment = await self.investment(signingAddress)
+      const [investment, { vaultRouter }] = await Promise.all([
+        self.investment(signingAddress),
+        self._root._protocolAddresses(self.chainId),
+      ])
       const receiverAddress = receiver || signingAddress
       const controllerAddress = controller || signingAddress
       const functionName = investment.claimableCancelInvestCurrency.gt(0n)
@@ -420,19 +438,12 @@ export class Vault extends Entity {
 
       yield* doTransaction('Claim', publicClient, () =>
         walletClient.writeContract({
-          address: centrifugeRouter,
+          address: vaultRouter,
           abi: ABI.VaultRouter,
           functionName,
-          args: [self.address, receiverAddress as any, controllerAddress as any],
+          args: [self.address, receiverAddress as HexString, controllerAddress as HexString],
         })
       )
     }, this.chainId)
   }
-}
-
-type NumberInput = number | bigint | DecimalWrapper | Decimal
-function toBalance(val: NumberInput, decimals: number) {
-  return typeof val === 'number'
-    ? Balance.fromFloat(val, decimals!)
-    : new Balance(val instanceof DecimalWrapper ? val.toBigInt() : val, decimals)
 }

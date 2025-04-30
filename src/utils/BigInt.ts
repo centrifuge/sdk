@@ -24,9 +24,9 @@ export abstract class BigIntWrapper {
 }
 
 export class DecimalWrapper extends BigIntWrapper {
-  readonly decimals: number = 27
+  readonly decimals: number
 
-  constructor(value: Numeric | bigint, decimals: number = 27) {
+  constructor(value: Numeric | bigint, decimals: number) {
     super(value)
     this.decimals = decimals
   }
@@ -157,6 +157,10 @@ const secondsPerYear = Dec(60 * 60 * 24 * 365)
  */
 export class Rate extends DecimalWrapper {
   static decimals = 27
+
+  constructor(value: Numeric | bigint) {
+    super(value, 27)
+  }
 
   static fromFloat(number: Numeric) {
     return Rate._fromFloat<Rate>(number, this.decimals)

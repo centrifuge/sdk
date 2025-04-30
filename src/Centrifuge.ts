@@ -1,6 +1,5 @@
 import type { Observable } from 'rxjs'
 import {
-  catchError,
   combineLatest,
   concatWith,
   defaultIfEmpty,
@@ -13,7 +12,6 @@ import {
   of,
   Subject,
   switchMap,
-  timeout,
   using,
 } from 'rxjs'
 import { fromFetch } from 'rxjs/fetch'
@@ -86,6 +84,11 @@ const defaultConfig = {
   cache: true,
 } satisfies UserProvidedConfig
 
+// Hardcoded pools until we have the indexer
+const TEMP_POOLS = {
+  11155111: [1, 2],
+}
+
 export class Centrifuge {
   #config: DerivedConfig
   get config() {
@@ -132,7 +135,12 @@ export class Centrifuge {
         }
         this.#clients.set(
           chain.id,
-          createPublicClient<any, Chain>({ chain, transport: http(rpcUrl), batch: { multicall: true } })
+          createPublicClient<any, Chain>({
+            chain,
+            transport: http(rpcUrl),
+            batch: { multicall: true },
+            pollingInterval: this.#config.pollingInterval,
+          })
         )
       })
   }
@@ -143,16 +151,16 @@ export class Centrifuge {
    * @param currencyCode - The currency code for the pool
    * @param chainId - The chain ID to create the pool on
    */
-  createPool(metadataInput: PoolMetadataInput, currencyCode = 840, chainId: number) {
+  createPool(metadataInput: PoolMetadataInput, currencyCode = 840, chainId: number, counter: number) {
     const self = this
     return this._transactSequence(async function* ({ walletClient, signingAddress, publicClient }) {
-      const addresses = await self._protocolAddresses(chainId)
+      const [addresses, id] = await Promise.all([self._protocolAddresses(chainId), self.id(chainId)])
       const result = yield* doTransaction('Create pool', publicClient, () =>
         walletClient.writeContract({
           address: addresses.hubRegistry,
           abi: ABI.Hub,
           functionName: 'createPool',
-          args: [signingAddress, BigInt(currencyCode)],
+          args: [PoolId.from(id, counter).raw, signingAddress, BigInt(currencyCode)],
         })
       )
 
@@ -268,39 +276,17 @@ export class Centrifuge {
    * Get the existing pools on the different chains.
    */
   pools() {
-    // TODO: refetch on new pool events
+    // TODO: fetch from indexer
     return this._query(['pools'], () => {
       return combineLatest(
-        this.chains.map((chainId) =>
-          combineLatest([
-            this.id(chainId),
-            this._protocolAddresses(chainId).pipe(
-              switchMap(({ hubRegistry }) =>
-                defer(() => {
-                  return this.getClient(chainId)!.readContract({
-                    address: hubRegistry,
-                    abi: ABI.HubRegistry,
-                    functionName: 'latestId',
-                  })
-                })
-              )
-            ),
-          ]).pipe(
-            map(([centId, poolCounter]) => {
-              if (!poolCounter) return []
-              return Array.from({ length: poolCounter }, (_, i) => {
-                return new Pool(this, PoolId.from(centId, i + 1).toString(), chainId)
-              })
-            }),
-            // Because this is fetching from multiple networks and we're waiting on all of them before returning a value,
-            // we want a timeout in case one of the endpoints is too slow
-            timeout({ first: 5000 }),
-            catchError((e) => {
-              console.error('Error fetching pools', e)
-              return of([])
-            })
+        Object.entries(TEMP_POOLS).map(([cid, poolCounters]) => {
+          const chainId = Number(cid)
+          return this.id(chainId).pipe(
+            map((centId) =>
+              poolCounters.map((counter) => new Pool(this, PoolId.from(centId, counter).toString(), chainId))
+            )
           )
-        )
+        })
       ).pipe(map((poolsPerChain) => poolsPerChain.flat()))
     })
   }
@@ -839,17 +825,15 @@ export class Centrifuge {
   _estimate(fromChain: number, to: { chainId: number } | { centId: number }) {
     return this._query(['estimate', fromChain, to], () =>
       combineLatest([this._protocolAddresses(fromChain), 'chainId' in to ? this.id(to.chainId) : of(to.centId)]).pipe(
-        switchMap(([{ vaultRouter }, toCentId]) =>
-          defer(() => {
-            const bytes = toHex(new Uint8Array([0x12]))
-            return this.getClient(fromChain)!.readContract({
-              address: vaultRouter,
-              abi: ABI.VaultRouter,
-              functionName: 'estimate',
-              args: [toCentId, bytes],
-            }) as Promise<bigint>
+        switchMap(([{ vaultRouter }, toCentId]) => {
+          const bytes = toHex(new Uint8Array([0x12]))
+          return this.getClient(fromChain)!.readContract({
+            address: vaultRouter,
+            abi: ABI.VaultRouter,
+            functionName: 'estimate',
+            args: [toCentId, bytes],
           })
-        )
+        })
       )
     )
   }

@@ -11,6 +11,9 @@ const poolId = PoolId.from(1, 1)
 const scId = ShareClassId.from(poolId, 1)
 const assetId = AssetId.from(1, 1)
 
+// const fundManager = '0x423420Ae467df6e90291fd0252c0A8a637C1e03f'
+// const investorB = '0x54b1d961678C145a444765bB2d7aD6B029770D35'
+
 describe('ShareClass', () => {
   let shareClass: ShareClass
   beforeEach(() => {
@@ -44,4 +47,38 @@ describe('ShareClass', () => {
     expect(holding.accounts[AccountType.Asset]).not.to.be.undefined
     expect(holding.accounts[AccountType.Equity]).not.to.be.undefined
   })
+
+  // Done in Vault.test.ts
+  // it('approves deposits and claims shares', async () => {
+  //   context.tenderlyFork.impersonateAddress = fundManager
+  //   context.centrifuge.setSigner(context.tenderlyFork.signer)
+  //   const result = await shareClass.approveDeposits(assetId, Balance.fromFloat(100, 6), Price.fromFloat(1))
+  //   expect(result.type).to.equal('TransactionConfirmed')
+
+  //   const order = await shareClass.investorOrder(assetId, investorB)
+
+  //   expect(order.maxDepositClaims).to.equal(1)
+
+  //   const result2 = await shareClass.claimDeposit(assetId, investorB)
+  //   expect(result2.type).to.equal('TransactionConfirmed')
+  // })
 })
+
+// const { poolManager } = await context.centrifuge._protocolAddresses(chainId)
+// const client = context.centrifuge.getClient(chainId)!
+// const poolLoc = mapLocation(6n, poolId.raw, 'uint128')
+// const scLoc = mapLocation(poolLoc + 1n, scId.raw, 'bytes16')
+// const assetLoc = mapLocation(scLoc + 3n, '0xd54864475D5b1a0F235A751b6fddc8bb28FD3b9b', 'address')
+// const priceLoc = mapLocation(assetLoc, 0n, 'uint256')
+// const data = await client.getStorageAt({
+//   address: poolManager,
+//   slot: '0xb4aaa343c87a4bd58f639be7336d06126be71acdd096ecaad93182fd909f8e59',
+// })
+
+// function mapLocation(slot: bigint, key: bigint | string, keyType: string) {
+//   return hexToBigInt(keccak256(encodePacked([keyType, 'uint256'], [key, slot])))
+// }
+
+// function arrLocation(slot: bigint, index: bigint, elementSize: bigint) {
+//   return hexToBigInt(keccak256(toHex(slot))) + index * elementSize
+// }

@@ -1,7 +1,14 @@
 import { signERC2612Permit } from 'eth-permit'
-import type { Account, Chain, LocalAccount, PublicClient, WalletClient } from 'viem'
+import type { Account, Chain, LocalAccount, PublicClient, TransactionReceipt, WalletClient } from 'viem'
 import type { HexString } from '../types/index.js'
 import type { OperationStatus, Signer } from '../types/transaction.js'
+
+class TransactionError extends Error {
+  override name = 'TransactionError'
+  constructor(public receipt: TransactionReceipt) {
+    super('Transaction reverted')
+  }
+}
 
 export async function* doTransaction(
   title: string,
@@ -12,6 +19,9 @@ export async function* doTransaction(
   const hash = await transactionCallback()
   yield { type: 'TransactionPending', title, hash }
   const receipt = await publicClient.waitForTransactionReceipt({ hash })
+  if (receipt.status === 'reverted') {
+    throw new TransactionError(receipt)
+  }
   const result = { type: 'TransactionConfirmed', title, hash, receipt } as const
   yield result
   return result

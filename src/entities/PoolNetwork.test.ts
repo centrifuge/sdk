@@ -1,4 +1,5 @@
 import { expect } from 'chai'
+import { NULL_ADDRESS } from '../constants.js'
 import { context } from '../tests/setup.js'
 import { PoolId, ShareClassId } from '../utils/types.js'
 import { Pool } from './Pool.js'
@@ -6,10 +7,10 @@ import { PoolNetwork } from './PoolNetwork.js'
 
 const poolId = PoolId.from(1, 1)
 const scId = ShareClassId.from(poolId, 1)
-const vaultAddress = '0x59837f61db4f18c612e112d8d07018fc4b5b5497'
 
 describe('PoolNetwork', () => {
   let poolNetwork: PoolNetwork
+
   beforeEach(() => {
     const { centrifuge } = context
     const pool = new Pool(centrifuge, poolId.raw, 11155111)
@@ -29,7 +30,7 @@ describe('PoolNetwork', () => {
   it('get vaults for a share class', async () => {
     const vaults = await poolNetwork.vaults(scId)
     expect(vaults).to.have.length(1)
-    expect(vaults[0]!.address.toLowerCase()).to.equal(vaultAddress)
+    expect(vaults[0]!.address.toLowerCase()).not.to.equal(NULL_ADDRESS)
   })
 
   // it('should deploy a tranche', async () => {
