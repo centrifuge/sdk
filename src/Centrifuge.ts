@@ -50,11 +50,11 @@ import { PoolMetadata } from './types/poolMetadata.js'
 import type { CentrifugeQueryOptions, Query } from './types/query.js'
 import type { OperationStatus, Signer, Transaction, TransactionCallbackParams } from './types/transaction.js'
 import { Balance } from './utils/BigInt.js'
+import { createPinning } from './utils/createPinning.js'
 import { hashKey } from './utils/query.js'
 import { makeThenable, repeatOnEvents, shareReplayWithDelayedReset } from './utils/rx.js'
 import { doTransaction, isLocalAccount } from './utils/transaction.js'
 import { AssetId, PoolId } from './utils/types.js'
-import { createPinning } from './utils/createPinning.js'
 
 const PINNING_API_DEMO = 'https://europe-central2-peak-vista-185616.cloudfunctions.net/pinning-api-demo'
 
@@ -397,24 +397,16 @@ export class Centrifuge {
   /**
    * Get the decimals of asset
    */
-  assetDecimals(id: PoolId) {
-    return this._query(['assetDecimals', id], () =>
-      this.pool(id).pipe(
-        switchMap((pool) =>
-          pool.currency().pipe(
-            switchMap((currency) =>
-              this._protocolAddresses(pool.chainId).pipe(
-                switchMap(({ hubRegistry }) =>
-                  this.getClient(pool.chainId)!.readContract({
-                    address: hubRegistry,
-                    abi: ABI.HubRegistry,
-                    functionName: 'decimals',
-                    args: [currency.id.raw],
-                  })
-                )
-              )
-            )
-          )
+  assetDecimals(assetId: AssetId, chainId: number) {
+    return this._query(['assetDecimals', assetId.toString()], () =>
+      this._protocolAddresses(chainId).pipe(
+        switchMap(({ hubRegistry }) =>
+          this.getClient(chainId)!.readContract({
+            address: hubRegistry,
+            abi: parseAbi(['function decimals(uint128) view returns (uint8)']),
+            functionName: 'decimals',
+            args: [assetId.raw],
+          })
         )
       )
     )
