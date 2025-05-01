@@ -1,6 +1,6 @@
-import sinon from 'sinon'
 import { expect } from 'chai'
-import { pinToApi } from './pinToApi.js'
+import sinon from 'sinon'
+import { pinToApi } from './ipfs.js'
 
 const fakeHash = 'QmXoypizjW3WknFiJnKLwHCnL72vedxjQkDDP1mXWo6uco'
 
@@ -19,7 +19,7 @@ describe('pinToApi function', () => {
     const fakeData = { foo: 'bar' }
     const fakeResponse = {
       ok: true,
-      json: sinon.stub().resolves(fakeHash),
+      json: sinon.stub().resolves({ uri: fakeHash }),
     }
     fetchStub.resolves(fakeResponse)
 

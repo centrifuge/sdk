@@ -3,14 +3,14 @@ import { fromHex, toHex } from 'viem'
 import { ABI } from '../abi/index.js'
 import type { Centrifuge } from '../Centrifuge.js'
 import { PoolMetadata } from '../types/poolMetadata.js'
+import { NATIONAL_CURRENCY_METADATA } from '../utils/currencies.js'
 import { repeatOnEvents } from '../utils/rx.js'
+import { doTransaction } from '../utils/transaction.js'
 import { AssetId, PoolId, ShareClassId } from '../utils/types.js'
 import { Entity } from './Entity.js'
 import { PoolNetwork } from './PoolNetwork.js'
 import { Reports } from './Reports/index.js'
 import { ShareClass } from './ShareClass.js'
-import { doTransaction } from '../utils/transaction.js'
-import { NATIONAL_CURRENCY_METADATA } from '../utils/currencies.js'
 export class Pool extends Entity {
   id: PoolId
 
@@ -26,6 +26,28 @@ export class Pool extends Entity {
 
   get reports() {
     return new Reports(this._root, this)
+  }
+
+  /**
+   * Query the details of the pool.
+   * @returns The pool metadata, id, shareClasses and currency.
+   */
+  details() {
+    return this._query(null, () =>
+      combineLatest([this.metadata(), this.shareClasses(), this.shareClassesDetails(), this.currency()]).pipe(
+        map(([metadata, shareClasses, shareClassesDetails, currency]) => {
+          return {
+            id: this.id,
+            currency,
+            metadata,
+            shareClasses: shareClasses.map((sc) => ({
+              shareClass: sc,
+              details: shareClassesDetails.find((scDetails) => scDetails.id.equals(sc.id))!,
+            })),
+          }
+        })
+      )
+    )
   }
 
   metadata() {
@@ -65,24 +87,6 @@ export class Pool extends Entity {
         )
       )
     )
-  }
-
-  updateMetadata(metadata: PoolMetadata) {
-    const self = this
-    return this._transactSequence(async function* ({ walletClient, publicClient }) {
-      const cid = await self._root.config.pinJson(metadata)
-
-      const { hub } = await self._root._protocolAddresses(self.chainId)
-      yield* doTransaction('Update metadata', publicClient, () =>
-        walletClient.writeContract({
-          address: hub,
-          abi: ABI.Hub,
-          functionName: 'setPoolMetadata',
-          args: [self.id.raw, toHex(cid)],
-          value: 0n,
-        })
-      )
-    }, self.chainId)
   }
 
   shareClasses() {
@@ -196,23 +200,22 @@ export class Pool extends Entity {
     })
   }
 
-  /**
-   * Query the details of the pool.
-   * @returns The pool metadata, id, shareClasses and currency.
-   */
-  details() {
-    return this._query(null, () =>
-      combineLatest([this.metadata(), this.shareClassesDetails(), this.currency()]).pipe(
-        map(([metadata, shareClasses, currency]) => {
-          return {
-            poolId: this.id,
-            metadata: metadata ?? '',
-            shareClasses,
-            currency,
-          }
+  updateMetadata(metadata: PoolMetadata) {
+    const self = this
+    return this._transactSequence(async function* ({ walletClient, publicClient }) {
+      const cid = await self._root.config.pinJson(metadata)
+
+      const { hub } = await self._root._protocolAddresses(self.chainId)
+      yield* doTransaction('Update metadata', publicClient, () =>
+        walletClient.writeContract({
+          address: hub,
+          abi: ABI.Hub,
+          functionName: 'setPoolMetadata',
+          args: [self.id.raw, toHex(cid)],
+          value: 0n,
         })
       )
-    )
+    }, self.chainId)
   }
 
   /**
