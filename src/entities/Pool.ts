@@ -1,15 +1,16 @@
 import { catchError, combineLatest, defer, map, of, switchMap, timeout } from 'rxjs'
-import { fromHex } from 'viem'
+import { fromHex, toHex } from 'viem'
 import { ABI } from '../abi/index.js'
 import type { Centrifuge } from '../Centrifuge.js'
 import { PoolMetadata } from '../types/poolMetadata.js'
 import { repeatOnEvents } from '../utils/rx.js'
-import { PoolId, ShareClassId } from '../utils/types.js'
+import { AssetId, PoolId, ShareClassId } from '../utils/types.js'
 import { Entity } from './Entity.js'
 import { PoolNetwork } from './PoolNetwork.js'
 import { Reports } from './Reports/index.js'
 import { ShareClass } from './ShareClass.js'
-
+import { doTransaction } from '../utils/transaction.js'
+import { NATIONAL_CURRENCY_METADATA } from '../utils/currencies.js'
 export class Pool extends Entity {
   id: PoolId
 
@@ -64,6 +65,24 @@ export class Pool extends Entity {
         )
       )
     )
+  }
+
+  updateMetadata(metadata: PoolMetadata) {
+    const self = this
+    return this._transactSequence(async function* ({ walletClient, publicClient }) {
+      const cid = await self._root.config.pinJson(metadata)
+
+      const { hub } = await self._root._protocolAddresses(self.chainId)
+      yield* doTransaction('Update metadata', publicClient, () =>
+        walletClient.writeContract({
+          address: hub,
+          abi: ABI.Hub,
+          functionName: 'setPoolMetadata',
+          args: [self.id.raw, toHex(cid)],
+          value: 0n,
+        })
+      )
+    }, self.chainId)
   }
 
   shareClasses() {
@@ -136,6 +155,64 @@ export class Pool extends Entity {
 
   vault(chainId: number, scId: ShareClassId, asset: string) {
     return this._query(null, () => this.network(chainId).pipe(switchMap((network) => network.vault(scId, asset))))
+  }
+
+  /**
+   * Get the currency of the pool.
+   */
+  currency() {
+    return this._query(['currency'], () => {
+      return this._root._protocolAddresses(this.chainId).pipe(
+        switchMap(({ hubRegistry }) => {
+          return this._root.getClient(this.chainId)!.readContract({
+            address: hubRegistry,
+            abi: ABI.HubRegistry,
+            functionName: 'currency',
+            args: [this.id.raw],
+          })
+        }),
+        map((rawCurrency: bigint) => {
+          const assetId = new AssetId(rawCurrency)
+          const countryCode = assetId.nationalCurrencyCode
+
+          if (!countryCode) {
+            throw new Error(`No currency found`)
+          }
+
+          const currency = NATIONAL_CURRENCY_METADATA[countryCode]
+
+          if (!currency) {
+            throw new Error(`No currency found for country code ${countryCode}`)
+          }
+
+          return {
+            name: currency.name,
+            symbol: currency.symbol,
+            decimals: 18,
+            id: assetId,
+          }
+        })
+      )
+    })
+  }
+
+  /**
+   * Query the details of the pool.
+   * @returns The pool metadata, id, shareClasses and currency.
+   */
+  details() {
+    return this._query(null, () =>
+      combineLatest([this.metadata(), this.shareClassesDetails(), this.currency()]).pipe(
+        map(([metadata, shareClasses, currency]) => {
+          return {
+            poolId: this.id,
+            metadata: metadata ?? '',
+            shareClasses,
+            currency,
+          }
+        })
+      )
+    )
   }
 
   /**

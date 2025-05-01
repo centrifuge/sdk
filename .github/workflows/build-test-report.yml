@@ -32,7 +32,7 @@ jobs:
 
       - name: Run Build
         run: yarn build
-      
+
       - name: Run tests
         run: yarn test:coverage
         env:
@@ -58,4 +58,4 @@ jobs:
           token: ${{ secrets.CODECOV_TOKEN }}
           # flags: unittests
           name: sdk-coverage
-          fail_ci_if_error: true          
+          fail_ci_if_error: true

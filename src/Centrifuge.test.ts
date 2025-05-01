@@ -49,6 +49,11 @@ describe('Centrifuge', () => {
       expect(currency.supportsPermit).to.be.true
     })
 
+    it.skip('should fetch the asset decimals', async () => {
+      const decimals = await context.centrifuge.assetDecimals(poolId)
+      expect(decimals).to.exist
+    })
+
     it('should estimate the gas for a bridge transaction', async () => {
       const estimate = await context.centrifuge._estimate(chainId, { chainId })
       expect(typeof estimate).to.equal('bigint')

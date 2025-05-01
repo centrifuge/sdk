@@ -93,6 +93,10 @@ export class AssetId {
     return this.#id
   }
 
+  get nationalCurrencyCode() {
+    return this.isNationalCurrency ? Number(this.#id) : null
+  }
+
   toString() {
     return this.#id.toString()
   }

@@ -14,7 +14,8 @@ export type ShareClassInput = {
   // interestRate: number | ''
   // minRiskBuffer: number | ''
   minInvestment: number | ''
-  targetApy: number | null
+  apyPercentage: number | null
+  apy: string | null
 }
 
 export type IssuerDetail = {
