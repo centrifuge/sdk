@@ -260,7 +260,7 @@ export class ShareClass extends Entity {
               issueData,
             ],
           ],
-          value: estimate,
+          value: estimate * 3n, // for 3 messages
         })
       )
     }, this.pool.chainId)
@@ -269,9 +269,10 @@ export class ShareClass extends Entity {
   approveRedeems(assetId: AssetId, shareAmount: Balance, navPerShare: Price) {
     const self = this
     return this._transactSequence(async function* ({ walletClient, publicClient }) {
-      const [{ hub }, epoch] = await Promise.all([
+      const [{ hub }, epoch, estimate] = await Promise.all([
         self._root._protocolAddresses(self.pool.chainId),
         self._epoch(assetId),
+        self._root._estimate(self.pool.chainId, { centId: assetId.centrifugeId }),
       ])
 
       // TODO: Get share decimals and throw if mismatch with shareAmount decimals
@@ -298,6 +299,7 @@ export class ShareClass extends Entity {
           abi: ABI.Hub,
           functionName: 'multicall',
           args: [[updateShareData, approveData, issueData]],
+          value: estimate * 3n, // for 3 messages
         })
       )
     }, this.pool.chainId)

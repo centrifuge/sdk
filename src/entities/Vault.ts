@@ -283,7 +283,7 @@ export class Vault extends Entity {
             abi: ABI.VaultRouter,
             functionName: 'multicall',
             args: [[enableData as any, requestData, permitData].filter(Boolean)],
-            value: estimate,
+            value: estimate, // only one message is sent as a result of the multicall
           })
         )
       }
