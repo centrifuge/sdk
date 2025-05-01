@@ -39,10 +39,23 @@ describe('Pool', () => {
   })
 
   it('should update the pool metadata', async () => {
-    const pool = await context.centrifuge.pool(poolId)
+    const fakeHash = 'QmakVZw8HErPUx4x8rKEUGEU9SoGTVB6gN943PQ1d5q9XN'
+
+    const centrifugeWithPin = new Centrifuge({
+      environment: 'demo',
+      pinJson: async (data) => {
+        expect(data).to.deep.equal(mockPoolMetadata)
+        return fakeHash
+      },
+    })
+
+    const pool = await centrifugeWithPin.pool(poolId)
+
     context.tenderlyFork.impersonateAddress = poolManager
-    context.centrifuge.setSigner(context.tenderlyFork.signer)
+    centrifugeWithPin.setSigner(context.tenderlyFork.signer)
+
     const result = await pool.updateMetadata(mockPoolMetadata)
+
     expect(result.type).to.equal('TransactionConfirmed')
   })
 
@@ -55,10 +68,8 @@ describe('Pool', () => {
     expect(currency).to.have.property('decimals')
   })
 
-  it.only('should return a pool with details', async () => {
-    const pools = await context.centrifuge.pools()
+  it('should return a pool with details', async () => {
     const pool = await context.centrifuge.pool(poolId)
-    console.log('pools', pools)
     const details = await pool.details()
     expect(details.poolId.raw).to.equal(poolId.raw)
     expect(details.metadata).to.not.be.undefined
