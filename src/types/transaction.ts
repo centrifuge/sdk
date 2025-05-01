@@ -11,24 +11,29 @@ export type OperationStatusType =
   | 'TransactionConfirmed'
 
 export type OperationSigningStatus = {
+  id: string
   type: 'SigningTransaction'
   title: string
 }
 export type OperationSigningMessageStatus = {
+  id: string
   type: 'SigningMessage'
   title: string
 }
 export type OperationSignedMessageStatus = {
+  id: string
   type: 'SignedMessage'
   title: string
   signed: any
 }
 export type OperationPendingStatus = {
+  id: string
   type: 'TransactionPending'
   title: string
   hash: HexString
 }
 export type OperationConfirmedStatus = {
+  id: string
   type: 'TransactionConfirmed'
   title: string
   hash: HexString

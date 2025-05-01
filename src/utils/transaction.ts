@@ -15,15 +15,16 @@ export async function* doTransaction(
   publicClient: PublicClient,
   transactionCallback: () => Promise<HexString>
 ): AsyncGenerator<OperationStatus> {
-  yield { type: 'SigningTransaction', title }
+  const id = crypto.randomUUID()
+  yield { id, type: 'SigningTransaction', title }
   const hash = await transactionCallback()
-  yield { type: 'TransactionPending', title, hash }
+  yield { id, type: 'TransactionPending', title, hash }
   const receipt = await publicClient.waitForTransactionReceipt({ hash })
   if (receipt.status === 'reverted') {
     console.error('Transaction reverted', receipt)
     throw new TransactionError(receipt)
   }
-  const result = { type: 'TransactionConfirmed', title, hash, receipt } as const
+  const result = { id, type: 'TransactionConfirmed', title, hash, receipt } as const
   yield result
   return result
 }
@@ -32,9 +33,10 @@ export async function* doSignMessage(
   title: string,
   transactionCallback: () => Promise<any>
 ): AsyncGenerator<OperationStatus, any> {
-  yield { type: 'SigningMessage', title }
+  const id = crypto.randomUUID()
+  yield { id, type: 'SigningMessage', title }
   const message = await transactionCallback()
-  yield { type: 'SignedMessage', title, signed: message }
+  yield { id, type: 'SignedMessage', title, signed: message }
   return message
 }
 
