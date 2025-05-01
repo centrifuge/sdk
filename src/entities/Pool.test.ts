@@ -71,7 +71,7 @@ describe('Pool', () => {
   it('should return a pool with details', async () => {
     const pool = await context.centrifuge.pool(poolId)
     const details = await pool.details()
-    expect(details.poolId.raw).to.equal(poolId.raw)
+    expect(details.id.raw).to.equal(poolId.raw)
     expect(details.metadata).to.not.be.undefined
     expect(details.shareClasses).to.have.length(1)
     expect(details.currency).to.exist

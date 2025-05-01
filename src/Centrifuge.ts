@@ -50,7 +50,7 @@ import { PoolMetadata } from './types/poolMetadata.js'
 import type { CentrifugeQueryOptions, Query } from './types/query.js'
 import type { OperationStatus, Signer, Transaction, TransactionCallbackParams } from './types/transaction.js'
 import { Balance } from './utils/BigInt.js'
-import { createPinning } from './utils/createPinning.js'
+import { createPinning, getUrlFromHash } from './utils/ipfs.js'
 import { hashKey } from './utils/query.js'
 import { makeThenable, repeatOnEvents, shareReplayWithDelayedReset } from './utils/rx.js'
 import { doTransaction, isLocalAccount } from './utils/transaction.js'
@@ -506,24 +506,21 @@ export class Centrifuge {
   /**
    * @internal
    */
-  _getIPFSObservable<T = any>(hash: string) {
-    return fromFetch<T>(`${this.config.ipfsUrl}/ipfs/${hash}`, {
-      method: 'GET',
-      selector: async (res) => {
-        if (!res.ok) {
-          console.warn(`Failed to fetch IPFS data: ${res.statusText}`)
-        }
-        const data = await res.json()
-        return data as T
-      },
-    })
-  }
-
-  /**
-   * @internal
-   */
   _queryIPFS<Result>(hash: string): Query<Result> {
-    return this._query([hash], () => this._getIPFSObservable(hash))
+    return this._query([hash], () =>
+      defer(async () => {
+        const url = getUrlFromHash(hash, this.#config.ipfsUrl)
+        if (!url) {
+          throw new Error(`Invalid IPFS hash: ${hash}`)
+        }
+        const res = await fetch(url)
+        if (!res.ok) {
+          throw new Error(`Error fetching IPFS hash ${hash}: ${res.statusText}`)
+        }
+        const data = (await res.json()) as Result
+        return data
+      })
+    )
   }
 
   #memoized = new Map<string, any>()
