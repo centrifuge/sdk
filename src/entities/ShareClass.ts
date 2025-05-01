@@ -186,17 +186,30 @@ export class ShareClass extends Entity {
     const self = this
     return this._transactSequence(async function* ({ walletClient, publicClient }) {
       const { hub } = await self._root._protocolAddresses(self.pool.chainId)
-      // const approveData = encodeFunctionData({
-      //   abi: ABI.Hub,
-      //   functionName: 'notifyAssetPrice',
-      //   args: [self.pool.id.raw, self.id.raw, assetId.raw],
-      // })
       yield* doTransaction('Notify asset price', publicClient, () =>
         walletClient.writeContract({
           address: hub,
           abi: ABI.Hub,
           functionName: 'notifyAssetPrice',
           args: [self.pool.id.raw, self.id.raw, assetId.raw],
+        })
+      )
+    }, this.pool.chainId)
+  }
+
+  notifySharePrice(chainId: number) {
+    const self = this
+    return this._transactSequence(async function* ({ walletClient, publicClient }) {
+      const [{ hub }, id] = await Promise.all([
+        self._root._protocolAddresses(self.pool.chainId),
+        self._root.id(chainId),
+      ])
+      yield* doTransaction('Notify share price', publicClient, () =>
+        walletClient.writeContract({
+          address: hub,
+          abi: ABI.Hub,
+          functionName: 'notifySharePrice',
+          args: [self.pool.id.raw, self.id.raw, id],
         })
       )
     }, this.pool.chainId)

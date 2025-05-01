@@ -51,79 +51,22 @@ export class Vault extends Entity {
   }
 
   /**
-   * Get the contract address of the restriction mananger.
-   * @internal
+   * Get the details of the vault.
    */
-  _restrictionManager() {
-    return this._query(['restrictionManager'], () =>
-      this.network._share(this.shareClass.id).pipe(
-        switchMap(
-          (share) =>
-            this._root.getClient(this.chainId)!.readContract({
-              address: share,
-              abi: ABI.Currency,
-              functionName: 'hook',
-            }) as Promise<HexString>
-        )
-      )
-    )
-  }
-
-  /**
-   * Get the details of the investment currency.
-   */
-  investmentCurrency() {
-    return this._root.currency(this._asset, this.chainId)
-  }
-
-  /**
-   * Get the details of the share token.
-   */
-  shareCurrency() {
-    return this.network.shareCurrency(this.shareClass.id)
-  }
-
-  /**
-   * Get the allowance of the investment currency for the VaultRouter,
-   * which is the contract that moves funds into the vault on behalf of the investor.
-   * @param owner - The address of the owner
-   */
-  allowance(owner: string) {
-    const address = owner.toLowerCase()
-    return this._query(['allowance', address], () =>
-      combineLatest([this.investmentCurrency(), this._root._protocolAddresses(this.chainId)]).pipe(
-        switchMap(([currency, { vaultRouter }]) =>
-          defer(() =>
-            this._root
-              .getClient(this.chainId)!
-              .readContract({
-                address: this._asset,
-                abi: ABI.Currency,
-                functionName: 'allowance',
-                args: [address as HexString, vaultRouter],
-              })
-              .then((val) => new Balance(val, currency.decimals))
-          ).pipe(
-            repeatOnEvents(
-              this._root,
-              {
-                address: this._asset,
-                abi: ABI.Currency,
-                eventName: ['Approval', 'Transfer'],
-                filter: (events) => {
-                  return events.some((event) => {
-                    return (
-                      event.args.owner?.toLowerCase() === address ||
-                      event.args.spender?.toLowerCase() === this._asset ||
-                      event.args.from?.toLowerCase() === address
-                    )
-                  })
-                },
-              },
-              this.chainId
-            )
-          )
-        )
+  details() {
+    return this._query(null, () =>
+      combineLatest([this._isSyncDeposit(), this._investmentCurrency(), this._shareCurrency()]).pipe(
+        map(([isSyncInvest, investmentCurrency, shareCurrency]) => ({
+          pool: this.pool,
+          shareClass: this.shareClass,
+          network: this.network,
+          address: this.address,
+          asset: this._asset,
+          isSyncInvest,
+          isSyncRedeem: true,
+          investmentCurrency,
+          shareCurrency,
+        }))
       )
     )
   }
@@ -136,16 +79,17 @@ export class Vault extends Entity {
     const address = investor.toLowerCase() as HexString
     return this._query(['investment', address], () =>
       combineLatest([
-        this.investmentCurrency(),
-        this.shareCurrency(),
+        this._investmentCurrency(),
+        this._shareCurrency(),
         this._root._protocolAddresses(this.chainId),
         this._restrictionManager(),
+        this._isSyncDeposit(),
       ]).pipe(
-        switchMap(([investmentCurrency, shareCurrency, addresses, restrictionManagerAddress]) =>
+        switchMap(([investmentCurrency, shareCurrency, addresses, restrictionManagerAddress, isSyncInvest]) =>
           combineLatest([
             this._root.balance(investmentCurrency.address, address, this.chainId),
             this._root.balance(shareCurrency.address, address, this.chainId),
-            this.allowance(address),
+            this._allowance(address),
             defer(async () => {
               const client = this._root.getClient(this.chainId)!
               const vault = getContract({ address: this.address, abi: ABI.AsyncVault, client })
@@ -183,8 +127,13 @@ export class Vault extends Entity {
               return {
                 isAllowedToInvest,
                 isAllowedToRedeem,
-                claimableInvestShares: new Balance(maxMint, shareCurrency.decimals),
-                claimableInvestCurrencyEquivalent: new Balance(maxDeposit, investmentCurrency.decimals),
+                isSyncInvest,
+                maxInvest: new Balance(maxDeposit, investmentCurrency.decimals),
+                claimableInvestShares: new Balance(isSyncInvest ? 0n : maxMint, shareCurrency.decimals),
+                claimableInvestCurrencyEquivalent: new Balance(
+                  isSyncInvest ? 0n : maxDeposit,
+                  investmentCurrency.decimals
+                ),
                 claimableRedeemCurrency: new Balance(maxWithdraw, investmentCurrency.decimals),
                 claimableRedeemSharesEquivalent: new Balance(maxRedeem, shareCurrency.decimals),
                 pendingInvestCurrency: new Balance(pendingInvest, investmentCurrency.decimals),
@@ -251,10 +200,11 @@ export class Vault extends Entity {
   increaseInvestOrder(amount: Balance) {
     const self = this
     return this._transactSequence(async function* ({ walletClient, publicClient, signer, signingAddress }) {
-      const [estimate, investment, { vaultRouter }] = await Promise.all([
+      const [estimate, investment, { vaultRouter }, isSyncDeposit] = await Promise.all([
         self.network._estimate(),
         self.investment(signingAddress),
         self._root._protocolAddresses(self.chainId),
+        self._isSyncDeposit(),
       ])
       const { investmentCurrency, investmentCurrencyBalance, investmentCurrencyAllowance, isAllowedToInvest } =
         investment
@@ -292,40 +242,51 @@ export class Vault extends Entity {
         }
       }
 
-      const enableData = encodeFunctionData({
-        abi: ABI.VaultRouter,
-        functionName: 'enableLockDepositRequest',
-        args: [self.address, amount.toBigInt()],
-      })
-      const requestData = encodeFunctionData({
-        abi: ABI.VaultRouter,
-        functionName: 'executeLockedDepositRequest',
-        args: [self.address, signingAddress],
-      })
-      const permitData =
-        permit &&
-        encodeFunctionData({
+      if (isSyncDeposit) {
+        yield* doTransaction('Invest', publicClient, () =>
+          walletClient.writeContract({
+            address: vaultRouter,
+            abi: ABI.VaultRouter,
+            functionName: 'deposit',
+            args: [self.address, amount.toBigInt(), signingAddress, signingAddress],
+          })
+        )
+      } else {
+        const enableData = encodeFunctionData({
           abi: ABI.VaultRouter,
-          functionName: 'permit',
-          args: [
-            investmentCurrency.address,
-            vaultRouter,
-            amount.toString() as any,
-            permit.deadline as any,
-            permit.v,
-            permit.r as any,
-            permit.s as any,
-          ],
+          functionName: 'enableLockDepositRequest',
+          args: [self.address, amount.toBigInt()],
         })
-      yield* doTransaction('Invest', publicClient, () =>
-        walletClient.writeContract({
-          address: vaultRouter,
+        const requestData = encodeFunctionData({
           abi: ABI.VaultRouter,
-          functionName: 'multicall',
-          args: [[enableData as any, requestData, permitData].filter(Boolean)],
-          value: estimate,
+          functionName: 'executeLockedDepositRequest',
+          args: [self.address, signingAddress],
         })
-      )
+        const permitData =
+          permit &&
+          encodeFunctionData({
+            abi: ABI.VaultRouter,
+            functionName: 'permit',
+            args: [
+              investmentCurrency.address,
+              vaultRouter,
+              amount.toString() as any,
+              permit.deadline as any,
+              permit.v,
+              permit.r as any,
+              permit.s as any,
+            ],
+          })
+        yield* doTransaction('Invest', publicClient, () =>
+          walletClient.writeContract({
+            address: vaultRouter,
+            abi: ABI.VaultRouter,
+            functionName: 'multicall',
+            args: [[enableData as any, requestData, permitData].filter(Boolean)],
+            value: estimate,
+          })
+        )
+      }
     }, this.chainId)
   }
 
@@ -447,5 +408,103 @@ export class Vault extends Entity {
         })
       )
     }, this.chainId)
+  }
+
+  /** @internal */
+  _isSyncDeposit() {
+    return this._query(['isSyncDeposit'], () =>
+      defer(() =>
+        this._root
+          .getClient(this.chainId)!
+          .readContract({
+            address: this.address,
+            abi: ABI.AsyncVault,
+            functionName: 'supportsInterface',
+            args: ['0xce3bbe50'], // ASYNC_DEPOSIT_INTERFACE_ID
+          })
+          .then((val) => !val)
+      )
+    )
+  }
+
+  /**
+   * Get the contract address of the restriction mananger.
+   * @internal
+   */
+  _restrictionManager() {
+    return this._query(['restrictionManager'], () =>
+      this.network._share(this.shareClass.id).pipe(
+        switchMap(
+          (share) =>
+            this._root.getClient(this.chainId)!.readContract({
+              address: share,
+              abi: ABI.Currency,
+              functionName: 'hook',
+            }) as Promise<HexString>
+        )
+      )
+    )
+  }
+
+  /**
+   * Get the details of the investment currency.
+   * @internal
+   */
+  _investmentCurrency() {
+    return this._root.currency(this._asset, this.chainId)
+  }
+
+  /**
+   * Get the details of the share token.
+   * @internal
+   */
+  _shareCurrency() {
+    return this.network.shareCurrency(this.shareClass.id)
+  }
+
+  /**
+   * Get the allowance of the investment currency for the VaultRouter,
+   * which is the contract that moves funds into the vault on behalf of the investor.
+   * @param owner - The address of the owner
+   * @internal
+   */
+  _allowance(owner: string) {
+    const address = owner.toLowerCase()
+    return this._query(['allowance', address], () =>
+      combineLatest([this._investmentCurrency(), this._root._protocolAddresses(this.chainId)]).pipe(
+        switchMap(([currency, { vaultRouter }]) =>
+          defer(() =>
+            this._root
+              .getClient(this.chainId)!
+              .readContract({
+                address: this._asset,
+                abi: ABI.Currency,
+                functionName: 'allowance',
+                args: [address as HexString, vaultRouter],
+              })
+              .then((val) => new Balance(val, currency.decimals))
+          ).pipe(
+            repeatOnEvents(
+              this._root,
+              {
+                address: this._asset,
+                abi: ABI.Currency,
+                eventName: ['Approval', 'Transfer'],
+                filter: (events) => {
+                  return events.some((event) => {
+                    return (
+                      event.args.owner?.toLowerCase() === address ||
+                      event.args.spender?.toLowerCase() === this._asset ||
+                      event.args.from?.toLowerCase() === address
+                    )
+                  })
+                },
+              },
+              this.chainId
+            )
+          )
+        )
+      )
+    )
   }
 }
