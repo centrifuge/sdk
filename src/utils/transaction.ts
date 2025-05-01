@@ -15,7 +15,7 @@ export async function* doTransaction(
   publicClient: PublicClient,
   transactionCallback: () => Promise<HexString>
 ): AsyncGenerator<OperationStatus> {
-  const id = crypto.randomUUID()
+  const id = Math.random().toString(36).substring(2)
   yield { id, type: 'SigningTransaction', title }
   const hash = await transactionCallback()
   yield { id, type: 'TransactionPending', title, hash }
@@ -33,7 +33,7 @@ export async function* doSignMessage(
   title: string,
   transactionCallback: () => Promise<any>
 ): AsyncGenerator<OperationStatus, any> {
-  const id = crypto.randomUUID()
+  const id = Math.random().toString(36).substring(2)
   yield { id, type: 'SigningMessage', title }
   const message = await transactionCallback()
   yield { id, type: 'SignedMessage', title, signed: message }

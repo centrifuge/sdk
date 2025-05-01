@@ -349,9 +349,10 @@ describe('Centrifuge', () => {
       const tx = cent._transactSequence(() => doTransaction('Test', publicClient, async () => '0x1'), chainId)
       const statuses = await firstValueFrom(tx.pipe(toArray()))
       expect(statuses).to.eql([
-        { type: 'SigningTransaction', title: 'Test' },
-        { type: 'TransactionPending', title: 'Test', hash: '0x1' },
+        { id: (statuses[0] as any).id, type: 'SigningTransaction', title: 'Test' },
+        { id: (statuses[0] as any).id, type: 'TransactionPending', title: 'Test', hash: '0x1' },
         {
+          id: (statuses[0] as any).id,
           type: 'TransactionConfirmed',
           title: 'Test',
           hash: '0x1',
@@ -375,17 +376,20 @@ describe('Centrifuge', () => {
       const statuses = await firstValueFrom(tx.pipe(toArray()))
       expect(statuses).to.eql([
         {
+          id: (statuses[0] as any).id,
           type: 'SigningMessage',
           title: 'Sign Permit',
         },
         {
+          id: (statuses[0] as any).id,
           type: 'SignedMessage',
           signed: '0x1',
           title: 'Sign Permit',
         },
-        { type: 'SigningTransaction', title: 'Test' },
-        { type: 'TransactionPending', title: 'Test', hash: '0x2' },
+        { id: (statuses[2] as any).id, type: 'SigningTransaction', title: 'Test' },
+        { id: (statuses[2] as any).id, type: 'TransactionPending', title: 'Test', hash: '0x2' },
         {
+          id: (statuses[2] as any).id,
           type: 'TransactionConfirmed',
           title: 'Test',
           hash: '0x2',
