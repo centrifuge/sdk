@@ -50,11 +50,11 @@ import { PoolMetadata } from './types/poolMetadata.js'
 import type { CentrifugeQueryOptions, Query } from './types/query.js'
 import type { OperationStatus, Signer, Transaction, TransactionCallbackParams } from './types/transaction.js'
 import { Balance } from './utils/BigInt.js'
+import { createPinning } from './utils/createPinning.js'
 import { hashKey } from './utils/query.js'
 import { makeThenable, repeatOnEvents, shareReplayWithDelayedReset } from './utils/rx.js'
 import { doTransaction, isLocalAccount } from './utils/transaction.js'
 import { AssetId, PoolId } from './utils/types.js'
-import { createPinning } from './utils/createPinning.js'
 
 const PINNING_API_DEMO = 'https://europe-central2-peak-vista-185616.cloudfunctions.net/pinning-api-demo'
 
@@ -146,6 +146,7 @@ export class Centrifuge {
             transport: http(rpcUrl),
             batch: { multicall: true },
             pollingInterval: this.#config.pollingInterval,
+            cacheTime: 100,
           })
         )
       })
@@ -360,16 +361,19 @@ export class Centrifuge {
     return this._query(['balance', currency, owner, chainId], () => {
       return this.currency(currency, chainId).pipe(
         switchMap((currencyMeta) =>
-          defer(() =>
-            this.getClient(chainId)!
-              .readContract({
-                address: currency as HexString,
-                abi: ABI.Currency,
-                functionName: 'balanceOf',
-                args: [address],
-              })
-              .then((val) => new Balance(val, currencyMeta.decimals))
-          ).pipe(
+          defer(async () => {
+            const val = await this.getClient(chainId)!.readContract({
+              address: currency as HexString,
+              abi: ABI.Currency,
+              functionName: 'balanceOf',
+              args: [address],
+            })
+
+            return {
+              balance: new Balance(val, currencyMeta.decimals),
+              currency: currencyMeta,
+            }
+          }).pipe(
             repeatOnEvents(
               this,
               {
@@ -393,24 +397,16 @@ export class Centrifuge {
   /**
    * Get the decimals of asset
    */
-  assetDecimals(id: PoolId) {
-    return this._query(['assetDecimals', id], () =>
-      this.pool(id).pipe(
-        switchMap((pool) =>
-          pool.currency().pipe(
-            switchMap((currency) =>
-              this._protocolAddresses(pool.chainId).pipe(
-                switchMap(({ hubRegistry }) =>
-                  this.getClient(pool.chainId)!.readContract({
-                    address: hubRegistry,
-                    abi: ABI.HubRegistry,
-                    functionName: 'decimals',
-                    args: [currency.id.raw],
-                  })
-                )
-              )
-            )
-          )
+  assetDecimals(assetId: AssetId, chainId: number) {
+    return this._query(['assetDecimals', assetId.toString()], () =>
+      this._protocolAddresses(chainId).pipe(
+        switchMap(({ hubRegistry }) =>
+          this.getClient(chainId)!.readContract({
+            address: hubRegistry,
+            abi: parseAbi(['function decimals(uint128) view returns (uint8)']),
+            functionName: 'decimals',
+            args: [assetId.raw],
+          })
         )
       )
     )
