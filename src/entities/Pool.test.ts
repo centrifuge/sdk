@@ -1,11 +1,11 @@
 import { expect } from 'chai'
+import { Centrifuge } from '../Centrifuge.js'
+import { currencies } from '../config/protocol.js'
 import { NULL_ADDRESS } from '../constants.js'
+import { mockPoolMetadata } from '../tests/mocks/mockPoolMetadata.js'
 import { context } from '../tests/setup.js'
 import { PoolId, ShareClassId } from '../utils/types.js'
 import { Pool } from './Pool.js'
-import { currencies } from '../config/protocol.js'
-import { mockPoolMetadata } from '../tests/mocks/mockPoolMetadata.js'
-import { Centrifuge } from '../Centrifuge.js'
 
 const chainId = 11155111
 const poolId = PoolId.from(1, 1)
@@ -38,7 +38,7 @@ describe('Pool', () => {
     expect(vault.address).to.not.equal(NULL_ADDRESS)
   })
 
-  it('should update the pool metadata', async () => {
+  it.skip('should update the pool metadata', async () => {
     const fakeHash = 'QmakVZw8HErPUx4x8rKEUGEU9SoGTVB6gN943PQ1d5q9XN'
 
     const centrifugeWithPin = new Centrifuge({

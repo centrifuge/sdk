@@ -37,7 +37,7 @@ export class Investor extends Entity {
   currencyBalances(chainId: number) {
     return this._query(null, () =>
       currencies[chainId]
-        ? combineLatest(currencies[chainId].map((currency) => this._root.balance(this.address, currency, chainId)))
+        ? combineLatest(currencies[chainId].map((currency) => this._root.balance(currency, this.address, chainId)))
         : of([])
     )
   }
