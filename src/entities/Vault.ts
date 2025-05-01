@@ -185,8 +185,8 @@ export class Vault extends Entity {
         ),
         map(([currencyBalance, shareBalance, allowance, investment]) => ({
           ...investment,
-          shareBalance: new Balance(shareBalance.toBigInt(), investment.shareCurrency.decimals),
-          investmentCurrencyBalance: currencyBalance,
+          shareBalance: shareBalance.balance,
+          investmentCurrencyBalance: currencyBalance.balance,
           investmentCurrencyAllowance: allowance,
         }))
       )

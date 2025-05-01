@@ -354,16 +354,19 @@ export class Centrifuge {
     return this._query(['balance', currency, owner, chainId], () => {
       return this.currency(currency, chainId).pipe(
         switchMap((currencyMeta) =>
-          defer(() =>
-            this.getClient(chainId)!
-              .readContract({
-                address: currency as HexString,
-                abi: ABI.Currency,
-                functionName: 'balanceOf',
-                args: [address],
-              })
-              .then((val) => new Balance(val, currencyMeta.decimals))
-          ).pipe(
+          defer(async () => {
+            const val = await this.getClient(chainId)!.readContract({
+              address: currency as HexString,
+              abi: ABI.Currency,
+              functionName: 'balanceOf',
+              args: [address],
+            })
+
+            return {
+              balance: new Balance(val, currencyMeta.decimals),
+              currency: currencyMeta,
+            }
+          }).pipe(
             repeatOnEvents(
               this,
               {
