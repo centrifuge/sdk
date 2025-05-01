@@ -35,7 +35,7 @@ const syncVaultAddress = '0x4c6df866387fe755bd61583a3a1772e7c0dc8903'
 const investorA = '0x5b66af49742157E360A2897e3F480d192305B2b5'
 // Investor with a pending invest order on asyncVaultA
 const investorB = '0x54b1d961678C145a444765bB2d7aD6B029770D35'
-// const investorC = '0x95d340e6d34418D9eBFD2e826b8f61967654C33e'
+const investorC = '0x95d340e6d34418D9eBFD2e826b8f61967654C33e'
 // const investorD = '0x41fe7c3D0b4d8107929c08615adF5038Cb3EAf5C'
 // const investorE = '0x897100032Fb126228dB14D7bD24d770770569AC9'
 
@@ -54,7 +54,7 @@ describe('Vault - Async', () => {
     vault = new Vault(centrifuge, poolNetwork, sc, asset, asyncVaultA)
   })
 
-  it.only('completes the invest/redeem flow', async () => {
+  it('completes the invest/redeem flow', async () => {
     const addresses = await context.centrifuge._protocolAddresses(11155111)
 
     // Add the member
@@ -205,25 +205,33 @@ describe('Vault - Async', () => {
   // })
 
   it('cancels an invest order and claims the tokens back', async () => {
-    const investment = await vault.investment(investorB)
-    expect(investment.hasPendingCancelInvestRequest).to.equal(false)
-    context.tenderlyFork.impersonateAddress = investorB
+    context.tenderlyFork.impersonateAddress = investorC
     context.centrifuge.setSigner(context.tenderlyFork.signer)
-    const [, investment2] = await Promise.all([
+
+    let investment = await vault.investment(investorC)
+
+    ;[, investment] = await Promise.all([
+      lastValueFrom(vault.increaseInvestOrder(defaultAssetsAmount).pipe(toArray())),
+      firstValueFrom(
+        vault.investment(investorC).pipe(skipWhile((i) => !i.pendingInvestCurrency.eq(defaultAssetsAmount.toBigInt())))
+      ),
+    ])
+
+    expect(investment.hasPendingCancelInvestRequest).to.equal(false)
+    ;[, investment] = await Promise.all([
       vault.cancelInvestOrder(),
-      firstValueFrom(vault.investment(investorB).pipe(skip(1))),
+      firstValueFrom(vault.investment(investorC).pipe(skip(1))),
     ])
 
     // Same chain so cancellation is immediate
-    expect(investment2.hasPendingCancelInvestRequest).to.equal(false)
-    expect(investment2.claimableCancelInvestCurrency.toBigInt()).to.equal(defaultAssetsAmount.toBigInt())
-
-    const [, investment3] = await Promise.all([
+    expect(investment.hasPendingCancelInvestRequest).to.equal(false)
+    expect(investment.claimableCancelInvestCurrency.toBigInt()).to.equal(defaultAssetsAmount.toBigInt())
+    ;[, investment] = await Promise.all([
       vault.claim(),
-      firstValueFrom(vault.investment(investorB).pipe(skipWhile((i) => !i.claimableCancelInvestCurrency.isZero()))),
+      firstValueFrom(vault.investment(investorC).pipe(skipWhile((i) => !i.claimableCancelInvestCurrency.isZero()))),
     ])
 
-    expect(investment3.claimableCancelInvestCurrency.toBigInt()).to.equal(0n)
+    expect(investment.claimableCancelInvestCurrency.toBigInt()).to.equal(0n)
   })
 
   it('should throw when trying to cancel a non-existing order', async () => {
