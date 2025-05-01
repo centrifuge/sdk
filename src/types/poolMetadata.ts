@@ -58,7 +58,8 @@ export type PoolMetadata = {
     {
       icon?: FileType | null
       minInitialInvestment?: string
-      targetApy?: number | null // only junior tranche (index: 0) has targetAPY
+      apyPercentage?: number | null
+      apy?: string | null
     }
   >
   loanTemplates?: {

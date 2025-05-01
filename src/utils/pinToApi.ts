@@ -1,9 +1,9 @@
-export async function pinToApi(path: string, url: string, reqInit?: RequestInit) {
-  const res = await fetch(`${new URL(url).toString()}/${path}`, reqInit)
+export const pinToApi = async (url: string, reqInit?: RequestInit) => {
+  const res = await fetch(url, reqInit)
+
   if (!res.ok) {
-    const resText = await res.text()
-    throw new Error(`Error pinning: ${resText}`)
+    const text = await res.text()
+    throw new Error(`Error pinning: ${text}`)
   }
-  const json = await res.json()
-  return json
+  return res.json()
 }

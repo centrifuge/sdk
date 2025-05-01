@@ -11,6 +11,8 @@ export type Config = {
    */
   cache?: boolean
   pollingInterval?: number
+  pinJson?: (json: any) => Promise<string>
+  pinFile?: (b64URI: string) => Promise<string>
 }
 
 export type UserProvidedConfig = Partial<Config>
@@ -20,6 +22,8 @@ export type EnvConfig = {
   infuraKey: string
   defaultChain: number
   ipfsUrl: string
+  pinFile: (b64URI: string) => Promise<string>
+  pinJson: (json: any) => Promise<string>
 }
 export type DerivedConfig = Config & EnvConfig
 export type Client = PublicClient<any, Chain>

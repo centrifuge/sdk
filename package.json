@@ -36,7 +36,7 @@
     "test:ci": "yarn test --reporter mocha-multi-reporters --reporter-options configFile=mocha-reporter-config.json",
     "test:coverage": "c8 yarn test:ci",
     "gen:docs": "typedoc",
-    "format": "prettier --write '**/*.{ts,js,mjs,json,md}'"
+    "format": "prettier --write '**/*.{ts,js,mjs,json,md,yml}'"
   },
   "dependencies": {
     "decimal.js-light": "^2.5.1",

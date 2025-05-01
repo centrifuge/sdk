@@ -54,6 +54,9 @@ import { hashKey } from './utils/query.js'
 import { makeThenable, repeatOnEvents, shareReplayWithDelayedReset } from './utils/rx.js'
 import { doTransaction, isLocalAccount } from './utils/transaction.js'
 import { AssetId, PoolId } from './utils/types.js'
+import { createPinning } from './utils/createPinning.js'
+
+const PINNING_API_DEMO = 'https://europe-central2-peak-vista-185616.cloudfunctions.net/pinning-api-demo'
 
 const envConfig = {
   mainnet: {
@@ -62,6 +65,7 @@ const envConfig = {
     infuraKey: '8ed99a9a115349bbbc01dcf3a24edc96',
     defaultChain: 1,
     ipfsUrl: 'https://centrifuge.mypinata.cloud',
+    ...createPinning(PINNING_API_DEMO),
   },
   demo: {
     indexerUrl: 'https://api.subquery.network/sq/centrifuge/pools-demo-multichain',
@@ -69,6 +73,7 @@ const envConfig = {
     infuraKey: '8cd8e043ee8d4001b97a1c37e08fd9dd',
     defaultChain: 11155111,
     ipfsUrl: 'https://centrifuge.mypinata.cloud',
+    ...createPinning(PINNING_API_DEMO),
   },
   dev: {
     indexerUrl: 'https://api.subquery.network/sq/centrifuge/pools-demo-multichain',
@@ -76,6 +81,7 @@ const envConfig = {
     infuraKey: '8cd8e043ee8d4001b97a1c37e08fd9dd',
     defaultChain: 11155111,
     ipfsUrl: 'https://centrifuge.mypinata.cloud',
+    ...createPinning(PINNING_API_DEMO),
   },
 } satisfies Record<string, EnvConfig>
 
@@ -188,7 +194,8 @@ export class Centrifuge {
       metadataInput.shareClasses.forEach((sc, index) => {
         shareClassesById[scIds[index]!] = {
           minInitialInvestment: Balance.fromFloat(sc.minInvestment, 18).toString(),
-          targetApy: sc.targetApy,
+          apyPercentage: sc.apyPercentage,
+          apy: sc.apy,
         }
       })
 
@@ -385,6 +392,32 @@ export class Centrifuge {
         )
       )
     })
+  }
+
+  /**
+   * Get the decimals of asset
+   */
+  assetDecimals(id: PoolId) {
+    return this._query(['assetDecimals', id], () =>
+      this.pool(id).pipe(
+        switchMap((pool) =>
+          pool.currency().pipe(
+            switchMap((currency) =>
+              this._protocolAddresses(pool.chainId).pipe(
+                switchMap(({ hubRegistry }) =>
+                  this.getClient(pool.chainId)!.readContract({
+                    address: hubRegistry,
+                    abi: ABI.HubRegistry,
+                    functionName: 'decimals',
+                    args: [currency.id.raw],
+                  })
+                )
+              )
+            )
+          )
+        )
+      )
+    )
   }
 
   /**
