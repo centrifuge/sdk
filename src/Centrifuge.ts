@@ -140,6 +140,7 @@ export class Centrifuge {
             transport: http(rpcUrl),
             batch: { multicall: true },
             pollingInterval: this.#config.pollingInterval,
+            cacheTime: 100,
           })
         )
       })

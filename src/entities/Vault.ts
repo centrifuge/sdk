@@ -17,6 +17,8 @@ import { ShareClass } from './ShareClass.js'
 // const ASYNC_CANCEL_DEPOSIT_INTERFACE_ID = '0x8bf840e3'
 // const ASYNC_CANCEL_REDEEM_INTERFACE_ID = '0xe76cffc7'
 
+const ESCROW_HOOK_ID = '0x00000000000000000000000000000000000000ce'
+
 /**
  * Query and interact with a vault, which is the main entry point for investing and redeeming funds.
  * A vault is the combination of a network, a pool, a share class and an investment currency.
@@ -163,7 +165,7 @@ export class Vault extends Entity {
                 vault.read.maxDeposit!([address]),
                 vault.read.maxRedeem!([address]),
                 investmentManager.read.investments!([this.address, address]),
-                share.read.checkTransferRestriction!([address, addresses.globalEscrow, 0n]),
+                share.read.checkTransferRestriction!([address, ESCROW_HOOK_ID, 0n]),
               ])
 
               const [
@@ -244,7 +246,7 @@ export class Vault extends Entity {
 
   /**
    * Place an order to invest funds in the vault. If an order exists, it will increase the amount.
-   * @param investAmount - The amount to invest in the vault
+   * @param amount - The amount to invest in the vault
    */
   increaseInvestOrder(amount: Balance) {
     const self = this
@@ -355,9 +357,9 @@ export class Vault extends Entity {
 
   /**
    * Place an order to redeem funds from the vault. If an order exists, it will increase the amount.
-   * @param redeemAmount - The amount of shares to redeem
+   * @param sharesAmount - The amount of shares to redeem
    */
-  increaseRedeemOrder(amount: Balance) {
+  increaseRedeemOrder(sharesAmount: Balance) {
     const self = this
     return this._transactSequence(async function* ({ walletClient, signingAddress, publicClient }) {
       const [estimate, investment, { vaultRouter }] = await Promise.all([
@@ -367,16 +369,16 @@ export class Vault extends Entity {
       ])
 
       if (!investment.isAllowedToRedeem) throw new Error('Not allowed to redeem')
-      if (investment.investmentCurrency.decimals !== amount.decimals) throw new Error('Invalid amount decimals')
-      if (amount.gt(investment.shareBalance)) throw new Error('Insufficient balance')
-      if (!amount.gt(0n)) throw new Error('Order amount must be greater than 0')
+      if (investment.shareCurrency.decimals !== sharesAmount.decimals) throw new Error('Invalid amount decimals')
+      if (sharesAmount.gt(investment.shareBalance)) throw new Error('Insufficient balance')
+      if (!sharesAmount.gt(0n)) throw new Error('Order amount must be greater than 0')
 
       yield* doTransaction('Redeem', publicClient, () =>
         walletClient.writeContract({
           address: vaultRouter,
           abi: ABI.VaultRouter,
           functionName: 'requestRedeem',
-          args: [self.address, amount.toBigInt(), signingAddress, signingAddress],
+          args: [self.address, sharesAmount.toBigInt(), signingAddress, signingAddress],
           value: estimate,
         })
       )

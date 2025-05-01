@@ -20,6 +20,7 @@ export async function* doTransaction(
   yield { type: 'TransactionPending', title, hash }
   const receipt = await publicClient.waitForTransactionReceipt({ hash })
   if (receipt.status === 'reverted') {
+    console.error('Transaction reverted', receipt)
     throw new TransactionError(receipt)
   }
   const result = { type: 'TransactionConfirmed', title, hash, receipt } as const
