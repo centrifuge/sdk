@@ -210,17 +210,14 @@ export class ShareClass extends Entity {
                 address: restrictionManager,
                 abi: ABI.RestrictionManager,
                 eventName: 'UpdateMember',
-                filter: (events) => (
-                  console.log('ev', events),
+                filter: (events) =>
                   events.some(
                     (event) => event.args.user?.toLowerCase() === addr && event.args.token?.toLowerCase() === share
-                  )
-                ),
+                  ),
               },
               chainId
             ),
-            catchError((e) => {
-              console.log('e', e)
+            catchError(() => {
               // Freeze-only hook doesn't have isMember function
               return of({
                 isMember: false,
