@@ -9,7 +9,7 @@ export default [
   // "function deny(address user)",
   // "function freeze(address token, address user)",
   // "function isFrozen(address token, address user) view returns (bool)",
-  // "function isMember(address token, address user) view returns (bool isValid, uint64 validUntil)",
+  'function isMember(address token, address user) view returns (bool isValid, uint64 validUntil)',
   // "function onERC20AuthTransfer(address, address, address, uint256, (bytes16 from, bytes16 to)) pure returns (bytes4)",
   // "function onERC20Transfer(address from, address to, uint256 value, (bytes16 from, bytes16 to) hookData) returns (bytes4)",
   // "function rely(address user)",

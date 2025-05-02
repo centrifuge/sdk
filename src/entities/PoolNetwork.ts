@@ -3,6 +3,7 @@ import { getContract } from 'viem'
 import { ABI } from '../abi/index.js'
 import type { Centrifuge } from '../Centrifuge.js'
 import { NULL_ADDRESS } from '../constants.js'
+import { HexString } from '../types/index.js'
 import { repeatOnEvents } from '../utils/rx.js'
 import { ShareClassId } from '../utils/types.js'
 import { Entity } from './Entity.js'
@@ -40,14 +41,15 @@ export class PoolNetwork extends Entity {
     return this._query(['share'], () =>
       this._root._protocolAddresses(this.chainId).pipe(
         switchMap(({ poolManager }) =>
-          defer(() =>
-            this._root.getClient(this.chainId)!.readContract({
+          defer(async () => {
+            const address = await this._root.getClient(this.chainId)!.readContract({
               address: poolManager,
               abi: ABI.PoolManager,
               functionName: 'shareToken',
               args: [this.pool.id.raw, scId.raw],
             })
-          ).pipe(
+            return address.toLowerCase() as HexString
+          }).pipe(
             repeatOnEvents(
               this._root,
               {

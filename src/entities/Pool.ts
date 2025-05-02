@@ -95,6 +95,18 @@ export class Pool extends Entity {
     )
   }
 
+  shareClass(scId: ShareClassId) {
+    return this._query(null, () =>
+      this.shareClasses().pipe(
+        map((shareClasses) => {
+          const shareClass = shareClasses.find((sc) => sc.id.equals(scId))
+          if (!shareClass) throw new Error(`Share class ${scId} not found`)
+          return shareClass
+        })
+      )
+    )
+  }
+
   shareClassesDetails() {
     return this._query(null, () => {
       return this.shareClasses().pipe(

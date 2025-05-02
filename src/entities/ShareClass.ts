@@ -1,4 +1,4 @@
-import { combineLatest, defer, map, switchMap } from 'rxjs'
+import { catchError, combineLatest, defer, map, of, switchMap } from 'rxjs'
 import { encodeFunctionData, encodePacked, getContract, parseAbi } from 'viem'
 import { ABI } from '../abi/index.js'
 import type { Centrifuge } from '../Centrifuge.js'
@@ -182,6 +182,57 @@ export class ShareClass extends Entity {
     )
   }
 
+  /**
+   * Check if an address is a member of the share class.
+   * @param address Address to check
+   * @param chainId Chain ID of the network on which to check the member
+   */
+  member(address: string, chainId: number) {
+    const addr = address.toLowerCase()
+    return this._query(['member', addr, chainId], () =>
+      combineLatest([this._share(chainId), this._restrictionManager(chainId)]).pipe(
+        switchMap(([share, restrictionManager]) =>
+          defer(async () => {
+            const res = await this._root.getClient(this.pool.chainId)!.readContract({
+              address: restrictionManager,
+              abi: ABI.RestrictionManager,
+              functionName: 'isMember',
+              args: [share, addr as HexString],
+            })
+            return {
+              isMember: res[0],
+              validUntil: new Date(Number(res[1]) * 1000),
+            }
+          }).pipe(
+            repeatOnEvents(
+              this._root,
+              {
+                address: restrictionManager,
+                abi: ABI.RestrictionManager,
+                eventName: 'UpdateMember',
+                filter: (events) => (
+                  console.log('ev', events),
+                  events.some(
+                    (event) => event.args.user?.toLowerCase() === addr && event.args.token?.toLowerCase() === share
+                  )
+                ),
+              },
+              chainId
+            ),
+            catchError((e) => {
+              console.log('e', e)
+              // Freeze-only hook doesn't have isMember function
+              return of({
+                isMember: false,
+                validUntil: new Date(0),
+              })
+            })
+          )
+        )
+      )
+    )
+  }
+
   notifyAssetPrice(assetId: AssetId) {
     const self = this
     return this._transactSequence(async function* ({ walletClient, publicClient }) {
@@ -351,6 +402,12 @@ export class ShareClass extends Entity {
     }, this.pool.chainId)
   }
 
+  /**
+   * Update a member of the share class.
+   * @param address Address of the investor
+   * @param validUntil Time in seconds from Unix epoch until the investor is valid
+   * @param chainId Chain ID of the network on which to update the member
+   */
   updateMember(address: string, validUntil: number, chainId: number) {
     const self = this
     return this._transactSequence(async function* ({ walletClient, publicClient }) {
@@ -533,5 +590,28 @@ export class ShareClass extends Entity {
         })
       )
     }, this.pool.chainId)
+  }
+
+  /** @internal */
+  _share(chainId: number) {
+    return this._query(null, () => this.pool.network(chainId).pipe(switchMap((network) => network._share(this.id))))
+  }
+
+  /** @internal */
+  _restrictionManager(chainId: number) {
+    return this._query(['restrictionManager', chainId], () =>
+      this._share(chainId).pipe(
+        switchMap((share) =>
+          defer(async () => {
+            const address = await this._root.getClient(this.pool.chainId)!.readContract({
+              address: share,
+              abi: ABI.Currency,
+              functionName: 'hook',
+            })
+            return address.toLowerCase() as HexString
+          })
+        )
+      )
+    )
   }
 }
