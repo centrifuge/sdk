@@ -1,4 +1,5 @@
 import { expect } from 'chai'
+import { firstValueFrom, skip } from 'rxjs'
 import { Centrifuge } from '../Centrifuge.js'
 import { currencies } from '../config/protocol.js'
 import { NULL_ADDRESS } from '../constants.js'
@@ -38,8 +39,8 @@ describe('Pool', () => {
     expect(vault.address).to.not.equal(NULL_ADDRESS)
   })
 
-  it.skip('should update the pool metadata', async () => {
-    const fakeHash = 'QmakVZw8HErPUx4x8rKEUGEU9SoGTVB6gN943PQ1d5q9XN'
+  it('should update the pool metadata', async () => {
+    const fakeHash = 'QmPdzJkZ4PVJ21HfBXMJbGopSpUP9C9fqu3A1f9ZVhtRY2'
 
     const centrifugeWithPin = new Centrifuge({
       environment: 'demo',
@@ -47,16 +48,26 @@ describe('Pool', () => {
         expect(data).to.deep.equal(mockPoolMetadata)
         return fakeHash
       },
+      rpcUrls: {
+        11155111: context.tenderlyFork.rpcUrl,
+      },
     })
 
     const pool = await centrifugeWithPin.pool(poolId)
 
+    const detailsBefore = await pool.details()
+    expect(detailsBefore.metadata).to.equal(null)
+
     context.tenderlyFork.impersonateAddress = poolManager
     centrifugeWithPin.setSigner(context.tenderlyFork.signer)
 
-    const result = await pool.updateMetadata(mockPoolMetadata)
+    const [result, detailsAfter] = await Promise.all([
+      pool.updateMetadata(mockPoolMetadata),
+      firstValueFrom(pool.details().pipe(skip(1))),
+    ])
 
     expect(result.type).to.equal('TransactionConfirmed')
+    expect(detailsAfter.metadata?.pool.asset.class).to.equal('Private credit')
   })
 
   it('should return the currency of the pool', async () => {
