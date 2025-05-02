@@ -33,6 +33,47 @@ describe('Centrifuge', () => {
     expect(chains).to.include(chainId)
   })
 
+  it('should fetch protocol addresses for the demo chain (sepolia)', async () => {
+    const expectedContractKeys = [
+      'root',
+      'adminSafe',
+      'guardian',
+      'gasService',
+      'gateway',
+      'messageProcessor',
+      'messageDispatcher',
+      'hubRegistry',
+      'accounting',
+      'holdings',
+      'shareClassManager',
+      'hub',
+      'identityValuation',
+      'poolEscrowFactory',
+      'routerEscrow',
+      'globalEscrow',
+      'freezeOnlyHook',
+      'redemptionRestrictionsHook',
+      'fullRestrictionsHook',
+      'tokenFactory',
+      'asyncRequestManager',
+      'syncRequestManager',
+      'asyncVaultFactory',
+      'syncDepositVaultFactory',
+      'poolManager',
+      'vaultRouter',
+      'currencies',
+    ]
+
+    const centrifuge = new Centrifuge({ environment: 'demo' })
+    const chainId = centrifuge.config.defaultChain
+
+    const result = await centrifuge._protocolAddresses(chainId)
+
+    expect(result).to.be.an('object')
+    expect(Object.keys(result)).to.be.eql(expectedContractKeys)
+    expect(result.currencies).to.be.an('array')
+  })
+
   describe('Queries', () => {
     it('should fetch a pool by id', async () => {
       const pool = await context.centrifuge.pool(poolId)
