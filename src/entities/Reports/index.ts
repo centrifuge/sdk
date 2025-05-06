@@ -228,7 +228,7 @@ export class Reports extends Entity {
         }
       },
       {
-        valueCacheTime: 120,
+        valueCacheTime: 120_000,
       }
     )
   }
