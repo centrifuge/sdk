@@ -34,6 +34,16 @@ export class Investor extends Entity {
     )
   }
 
+  isMember(scId: ShareClassId, chainId: number) {
+    return this._query(null, () =>
+      this._root.pool(scId.poolId).pipe(
+        switchMap((pool) => pool.shareClass(scId)),
+        switchMap((shareClass) => shareClass.member(this.address, chainId)),
+        map(({ isMember }) => isMember)
+      )
+    )
+  }
+
   currencyBalances(chainId: number) {
     return this._query(null, () =>
       currencies[chainId]

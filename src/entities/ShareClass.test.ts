@@ -1,4 +1,5 @@
 import { expect } from 'chai'
+import { firstValueFrom, skipWhile } from 'rxjs'
 import { context } from '../tests/setup.js'
 import { AccountType } from '../types/holdings.js'
 import { Balance } from '../utils/BigInt.js'
@@ -11,8 +12,7 @@ const poolId = PoolId.from(1, 1)
 const scId = ShareClassId.from(poolId, 1)
 const assetId = AssetId.from(1, 1)
 
-// const fundManager = '0x423420Ae467df6e90291fd0252c0A8a637C1e03f'
-// const investorB = '0x54b1d961678C145a444765bB2d7aD6B029770D35'
+const fundManager = '0x423420Ae467df6e90291fd0252c0A8a637C1e03f'
 
 describe('ShareClass', () => {
   let shareClass: ShareClass
@@ -46,6 +46,24 @@ describe('ShareClass', () => {
     expect(holding.value.decimals).to.equal(18)
     expect(holding.accounts[AccountType.Asset]).not.to.be.undefined
     expect(holding.accounts[AccountType.Equity]).not.to.be.undefined
+  })
+
+  it('updates a member', async () => {
+    const investor = randomAddress()
+    const memberBefore = await shareClass.member(investor, chainId)
+
+    expect(memberBefore.isMember).to.equal(false)
+
+    context.tenderlyFork.impersonateAddress = fundManager
+    context.centrifuge.setSigner(context.tenderlyFork.signer)
+
+    const [, memberAfter] = await Promise.all([
+      shareClass.updateMember(investor, 1800000000, chainId),
+      firstValueFrom(shareClass.member(investor, chainId).pipe(skipWhile((m) => !m.isMember))),
+    ])
+
+    expect(memberAfter.isMember).to.equal(true)
+    expect(memberAfter.validUntil.toISOString()).to.equal(new Date(1800000000 * 1000).toISOString())
   })
 
   // Done in Vault.test.ts
@@ -82,3 +100,7 @@ describe('ShareClass', () => {
 // function arrLocation(slot: bigint, index: bigint, elementSize: bigint) {
 //   return hexToBigInt(keccak256(toHex(slot))) + index * elementSize
 // }
+
+function randomAddress() {
+  return `0x${Math.random().toString(16).slice(2).padStart(40, '0')}`
+}
