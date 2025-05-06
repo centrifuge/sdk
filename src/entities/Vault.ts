@@ -226,7 +226,7 @@ export class Vault extends Entity {
               self.chainId,
               signingAddress,
               investmentCurrency.address,
-              self.address,
+              isSyncDeposit ? vaultRouter : self.address,
               amount.toBigInt()
             )
           )
@@ -236,7 +236,8 @@ export class Vault extends Entity {
               address: investmentCurrency.address,
               abi: ABI.Currency,
               functionName: 'approve',
-              args: [self.address, amount.toBigInt()],
+              // For async deposits, the vault is the spender, for sync deposits, the vault router is the spender
+              args: [isSyncDeposit ? vaultRouter : self.address, amount.toBigInt()],
             })
           )
         }
