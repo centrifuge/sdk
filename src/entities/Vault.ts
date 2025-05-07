@@ -226,7 +226,7 @@ export class Vault extends Entity {
               self.chainId,
               signingAddress,
               investmentCurrency.address,
-              vaultRouter,
+              isSyncDeposit ? vaultRouter : self.address,
               amount.toBigInt()
             )
           )
@@ -236,7 +236,8 @@ export class Vault extends Entity {
               address: investmentCurrency.address,
               abi: ABI.Currency,
               functionName: 'approve',
-              args: [vaultRouter, amount.toBigInt()],
+              // For async deposits, the vault is the spender, for sync deposits, the vault router is the spender
+              args: [isSyncDeposit ? vaultRouter : self.address, amount.toBigInt()],
             })
           )
         }
@@ -254,13 +255,13 @@ export class Vault extends Entity {
       } else {
         const enableData = encodeFunctionData({
           abi: ABI.VaultRouter,
-          functionName: 'enableLockDepositRequest',
-          args: [self.address, amount.toBigInt()],
+          functionName: 'enable',
+          args: [self.address],
         })
         const requestData = encodeFunctionData({
           abi: ABI.VaultRouter,
-          functionName: 'executeLockedDepositRequest',
-          args: [self.address, signingAddress],
+          functionName: 'requestDeposit',
+          args: [self.address, amount.toBigInt(), signingAddress, signingAddress],
         })
         const permitData =
           permit &&
@@ -282,7 +283,7 @@ export class Vault extends Entity {
             address: vaultRouter,
             abi: ABI.VaultRouter,
             functionName: 'multicall',
-            args: [[enableData as any, requestData, permitData].filter(Boolean)],
+            args: [[permitData as any, enableData, requestData].filter(Boolean)],
             value: estimate, // only one message is sent as a result of the multicall
           })
         )

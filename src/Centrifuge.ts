@@ -498,7 +498,7 @@ export class Centrifuge {
       [query, variables],
       () => this._getIndexerObservable(query, variables).pipe(map(postProcess ?? identity)),
       {
-        valueCacheTime: 120,
+        valueCacheTime: 120_000,
       }
     )
   }
@@ -591,7 +591,7 @@ export class Centrifuge {
    * // Wrap an observable that only emits one value and then completes
    * const query = this._query(['balance', address, tUSD, chainId], () => {
    *   return defer(() => fetchBalance(address, tUSD, chainId))
-   * }, { valueCacheTime: 60 })
+   * }, { valueCacheTime: 60_000 })
    *
    * // Logs the current balance and updated balances whenever a new
    * const obs1 = query.subscribe(balance => console.log(balance))
@@ -616,6 +616,7 @@ export class Centrifuge {
    */
   _query<T>(keys: any[] | null, observableCallback: () => Observable<T>, options?: CentrifugeQueryOptions): Query<T> {
     const cache = options?.cache !== false && this.#config.cache !== false
+    const obsCacheTime = options?.observableCacheTime ?? this.#config.pollingInterval ?? 4000
     function get() {
       const sharedSubject = new Subject<Observable<T>>()
       function createShared(): Observable<T> {
@@ -623,8 +624,8 @@ export class Centrifuge {
           keys
             ? shareReplayWithDelayedReset({
                 bufferSize: cache ? 1 : 0,
-                resetDelay: cache ? (options?.observableCacheTime ?? 60) * 1000 : 0,
-                windowTime: (options?.valueCacheTime ?? Infinity) * 1000,
+                resetDelay: cache ? obsCacheTime : 0,
+                windowTime: options?.valueCacheTime ?? Infinity,
               })
             : map((val) => val)
         )
@@ -839,7 +840,7 @@ export class Centrifuge {
             })
           )
         ),
-      { valueCacheTime: 120 }
+      { valueCacheTime: 120_000 }
     )
   }
 
