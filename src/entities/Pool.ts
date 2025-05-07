@@ -50,6 +50,9 @@ export class Pool extends Entity {
     )
   }
 
+  /**
+   * Get the metadata of the pool.
+   */
   metadata() {
     return this._query(['metadata'], () =>
       this._root._protocolAddresses(this.chainId).pipe(
