@@ -13,6 +13,7 @@ const chainId = 11155111
 const poolId = PoolId.from(1, 1)
 const assetId = AssetId.from(1, 1)
 const asset = currencies[chainId]![0]!
+const fundManager = '0x423420Ae467df6e90291fd0252c0A8a637C1e03f'
 
 describe('Centrifuge', () => {
   let clock: sinon.SinonFakeTimers
@@ -442,6 +443,15 @@ describe('Centrifuge', () => {
           receipt: {},
         },
       ])
+    })
+
+    it.only('should throw an error if the asset is already registered', async () => {
+      const assetAddress = '0xa579ed7cb143154c0a3fd43e287c6e4de1ff59da'
+      context.tenderlyFork.impersonateAddress = fundManager
+      context.centrifuge.setSigner(context.tenderlyFork.signer)
+
+      const tx = await context.centrifuge.registerAsset(chainId, assetAddress, 0)
+      await expect(tx).to.have.property('status').to.equal('reverted')
     })
   })
 })
