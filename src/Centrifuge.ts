@@ -413,6 +413,24 @@ export class Centrifuge {
   }
 
   /**
+   * Register an asset
+   */
+  registerAsset(chainId: number, assetAddress: string, tokenId: bigint) {
+    const self = this
+    return this._transactSequence(async function* ({ walletClient, signingAddress, publicClient }) {
+      const [addresses, id] = await Promise.all([self._protocolAddresses(chainId), self.id(chainId)])
+      const result = yield* doTransaction('Register asset', publicClient, () =>
+        walletClient.writeContract({
+          address: addresses.poolManager,
+          abi: ABI.PoolManager,
+          functionName: 'registerAsset',
+          args: [id, assetAddress as HexString, tokenId],
+        })
+      )
+    }, chainId)
+  }
+
+  /**
    * Returns an observable of all events on a given chain.
    * @internal
    */
