@@ -1,4 +1,4 @@
-import { expect } from 'chai'
+import { expect, use } from 'chai'
 import { combineLatest, defer, firstValueFrom, interval, map, of, Subject, take, tap, toArray } from 'rxjs'
 import sinon from 'sinon'
 import { createClient, custom } from 'viem'
@@ -8,11 +8,15 @@ import { context } from './tests/setup.js'
 import { Balance } from './utils/BigInt.js'
 import { doSignMessage, doTransaction } from './utils/transaction.js'
 import { AssetId, PoolId } from './utils/types.js'
+import chaiAsPromised from 'chai-as-promised'
+
+use(chaiAsPromised)
 
 const chainId = 11155111
 const poolId = PoolId.from(1, 1)
 const assetId = AssetId.from(1, 1)
 const asset = currencies[chainId]![0]!
+const fundManager = '0x423420Ae467df6e90291fd0252c0A8a637C1e03f'
 
 describe('Centrifuge', () => {
   let clock: sinon.SinonFakeTimers
@@ -442,6 +446,25 @@ describe('Centrifuge', () => {
           receipt: {},
         },
       ])
+    })
+
+    it.only('should register an asset', async () => {
+      const centrifuge = new Centrifuge({
+        environment: 'demo',
+        rpcUrls: {
+          11155111: context.tenderlyFork.rpcUrl,
+        },
+      })
+
+      const assetAddress = '0x86eb50b22dd226fe5d1f0753a40e247fd711ad6e'
+      context.tenderlyFork.impersonateAddress = fundManager
+      centrifuge.setSigner(context.tenderlyFork.signer)
+
+      const tx = await centrifuge.registerAsset(chainId, assetAddress, 0)
+      await expect(tx).to.have.property('id')
+
+      // Expect the second call to revert
+      await expect(centrifuge.registerAsset(chainId, assetAddress, 0)).to.be.rejectedWith('Transaction reverted')
     })
   })
 })
