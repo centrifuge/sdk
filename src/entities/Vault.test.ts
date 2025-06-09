@@ -1,6 +1,5 @@
 import { expect } from 'chai'
 import { firstValueFrom, lastValueFrom, skip, skipWhile, tap, toArray } from 'rxjs'
-import { encodePacked } from 'viem'
 import { currencies } from '../config/protocol.js'
 import { context } from '../tests/setup.js'
 import { Balance, Price } from '../utils/BigInt.js'
@@ -55,8 +54,6 @@ describe('Vault - Async', () => {
   })
 
   it('completes the invest/redeem flow', async () => {
-    const addresses = await context.centrifuge._protocolAddresses(11155111)
-
     let investment = await vault.investment(investorA)
     expect(investment.isAllowedToRedeem).to.equal(false)
     expect(investment.isSyncInvest).to.equal(false)
@@ -64,12 +61,7 @@ describe('Vault - Async', () => {
     context.tenderlyFork.impersonateAddress = fundManager
     context.centrifuge.setSigner(context.tenderlyFork.signer)
 
-    // Set max age of asset price
-    const payload = encodePacked(
-      ['uint8', 'uint128', 'uint64'],
-      [/* UpdateContract.MaxAssetPriceAge */ 3, assetId.raw, 9999999999999n]
-    )
-    await vault.shareClass._updateContract(11155111, addresses.poolManager, payload)
+    await vault.shareClass.setMaxAssetPriceAge(assetId, 9999999999999)
 
     // Make sure price is up-to-date
     await vault.shareClass.notifyAssetPrice(assetId)
@@ -276,22 +268,13 @@ describe('Vault - Sync invest', () => {
   })
 
   it('invests', async () => {
-    const addresses = await context.centrifuge._protocolAddresses(11155111)
-
     const investmentBefore = await vault.investment(investorA)
 
     context.tenderlyFork.impersonateAddress = fundManager
     context.centrifuge.setSigner(context.tenderlyFork.signer)
 
-    // Set max age of asset/share price
-    const payload = encodePacked(
-      ['uint8', 'uint128', 'uint64'],
-      [/* UpdateContract.MaxAssetPriceAge */ 3, assetId.raw, 9999999999999n]
-    )
-    await vault.shareClass._updateContract(11155111, addresses.poolManager, payload)
-
-    const payload2 = encodePacked(['uint8', 'uint64'], [/* UpdateContract.MaxSharePriceAge */ 4, 9999999999999n])
-    await vault.shareClass._updateContract(11155111, addresses.poolManager, payload2)
+    await vault.shareClass.setMaxAssetPriceAge(assetId, 9999999999999)
+    await vault.shareClass.setMaxSharePriceAge(11155111, 9999999999999)
 
     // Make sure price is up-to-date
     await vault.shareClass.notifyAssetPrice(assetId)

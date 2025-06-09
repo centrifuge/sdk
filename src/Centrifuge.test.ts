@@ -40,6 +40,7 @@ describe('Centrifuge', () => {
       'guardian',
       'gasService',
       'gateway',
+      'multiAdapter',
       'messageProcessor',
       'messageDispatcher',
       'hubRegistry',
@@ -59,9 +60,9 @@ describe('Centrifuge', () => {
       'syncRequestManager',
       'asyncVaultFactory',
       'syncDepositVaultFactory',
-      'poolManager',
+      'spoke',
       'vaultRouter',
-      'currencies',
+      'balanceSheet',
     ]
 
     const centrifuge = new Centrifuge({ environment: 'demo' })

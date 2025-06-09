@@ -40,11 +40,11 @@ export class PoolNetwork extends Entity {
   _share(scId: ShareClassId) {
     return this._query(['share'], () =>
       this._root._protocolAddresses(this.chainId).pipe(
-        switchMap(({ poolManager }) =>
+        switchMap(({ spoke }) =>
           defer(async () => {
             const address = await this._root.getClient(this.chainId)!.readContract({
-              address: poolManager,
-              abi: ABI.PoolManager,
+              address: spoke,
+              abi: ABI.Spoke,
               functionName: 'shareToken',
               args: [this.pool.id.raw, scId.raw],
             })
@@ -53,8 +53,8 @@ export class PoolNetwork extends Entity {
             repeatOnEvents(
               this._root,
               {
-                address: poolManager,
-                abi: ABI.PoolManager,
+                address: spoke,
+                abi: ABI.Spoke,
                 eventName: 'AddShareClass',
                 filter: (events) => {
                   return events.some((event) => event.args.poolId === this.pool.id.raw && event.args.scId === scId.raw)
@@ -86,7 +86,7 @@ export class PoolNetwork extends Entity {
   vaults(scId: ShareClassId) {
     return this._query(['vaults', scId.toString()], () =>
       this._root._protocolAddresses(this.chainId).pipe(
-        switchMap(({ poolManager, vaultRouter, currencies }) =>
+        switchMap(({ spoke, vaultRouter, currencies }) =>
           defer(async () => {
             if (!currencies.length) return []
             const contract = getContract({
@@ -109,8 +109,8 @@ export class PoolNetwork extends Entity {
             repeatOnEvents(
               this._root,
               {
-                address: poolManager,
-                abi: ABI.PoolManager,
+                address: spoke,
+                abi: ABI.Spoke,
                 eventName: 'DeployVault',
                 filter: (events) => {
                   return events.some((event) => event.args.poolId === this.pool.id.raw && event.args.scId === scId.raw)
@@ -165,12 +165,12 @@ export class PoolNetwork extends Entity {
   isActive() {
     return this._query(['isActive'], () =>
       this._root._protocolAddresses(this.chainId).pipe(
-        switchMap(({ poolManager }) => {
+        switchMap(({ spoke }) => {
           return defer(
             () =>
               this._root.getClient(this.chainId)!.readContract({
-                address: poolManager,
-                abi: ABI.PoolManager,
+                address: spoke,
+                abi: ABI.Spoke,
                 functionName: 'isPoolActive',
                 args: [this.pool.id.raw],
               }) as Promise<boolean>
@@ -178,8 +178,8 @@ export class PoolNetwork extends Entity {
             repeatOnEvents(
               this._root,
               {
-                address: poolManager,
-                abi: ABI.PoolManager,
+                address: spoke,
+                abi: ABI.Spoke,
                 eventName: 'AddPool',
                 filter: (events) => {
                   return events.some((event) => {
@@ -207,7 +207,7 @@ export class PoolNetwork extends Entity {
   //           () =>
   //             this._root.getClient(this.chainId)!.readContract({
   //               address: manager,
-  //               abi: ABI.PoolManager,
+  //               abi: ABI.Spoke,
   //               functionName: 'canTrancheBeDeployed',
   //               args: [this.pool.id as any, scId as any],
   //             }) as Promise<boolean>
@@ -216,7 +216,7 @@ export class PoolNetwork extends Entity {
   //             this._root,
   //             {
   //               address: manager,
-  //               abi: ABI.PoolManager,
+  //               abi: ABI.Spoke,
   //               eventName: 'DeployTranche',
   //               filter: (events) => {
   //                 return events.some((event) => String(event.args.poolId) === this.pool.id && event.args.scId === scId)
@@ -245,7 +245,7 @@ export class PoolNetwork extends Entity {
   //     yield* doTransaction('Deploy tranche', publicClient, () =>
   //       walletClient.writeContract({
   //         address: poolManager,
-  //         abi: ABI.PoolManager,
+  //         abi: ABI.Spoke,
   //         functionName: 'deployTranche',
   //         args: [self.pool.id as any, scId as any, trancheFactory],
   //       })
@@ -266,7 +266,7 @@ export class PoolNetwork extends Entity {
   //     yield* doTransaction('Deploy vault', publicClient, () =>
   //       walletClient.writeContract({
   //         address: poolManager,
-  //         abi: ABI.PoolManager,
+  //         abi: ABI.Spoke,
   //         functionName: 'deployVault',
   //         args: [self.pool.id as any, scId as any, currencyAddress as any],
   //       })

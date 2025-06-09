@@ -44,6 +44,7 @@ export type ProtocolContracts = {
   guardian: HexString
   gasService: HexString
   gateway: HexString
+  multiAdapter: HexString
   messageProcessor: HexString
   messageDispatcher: HexString
   hubRegistry: HexString
@@ -63,6 +64,7 @@ export type ProtocolContracts = {
   syncRequestManager: HexString
   asyncVaultFactory: HexString
   syncDepositVaultFactory: HexString
-  poolManager: HexString
+  spoke: HexString
   vaultRouter: HexString
+  balanceSheet: HexString
 }

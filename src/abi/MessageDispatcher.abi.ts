@@ -13,7 +13,7 @@ export default [
   // 'function hub() view returns (address)',
   // 'function investmentManager() view returns (address)',
   'function localCentrifugeId() view returns (uint16)',
-  // 'function poolManager() view returns (address)',
+  // 'function spoke() view returns (address)',
   // 'function rely(address user)',
   // 'function root() view returns (address)',
   // 'function sendApprovedDeposits(uint64 poolId, bytes16 scId, uint128 assetId, uint128 assetAmount)',
