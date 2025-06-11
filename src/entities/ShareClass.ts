@@ -522,7 +522,13 @@ export class ShareClass extends Entity {
               {
                 address: shareClassManager,
                 abi: ABI.ShareClassManager,
-                eventName: ['RevokeShares', 'IssueShares', 'RemoteIssueShares', 'RemoteRevokeShares'],
+                eventName: [
+                  'RevokeShares',
+                  'IssueShares',
+                  'RemoteIssueShares',
+                  'RemoteRevokeShares',
+                  'UpdateShareClass',
+                ],
                 filter: (events) => {
                   return events.some((event) => {
                     return event.args.scId === this.id.raw
@@ -583,6 +589,8 @@ export class ShareClass extends Entity {
                   'ApproveRedeems',
                   'IssueShares',
                   'RevokeShares',
+                  'RemoteIssueShares',
+                  'RemoteRevokeShares',
                   'UpdateDepositRequest',
                   'UpdateRedeemRequest',
                 ],

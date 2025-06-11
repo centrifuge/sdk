@@ -63,6 +63,7 @@ describe('Centrifuge', () => {
       'spoke',
       'vaultRouter',
       'balanceSheet',
+      'currencies',
     ]
 
     const centrifuge = new Centrifuge({ environment: 'demo' })
