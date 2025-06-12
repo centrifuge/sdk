@@ -40,6 +40,7 @@ describe('Centrifuge', () => {
       'guardian',
       'gasService',
       'gateway',
+      'multiAdapter',
       'messageProcessor',
       'messageDispatcher',
       'hubRegistry',
@@ -59,8 +60,9 @@ describe('Centrifuge', () => {
       'syncRequestManager',
       'asyncVaultFactory',
       'syncDepositVaultFactory',
-      'poolManager',
+      'spoke',
       'vaultRouter',
+      'balanceSheet',
       'currencies',
     ]
 

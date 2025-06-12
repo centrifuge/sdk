@@ -1,6 +1,5 @@
 import { expect } from 'chai'
 import { firstValueFrom, lastValueFrom, skip, skipWhile, tap, toArray } from 'rxjs'
-import { encodePacked } from 'viem'
 import { currencies } from '../config/protocol.js'
 import { context } from '../tests/setup.js'
 import { Balance, Price } from '../utils/BigInt.js'
@@ -19,21 +18,20 @@ const scId = ShareClassId.from(poolId, 1)
 const assetId = AssetId.from(1, 1)
 
 // Async deposit/redeem vault with permissioned redeem
-const asyncVaultAddress = '0x914fd615c6dae76085579edec2fdda1b039184ca'
+const asyncVaultAddress = '0xfca2a5d1f105444364d25420a6a49de5e9c70529'
 
 // Pool with sync deposit vault, and permissioned async redeem
 const poolId2 = PoolId.from(1, 2)
 const scId2 = ShareClassId.from(poolId2, 1)
-const syncVaultAddress = '0x4c6df866387fe755bd61583a3a1772e7c0dc8903'
+const syncVaultAddress = '0xfa98f44ff01af2c3e5e572bf21546eaeef2f455e'
 
 // Active investor with a pending redeem order
 // Investor with a pending invest order on async vault
 // Investor with a claimable cancel deposit on async vault
 // Investor with a claimable invest order
 
-// Investor with no orders on async vault
+// Investors with no orders on async vault
 const investorA = '0x5b66af49742157E360A2897e3F480d192305B2b5'
-// Investor with a pending invest order on async vault
 const investorB = '0x54b1d961678C145a444765bB2d7aD6B029770D35'
 const investorC = '0x95d340e6d34418D9eBFD2e826b8f61967654C33e'
 // const investorD = '0x41fe7c3D0b4d8107929c08615adF5038Cb3EAf5C'
@@ -55,8 +53,6 @@ describe('Vault - Async', () => {
   })
 
   it('completes the invest/redeem flow', async () => {
-    const addresses = await context.centrifuge._protocolAddresses(11155111)
-
     let investment = await vault.investment(investorA)
     expect(investment.isAllowedToRedeem).to.equal(false)
     expect(investment.isSyncInvest).to.equal(false)
@@ -64,12 +60,7 @@ describe('Vault - Async', () => {
     context.tenderlyFork.impersonateAddress = fundManager
     context.centrifuge.setSigner(context.tenderlyFork.signer)
 
-    // Set max age of asset price
-    const payload = encodePacked(
-      ['uint8', 'uint128', 'uint64'],
-      [/* UpdateContract.MaxAssetPriceAge */ 3, assetId.raw, 9999999999999n]
-    )
-    await vault.shareClass._updateContract(11155111, addresses.poolManager, payload)
+    await vault.shareClass.setMaxAssetPriceAge(assetId, 9999999999999)
 
     // Make sure price is up-to-date
     await vault.shareClass.notifyAssetPrice(assetId)
@@ -79,6 +70,8 @@ describe('Vault - Async', () => {
       vault.shareClass.updateMember(investorA, 1800000000, 11155111),
       firstValueFrom(vault.investment(investorA).pipe(skip(1))),
     ])
+
+    console.log('member updated')
 
     expect(investment.isAllowedToInvest).to.equal(true)
     expect(investment.isAllowedToRedeem).to.equal(true)
@@ -96,7 +89,12 @@ describe('Vault - Async', () => {
     ;[result, investment] = await Promise.all([
       lastValueFrom(vault.increaseInvestOrder(defaultAssetsAmount).pipe(toArray())),
       firstValueFrom(
-        vault.investment(investorA).pipe(skipWhile((i) => !i.pendingInvestCurrency.eq(defaultAssetsAmount.toBigInt())))
+        vault.investment(investorA).pipe(
+          skipWhile((i) => {
+            console.log('investment update', i.pendingInvestCurrency.toBigInt())
+            return !i.pendingInvestCurrency.eq(defaultAssetsAmount.toBigInt())
+          })
+        )
       ),
     ])
 
@@ -276,22 +274,13 @@ describe('Vault - Sync invest', () => {
   })
 
   it('invests', async () => {
-    const addresses = await context.centrifuge._protocolAddresses(11155111)
-
     const investmentBefore = await vault.investment(investorA)
 
     context.tenderlyFork.impersonateAddress = fundManager
     context.centrifuge.setSigner(context.tenderlyFork.signer)
 
-    // Set max age of asset/share price
-    const payload = encodePacked(
-      ['uint8', 'uint128', 'uint64'],
-      [/* UpdateContract.MaxAssetPriceAge */ 3, assetId.raw, 9999999999999n]
-    )
-    await vault.shareClass._updateContract(11155111, addresses.poolManager, payload)
-
-    const payload2 = encodePacked(['uint8', 'uint64'], [/* UpdateContract.MaxSharePriceAge */ 4, 9999999999999n])
-    await vault.shareClass._updateContract(11155111, addresses.poolManager, payload2)
+    await vault.shareClass.setMaxAssetPriceAge(assetId, 9999999999999)
+    await vault.shareClass.setMaxSharePriceAge(11155111, 9999999999999)
 
     // Make sure price is up-to-date
     await vault.shareClass.notifyAssetPrice(assetId)
