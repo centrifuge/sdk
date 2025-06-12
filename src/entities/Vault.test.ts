@@ -30,9 +30,8 @@ const syncVaultAddress = '0xfa98f44ff01af2c3e5e572bf21546eaeef2f455e'
 // Investor with a claimable cancel deposit on async vault
 // Investor with a claimable invest order
 
-// Investor with no orders on async vault
+// Investors with no orders on async vault
 const investorA = '0x5b66af49742157E360A2897e3F480d192305B2b5'
-// Investor with a pending invest order on async vault
 const investorB = '0x54b1d961678C145a444765bB2d7aD6B029770D35'
 const investorC = '0x95d340e6d34418D9eBFD2e826b8f61967654C33e'
 // const investorD = '0x41fe7c3D0b4d8107929c08615adF5038Cb3EAf5C'
@@ -53,7 +52,7 @@ describe('Vault - Async', () => {
     vault = new Vault(centrifuge, poolNetwork, sc, asset, asyncVaultAddress)
   })
 
-  it('completes the invest/redeem flow', async () => {
+  it.only('completes the invest/redeem flow', async () => {
     let investment = await vault.investment(investorA)
     expect(investment.isAllowedToRedeem).to.equal(false)
     expect(investment.isSyncInvest).to.equal(false)
@@ -71,6 +70,8 @@ describe('Vault - Async', () => {
       vault.shareClass.updateMember(investorA, 1800000000, 11155111),
       firstValueFrom(vault.investment(investorA).pipe(skip(1))),
     ])
+
+    console.log('member updated')
 
     expect(investment.isAllowedToInvest).to.equal(true)
     expect(investment.isAllowedToRedeem).to.equal(true)

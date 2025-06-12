@@ -827,7 +827,7 @@ export class Centrifuge {
               const [quote, quoteDecimals] = await Promise.all([
                 this.getClient(chainId)!.readContract({
                   address: valuationAddress as HexString,
-                  abi: ABI.IERC7726,
+                  abi: ABI.Valuation,
                   functionName: 'getQuote',
                   args: [baseAmount.toBigInt(), baseAssetId.addr, quoteAssetId.addr],
                 }),
