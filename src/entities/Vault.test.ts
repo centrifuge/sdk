@@ -52,7 +52,7 @@ describe('Vault - Async', () => {
     vault = new Vault(centrifuge, poolNetwork, sc, asset, asyncVaultAddress)
   })
 
-  it.only('completes the invest/redeem flow', async () => {
+  it('completes the invest/redeem flow', async () => {
     let investment = await vault.investment(investorA)
     expect(investment.isAllowedToRedeem).to.equal(false)
     expect(investment.isSyncInvest).to.equal(false)
@@ -89,7 +89,12 @@ describe('Vault - Async', () => {
     ;[result, investment] = await Promise.all([
       lastValueFrom(vault.increaseInvestOrder(defaultAssetsAmount).pipe(toArray())),
       firstValueFrom(
-        vault.investment(investorA).pipe(skipWhile((i) => !i.pendingInvestCurrency.eq(defaultAssetsAmount.toBigInt())))
+        vault.investment(investorA).pipe(
+          skipWhile((i) => {
+            console.log('investment update', i.pendingInvestCurrency.toBigInt())
+            return !i.pendingInvestCurrency.eq(defaultAssetsAmount.toBigInt())
+          })
+        )
       ),
     ])
 
