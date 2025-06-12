@@ -18,12 +18,12 @@ const scId = ShareClassId.from(poolId, 1)
 const assetId = AssetId.from(1, 1)
 
 // Async deposit/redeem vault with permissioned redeem
-const asyncVaultAddress = '0x914fd615c6dae76085579edec2fdda1b039184ca'
+const asyncVaultAddress = '0xfca2a5d1f105444364d25420a6a49de5e9c70529'
 
 // Pool with sync deposit vault, and permissioned async redeem
 const poolId2 = PoolId.from(1, 2)
 const scId2 = ShareClassId.from(poolId2, 1)
-const syncVaultAddress = '0x4c6df866387fe755bd61583a3a1772e7c0dc8903'
+const syncVaultAddress = '0xfa98f44ff01af2c3e5e572bf21546eaeef2f455e'
 
 // Active investor with a pending redeem order
 // Investor with a pending invest order on async vault
