@@ -829,7 +829,7 @@ export class Centrifuge {
                   address: valuationAddress as HexString,
                   abi: ABI.Valuation,
                   functionName: 'getQuote',
-                  args: [baseAmount.toBigInt(), baseAssetId.addr, quoteAssetId.addr],
+                  args: [baseAmount.toBigInt(), baseAssetId.raw, quoteAssetId.raw],
                 }),
                 this.getClient(chainId)!.readContract({
                   address: hubRegistry,
