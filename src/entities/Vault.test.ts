@@ -228,6 +228,8 @@ describe('Vault - Async', () => {
   // })
 
   it('cancels an invest order and claims the tokens back', async () => {
+    await mint(investorC)
+
     context.tenderlyFork.impersonateAddress = investorC
     context.centrifuge.setSigner(context.tenderlyFork.signer)
 
@@ -258,6 +260,8 @@ describe('Vault - Async', () => {
   })
 
   it('should throw when trying to cancel a non-existing order', async () => {
+    await mint(investorA)
+
     context.tenderlyFork.impersonateAddress = investorA
     context.centrifuge.setSigner(context.tenderlyFork.signer)
     let thrown = false
