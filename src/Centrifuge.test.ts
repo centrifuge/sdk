@@ -36,7 +36,6 @@ describe('Centrifuge', () => {
   it('should fetch protocol addresses for the demo chain (sepolia)', async () => {
     const expectedContractKeys = [
       'root',
-      'adminSafe',
       'guardian',
       'gasService',
       'gateway',
@@ -57,12 +56,14 @@ describe('Centrifuge', () => {
       'fullRestrictionsHook',
       'tokenFactory',
       'asyncRequestManager',
-      'syncRequestManager',
+      'syncManager',
       'asyncVaultFactory',
       'syncDepositVaultFactory',
       'spoke',
       'vaultRouter',
       'balanceSheet',
+      'wormholeAdapter',
+      'axelarAdapter',
       'currencies',
     ]
 
