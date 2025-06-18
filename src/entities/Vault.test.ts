@@ -1,5 +1,6 @@
 import { expect } from 'chai'
 import { firstValueFrom, lastValueFrom, skip, skipWhile, tap, toArray } from 'rxjs'
+import { parseAbi } from 'viem'
 import { currencies } from '../config/protocol.js'
 import { context } from '../tests/setup.js'
 import { Balance, Price } from '../utils/BigInt.js'
@@ -18,12 +19,12 @@ const scId = ShareClassId.from(poolId, 1)
 const assetId = AssetId.from(1, 1)
 
 // Async deposit/redeem vault with permissioned redeem
-const asyncVaultAddress = '0xfca2a5d1f105444364d25420a6a49de5e9c70529'
+const asyncVaultAddress = '0x3472f2d7d559274ba6fad02e0b1650e5b221403b'
 
 // Pool with sync deposit vault, and permissioned async redeem
 const poolId2 = PoolId.from(1, 2)
 const scId2 = ShareClassId.from(poolId2, 1)
-const syncVaultAddress = '0xfa98f44ff01af2c3e5e572bf21546eaeef2f455e'
+const syncVaultAddress = '0xd34e4cfd24a8f55e56e02628e477d04e9146a0db'
 
 // Active investor with a pending redeem order
 // Investor with a pending invest order on async vault
@@ -39,8 +40,28 @@ const investorC = '0x95d340e6d34418D9eBFD2e826b8f61967654C33e'
 
 const fundManager = '0x423420Ae467df6e90291fd0252c0A8a637C1e03f'
 
+const protocolAdmin = '0x423420Ae467df6e90291fd0252c0A8a637C1e03f'
+
 const defaultAssetsAmount = Balance.fromFloat(100, 6)
 const defaultSharesAmount = Balance.fromFloat(100, 18)
+
+async function mint(address: string) {
+  context.tenderlyFork.impersonateAddress = protocolAdmin
+  context.centrifuge.setSigner(context.tenderlyFork.signer)
+
+  await context.centrifuge._transact(
+    'mint',
+    async ({ walletClient }) => {
+      return await walletClient.writeContract({
+        address: currencies[chainId]![0]!,
+        abi: parseAbi(['function mint(address, uint256)']),
+        functionName: 'mint',
+        args: [address as any, defaultAssetsAmount.toBigInt()],
+      })
+    },
+    chainId
+  )
+}
 
 describe('Vault - Async', () => {
   let vault: Vault
@@ -53,6 +74,8 @@ describe('Vault - Async', () => {
   })
 
   it('completes the invest/redeem flow', async () => {
+    await mint(investorA)
+
     let investment = await vault.investment(investorA)
     expect(investment.isAllowedToRedeem).to.equal(false)
     expect(investment.isSyncInvest).to.equal(false)
@@ -67,7 +90,7 @@ describe('Vault - Async', () => {
 
     // Add member, to be able to redeem
     ;[, investment] = await Promise.all([
-      vault.shareClass.updateMember(investorA, 1800000000, 11155111),
+      vault.shareClass.updateMember(investorA, 1800000000, chainId),
       firstValueFrom(vault.investment(investorA).pipe(skip(1))),
     ])
 
@@ -274,6 +297,8 @@ describe('Vault - Sync invest', () => {
   })
 
   it('invests', async () => {
+    await mint(investorA)
+
     const investmentBefore = await vault.investment(investorA)
 
     context.tenderlyFork.impersonateAddress = fundManager

@@ -456,7 +456,7 @@ export class ShareClass extends Entity {
           address: hub,
           abi: ABI.Hub,
           functionName: 'updateRestriction',
-          args: [self.pool.id.raw, self.id.raw, id, payload],
+          args: [self.pool.id.raw, self.id.raw, id, payload, 15_000_000n],
           value: estimate,
         })
       )
@@ -623,7 +623,7 @@ export class ShareClass extends Entity {
           address: hub,
           abi: ABI.Hub,
           functionName: 'updateContract',
-          args: [self.pool.id.raw, self.id.raw, id, addressToBytes32(target), payload],
+          args: [self.pool.id.raw, self.id.raw, id, addressToBytes32(target), payload, 15_000_000n],
           value: estimate,
         })
       )
