@@ -230,6 +230,39 @@ export class ShareClass extends Entity {
     )
   }
 
+  setMaxAssetPriceAge(assetId: AssetId, maxPriceAge: number) {
+    const self = this
+    return this._transactSequence(async function* ({ walletClient, publicClient }) {
+      const { hub } = await self._root._protocolAddresses(self.pool.chainId)
+      yield* doTransaction('Set max asset price age', publicClient, () =>
+        walletClient.writeContract({
+          address: hub,
+          abi: ABI.Hub,
+          functionName: 'setMaxAssetPriceAge',
+          args: [self.pool.id.raw, self.id.raw, assetId.raw, BigInt(maxPriceAge)],
+        })
+      )
+    }, this.pool.chainId)
+  }
+
+  setMaxSharePriceAge(chainId: number, maxPriceAge: number) {
+    const self = this
+    return this._transactSequence(async function* ({ walletClient, publicClient }) {
+      const [{ hub }, id] = await Promise.all([
+        self._root._protocolAddresses(self.pool.chainId),
+        self._root.id(chainId),
+      ])
+      yield* doTransaction('Set max share price age', publicClient, () =>
+        walletClient.writeContract({
+          address: hub,
+          abi: ABI.Hub,
+          functionName: 'setMaxSharePriceAge',
+          args: [id, self.pool.id.raw, self.id.raw, BigInt(maxPriceAge)],
+        })
+      )
+    }, this.pool.chainId)
+  }
+
   notifyAssetPrice(assetId: AssetId) {
     const self = this
     return this._transactSequence(async function* ({ walletClient, publicClient }) {
@@ -423,7 +456,7 @@ export class ShareClass extends Entity {
           address: hub,
           abi: ABI.Hub,
           functionName: 'updateRestriction',
-          args: [self.pool.id.raw, self.id.raw, id, payload],
+          args: [self.pool.id.raw, self.id.raw, id, payload, 15_000_000n],
           value: estimate,
         })
       )
@@ -489,7 +522,13 @@ export class ShareClass extends Entity {
               {
                 address: shareClassManager,
                 abi: ABI.ShareClassManager,
-                eventName: ['RevokeShares', 'IssueShares', 'RemoteIssueShares', 'RemoteRevokeShares'],
+                eventName: [
+                  'RevokeShares',
+                  'IssueShares',
+                  'RemoteIssueShares',
+                  'RemoteRevokeShares',
+                  'UpdateShareClass',
+                ],
                 filter: (events) => {
                   return events.some((event) => {
                     return event.args.scId === this.id.raw
@@ -550,6 +589,8 @@ export class ShareClass extends Entity {
                   'ApproveRedeems',
                   'IssueShares',
                   'RevokeShares',
+                  'RemoteIssueShares',
+                  'RemoteRevokeShares',
                   'UpdateDepositRequest',
                   'UpdateRedeemRequest',
                 ],
@@ -582,7 +623,7 @@ export class ShareClass extends Entity {
           address: hub,
           abi: ABI.Hub,
           functionName: 'updateContract',
-          args: [self.pool.id.raw, self.id.raw, id, addressToBytes32(target), payload],
+          args: [self.pool.id.raw, self.id.raw, id, addressToBytes32(target), payload, 15_000_000n],
           value: estimate,
         })
       )

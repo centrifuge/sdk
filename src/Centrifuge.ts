@@ -789,9 +789,12 @@ export class Centrifuge {
         throw new Error(`No protocol config mapping for chain id ${chainId}`)
       }
 
-      const baseUrl = 'https://raw.githubusercontent.com/centrifuge/protocol-v3/refs/heads/main/deployments'
-      const networkPath = this.getChainConfig(chainId).testnet ? 'testnet' : 'mainnet'
-      const url = `${baseUrl}/${networkPath}/${network}.json`
+      const branch = 'post-electisec' // TODO: replace with 'main' when merged
+      // const baseUrl = 'https://raw.githubusercontent.com/centrifuge/protocol-v3/refs/heads/main/deployments'
+      const baseUrl = `https://raw.githubusercontent.com/centrifuge/protocol-v3/refs/heads`
+      // const networkPath = this.getChainConfig(chainId).testnet ? 'testnet' : 'mainnet'
+      const folder = 'env'
+      const url = `${baseUrl}/${branch}/${folder}/${network}.json`
 
       return fromFetch(url).pipe(
         switchMap((response) => {
@@ -824,9 +827,9 @@ export class Centrifuge {
               const [quote, quoteDecimals] = await Promise.all([
                 this.getClient(chainId)!.readContract({
                   address: valuationAddress as HexString,
-                  abi: ABI.IERC7726,
+                  abi: ABI.Valuation,
                   functionName: 'getQuote',
-                  args: [baseAmount.toBigInt(), baseAssetId.addr, quoteAssetId.addr],
+                  args: [baseAmount.toBigInt(), baseAssetId.raw, quoteAssetId.raw],
                 }),
                 this.getClient(chainId)!.readContract({
                   address: hubRegistry,
@@ -852,13 +855,13 @@ export class Centrifuge {
   _estimate(fromChain: number, to: { chainId: number } | { centId: number }) {
     return this._query(['estimate', fromChain, to], () =>
       combineLatest([this._protocolAddresses(fromChain), 'chainId' in to ? this.id(to.chainId) : of(to.centId)]).pipe(
-        switchMap(([{ vaultRouter }, toCentId]) => {
+        switchMap(([{ multiAdapter }, toCentId]) => {
           const bytes = toHex(new Uint8Array([0x12]))
           return this.getClient(fromChain)!.readContract({
-            address: vaultRouter,
-            abi: ABI.VaultRouter,
+            address: multiAdapter,
+            abi: ABI.MultiAdapter,
             functionName: 'estimate',
-            args: [toCentId, bytes],
+            args: [toCentId, bytes, 15_000_000n],
           })
         })
       )
