@@ -789,10 +789,8 @@ export class Centrifuge {
         throw new Error(`No protocol config mapping for chain id ${chainId}`)
       }
 
+      const baseUrl = 'https://raw.githubusercontent.com/centrifuge/protocol-v3/refs/heads'
       const branch = 'post-electisec' // TODO: replace with 'main' when merged
-      // const baseUrl = 'https://raw.githubusercontent.com/centrifuge/protocol-v3/refs/heads/main/deployments'
-      const baseUrl = `https://raw.githubusercontent.com/centrifuge/protocol-v3/refs/heads`
-      // const networkPath = this.getChainConfig(chainId).testnet ? 'testnet' : 'mainnet'
       const folder = 'env'
       const url = `${baseUrl}/${branch}/${folder}/${network}.json`
 
