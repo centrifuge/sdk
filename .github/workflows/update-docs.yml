@@ -4,17 +4,82 @@ on:
   push:
     branches:
       - trigger-docs
+  pull_request:
+    paths:
+      - '.github/workflows/update-docs.yml'
 
 jobs:
   trigger:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Send Trigger to sdk-docs repo
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Generate GitHub App token
+        id: generate-token
         run: |
-          curl -X POST -H "Authorization: Bearer ${{ env.GITHUB_TOKEN }}" \
-          -H "Accept: application/vnd.github.v3+json" \
-          https://api.github.com/repos/centrifuge/documentation/dispatches \
-          -d '{"event_type": "trigger-docs-update", "client_payload": {"secret": "${{ secrets.WEBHOOK_SECRET }}"}}'
+          echo "Generating GitHub App token..."
+          jwt=$(ruby -r openssl -r jwt -e '
+            payload = {
+              iat: Time.now.to_i,
+              exp: Time.now.to_i + 600,
+              iss: ENV["APP_ID"]
+            }
+            private_key = OpenSSL::PKey::RSA.new(ENV["APP_PRIVATE_KEY"])
+            token = JWT.encode(payload, private_key, "RS256")
+            puts token
+          ')
+          echo "token=$jwt" >> $GITHUB_OUTPUT
+        env:
+          APP_ID: ${{ secrets.APP_ID }}
+          APP_PRIVATE_KEY: ${{ secrets.APP_PRIVATE_KEY }}
+          
+      - name: Get Installation Access Token
+        id: get-access-token
+        run: |
+          installation_id=$(curl -s -X GET \
+            -H "Authorization: Bearer ${{ steps.generate-token.outputs.token }}" \
+            -H "Accept: application/vnd.github.v3+json" \
+            "https://api.github.com/app/installations" | jq '.[] | select(.account.login=="centrifuge") | .id')
+          
+          access_token=$(curl -s -X POST \
+            -H "Authorization: Bearer ${{ steps.generate-token.outputs.token }}" \
+            -H "Accept: application/vnd.github.v3+json" \
+            "https://api.github.com/app/installations/$installation_id/access_tokens" | jq -r '.token')
+          
+          echo "token=$access_token" >> $GITHUB_OUTPUT
+          
+      - name: Debug App Identity
+        run: |
+          echo "Checking app identity..."
+          curl -s -H "Authorization: Bearer ${{ steps.generate-token.outputs.token }}" \
+            -H "Accept: application/vnd.github.v3+json" \
+            https://api.github.com/app | jq '{name: .name, id: .id}'
+          
+      - name: Debug App Permissions
+        run: |
+          echo "Checking app permissions..."
+          curl -s -H "Authorization: Bearer ${{ steps.get-access-token.outputs.token }}" \
+            -H "Accept: application/vnd.github.v3+json" \
+            https://api.github.com/installation/repositories | jq '.repositories[] | {name: .name, permissions: .permissions}'
+          
+      - name: Send Trigger to docs repo
+        run: |
+          echo "Sending repository dispatch event to centrifuge/documentation..."
+          
+          response=$(curl -s -X POST \
+            -H "Authorization: Bearer ${{ steps.get-access-token.outputs.token }}" \
+            -H "Accept: application/vnd.github.v3+json" \
+            -H "Content-Type: application/json" \
+            https://api.github.com/repos/centrifuge/documentation/dispatches \
+            -d '{"event_type": "trigger-docs-update", "client_payload": {"secret": "${{ secrets.WEBHOOK_SECRET }}"}}' \
+            -w "\n%{http_code}")
+          
+          status_code=$(echo "$response" | tail -n1)
+          response_body=$(echo "$response" | sed '$d')
+          
+          echo "Status code: $status_code"
+          if [ "$status_code" -ne 204 ]; then
+            echo "Error response: $response_body"
+            exit 1
+          else
+            echo "Repository dispatch sent successfully!"
+          fi
