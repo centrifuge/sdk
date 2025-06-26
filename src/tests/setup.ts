@@ -7,13 +7,13 @@ class TestContext {
   public tenderlyFork!: TenderlyFork
 
   get centrifuge() {
-    return this.#centrifuge ?? (this.#centrifuge = new Centrifuge({ environment: 'demo', pollingInterval: 500 }))
+    return this.#centrifuge ?? (this.#centrifuge = new Centrifuge({ environment: 'dev', pollingInterval: 500 }))
   }
 
   async initialize() {
     this.tenderlyFork = await TenderlyFork.create(sepolia)
     this.#centrifuge = new Centrifuge({
-      environment: 'demo',
+      environment: 'dev',
       rpcUrls: {
         11155111: this.tenderlyFork.rpcUrl,
       },

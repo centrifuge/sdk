@@ -43,7 +43,7 @@ describe('Pool', () => {
     const fakeHash = 'QmPdzJkZ4PVJ21HfBXMJbGopSpUP9C9fqu3A1f9ZVhtRY2'
 
     const centrifugeWithPin = new Centrifuge({
-      environment: 'demo',
+      environment: 'dev',
       pinJson: async (data) => {
         expect(data).to.deep.equal(mockPoolMetadata)
         return fakeHash

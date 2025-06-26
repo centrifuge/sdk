@@ -60,26 +60,23 @@ const PINNING_API_DEMO = 'https://europe-central2-peak-vista-185616.cloudfunctio
 
 const envConfig = {
   mainnet: {
-    indexerUrl: 'https://subql.embrio.tech/',
+    indexerUrl: 'https://api-v3-hitz.marble.live/graphql',
     alchemyKey: 'KNR-1LZhNqWOxZS2AN8AFeaiESBV10qZ',
     infuraKey: '8ed99a9a115349bbbc01dcf3a24edc96',
-    defaultChain: 1,
     ipfsUrl: 'https://centrifuge.mypinata.cloud',
     ...createPinning(PINNING_API_DEMO),
   },
   demo: {
-    indexerUrl: 'https://api.subquery.network/sq/centrifuge/pools-demo-multichain',
+    indexerUrl: 'https://api-v3-hitz.marble.live/graphql',
     alchemyKey: 'KNR-1LZhNqWOxZS2AN8AFeaiESBV10qZ',
     infuraKey: '8cd8e043ee8d4001b97a1c37e08fd9dd',
-    defaultChain: 11155111,
     ipfsUrl: 'https://centrifuge.mypinata.cloud',
     ...createPinning(PINNING_API_DEMO),
   },
   dev: {
-    indexerUrl: 'https://api.subquery.network/sq/centrifuge/pools-demo-multichain',
+    indexerUrl: 'http://localhost:42069/graphql',
     alchemyKey: 'KNR-1LZhNqWOxZS2AN8AFeaiESBV10qZ',
     infuraKey: '8cd8e043ee8d4001b97a1c37e08fd9dd',
-    defaultChain: 11155111,
     ipfsUrl: 'https://centrifuge.mypinata.cloud',
     ...createPinning(PINNING_API_DEMO),
   },
@@ -89,11 +86,6 @@ const defaultConfig = {
   environment: 'mainnet',
   cache: true,
 } satisfies UserProvidedConfig
-
-// Hardcoded pools until we have the indexer
-const TEMP_POOLS = {
-  11155111: [1, 2],
-}
 
 export class Centrifuge {
   #config: DerivedConfig
@@ -284,19 +276,25 @@ export class Centrifuge {
    * Get the existing pools on the different chains.
    */
   pools() {
-    // TODO: fetch from indexer
-    return this._query(['pools'], () => {
-      return combineLatest(
-        Object.entries(TEMP_POOLS).map(([cid, poolCounters]) => {
-          const chainId = Number(cid)
-          return this.id(chainId).pipe(
-            map((centId) =>
-              poolCounters.map((counter) => new Pool(this, PoolId.from(centId, counter).toString(), chainId))
-            )
-          )
+    return this._queryIndexer<{ pools: { items: { id: string; blockchain: { id: string } }[] } }>(
+      `{
+        pools {
+          items {
+            id
+            blockchain {
+              id
+            }
+          }
+        }
+      }`
+    ).pipe(
+      map((data) => {
+        return data.pools.items.map((pool) => {
+          const poolId = new PoolId(pool.id)
+          return new Pool(this, poolId.toString(), Number(pool.blockchain.id))
         })
-      ).pipe(map((poolsPerChain) => poolsPerChain.flat()))
-    })
+      })
+    )
   }
 
   pool(id: PoolId) {

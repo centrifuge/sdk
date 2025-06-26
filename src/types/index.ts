@@ -20,7 +20,6 @@ export type EnvConfig = {
   indexerUrl: string
   alchemyKey: string
   infuraKey: string
-  defaultChain: number
   ipfsUrl: string
   pinFile: (b64URI: string) => Promise<string>
   pinJson: (json: any) => Promise<string>
