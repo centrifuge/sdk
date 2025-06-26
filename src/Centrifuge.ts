@@ -234,6 +234,7 @@ export class Centrifuge {
             : [],
         },
         shareClasses: shareClassesById,
+        defaultAccounts: {},
         onboarding: {
           shareClasses: metadataInput.onboarding?.shareClasses || {},
           taxInfoRequired: metadataInput.onboarding?.taxInfoRequired,

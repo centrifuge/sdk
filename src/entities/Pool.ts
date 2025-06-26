@@ -230,6 +230,21 @@ export class Pool extends Entity {
     }, self.chainId)
   }
 
+  createAccount(accountId: number, isDebitNormal: boolean) {
+    const self = this
+    return this._transactSequence(async function* ({ walletClient, publicClient }) {
+      const { hub } = await self._root._protocolAddresses(self.chainId)
+      yield* doTransaction('Create account', publicClient, () =>
+        walletClient.writeContract({
+          address: hub,
+          abi: ABI.Hub,
+          functionName: 'createAccount',
+          args: [self.id.raw, accountId, isDebitNormal],
+        })
+      )
+    }, this.chainId)
+  }
+
   /**
    * @internal
    */
