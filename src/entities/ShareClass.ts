@@ -43,7 +43,7 @@ export class ShareClass extends Entity {
             name: metadata.name,
             symbol: metadata.symbol,
             totalIssuance: metrics.totalIssuance,
-            navPerShare: metrics.navPerShare,
+            pricePerShare: metrics.pricePerShare,
           }
         })
       )
@@ -285,7 +285,6 @@ export class ShareClass extends Entity {
    * @param isLiability - Whether the holding is a liability or not
    * @param accounts - Accounts to use for the holding. An asset or expense account will be created if not provided.
    * Other accounts are expected to be provided or to exist in the pool metadata.
-   *
    */
   createHolding<Liability extends boolean>(
     assetId: AssetId,
@@ -390,6 +389,21 @@ export class ShareClass extends Entity {
       }
 
       yield* doTransaction('Create holding', publicClient, () => tx)
+    }, this.pool.chainId)
+  }
+
+  updateSharePrice(pricePerShare: Price) {
+    const self = this
+    return this._transactSequence(async function* ({ walletClient, publicClient }) {
+      const { hub } = await self._root._protocolAddresses(self.pool.chainId)
+      yield* doTransaction('Update price', publicClient, () =>
+        walletClient.writeContract({
+          address: hub,
+          abi: ABI.Hub,
+          functionName: 'updateSharePrice',
+          args: [self.pool.id.raw, self.id.raw, pricePerShare.toBigInt()],
+        })
+      )
     }, this.pool.chainId)
   }
 
@@ -677,7 +691,7 @@ export class ShareClass extends Entity {
             })
             return {
               totalIssuance: new Balance(totalIssuance, 18),
-              navPerShare: new Balance(navPerShare, 18),
+              pricePerShare: new Price(navPerShare),
             }
           }).pipe(
             repeatOnEvents(
