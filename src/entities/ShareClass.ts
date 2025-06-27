@@ -44,9 +44,42 @@ export class ShareClass extends Entity {
             symbol: metadata.symbol,
             totalIssuance: metrics.totalIssuance,
             pricePerShare: metrics.pricePerShare,
+            nav: metrics.totalIssuance.mul(metrics.pricePerShare),
           }
         })
       )
+    )
+  }
+
+  navPerNetwork() {
+    return this._root._queryIndexer(
+      `query ($scId: String!) {
+        tokenInstances(where: { tokenId: $scId }) {
+          items {
+            totalIssuance
+            tokenPrice
+            blockchain {
+              id
+            }
+          }
+        }
+      }`,
+      { scId: this.id.raw },
+      (data: {
+        tokenInstances: {
+          items: {
+            totalIssuance: bigint
+            tokenPrice: bigint
+            blockchain: { id: number }
+          }[]
+        }
+      }) =>
+        data.tokenInstances.items.map((item) => ({
+          chainId: item.blockchain.id,
+          totalIssuance: new Balance(item.totalIssuance, 18), // TODO: Replace with pool currency decimals
+          pricePerShare: new Price(item.tokenPrice),
+          nav: new Balance(item.totalIssuance, 18).mul(new Price(item.tokenPrice)),
+        }))
     )
   }
 
@@ -473,7 +506,7 @@ export class ShareClass extends Entity {
     }, this.pool.chainId)
   }
 
-  approveDeposits(assetId: AssetId, assetAmount: Balance, navPerShare: Price) {
+  approveDeposits(assetId: AssetId, assetAmount: Balance, pricePerShare: Price) {
     const self = this
     return this._transactSequence(async function* ({ walletClient, publicClient }) {
       const [{ hub }, epoch, estimate] = await Promise.all([
@@ -503,7 +536,7 @@ export class ShareClass extends Entity {
       const issueData = encodeFunctionData({
         abi: ABI.Hub,
         functionName: 'issueShares',
-        args: [self.pool.id.raw, self.id.raw, assetId.raw, epoch.issueEpoch, navPerShare.toBigInt()],
+        args: [self.pool.id.raw, self.id.raw, assetId.raw, epoch.issueEpoch, pricePerShare.toBigInt()],
       })
       yield* doTransaction('Approve deposits', publicClient, () =>
         walletClient.writeContract({
@@ -524,7 +557,7 @@ export class ShareClass extends Entity {
     }, this.pool.chainId)
   }
 
-  approveRedeems(assetId: AssetId, shareAmount: Balance, navPerShare: Price) {
+  approveRedeems(assetId: AssetId, shareAmount: Balance, pricePerShare: Price) {
     const self = this
     return this._transactSequence(async function* ({ walletClient, publicClient }) {
       const [{ hub }, epoch, estimate] = await Promise.all([
@@ -549,7 +582,7 @@ export class ShareClass extends Entity {
       const issueData = encodeFunctionData({
         abi: ABI.Hub,
         functionName: 'revokeShares',
-        args: [self.pool.id.raw, self.id.raw, assetId.raw, epoch.revokeEpoch, navPerShare.toBigInt()],
+        args: [self.pool.id.raw, self.id.raw, assetId.raw, epoch.revokeEpoch, pricePerShare.toBigInt()],
       })
       yield* doTransaction('Approve redeems', publicClient, () =>
         walletClient.writeContract({
@@ -683,7 +716,7 @@ export class ShareClass extends Entity {
       this._root._protocolAddresses(this.pool.chainId).pipe(
         switchMap(({ shareClassManager }) =>
           defer(async () => {
-            const [totalIssuance, navPerShare] = await this._root.getClient(this.pool.chainId)!.readContract({
+            const [totalIssuance, pricePerShare] = await this._root.getClient(this.pool.chainId)!.readContract({
               address: shareClassManager,
               abi: ABI.ShareClassManager,
               functionName: 'metrics',
@@ -691,7 +724,7 @@ export class ShareClass extends Entity {
             })
             return {
               totalIssuance: new Balance(totalIssuance, 18),
-              pricePerShare: new Price(navPerShare),
+              pricePerShare: new Price(pricePerShare),
             }
           }).pipe(
             repeatOnEvents(
@@ -856,27 +889,6 @@ export class ShareClass extends Entity {
     )
   }
 }
-
-/*
-
-$api.pipe(
-          map((api) => ({
-            api,
-            id: null,
-            triesLeft: MAX_ATTEMPTS,
-          })),
-          expand(({ api, triesLeft }) => {
-            const id = String(getRandomUint())
-            if (triesLeft <= 0) return EMPTY
-
-            return api.query.uniques.class(id).pipe(
-              map((res) => ({ api, id: res.toJSON() === null ? id : null, triesLeft: triesLeft - 1 })),
-              take(1)
-            )
-          }),
-          filter(({ id }) => !!id)
-        )
-          */
 
 function randomUint32() {
   if (typeof globalThis.crypto === 'undefined') {

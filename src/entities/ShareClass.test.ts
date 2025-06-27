@@ -2,7 +2,7 @@ import { expect } from 'chai'
 import { firstValueFrom, skipWhile } from 'rxjs'
 import { context } from '../tests/setup.js'
 import { AccountType } from '../types/holdings.js'
-import { Balance } from '../utils/BigInt.js'
+import { Balance, Price } from '../utils/BigInt.js'
 import { AssetId, PoolId, ShareClassId } from '../utils/types.js'
 import { Pool } from './Pool.js'
 import { ShareClass } from './ShareClass.js'
@@ -32,10 +32,17 @@ describe('ShareClass', () => {
   it('gets the details', async () => {
     const details = await shareClass.details()
     expect(details.totalIssuance).to.be.instanceOf(Balance)
-    expect(details.navPerShare).to.be.instanceOf(Balance)
+    expect(details.pricePerShare).to.be.instanceOf(Price)
     expect(details.name).to.equal('Tokenized MMF')
     expect(details.symbol).to.equal('MMF')
     expect(details.id.raw).to.equal(scId.raw)
+  })
+
+  it('gets the nav per network', async () => {
+    const nav = await shareClass.navPerNetwork()
+    expect(nav[0]!.totalIssuance).to.be.instanceOf(Balance)
+    expect(nav[0]!.pricePerShare).to.be.instanceOf(Price)
+    expect(nav[0]!.pricePerShare.toFloat()).to.be.greaterThan(0)
   })
 
   it('gets the vaults', async () => {
