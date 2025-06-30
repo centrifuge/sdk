@@ -24,12 +24,14 @@ __metadata:
   resolution: "@centrifuge/sdk@workspace:."
   dependencies:
     "@types/chai": "npm:^5.0.0"
+    "@types/chai-as-promised": "npm:^8"
     "@types/mocha": "npm:^10.0.9"
     "@types/node": "npm:^22.7.8"
     "@types/sinon": "npm:^17.0.3"
     "@types/sinon-chai": "npm:^4"
     c8: "npm:^10.1.2"
     chai: "npm:^5.1.2"
+    chai-as-promised: "npm:^8.0.1"
     decimal.js-light: "npm:^2.5.1"
     dotenv: "npm:^16.4.5"
     eslint: "npm:^9.12.0"
@@ -484,6 +486,15 @@ __metadata:
   version: 1.0.4
   resolution: "@tsconfig/node16@npm:1.0.4"
   checksum: 10c0/05f8f2734e266fb1839eb1d57290df1664fe2aa3b0fdd685a9035806daa635f7519bf6d5d9b33f6e69dd545b8c46bd6e2b5c79acb2b1f146e885f7f11a42a5bb
+  languageName: node
+  linkType: hard
+
+"@types/chai-as-promised@npm:^8":
+  version: 8.0.2
+  resolution: "@types/chai-as-promised@npm:8.0.2"
+  dependencies:
+    "@types/chai": "npm:*"
+  checksum: 10c0/94492694121ba3c8b16e61be5f3d91bf1996c37e7b5f85363f30e160344b32d42b7ad9606198e57a3b3c06eb3b36e345ac0494e7556fc406433d8e13f1b83a77
   languageName: node
   linkType: hard
 
@@ -1024,6 +1035,17 @@ __metadata:
   languageName: node
   linkType: hard
 
+"chai-as-promised@npm:^8.0.1":
+  version: 8.0.1
+  resolution: "chai-as-promised@npm:8.0.1"
+  dependencies:
+    check-error: "npm:^2.0.0"
+  peerDependencies:
+    chai: ">= 2.1.2 < 6"
+  checksum: 10c0/02cedfe37230d9d8ee80c512efe3f6323dba7a2455b66d8ebfcb79837e8783f6496b5dc664743837590feefb26d9aadd41d4f7178db161e039c994d73bd6950b
+  languageName: node
+  linkType: hard
+
 "chai@npm:^5.1.2":
   version: 5.1.2
   resolution: "chai@npm:5.1.2"
@@ -1058,7 +1080,7 @@ __metadata:
   languageName: node
   linkType: hard
 
-"check-error@npm:^2.1.1":
+"check-error@npm:^2.0.0, check-error@npm:^2.1.1":
   version: 2.1.1
   resolution: "check-error@npm:2.1.1"
   checksum: 10c0/979f13eccab306cf1785fa10941a590b4e7ea9916ea2a4f8c87f0316fc3eab07eabefb6e587424ef0f88cbcd3805791f172ea739863ca3d7ce2afc54641c7f0e
