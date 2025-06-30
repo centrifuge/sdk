@@ -397,7 +397,6 @@ export class Centrifuge {
    * Get the assets that exist on a given spoke chain that have been registered on a given hub chain.
    * @param spokeChainId - The chain ID where the assets exist
    * @param hubChainId - The chain ID where the assets are registered
-   * @returns
    */
   assets(spokeChainId: number, hubChainId: number) {
     return this._query(null, () => combineLatest([this.id(spokeChainId), this.id(hubChainId)])).pipe(
