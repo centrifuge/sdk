@@ -5,6 +5,7 @@ import { createClient, custom } from 'viem'
 import { Centrifuge } from './Centrifuge.js'
 import { currencies } from './config/protocol.js'
 import { context } from './tests/setup.js'
+import { ProtocolContracts } from './types/index.js'
 import { Balance } from './utils/BigInt.js'
 import { doSignMessage, doTransaction } from './utils/transaction.js'
 import { AssetId, PoolId } from './utils/types.js'
@@ -65,7 +66,7 @@ describe('Centrifuge', () => {
       'wormholeAdapter',
       'axelarAdapter',
       'currencies',
-    ]
+    ] satisfies (keyof ProtocolContracts | 'currencies')[]
 
     const result = await context.centrifuge._protocolAddresses(chainId)
 

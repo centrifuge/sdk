@@ -39,7 +39,6 @@ export type CurrencyDetails = {
 
 export type ProtocolContracts = {
   root: HexString
-  adminSafe: HexString
   guardian: HexString
   gasService: HexString
   gateway: HexString
@@ -60,8 +59,10 @@ export type ProtocolContracts = {
   fullRestrictionsHook: HexString
   tokenFactory: HexString
   asyncRequestManager: HexString
-  syncRequestManager: HexString
   asyncVaultFactory: HexString
+  wormholeAdapter: HexString
+  syncManager: HexString
+  axelarAdapter: HexString
   syncDepositVaultFactory: HexString
   spoke: HexString
   vaultRouter: HexString

@@ -21,6 +21,11 @@ describe('Pool', () => {
     pool = new Pool(centrifuge, poolId.raw, chainId)
   })
 
+  it('gets whether an address is manager', async () => {
+    const isManager = await pool.isManager(poolManager)
+    expect(isManager).to.be.true
+  })
+
   it('gets active networks of a pool', async () => {
     const networks = await pool.activeNetworks()
     expect(networks).to.have.length(1)
@@ -71,7 +76,6 @@ describe('Pool', () => {
   })
 
   it('should return the currency of the pool', async () => {
-    const pool = await context.centrifuge.pool(poolId)
     const currency = await pool.currency()
     expect(currency).to.have.property('id')
     expect(currency).to.have.property('name')
@@ -80,7 +84,6 @@ describe('Pool', () => {
   })
 
   it('should return a pool with details', async () => {
-    const pool = await context.centrifuge.pool(poolId)
     const details = await pool.details()
     expect(details.id.raw).to.equal(poolId.raw)
     expect(details.metadata).to.not.be.undefined

@@ -25,7 +25,7 @@ export class Investor extends Entity {
     )
   }
 
-  investment(poolId: PoolId, scId: ShareClassId, asset: string, chainId: number) {
+  investment(poolId: PoolId, scId: ShareClassId, asset: HexString, chainId: number) {
     return this._query(null, () =>
       this._root.pool(poolId).pipe(
         switchMap((pool) => pool.vault(chainId, scId, asset)),
