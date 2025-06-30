@@ -2,6 +2,7 @@ import { catchError, combineLatest, defer, map, of, switchMap, timeout } from 'r
 import { fromHex, toHex } from 'viem'
 import { ABI } from '../abi/index.js'
 import type { Centrifuge } from '../Centrifuge.js'
+import { HexString } from '../types/index.js'
 import { PoolMetadata } from '../types/poolMetadata.js'
 import { NATIONAL_CURRENCY_METADATA } from '../utils/currencies.js'
 import { repeatOnEvents } from '../utils/rx.js'
@@ -118,6 +119,26 @@ export class Pool extends Entity {
   }
 
   /**
+   * Check if an address is a manager of the pool.
+   * @param address - The address to check
+   * @returns True if the address is a manager, false otherwise
+   */
+  isManager(address: HexString) {
+    return this._query(['isManager', address], () => {
+      return this._root._protocolAddresses(this.chainId).pipe(
+        switchMap(({ hubRegistry }) => {
+          return this._root.getClient(this.chainId)!.readContract({
+            address: hubRegistry,
+            abi: ABI.HubRegistry,
+            functionName: 'manager',
+            args: [this.id.raw, address],
+          })
+        })
+      )
+    })
+  }
+
+  /**
    * Get all networks where a pool can potentially be deployed.
    */
   networks() {
@@ -169,7 +190,7 @@ export class Pool extends Entity {
     })
   }
 
-  vault(chainId: number, scId: ShareClassId, asset: string) {
+  vault(chainId: number, scId: ShareClassId, asset: HexString) {
     return this._query(null, () => this.network(chainId).pipe(switchMap((network) => network.vault(scId, asset))))
   }
 
@@ -227,7 +248,42 @@ export class Pool extends Entity {
           value: 0n,
         })
       )
-    }, self.chainId)
+    }, this.chainId)
+  }
+
+  /**
+   * Update a pool manager.
+   * @param address - The address of the manager to update
+   * @param canManage - Whether the address can manage the pool
+   */
+  updateManager(address: HexString, canManage: boolean) {
+    const self = this
+    return this._transactSequence(async function* ({ walletClient, publicClient }) {
+      const { hub } = await self._root._protocolAddresses(self.chainId)
+      yield* doTransaction('Update manager', publicClient, () =>
+        walletClient.writeContract({
+          address: hub,
+          abi: ABI.Hub,
+          functionName: 'updateHubManager',
+          args: [self.id.raw, address, canManage],
+        })
+      )
+    }, this.chainId)
+  }
+
+  createAccount(accountId: number, isDebitNormal: boolean) {
+    const self = this
+    return this._transactSequence(async function* ({ walletClient, publicClient }) {
+      const { hub } = await self._root._protocolAddresses(self.chainId)
+      yield* doTransaction('Create account', publicClient, () =>
+        walletClient.writeContract({
+          address: hub,
+          abi: ABI.Hub,
+          functionName: 'createAccount',
+          args: [self.id.raw, accountId, isDebitNormal],
+        })
+      )
+    }, this.chainId)
   }
 
   /**

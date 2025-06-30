@@ -1,4 +1,4 @@
-import { catchError, combineLatest, defer, map, of, switchMap } from 'rxjs'
+import { catchError, combineLatest, defer, EMPTY, expand, filter, map, of, switchMap } from 'rxjs'
 import { encodeFunctionData, encodePacked, getContract, parseAbi } from 'viem'
 import { ABI } from '../abi/index.js'
 import type { Centrifuge } from '../Centrifuge.js'
@@ -43,10 +43,43 @@ export class ShareClass extends Entity {
             name: metadata.name,
             symbol: metadata.symbol,
             totalIssuance: metrics.totalIssuance,
-            navPerShare: metrics.navPerShare,
+            pricePerShare: metrics.pricePerShare,
+            nav: metrics.totalIssuance.mul(metrics.pricePerShare),
           }
         })
       )
+    )
+  }
+
+  navPerNetwork() {
+    return this._root._queryIndexer(
+      `query ($scId: String!) {
+        tokenInstances(where: { tokenId: $scId }) {
+          items {
+            totalIssuance
+            tokenPrice
+            blockchain {
+              id
+            }
+          }
+        }
+      }`,
+      { scId: this.id.raw },
+      (data: {
+        tokenInstances: {
+          items: {
+            totalIssuance: bigint
+            tokenPrice: bigint
+            blockchain: { id: number }
+          }[]
+        }
+      }) =>
+        data.tokenInstances.items.map((item) => ({
+          chainId: item.blockchain.id,
+          totalIssuance: new Balance(item.totalIssuance, 18), // TODO: Replace with pool currency decimals
+          pricePerShare: new Price(item.tokenPrice),
+          nav: new Balance(item.totalIssuance, 18).mul(new Price(item.tokenPrice)),
+        }))
     )
   }
 
@@ -57,6 +90,54 @@ export class ShareClass extends Entity {
    */
   vaults(chainId: number) {
     return this._query(null, () => new PoolNetwork(this._root, this.pool, chainId).vaults(this.id))
+  }
+
+  holdings() {
+    return this._query(null, () =>
+      this._root
+        ._queryIndexer<{
+          holdings: {
+            items: {
+              assetAmount: bigint
+              assetId: string
+              assetPrice: bigint
+              assetValue: bigint
+              isLiability: boolean
+              valuation: bigint
+              tokenId: string
+              poolId: string
+            }[]
+          }
+        }>(
+          `query ($scId: String!) {
+            holdings(where: { tokenId: $scId }) {
+              items {
+                assetAmount
+                assetId
+                assetPrice
+                assetValue
+                isLiability
+                valuation
+                tokenId
+                poolId
+              }
+            }
+          }`,
+          {
+            scId: this.id.raw,
+          }
+        )
+        .pipe(
+          switchMap((res) =>
+            combineLatest(
+              res.holdings.items.map((holding) => {
+                const assetId = new AssetId(holding.assetId)
+                return this.holding(assetId)
+              })
+            )
+          )
+        )
+    )
   }
 
   /**
@@ -75,7 +156,7 @@ export class ShareClass extends Entity {
               client: this._root.getClient(this.pool.chainId)!,
             })
 
-            const [valuation, amount, value, assetDecimals, ...accounts] = await Promise.all([
+            const [valuation, amount, value, assetDecimals, isLiability, ...accounts] = await Promise.all([
               holdings.read.valuation([this.pool.id.raw, this.id.raw, assetId.raw]),
               holdings.read.amount([this.pool.id.raw, this.id.raw, assetId.raw]),
               holdings.read.value([this.pool.id.raw, this.id.raw, assetId.raw]),
@@ -86,7 +167,7 @@ export class ShareClass extends Entity {
                 functionName: 'decimals',
                 args: [assetId.raw],
               }),
-              // contract.read.isLiability((this.pool.id.raw), this.id.raw, assetId),
+              holdings.read.isLiability([this.pool.id.raw, this.id.raw, assetId.raw]),
               ...[
                 AccountType.Asset,
                 AccountType.Equity,
@@ -102,7 +183,7 @@ export class ShareClass extends Entity {
               valuation,
               amount: new Balance(amount, assetDecimals),
               value: new Balance(value, 18), // TODO: Replace with pool currency decimals
-              // isLiability,
+              isLiability,
               accounts: {
                 [AccountType.Asset]: accounts[0] || null,
                 [AccountType.Equity]: accounts[1] || null,
@@ -230,6 +311,135 @@ export class ShareClass extends Entity {
     )
   }
 
+  /**
+   * Create a holding for a registered asset in the share class.
+   * @param assetId - Asset ID of the asset to create a holding for
+   * @param valuation - Valuation of the asset
+   * @param isLiability - Whether the holding is a liability or not
+   * @param accounts - Accounts to use for the holding. An asset or expense account will be created if not provided.
+   * Other accounts are expected to be provided or to exist in the pool metadata.
+   */
+  createHolding<Liability extends boolean>(
+    assetId: AssetId,
+    valuation: HexString,
+    isLiability: Liability,
+    accounts: Liability extends true
+      ? { [key in AccountType.Expense | AccountType.Liability]?: number }
+      : { [key in AccountType.Asset | AccountType.Equity | AccountType.Loss | AccountType.Gain]?: number }
+  ) {
+    const self = this
+    return this._transactSequence(async function* ({ walletClient, publicClient }) {
+      const [{ hub }, metadata] = await Promise.all([
+        self._root._protocolAddresses(self.pool.chainId),
+        self.pool.metadata(),
+      ])
+
+      let tx
+      if (isLiability) {
+        const expenseAccount = (accounts as any)[AccountType.Expense] || metadata?.defaultAccounts?.expense
+        const liabilityAccount = (accounts as any)[AccountType.Liability] || metadata?.defaultAccounts?.liability
+        if (liabilityAccount === undefined) {
+          throw new Error('Missing required accounts for liability creation')
+        }
+        if (expenseAccount) {
+          tx = walletClient.writeContract({
+            address: hub,
+            abi: ABI.Hub,
+            functionName: 'initializeLiability',
+            args: [self.pool.id.raw, self.id.raw, assetId.raw, valuation, expenseAccount, liabilityAccount],
+          })
+        } else {
+          const newExpenseAccount = await self._getFreeAccountId()
+          const createAccountData = encodeFunctionData({
+            abi: ABI.Hub,
+            functionName: 'createAccount',
+            args: [self.pool.id.raw, newExpenseAccount, true],
+          })
+          const initHoldingData = encodeFunctionData({
+            abi: ABI.Hub,
+            functionName: 'initializeLiability',
+            args: [self.pool.id.raw, self.id.raw, assetId.raw, valuation, newExpenseAccount, liabilityAccount],
+          })
+          tx = walletClient.writeContract({
+            address: hub,
+            abi: ABI.Hub,
+            functionName: 'multicall',
+            args: [[createAccountData, initHoldingData]],
+          })
+        }
+      } else {
+        const assetAccount = (accounts as any)[AccountType.Asset] || metadata?.defaultAccounts?.asset
+        const equityAccount = (accounts as any)[AccountType.Equity] || metadata?.defaultAccounts?.equity
+        const gainAccount = (accounts as any)[AccountType.Gain] || metadata?.defaultAccounts?.gain
+        const lossAccount = (accounts as any)[AccountType.Loss] || metadata?.defaultAccounts?.loss
+        if (equityAccount === undefined || gainAccount === undefined || lossAccount === undefined) {
+          throw new Error('Missing required accounts for holding creation')
+        }
+        if (assetAccount) {
+          tx = walletClient.writeContract({
+            address: hub,
+            abi: ABI.Hub,
+            functionName: 'initializeHolding',
+            args: [
+              self.pool.id.raw,
+              self.id.raw,
+              assetId.raw,
+              valuation,
+              assetAccount,
+              equityAccount,
+              gainAccount,
+              lossAccount,
+            ],
+          })
+        } else {
+          const newAssetAccount = await self._getFreeAccountId()
+          const createAccountData = encodeFunctionData({
+            abi: ABI.Hub,
+            functionName: 'createAccount',
+            args: [self.pool.id.raw, newAssetAccount, false],
+          })
+          const initHoldingData = encodeFunctionData({
+            abi: ABI.Hub,
+            functionName: 'initializeHolding',
+            args: [
+              self.pool.id.raw,
+              self.id.raw,
+              assetId.raw,
+              valuation,
+              newAssetAccount,
+              equityAccount,
+              gainAccount,
+              lossAccount,
+            ],
+          })
+          tx = walletClient.writeContract({
+            address: hub,
+            abi: ABI.Hub,
+            functionName: 'multicall',
+            args: [[createAccountData, initHoldingData]],
+          })
+        }
+      }
+
+      yield* doTransaction('Create holding', publicClient, () => tx)
+    }, this.pool.chainId)
+  }
+
+  updateSharePrice(pricePerShare: Price) {
+    const self = this
+    return this._transactSequence(async function* ({ walletClient, publicClient }) {
+      const { hub } = await self._root._protocolAddresses(self.pool.chainId)
+      yield* doTransaction('Update price', publicClient, () =>
+        walletClient.writeContract({
+          address: hub,
+          abi: ABI.Hub,
+          functionName: 'updateSharePrice',
+          args: [self.pool.id.raw, self.id.raw, pricePerShare.toBigInt()],
+        })
+      )
+    }, this.pool.chainId)
+  }
+
   setMaxAssetPriceAge(assetId: AssetId, maxPriceAge: number) {
     const self = this
     return this._transactSequence(async function* ({ walletClient, publicClient }) {
@@ -296,7 +506,7 @@ export class ShareClass extends Entity {
     }, this.pool.chainId)
   }
 
-  approveDeposits(assetId: AssetId, assetAmount: Balance, navPerShare: Price) {
+  approveDeposits(assetId: AssetId, assetAmount: Balance, pricePerShare: Price) {
     const self = this
     return this._transactSequence(async function* ({ walletClient, publicClient }) {
       const [{ hub }, epoch, estimate] = await Promise.all([
@@ -326,7 +536,7 @@ export class ShareClass extends Entity {
       const issueData = encodeFunctionData({
         abi: ABI.Hub,
         functionName: 'issueShares',
-        args: [self.pool.id.raw, self.id.raw, assetId.raw, epoch.issueEpoch, navPerShare.toBigInt()],
+        args: [self.pool.id.raw, self.id.raw, assetId.raw, epoch.issueEpoch, pricePerShare.toBigInt()],
       })
       yield* doTransaction('Approve deposits', publicClient, () =>
         walletClient.writeContract({
@@ -347,7 +557,7 @@ export class ShareClass extends Entity {
     }, this.pool.chainId)
   }
 
-  approveRedeems(assetId: AssetId, shareAmount: Balance, navPerShare: Price) {
+  approveRedeems(assetId: AssetId, shareAmount: Balance, pricePerShare: Price) {
     const self = this
     return this._transactSequence(async function* ({ walletClient, publicClient }) {
       const [{ hub }, epoch, estimate] = await Promise.all([
@@ -372,7 +582,7 @@ export class ShareClass extends Entity {
       const issueData = encodeFunctionData({
         abi: ABI.Hub,
         functionName: 'revokeShares',
-        args: [self.pool.id.raw, self.id.raw, assetId.raw, epoch.revokeEpoch, navPerShare.toBigInt()],
+        args: [self.pool.id.raw, self.id.raw, assetId.raw, epoch.revokeEpoch, pricePerShare.toBigInt()],
       })
       yield* doTransaction('Approve redeems', publicClient, () =>
         walletClient.writeContract({
@@ -506,7 +716,7 @@ export class ShareClass extends Entity {
       this._root._protocolAddresses(this.pool.chainId).pipe(
         switchMap(({ shareClassManager }) =>
           defer(async () => {
-            const [totalIssuance, navPerShare] = await this._root.getClient(this.pool.chainId)!.readContract({
+            const [totalIssuance, pricePerShare] = await this._root.getClient(this.pool.chainId)!.readContract({
               address: shareClassManager,
               abi: ABI.ShareClassManager,
               functionName: 'metrics',
@@ -514,7 +724,7 @@ export class ShareClass extends Entity {
             })
             return {
               totalIssuance: new Balance(totalIssuance, 18),
-              navPerShare: new Balance(navPerShare, 18),
+              pricePerShare: new Price(pricePerShare),
             }
           }).pipe(
             repeatOnEvents(
@@ -652,4 +862,39 @@ export class ShareClass extends Entity {
       )
     )
   }
+
+  /** @internal */
+  _getFreeAccountId() {
+    return this._query(null, () =>
+      this._root._protocolAddresses(this.pool.chainId).pipe(
+        map(({ accounting }) => ({ accounting, id: null, triesLeft: 10 })),
+        expand(({ accounting, triesLeft }) => {
+          const id = randomUint32()
+
+          if (triesLeft <= 0) return EMPTY
+
+          return defer(async () => {
+            const exists = await this._root.getClient(this.pool.chainId)!.readContract({
+              address: accounting,
+              abi: ABI.Accounting,
+              functionName: 'exists',
+              args: [this.pool.id.raw, id],
+            })
+            return { accounting, id: exists ? null : id, triesLeft: triesLeft - 1 }
+          })
+        }),
+        filter(({ id }) => !!id),
+        map(({ id }) => id!)
+      )
+    )
+  }
+}
+
+function randomUint32() {
+  if (typeof globalThis.crypto === 'undefined') {
+    return Math.floor(Math.random() * 0x100000000)
+  }
+  const array = new Uint32Array(1)
+  globalThis.crypto.getRandomValues(array)
+  return array[0]!
 }

@@ -63,7 +63,7 @@ export class Vault extends Entity {
           address: this.address,
           asset: this._asset,
           isSyncInvest,
-          isSyncRedeem: true,
+          isSyncRedeem: false,
           investmentCurrency,
           shareCurrency,
         }))

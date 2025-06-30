@@ -14,6 +14,7 @@ export default [
   // 'event Rely(address indexed user)',
   // 'event StartJournalId(uint64 indexed poolId, uint256 journalId)',
   'function accountValue(uint64 poolId, uint32 account) view returns (int128)',
+  'function exists(uint64 poolId, uint32 account) view returns (bool)',
   'function accounts(uint64, uint32) view returns (uint128 totalDebit, uint128 totalCredit, bool isDebitNormal, uint64 lastUpdated, bytes metadata)',
   // 'function addCredit(uint32 account, uint128 value)',
   // 'function addDebit(uint32 account, uint128 value)',

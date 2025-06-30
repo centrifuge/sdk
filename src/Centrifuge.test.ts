@@ -5,6 +5,7 @@ import { createClient, custom } from 'viem'
 import { Centrifuge } from './Centrifuge.js'
 import { currencies } from './config/protocol.js'
 import { context } from './tests/setup.js'
+import { ProtocolContracts } from './types/index.js'
 import { Balance } from './utils/BigInt.js'
 import { doSignMessage, doTransaction } from './utils/transaction.js'
 import { AssetId, PoolId } from './utils/types.js'
@@ -65,12 +66,9 @@ describe('Centrifuge', () => {
       'wormholeAdapter',
       'axelarAdapter',
       'currencies',
-    ]
+    ] satisfies (keyof ProtocolContracts | 'currencies')[]
 
-    const centrifuge = new Centrifuge({ environment: 'demo' })
-    const chainId = centrifuge.config.defaultChain
-
-    const result = await centrifuge._protocolAddresses(chainId)
+    const result = await context.centrifuge._protocolAddresses(chainId)
 
     expect(result).to.be.an('object')
     expect(Object.keys(result)).to.be.eql(expectedContractKeys)
@@ -242,7 +240,7 @@ describe('Centrifuge', () => {
     })
 
     it("shouldn't cache the latest value when `cache` is `false` on the Centrifuge instance", async () => {
-      const centrifuge = new Centrifuge({ environment: 'demo', cache: false })
+      const centrifuge = new Centrifuge({ environment: 'dev', cache: false })
       let value = 0
       const query1 = centrifuge._query([Math.random()], () =>
         defer(() => {
@@ -333,7 +331,7 @@ describe('Centrifuge', () => {
 
     it('should batch calls', async () => {
       const fetchSpy = sinon.spy(globalThis, 'fetch')
-      const centrifuge = new Centrifuge({ environment: 'demo' })
+      const centrifuge = new Centrifuge({ environment: 'dev' })
       const tUSD = '0x8503b4452Bf6238cC76CdbEE223b46d7196b1c93'
       const user = '0x423420Ae467df6e90291fd0252c0A8a637C1e03f'
       await centrifuge.balance(tUSD, user, chainId)
@@ -345,7 +343,7 @@ describe('Centrifuge', () => {
   describe('Transact', () => {
     it('should throw when no account is selected', async () => {
       const cent = new Centrifuge({
-        environment: 'demo',
+        environment: 'dev',
       })
       cent.setSigner(mockProvider({ accounts: [] }))
       const tx = cent._transact('Test', async () => '0x1' as const, chainId)
@@ -360,7 +358,7 @@ describe('Centrifuge', () => {
 
     it('should try to switch chains when the signer is connected to a different one', async () => {
       const cent = new Centrifuge({
-        environment: 'demo',
+        environment: 'dev',
       })
       const signer = mockProvider({ chainId: 1 })
       const spy = sinon.spy(signer, 'request')
@@ -377,7 +375,7 @@ describe('Centrifuge', () => {
 
     it("shouldn't try to switch chains when the signer is connected to the right chain", async () => {
       const cent = new Centrifuge({
-        environment: 'demo',
+        environment: 'dev',
       })
       cent.setSigner(mockProvider())
 
@@ -389,7 +387,7 @@ describe('Centrifuge', () => {
 
     it('should emit status updates', async () => {
       const cent = new Centrifuge({
-        environment: 'demo',
+        environment: 'dev',
       })
       cent.setSigner(mockProvider())
       const publicClient: any = createClient({ transport: custom(mockProvider()) }).extend(() => ({
@@ -412,7 +410,7 @@ describe('Centrifuge', () => {
 
     it('should emit status updates for a sequence of transactions', async () => {
       const cent = new Centrifuge({
-        environment: 'demo',
+        environment: 'dev',
       })
       cent.setSigner(mockProvider())
       const publicClient: any = createClient({ transport: custom(mockProvider()) }).extend(() => ({
