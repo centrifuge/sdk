@@ -92,6 +92,16 @@ describe('Centrifuge', () => {
       expect(currency.supportsPermit).to.be.true
     })
 
+    it('should fetch assets', async () => {
+      const assets = await context.centrifuge.assets(chainId)
+      expect(assets).to.be.an('array')
+      expect(assets.length).to.be.greaterThan(0)
+      expect(assets[0]!.id.centrifugeId).to.equal(1)
+      expect(assets[0]!.registeredOnCentrifugeId).to.equal(1)
+      expect(assets[0]!.name).to.be.a('string')
+      expect(assets[0]!.symbol).to.be.a('string')
+    })
+
     it('should fetch the asset decimals', async () => {
       const decimals = await context.centrifuge.assetDecimals(assetId, 11155111)
       expect(decimals).to.equal(6)

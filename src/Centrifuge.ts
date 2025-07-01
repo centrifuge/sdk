@@ -428,36 +428,54 @@ export class Centrifuge {
   /**
    * Get the assets that exist on a given spoke chain that have been registered on a given hub chain.
    * @param spokeChainId - The chain ID where the assets exist
-   * @param hubChainId - The chain ID where the assets are registered
-   * @returns
+   * @param hubChainId - The chain ID where the assets should optionally be registered
    */
-  assets(spokeChainId: number, hubChainId: number) {
-    return this._query(null, () => combineLatest([this.id(spokeChainId), this.id(hubChainId)])).pipe(
-      switchMap(([spokeCentId, hubCentId]) =>
-        this._queryIndexer<{ assets: { items: { address: string; name: string; symbol: string; id: string }[] } }>(
-          `query ($spokeCentId: String!, $hubCentId: String!) {
-            assets(where: { centrifugeId: $spokeCentId }) {
-              items {
-                address
-                name
-                symbol
-                id: assetTokenId
+  assets(spokeChainId: number, hubChainId = spokeChainId) {
+    return this._query(null, () =>
+      combineLatest([this.id(spokeChainId), this.id(hubChainId)]).pipe(
+        switchMap(([spokeCentId, hubCentId]) =>
+          this._queryIndexer(
+            `query ($hubCentId: String!) {
+              assetRegistrations(where: { centrifugeId: $hubCentId, decimals_gt: 0 }) {
+                items {
+                  id
+                  name
+                  symbol
+                  decimals
+                  asset {
+                    centrifugeId
+                    address
+                  }
+                }
               }
+            }`,
+            { hubCentId: String(hubCentId) },
+            (data: {
+              assetRegistrations: {
+                items: {
+                  name: string
+                  symbol: string
+                  id: string
+                  decimals: number
+                  asset: { centrifugeId: string; address: HexString }
+                }[]
+              }
+            }) => {
+              return data.assetRegistrations.items
+                .filter((assetReg) => Number(assetReg.asset.centrifugeId) === spokeCentId)
+                .map((assetReg) => {
+                  return {
+                    registeredOnCentrifugeId: hubCentId,
+                    id: new AssetId(assetReg.id),
+                    address: assetReg.asset.address,
+                    name: assetReg.name,
+                    symbol: assetReg.symbol,
+                  }
+                })
             }
-          }`,
-          { spokeCentId, hubCentId }
+          )
         )
-      ),
-      map((data) => {
-        return data.assets.items.map((asset) => {
-          return {
-            id: new AssetId(asset.id),
-            address: asset.address as HexString,
-            name: asset.name,
-            symbol: asset.symbol,
-          }
-        })
-      })
+      )
     )
   }
 
