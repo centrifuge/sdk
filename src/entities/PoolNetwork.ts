@@ -208,7 +208,8 @@ export class PoolNetwork extends Entity {
 
       const batch: HexString[] = []
 
-      // TODO: Set async request manager if not already set
+      // TODO: Set async request manager if not already set.
+      // Can't currently query whether it is set on the Spoke contract. Needs a view method.
 
       if (!isAsyncManagerSet && vaults.some((v) => v.kind === 'async')) {
         batch.push(
