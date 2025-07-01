@@ -14,6 +14,7 @@ const chainId = 11155111
 const poolId = PoolId.from(1, 1)
 const assetId = AssetId.from(1, 1)
 const asset = currencies[chainId]![0]!
+const poolManager = '0x423420Ae467df6e90291fd0252c0A8a637C1e03f'
 
 describe('Centrifuge', () => {
   let clock: sinon.SinonFakeTimers
@@ -443,6 +444,71 @@ describe('Centrifuge', () => {
           receipt: {},
         },
       ])
+    })
+  })
+
+  describe('Transactions', () => {
+    it('should create a pool', async () => {
+      const centrifugeWithPin = new Centrifuge({
+        environment: 'dev',
+        pinJson: async () => {
+          return 'abc'
+        },
+        rpcUrls: {
+          11155111: context.tenderlyFork.rpcUrl,
+        },
+      })
+
+      context.tenderlyFork.impersonateAddress = poolManager
+      centrifugeWithPin.setSigner(context.tenderlyFork.signer)
+
+      const result = await centrifugeWithPin.createPool(
+        {
+          assetClass: 'Public credit',
+          subAssetClass: 'Test Subclass',
+          poolName: 'Test Pool',
+          poolIcon: { uri: '', mime: '' },
+          investorType: 'Retail',
+          poolStructure: 'revolving',
+          poolType: 'open',
+          issuerName: 'Test Issuer',
+          issuerRepName: 'Test Rep',
+          issuerLogo: { uri: '', mime: '' },
+          issuerShortDescription: 'Test Description',
+          issuerDescription: 'Test Description',
+          website: '',
+          forum: '',
+          email: '',
+          report: null,
+          executiveSummary: null,
+          details: [],
+          issuerCategories: [],
+          poolRatings: [],
+          listed: false,
+          onboardingExperience: 'default',
+          shareClasses: [
+            {
+              tokenName: 'Test Token',
+              symbolName: 'TST',
+              minInvestment: 1000,
+              apyPercentage: 5,
+              apy: '5%',
+              defaultAccounts: {
+                asset: 1000,
+                equity: 1001,
+                gain: 1001,
+                loss: 1001,
+                expense: 1002,
+                liability: 1001,
+              },
+            },
+          ],
+        },
+        840,
+        chainId
+      )
+
+      expect(result.type).to.equal('TransactionConfirmed')
     })
   })
 })

@@ -1,3 +1,5 @@
+import { PoolMetadata } from './poolMetadata.js'
+
 export type FileType = { uri: string; mime: string }
 
 export type PoolReport = {
@@ -16,6 +18,8 @@ export type ShareClassInput = {
   minInvestment: number | ''
   apyPercentage: number | null
   apy: string | null
+  salt?: string
+  defaultAccounts?: PoolMetadata['shareClasses'][number]['defaultAccounts']
 }
 
 export type IssuerDetail = {
@@ -24,7 +28,6 @@ export type IssuerDetail = {
 }
 
 export type PoolMetadataInput = {
-  assetDenomination: string
   poolStructure: 'revolving'
   assetClass: 'Public credit' | 'Private credit'
   subAssetClass: string
@@ -33,7 +36,6 @@ export type PoolMetadataInput = {
   investorType: string
   poolIcon: FileType
   poolType: 'open' | 'closed'
-  maxReserve: number | ''
   issuerName: string
   issuerRepName: string
   issuerLogo: FileType
@@ -51,7 +53,7 @@ export type PoolMetadataInput = {
     reportUrl?: string
     reportFile?: FileType | null
   }[]
-  report: PoolReport
+  report?: PoolReport | null
   onboardingExperience: string
   onboarding?: {
     shareClasses: { [scId: string]: { agreement: FileType | undefined; openForOnboarding: boolean } }

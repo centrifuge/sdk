@@ -1,7 +1,13 @@
 import { toHex } from 'viem'
 
 export class PoolId {
-  static from(centrifugeId: number, poolCounter: number) {
+  /**
+   * Creates a PoolId from a centrifuge ID and a pool counter.
+   * @param centrifugeId - uint16
+   * @param poolCounter - uint48
+   * @returns A new PoolId instance.
+   */
+  static from(centrifugeId: number, poolCounter: number | bigint) {
     return new PoolId((BigInt(centrifugeId) << 48n) + BigInt(poolCounter))
   }
 

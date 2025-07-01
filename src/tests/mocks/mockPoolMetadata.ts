@@ -68,7 +68,6 @@ export const mockPoolMetadata: PoolMetadata = {
     poolStructure: 'Fake Structure',
     poolRatings: [],
   },
-  defaultAccounts: {},
   shareClasses: {
     '0x6756e091ae798a8e51e12e27ee8facdf': {
       minInitialInvestment: '25000000000',
