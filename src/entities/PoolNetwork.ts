@@ -182,14 +182,50 @@ export class PoolNetwork extends Entity {
   ) {
     const self = this
     return this._transactSequence(async function* ({ walletClient, publicClient }) {
-      const [{ hub, syncDepositVaultFactory, asyncVaultFactory }, id, estimate, details] = await Promise.all([
+      const [
+        { hub },
+        { balanceSheet, syncDepositVaultFactory, asyncVaultFactory, syncManager, asyncRequestManager },
+        id,
+        estimate,
+        details,
+      ] = await Promise.all([
         self._root._protocolAddresses(self.pool.chainId),
+        self._root._protocolAddresses(self.chainId),
         self._root.id(self.chainId),
         self._root._estimate(self.pool.chainId, { chainId: self.chainId }),
         self.details(),
       ])
 
+      const balanceSheetContract = getContract({
+        client: publicClient,
+        address: balanceSheet,
+        abi: ABI.BalanceSheet,
+      })
+      const [isAsyncManagerSet, isSyncManagerSet] = await Promise.all([
+        balanceSheetContract.read.manager([self.pool.id.raw, asyncRequestManager]),
+        balanceSheetContract.read.manager([self.pool.id.raw, syncManager]),
+      ])
+
       const batch: HexString[] = []
+
+      if (!isAsyncManagerSet && vaults.some((v) => v.kind === 'async')) {
+        batch.push(
+          encodeFunctionData({
+            abi: ABI.Hub,
+            functionName: 'updateBalanceSheetManager',
+            args: [id, self.pool.id.raw, addressToBytes32(asyncRequestManager), true],
+          })
+        )
+      }
+      if (!isSyncManagerSet && vaults.some((v) => v.kind === 'syncDeposit')) {
+        batch.push(
+          encodeFunctionData({
+            abi: ABI.Hub,
+            functionName: 'updateBalanceSheetManager',
+            args: [id, self.pool.id.raw, addressToBytes32(syncManager), true],
+          })
+        )
+      }
 
       if (!details.isActive) {
         batch.push(
