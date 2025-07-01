@@ -208,6 +208,8 @@ export class PoolNetwork extends Entity {
 
       const batch: HexString[] = []
 
+      // TODO: Set async request manager if not already set
+
       if (!isAsyncManagerSet && vaults.some((v) => v.kind === 'async')) {
         batch.push(
           encodeFunctionData({
