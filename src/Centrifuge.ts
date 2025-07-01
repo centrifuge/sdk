@@ -19,6 +19,7 @@ import {
   createPublicClient,
   createWalletClient,
   custom,
+  encodeFunctionData,
   getContract,
   http,
   parseAbi,
@@ -50,11 +51,12 @@ import { PoolMetadata } from './types/poolMetadata.js'
 import type { CentrifugeQueryOptions, Query } from './types/query.js'
 import type { OperationStatus, Signer, Transaction, TransactionCallbackParams } from './types/transaction.js'
 import { Balance } from './utils/BigInt.js'
+import { randomUint } from './utils/index.js'
 import { createPinning, getUrlFromHash } from './utils/ipfs.js'
 import { hashKey } from './utils/query.js'
 import { makeThenable, repeatOnEvents, shareReplayWithDelayedReset } from './utils/rx.js'
 import { doTransaction, isLocalAccount } from './utils/transaction.js'
-import { AssetId, PoolId } from './utils/types.js'
+import { AssetId, PoolId, ShareClassId } from './utils/types.js'
 
 const PINNING_API_DEMO = 'https://europe-central2-peak-vista-185616.cloudfunctions.net/pinning-api-demo'
 
@@ -149,45 +151,31 @@ export class Centrifuge {
    * @param metadataInput - The metadata for the pool
    * @param currencyCode - The currency code for the pool
    * @param chainId - The chain ID to create the pool on
+   * @param counter - The pool counter, used to create a unique pool ID (uint48)
    */
-  createPool(metadataInput: PoolMetadataInput, currencyCode = 840, chainId: number, counter: number) {
+  createPool(metadataInput: PoolMetadataInput, currencyCode = 840, chainId: number, counter?: number | bigint) {
     const self = this
     return this._transactSequence(async function* ({ walletClient, signingAddress, publicClient }) {
       const [addresses, id] = await Promise.all([self._protocolAddresses(chainId), self.id(chainId)])
-      const result = yield* doTransaction('Create pool', publicClient, () =>
-        walletClient.writeContract({
-          address: addresses.hubRegistry,
-          abi: ABI.Hub,
-          functionName: 'createPool',
-          args: [PoolId.from(id, counter).raw, signingAddress, BigInt(currencyCode)],
-        })
-      )
+      const poolId = PoolId.from(id, counter ?? randomUint(48))
 
-      const logs = parseEventLogs({
-        abi: ABI.HubRegistry,
-        eventName: 'NewPool',
-        logs: result.receipt.logs,
+      const createPoolData = encodeFunctionData({
+        abi: ABI.Hub,
+        functionName: 'createPool',
+        args: [poolId.raw, signingAddress, BigInt(currencyCode)],
       })
 
-      const poolId = logs[0]!.args.poolId
-
-      const scIds = await Promise.all(
-        Array.from({ length: metadataInput.shareClasses.length }, (_, i) => {
-          return self.getClient(chainId)!.readContract({
-            address: addresses.shareClassManager,
-            abi: ABI.ShareClassManager,
-            functionName: 'previewShareClassId',
-            args: [poolId, i + 1],
-          })
-        })
+      const scIds = Array.from({ length: metadataInput.shareClasses.length }, (_, i) =>
+        ShareClassId.from(poolId, i + 1)
       )
 
       const shareClassesById: PoolMetadata['shareClasses'] = {}
       metadataInput.shareClasses.forEach((sc, index) => {
-        shareClassesById[scIds[index]!] = {
+        shareClassesById[scIds[index]!.raw] = {
           minInitialInvestment: Balance.fromFloat(sc.minInvestment, 18).toString(),
           apyPercentage: sc.apyPercentage,
           apy: sc.apy,
+          defaultAccounts: sc.defaultAccounts,
         }
       })
 
@@ -234,7 +222,6 @@ export class Centrifuge {
             : [],
         },
         shareClasses: shareClassesById,
-        defaultAccounts: {},
         onboarding: {
           shareClasses: metadataInput.onboarding?.shareClasses || {},
           taxInfoRequired: metadataInput.onboarding?.taxInfoRequired,
@@ -242,20 +229,65 @@ export class Centrifuge {
         },
       }
 
-      console.log('poolId', poolId, formattedMetadata)
+      const cid = await self.config.pinJson(formattedMetadata)
 
-      // TODO: add metadata and share classes
+      const setMetadataData = encodeFunctionData({
+        abi: ABI.Hub,
+        functionName: 'setPoolMetadata',
+        args: [poolId.raw, toHex(cid)],
+      })
+      const addScData = metadataInput.shareClasses.map((sc) =>
+        encodeFunctionData({
+          abi: ABI.Hub,
+          functionName: 'addShareClass',
+          args: [
+            poolId.raw,
+            sc.tokenName,
+            sc.symbolName,
+            sc.salt?.startsWith('0x') ? (sc.salt as HexString) : toHex(sc.salt ?? randomUint(256), { size: 32 }),
+          ],
+        })
+      )
+      const accountIsDebitNormal = new Map<number, boolean>()
+      const accountNumbers = [
+        ...new Set(
+          metadataInput.shareClasses.flatMap((sc) =>
+            Object.entries(sc.defaultAccounts ?? {})
+              .filter(([k, v]) => {
+                if (!v) return false
 
-      // const enableData = encodeFunctionData({
-      //   abi: ABI.Hub,
-      //   functionName: 'setMetadata',
-      //   args: ["IPFS_HASH"],
-      // })
-      // const requestData = encodeFunctionData({
-      //   abi: ABI.Hub,
-      //   functionName: 'addShareClass',
-      //   args: [SC_NAME, SC_SYMBOL, SC_SALT, ''],
-      // })
+                if (['asset', 'expense'].includes(k)) {
+                  if (accountIsDebitNormal.get(v) === false)
+                    throw new Error(`Account "${v}" is set as both credit normal and debit normal.`)
+                  accountIsDebitNormal.set(v, true)
+                } else {
+                  if (accountIsDebitNormal.get(v) === true)
+                    throw new Error(`Account "${v}" is set as both credit normal and debit normal.`)
+                  accountIsDebitNormal.set(v, false)
+                }
+
+                return true
+              })
+              .map(([, v]) => v)
+          )
+        ),
+      ]
+      const createAccountsData = accountNumbers.map((account) =>
+        encodeFunctionData({
+          abi: ABI.Hub,
+          functionName: 'createAccount',
+          args: [poolId.raw, account, accountIsDebitNormal.get(account)!],
+        })
+      )
+
+      yield* doTransaction('Create pool', publicClient, () => {
+        return walletClient.writeContract({
+          address: addresses.hub,
+          abi: ABI.Hub,
+          functionName: 'multicall',
+          args: [[createPoolData, setMetadataData, ...addScData, ...createAccountsData]],
+        })
+      })
     }, chainId)
   }
 
