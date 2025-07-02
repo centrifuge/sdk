@@ -2,6 +2,7 @@ import { expect } from 'chai'
 import { firstValueFrom, skipWhile } from 'rxjs'
 import { context } from '../tests/setup.js'
 import { AccountType } from '../types/holdings.js'
+import { HexString } from '../types/index.js'
 import { Balance, Price } from '../utils/BigInt.js'
 import { AssetId, PoolId, ShareClassId } from '../utils/types.js'
 import { Pool } from './Pool.js'
@@ -148,6 +149,6 @@ describe('ShareClass', () => {
 //   return hexToBigInt(keccak256(toHex(slot))) + index * elementSize
 // }
 
-function randomAddress() {
+function randomAddress(): HexString {
   return `0x${Math.random().toString(16).slice(2).padStart(40, '0')}`
 }

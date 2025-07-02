@@ -75,7 +75,7 @@ export class Vault extends Entity {
    * Get the details of the investment of an investor in the vault and any pending investments or redemptions.
    * @param investor - The address of the investor
    */
-  investment(investor: string) {
+  investment(investor: HexString) {
     const address = investor.toLowerCase() as HexString
     return this._query(['investment', address], () =>
       combineLatest([
@@ -379,7 +379,7 @@ export class Vault extends Entity {
    * @param controller - The address of the user that has invested. Allows someone else to claim on behalf of the user
    *  if the user has set the VaultRouter as an operator on the vault. If not provided, the investor's address is used.
    */
-  claim(receiver?: string, controller?: string) {
+  claim(receiver?: HexString, controller?: HexString) {
     const self = this
     return this._transactSequence(async function* ({ walletClient, signingAddress, publicClient }) {
       const [investment, { vaultRouter }] = await Promise.all([
@@ -405,7 +405,7 @@ export class Vault extends Entity {
           address: vaultRouter,
           abi: ABI.VaultRouter,
           functionName,
-          args: [self.address, receiverAddress as HexString, controllerAddress as HexString],
+          args: [self.address, receiverAddress, controllerAddress],
         })
       )
     }, this.chainId)
@@ -469,8 +469,8 @@ export class Vault extends Entity {
    * @param owner - The address of the owner
    * @internal
    */
-  _allowance(owner: string) {
-    const address = owner.toLowerCase()
+  _allowance(owner: HexString) {
+    const address = owner.toLowerCase() as HexString
     return this._query(['allowance', address], () =>
       combineLatest([this._investmentCurrency(), this._root._protocolAddresses(this.chainId)]).pipe(
         switchMap(([currency, { vaultRouter }]) =>
@@ -481,7 +481,7 @@ export class Vault extends Entity {
                 address: this._asset,
                 abi: ABI.Currency,
                 functionName: 'allowance',
-                args: [address as HexString, vaultRouter],
+                args: [address, vaultRouter],
               })
               .then((val) => new Balance(val, currency.decimals))
           ).pipe(

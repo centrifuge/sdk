@@ -347,12 +347,12 @@ export class Centrifuge {
    * @param address - The token address
    * @param chainId - The chain ID
    */
-  currency(address: string, chainId: number): Query<CurrencyDetails> {
-    const curAddress = address.toLowerCase()
+  currency(address: HexString, chainId: number): Query<CurrencyDetails> {
+    const curAddress = address.toLowerCase() as HexString
     return this._query(['currency', curAddress, chainId], () =>
       defer(async () => {
         const contract = getContract({
-          address: curAddress as HexString,
+          address: curAddress,
           abi: ABI.Currency,
           client: this.getClient(chainId)!,
         })
@@ -366,7 +366,7 @@ export class Centrifuge {
             .catch(() => false),
         ])
         return {
-          address: curAddress as HexString,
+          address: curAddress,
           decimals,
           name,
           symbol,
@@ -377,8 +377,8 @@ export class Centrifuge {
     )
   }
 
-  investor(address: string) {
-    return this._query(null, () => of(new Investor(this, address as HexString)))
+  investor(address: HexString) {
+    return this._query(null, () => of(new Investor(this, address)))
   }
 
   /**
@@ -387,14 +387,14 @@ export class Centrifuge {
    * @param owner - The owner address
    * @param chainId - The chain ID
    */
-  balance(currency: string, owner: string, chainId: number) {
+  balance(currency: HexString, owner: HexString, chainId: number) {
     const address = owner.toLowerCase() as HexString
     return this._query(['balance', currency, owner, chainId], () => {
       return this.currency(currency, chainId).pipe(
         switchMap((currencyMeta) =>
           defer(async () => {
             const val = await this.getClient(chainId)!.readContract({
-              address: currency as HexString,
+              address: currency,
               abi: ABI.Currency,
               functionName: 'balanceOf',
               args: [address],
@@ -428,37 +428,87 @@ export class Centrifuge {
   /**
    * Get the assets that exist on a given spoke chain that have been registered on a given hub chain.
    * @param spokeChainId - The chain ID where the assets exist
-   * @param hubChainId - The chain ID where the assets are registered
-   * @returns
+   * @param hubChainId - The chain ID where the assets should optionally be registered
    */
-  assets(spokeChainId: number, hubChainId: number) {
-    return this._query(null, () => combineLatest([this.id(spokeChainId), this.id(hubChainId)])).pipe(
-      switchMap(([spokeCentId, hubCentId]) =>
-        this._queryIndexer<{ assets: { items: { address: string; name: string; symbol: string; id: string }[] } }>(
-          `query ($spokeCentId: String!, $hubCentId: String!) {
-            assets(where: { centrifugeId: $spokeCentId }) {
-              items {
-                address
-                name
-                symbol
-                id: assetTokenId
+  assets(spokeChainId: number, hubChainId = spokeChainId) {
+    return this._query(null, () =>
+      combineLatest([this.id(spokeChainId), this.id(hubChainId)]).pipe(
+        switchMap(([spokeCentId, hubCentId]) =>
+          this._queryIndexer(
+            `query ($hubCentId: String!) {
+              assetRegistrations(where: { centrifugeId: $hubCentId, decimals_gt: 0 }) {
+                items {
+                  id
+                  name
+                  symbol
+                  decimals
+                  asset {
+                    centrifugeId
+                    address
+                  }
+                }
               }
+            }`,
+            { hubCentId: String(hubCentId) },
+            (data: {
+              assetRegistrations: {
+                items: {
+                  name: string
+                  symbol: string
+                  id: string
+                  decimals: number
+                  asset: { centrifugeId: string; address: HexString }
+                }[]
+              }
+            }) => {
+              return data.assetRegistrations.items
+                .filter((assetReg) => Number(assetReg.asset.centrifugeId) === spokeCentId)
+                .map((assetReg) => {
+                  return {
+                    registeredOnCentrifugeId: hubCentId,
+                    id: new AssetId(assetReg.id),
+                    address: assetReg.asset.address,
+                    name: assetReg.name,
+                    symbol: assetReg.symbol,
+                  }
+                })
             }
-          }`,
-          { spokeCentId, hubCentId }
+          )
         )
-      ),
-      map((data) => {
-        return data.assets.items.map((asset) => {
-          return {
-            id: new AssetId(asset.id),
-            address: asset.address as HexString,
-            name: asset.name,
-            symbol: asset.symbol,
-          }
-        })
-      })
+      )
     )
+  }
+
+  /**
+   * Register an asset
+   * @param originChainId - The chain ID where the asset exists
+   * @param registerOnChainId - The chain ID where the asset should be registered
+   * @param assetAddress - The address of the asset to register
+   * @param tokenId - Optional token ID for ERC6909 assets
+   */
+  registerAsset(
+    originChainId: number,
+    registerOnChainId: number,
+    assetAddress: HexString,
+    tokenId: number | bigint = 0
+  ) {
+    const self = this
+    return this._transactSequence(async function* ({ walletClient, publicClient }) {
+      const [addresses, id, estimate] = await Promise.all([
+        self._protocolAddresses(originChainId),
+        self.id(registerOnChainId),
+        self._estimate(originChainId, { chainId: registerOnChainId }),
+      ])
+      yield* doTransaction('Register asset', publicClient, () =>
+        walletClient.writeContract({
+          address: addresses.spoke,
+          abi: ABI.Spoke,
+          functionName: 'registerAsset',
+          args: [id, assetAddress, BigInt(tokenId)],
+          value: estimate,
+        })
+      )
+    }, originChainId)
   }
 
   /**
@@ -912,7 +962,7 @@ export class Centrifuge {
   }
 
   _getQuote(
-    valuationAddress: string,
+    valuationAddress: HexString,
     baseAmount: Balance,
     baseAssetId: AssetId,
     quoteAssetId: AssetId,
@@ -926,7 +976,7 @@ export class Centrifuge {
             defer(async () => {
               const [quote, quoteDecimals] = await Promise.all([
                 this.getClient(chainId)!.readContract({
-                  address: valuationAddress as HexString,
+                  address: valuationAddress,
                   abi: ABI.Valuation,
                   functionName: 'getQuote',
                   args: [baseAmount.toBigInt(), baseAssetId.raw, quoteAssetId.raw],
