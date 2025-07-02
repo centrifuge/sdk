@@ -1,5 +1,5 @@
 import { catchError, combineLatest, defer, map, of, switchMap, timeout } from 'rxjs'
-import { fromHex, toHex } from 'viem'
+import { encodeFunctionData, fromHex, toHex } from 'viem'
 import { ABI } from '../abi/index.js'
 import type { Centrifuge } from '../Centrifuge.js'
 import { HexString } from '../types/index.js'
@@ -18,11 +18,11 @@ export class Pool extends Entity {
   /** @internal */
   constructor(
     _root: Centrifuge,
-    id: string | bigint,
+    id: string | bigint | PoolId,
     public chainId: number
   ) {
     super(_root, ['pool', String(id)])
-    this.id = new PoolId(id)
+    this.id = id instanceof PoolId ? id : new PoolId(id)
   }
 
   get reports() {
@@ -252,37 +252,62 @@ export class Pool extends Entity {
   }
 
   /**
-   * Update a pool manager.
-   * @param address - The address of the manager to update
-   * @param canManage - Whether the address can manage the pool
+   * Update pool managers.
    */
-  updateManager(address: HexString, canManage: boolean) {
+  updatePoolManagers(updates: { address: HexString; canManage: boolean }[]) {
     const self = this
     return this._transactSequence(async function* ({ walletClient, publicClient }) {
       const { hub } = await self._root._protocolAddresses(self.chainId)
-      yield* doTransaction('Update manager', publicClient, () =>
-        walletClient.writeContract({
-          address: hub,
+      const batch = updates.map(({ address, canManage }) =>
+        encodeFunctionData({
           abi: ABI.Hub,
           functionName: 'updateHubManager',
           args: [self.id.raw, address, canManage],
         })
       )
+
+      yield* doTransaction('Update manager', publicClient, () => {
+        if (batch.length === 1) {
+          return walletClient.sendTransaction({
+            data: batch[0],
+            to: hub,
+          })
+        }
+        return walletClient.writeContract({
+          address: hub,
+          abi: ABI.Hub,
+          functionName: 'multicall',
+          args: [batch],
+        })
+      })
     }, this.chainId)
   }
 
-  createAccount(accountId: number, isDebitNormal: boolean) {
+  createAccounts(accounts: { accountId: number; isDebitNormal: boolean }[]) {
     const self = this
     return this._transactSequence(async function* ({ walletClient, publicClient }) {
       const { hub } = await self._root._protocolAddresses(self.chainId)
-      yield* doTransaction('Create account', publicClient, () =>
-        walletClient.writeContract({
-          address: hub,
+      const txBatch = accounts.map(({ accountId, isDebitNormal }) =>
+        encodeFunctionData({
           abi: ABI.Hub,
           functionName: 'createAccount',
           args: [self.id.raw, accountId, isDebitNormal],
         })
       )
+      yield* doTransaction('Create accounts', publicClient, () => {
+        if (txBatch.length === 1) {
+          return walletClient.sendTransaction({
+            data: txBatch[0],
+            to: hub,
+          })
+        }
+        return walletClient.writeContract({
+          address: hub,
+          abi: ABI.Hub,
+          functionName: 'multicall',
+          args: [txBatch],
+        })
+      })
     }, this.chainId)
   }
 

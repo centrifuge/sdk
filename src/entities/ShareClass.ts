@@ -5,7 +5,7 @@ import type { Centrifuge } from '../Centrifuge.js'
 import { AccountType } from '../types/holdings.js'
 import { HexString } from '../types/index.js'
 import { Balance, Price } from '../utils/BigInt.js'
-import { addressToBytes32 } from '../utils/index.js'
+import { addressToBytes32, randomUint } from '../utils/index.js'
 import { repeatOnEvents } from '../utils/rx.js'
 import { doTransaction } from '../utils/transaction.js'
 import { AssetId, ShareClassId } from '../utils/types.js'
@@ -24,10 +24,11 @@ export class ShareClass extends Entity {
   constructor(
     _root: Centrifuge,
     public pool: Pool,
-    id: string
+    id: string | ShareClassId
   ) {
-    super(_root, ['shareclass', id])
-    this.id = new ShareClassId(id)
+    const _id = id instanceof ShareClassId ? id : new ShareClassId(id)
+    super(_root, ['shareclass', _id.toString()])
+    this.id = _id
   }
 
   /**
@@ -98,28 +99,14 @@ export class ShareClass extends Entity {
         ._queryIndexer<{
           holdings: {
             items: {
-              assetAmount: bigint
-              assetId: string
-              assetPrice: bigint
-              assetValue: bigint
-              isLiability: boolean
-              valuation: bigint
-              tokenId: string
-              poolId: string
+              assetRegistrationId: string
             }[]
           }
         }>(
           `query ($scId: String!) {
             holdings(where: { tokenId: $scId }) {
               items {
-                assetAmount
-                assetId
-                assetPrice
-                assetValue
-                isLiability
-                valuation
-                tokenId
-                poolId
+                assetRegistrationId
               }
             }
           }`,
@@ -131,7 +118,7 @@ export class ShareClass extends Entity {
           switchMap((res) =>
             combineLatest(
               res.holdings.items.map((holding) => {
-                const assetId = new AssetId(holding.assetId)
+                const assetId = new AssetId(holding.assetRegistrationId)
                 return this.holding(assetId)
               })
             )
@@ -214,7 +201,7 @@ export class ShareClass extends Entity {
     )
   }
 
-  investorOrder(assetId: AssetId, investor: string) {
+  investorOrder(assetId: AssetId, investor: HexString) {
     return this._query(['maxClaims', assetId.toString(), investor.toLowerCase()], () =>
       this._root._protocolAddresses(this.pool.chainId).pipe(
         switchMap(({ shareClassManager }) =>
@@ -268,8 +255,8 @@ export class ShareClass extends Entity {
    * @param address Address to check
    * @param chainId Chain ID of the network on which to check the member
    */
-  member(address: string, chainId: number) {
-    const addr = address.toLowerCase()
+  member(address: HexString, chainId: number) {
+    const addr = address.toLowerCase() as HexString
     return this._query(['member', addr, chainId], () =>
       combineLatest([this._share(chainId), this._restrictionManager(chainId)]).pipe(
         switchMap(([share, restrictionManager]) =>
@@ -278,7 +265,7 @@ export class ShareClass extends Entity {
               address: restrictionManager,
               abi: ABI.RestrictionManager,
               functionName: 'isMember',
-              args: [share, addr as HexString],
+              args: [share, addr],
             })
             return {
               isMember: res[0],
@@ -336,8 +323,10 @@ export class ShareClass extends Entity {
 
       let tx
       if (isLiability) {
-        const expenseAccount = (accounts as any)[AccountType.Expense] || metadata?.defaultAccounts?.expense
-        const liabilityAccount = (accounts as any)[AccountType.Liability] || metadata?.defaultAccounts?.liability
+        const expenseAccount =
+          (accounts as any)[AccountType.Expense] || metadata?.shareClasses?.[self.id.raw]?.defaultAccounts?.expense
+        const liabilityAccount =
+          (accounts as any)[AccountType.Liability] || metadata?.shareClasses?.[self.id.raw]?.defaultAccounts?.liability
         if (liabilityAccount === undefined) {
           throw new Error('Missing required accounts for liability creation')
         }
@@ -368,10 +357,14 @@ export class ShareClass extends Entity {
           })
         }
       } else {
-        const assetAccount = (accounts as any)[AccountType.Asset] || metadata?.defaultAccounts?.asset
-        const equityAccount = (accounts as any)[AccountType.Equity] || metadata?.defaultAccounts?.equity
-        const gainAccount = (accounts as any)[AccountType.Gain] || metadata?.defaultAccounts?.gain
-        const lossAccount = (accounts as any)[AccountType.Loss] || metadata?.defaultAccounts?.loss
+        const assetAccount =
+          (accounts as any)[AccountType.Asset] || metadata?.shareClasses?.[self.id.raw]?.defaultAccounts?.asset
+        const equityAccount =
+          (accounts as any)[AccountType.Equity] || metadata?.shareClasses?.[self.id.raw]?.defaultAccounts?.equity
+        const gainAccount =
+          (accounts as any)[AccountType.Gain] || metadata?.shareClasses?.[self.id.raw]?.defaultAccounts?.gain
+        const lossAccount =
+          (accounts as any)[AccountType.Loss] || metadata?.shareClasses?.[self.id.raw]?.defaultAccounts?.loss
         if (equityAccount === undefined || gainAccount === undefined || lossAccount === undefined) {
           throw new Error('Missing required accounts for holding creation')
         }
@@ -596,7 +589,7 @@ export class ShareClass extends Entity {
     }, this.pool.chainId)
   }
 
-  claimDeposit(assetId: AssetId, investor: string) {
+  claimDeposit(assetId: AssetId, investor: HexString) {
     const self = this
     return this._transactSequence(async function* ({ walletClient, publicClient }) {
       const [{ hub }, investorOrder, estimate] = await Promise.all([
@@ -622,7 +615,7 @@ export class ShareClass extends Entity {
     }, this.pool.chainId)
   }
 
-  claimRedeem(assetId: AssetId, investor: string) {
+  claimRedeem(assetId: AssetId, investor: HexString) {
     const self = this
     return this._transactSequence(async function* ({ walletClient, publicClient }) {
       const [{ hub }, investorOrder, estimate] = await Promise.all([
@@ -648,7 +641,7 @@ export class ShareClass extends Entity {
    * @param validUntil Time in seconds from Unix epoch until the investor is valid
    * @param chainId Chain ID of the network on which to update the member
    */
-  updateMember(address: string, validUntil: number, chainId: number) {
+  updateMember(address: HexString, validUntil: number, chainId: number) {
     const self = this
     return this._transactSequence(async function* ({ walletClient, publicClient }) {
       const [{ hub }, id, estimate] = await Promise.all([
@@ -819,7 +812,7 @@ export class ShareClass extends Entity {
   }
 
   /** @internal */
-  _updateContract(chainId: number, target: string, payload: HexString) {
+  _updateContract(chainId: number, target: HexString, payload: HexString) {
     const self = this
     return this._transactSequence(async function* ({ walletClient, publicClient }) {
       const id = await self._root.id(chainId)
@@ -869,7 +862,7 @@ export class ShareClass extends Entity {
       this._root._protocolAddresses(this.pool.chainId).pipe(
         map(({ accounting }) => ({ accounting, id: null, triesLeft: 10 })),
         expand(({ accounting, triesLeft }) => {
-          const id = randomUint32()
+          const id = Number(randomUint(32))
 
           if (triesLeft <= 0) return EMPTY
 
@@ -888,13 +881,4 @@ export class ShareClass extends Entity {
       )
     )
   }
-}
-
-function randomUint32() {
-  if (typeof globalThis.crypto === 'undefined') {
-    return Math.floor(Math.random() * 0x100000000)
-  }
-  const array = new Uint32Array(1)
-  globalThis.crypto.getRandomValues(array)
-  return array[0]!
 }

@@ -53,14 +53,6 @@ export type PoolMetadata = {
       reportFile?: FileType | null
     }[]
   }
-  defaultAccounts: {
-    asset?: number
-    equity?: number
-    gain?: number
-    loss?: number
-    expense?: number
-    liability?: number
-  }
   shareClasses: Record<
     string,
     {
@@ -68,6 +60,14 @@ export type PoolMetadata = {
       minInitialInvestment?: string
       apyPercentage?: number | null
       apy?: string | null
+      defaultAccounts?: {
+        asset?: number
+        equity?: number
+        gain?: number
+        loss?: number
+        expense?: number
+        liability?: number
+      }
     }
   >
   loanTemplates?: {

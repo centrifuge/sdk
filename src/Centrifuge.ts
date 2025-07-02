@@ -19,6 +19,7 @@ import {
   createPublicClient,
   createWalletClient,
   custom,
+  encodeFunctionData,
   getContract,
   http,
   parseAbi,
@@ -50,11 +51,12 @@ import { PoolMetadata } from './types/poolMetadata.js'
 import type { CentrifugeQueryOptions, Query } from './types/query.js'
 import type { OperationStatus, Signer, Transaction, TransactionCallbackParams } from './types/transaction.js'
 import { Balance } from './utils/BigInt.js'
+import { randomUint } from './utils/index.js'
 import { createPinning, getUrlFromHash } from './utils/ipfs.js'
 import { hashKey } from './utils/query.js'
 import { makeThenable, repeatOnEvents, shareReplayWithDelayedReset } from './utils/rx.js'
 import { doTransaction, isLocalAccount } from './utils/transaction.js'
-import { AssetId, PoolId } from './utils/types.js'
+import { AssetId, PoolId, ShareClassId } from './utils/types.js'
 
 const PINNING_API_DEMO = 'https://europe-central2-peak-vista-185616.cloudfunctions.net/pinning-api-demo'
 
@@ -149,45 +151,31 @@ export class Centrifuge {
    * @param metadataInput - The metadata for the pool
    * @param currencyCode - The currency code for the pool
    * @param chainId - The chain ID to create the pool on
+   * @param counter - The pool counter, used to create a unique pool ID (uint48)
    */
-  createPool(metadataInput: PoolMetadataInput, currencyCode = 840, chainId: number, counter: number) {
+  createPool(metadataInput: PoolMetadataInput, currencyCode = 840, chainId: number, counter?: number | bigint) {
     const self = this
     return this._transactSequence(async function* ({ walletClient, signingAddress, publicClient }) {
       const [addresses, id] = await Promise.all([self._protocolAddresses(chainId), self.id(chainId)])
-      const result = yield* doTransaction('Create pool', publicClient, () =>
-        walletClient.writeContract({
-          address: addresses.hubRegistry,
-          abi: ABI.Hub,
-          functionName: 'createPool',
-          args: [PoolId.from(id, counter).raw, signingAddress, BigInt(currencyCode)],
-        })
-      )
+      const poolId = PoolId.from(id, counter ?? randomUint(48))
 
-      const logs = parseEventLogs({
-        abi: ABI.HubRegistry,
-        eventName: 'NewPool',
-        logs: result.receipt.logs,
+      const createPoolData = encodeFunctionData({
+        abi: ABI.Hub,
+        functionName: 'createPool',
+        args: [poolId.raw, signingAddress, BigInt(currencyCode)],
       })
 
-      const poolId = logs[0]!.args.poolId
-
-      const scIds = await Promise.all(
-        Array.from({ length: metadataInput.shareClasses.length }, (_, i) => {
-          return self.getClient(chainId)!.readContract({
-            address: addresses.shareClassManager,
-            abi: ABI.ShareClassManager,
-            functionName: 'previewShareClassId',
-            args: [poolId, i + 1],
-          })
-        })
+      const scIds = Array.from({ length: metadataInput.shareClasses.length }, (_, i) =>
+        ShareClassId.from(poolId, i + 1)
       )
 
       const shareClassesById: PoolMetadata['shareClasses'] = {}
       metadataInput.shareClasses.forEach((sc, index) => {
-        shareClassesById[scIds[index]!] = {
+        shareClassesById[scIds[index]!.raw] = {
           minInitialInvestment: Balance.fromFloat(sc.minInvestment, 18).toString(),
           apyPercentage: sc.apyPercentage,
           apy: sc.apy,
+          defaultAccounts: sc.defaultAccounts,
         }
       })
 
@@ -234,7 +222,6 @@ export class Centrifuge {
             : [],
         },
         shareClasses: shareClassesById,
-        defaultAccounts: {},
         onboarding: {
           shareClasses: metadataInput.onboarding?.shareClasses || {},
           taxInfoRequired: metadataInput.onboarding?.taxInfoRequired,
@@ -242,20 +229,65 @@ export class Centrifuge {
         },
       }
 
-      console.log('poolId', poolId, formattedMetadata)
+      const cid = await self.config.pinJson(formattedMetadata)
 
-      // TODO: add metadata and share classes
+      const setMetadataData = encodeFunctionData({
+        abi: ABI.Hub,
+        functionName: 'setPoolMetadata',
+        args: [poolId.raw, toHex(cid)],
+      })
+      const addScData = metadataInput.shareClasses.map((sc) =>
+        encodeFunctionData({
+          abi: ABI.Hub,
+          functionName: 'addShareClass',
+          args: [
+            poolId.raw,
+            sc.tokenName,
+            sc.symbolName,
+            sc.salt?.startsWith('0x') ? (sc.salt as HexString) : toHex(sc.salt ?? randomUint(256), { size: 32 }),
+          ],
+        })
+      )
+      const accountIsDebitNormal = new Map<number, boolean>()
+      const accountNumbers = [
+        ...new Set(
+          metadataInput.shareClasses.flatMap((sc) =>
+            Object.entries(sc.defaultAccounts ?? {})
+              .filter(([k, v]) => {
+                if (!v) return false
 
-      // const enableData = encodeFunctionData({
-      //   abi: ABI.Hub,
-      //   functionName: 'setMetadata',
-      //   args: ["IPFS_HASH"],
-      // })
-      // const requestData = encodeFunctionData({
-      //   abi: ABI.Hub,
-      //   functionName: 'addShareClass',
-      //   args: [SC_NAME, SC_SYMBOL, SC_SALT, ''],
-      // })
+                if (['asset', 'expense'].includes(k)) {
+                  if (accountIsDebitNormal.get(v) === false)
+                    throw new Error(`Account "${v}" is set as both credit normal and debit normal.`)
+                  accountIsDebitNormal.set(v, true)
+                } else {
+                  if (accountIsDebitNormal.get(v) === true)
+                    throw new Error(`Account "${v}" is set as both credit normal and debit normal.`)
+                  accountIsDebitNormal.set(v, false)
+                }
+
+                return true
+              })
+              .map(([, v]) => v)
+          )
+        ),
+      ]
+      const createAccountsData = accountNumbers.map((account) =>
+        encodeFunctionData({
+          abi: ABI.Hub,
+          functionName: 'createAccount',
+          args: [poolId.raw, account, accountIsDebitNormal.get(account)!],
+        })
+      )
+
+      yield* doTransaction('Create pool', publicClient, () => {
+        return walletClient.writeContract({
+          address: addresses.hub,
+          abi: ABI.Hub,
+          functionName: 'multicall',
+          args: [[createPoolData, setMetadataData, ...addScData, ...createAccountsData]],
+        })
+      })
     }, chainId)
   }
 
@@ -315,12 +347,12 @@ export class Centrifuge {
    * @param address - The token address
    * @param chainId - The chain ID
    */
-  currency(address: string, chainId: number): Query<CurrencyDetails> {
-    const curAddress = address.toLowerCase()
+  currency(address: HexString, chainId: number): Query<CurrencyDetails> {
+    const curAddress = address.toLowerCase() as HexString
     return this._query(['currency', curAddress, chainId], () =>
       defer(async () => {
         const contract = getContract({
-          address: curAddress as HexString,
+          address: curAddress,
           abi: ABI.Currency,
           client: this.getClient(chainId)!,
         })
@@ -334,7 +366,7 @@ export class Centrifuge {
             .catch(() => false),
         ])
         return {
-          address: curAddress as HexString,
+          address: curAddress,
           decimals,
           name,
           symbol,
@@ -345,8 +377,8 @@ export class Centrifuge {
     )
   }
 
-  investor(address: string) {
-    return this._query(null, () => of(new Investor(this, address as HexString)))
+  investor(address: HexString) {
+    return this._query(null, () => of(new Investor(this, address)))
   }
 
   /**
@@ -355,14 +387,14 @@ export class Centrifuge {
    * @param owner - The owner address
    * @param chainId - The chain ID
    */
-  balance(currency: string, owner: string, chainId: number) {
+  balance(currency: HexString, owner: HexString, chainId: number) {
     const address = owner.toLowerCase() as HexString
     return this._query(['balance', currency, owner, chainId], () => {
       return this.currency(currency, chainId).pipe(
         switchMap((currencyMeta) =>
           defer(async () => {
             const val = await this.getClient(chainId)!.readContract({
-              address: currency as HexString,
+              address: currency,
               abi: ABI.Currency,
               functionName: 'balanceOf',
               args: [address],
@@ -396,36 +428,87 @@ export class Centrifuge {
   /**
    * Get the assets that exist on a given spoke chain that have been registered on a given hub chain.
    * @param spokeChainId - The chain ID where the assets exist
-   * @param hubChainId - The chain ID where the assets are registered
+   * @param hubChainId - The chain ID where the assets should optionally be registered
    */
-  assets(spokeChainId: number, hubChainId: number) {
-    return this._query(null, () => combineLatest([this.id(spokeChainId), this.id(hubChainId)])).pipe(
-      switchMap(([spokeCentId, hubCentId]) =>
-        this._queryIndexer<{ assets: { items: { address: string; name: string; symbol: string; id: string }[] } }>(
-          `query ($spokeCentId: String!, $hubCentId: String!) {
-            assets(where: { centrifugeId: $spokeCentId }) {
-              items {
-                address
-                name
-                symbol
-                id: assetTokenId
+  assets(spokeChainId: number, hubChainId = spokeChainId) {
+    return this._query(null, () =>
+      combineLatest([this.id(spokeChainId), this.id(hubChainId)]).pipe(
+        switchMap(([spokeCentId, hubCentId]) =>
+          this._queryIndexer(
+            `query ($hubCentId: String!) {
+              assetRegistrations(where: { centrifugeId: $hubCentId, decimals_gt: 0 }) {
+                items {
+                  id
+                  name
+                  symbol
+                  decimals
+                  asset {
+                    centrifugeId
+                    address
+                  }
+                }
               }
+            }`,
+            { hubCentId: String(hubCentId) },
+            (data: {
+              assetRegistrations: {
+                items: {
+                  name: string
+                  symbol: string
+                  id: string
+                  decimals: number
+                  asset: { centrifugeId: string; address: HexString }
+                }[]
+              }
+            }) => {
+              return data.assetRegistrations.items
+                .filter((assetReg) => Number(assetReg.asset.centrifugeId) === spokeCentId)
+                .map((assetReg) => {
+                  return {
+                    registeredOnCentrifugeId: hubCentId,
+                    id: new AssetId(assetReg.id),
+                    address: assetReg.asset.address,
+                    name: assetReg.name,
+                    symbol: assetReg.symbol,
+                  }
+                })
             }
-          }`,
-          { spokeCentId, hubCentId }
+          )
         )
-      ),
-      map((data) => {
-        return data.assets.items.map((asset) => {
-          return {
-            id: new AssetId(asset.id),
-            address: asset.address as HexString,
-            name: asset.name,
-            symbol: asset.symbol,
-          }
-        })
-      })
+      )
     )
+  }
+
+  /**
+   * Register an asset
+   * @param originChainId - The chain ID where the asset exists
+   * @param registerOnChainId - The chain ID where the asset should be registered
+   * @param assetAddress - The address of the asset to register
+   * @param tokenId - Optional token ID for ERC6909 assets
+   */
+  registerAsset(
+    originChainId: number,
+    registerOnChainId: number,
+    assetAddress: HexString,
+    tokenId: number | bigint = 0
+  ) {
+    const self = this
+    return this._transactSequence(async function* ({ walletClient, publicClient }) {
+      const [addresses, id, estimate] = await Promise.all([
+        self._protocolAddresses(originChainId),
+        self.id(registerOnChainId),
+        self._estimate(originChainId, { chainId: registerOnChainId }),
+      ])
+      yield* doTransaction('Register asset', publicClient, () =>
+        walletClient.writeContract({
+          address: addresses.spoke,
+          abi: ABI.Spoke,
+          functionName: 'registerAsset',
+          args: [id, assetAddress, BigInt(tokenId)],
+          value: estimate,
+        })
+      )
+    }, originChainId)
   }
 
   /**
@@ -879,7 +962,7 @@ export class Centrifuge {
   }
 
   _getQuote(
-    valuationAddress: string,
+    valuationAddress: HexString,
     baseAmount: Balance,
     baseAssetId: AssetId,
     quoteAssetId: AssetId,
@@ -893,7 +976,7 @@ export class Centrifuge {
             defer(async () => {
               const [quote, quoteDecimals] = await Promise.all([
                 this.getClient(chainId)!.readContract({
-                  address: valuationAddress as HexString,
+                  address: valuationAddress,
                   abi: ABI.Valuation,
                   functionName: 'getQuote',
                   args: [baseAmount.toBigInt(), baseAssetId.raw, quoteAssetId.raw],
