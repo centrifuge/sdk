@@ -5,6 +5,7 @@ import { currencies } from '../config/protocol.js'
 import { NULL_ADDRESS } from '../constants.js'
 import { mockPoolMetadata } from '../tests/mocks/mockPoolMetadata.js'
 import { context } from '../tests/setup.js'
+import { randomAddress } from '../tests/utils.js'
 import { PoolId, ShareClassId } from '../utils/types.js'
 import { Pool } from './Pool.js'
 
@@ -21,9 +22,12 @@ describe('Pool', () => {
     pool = new Pool(centrifuge, poolId.raw, chainId)
   })
 
-  it('gets whether an address is manager', async () => {
+  it.only('gets whether an address is manager', async () => {
     const isManager = await pool.isManager(poolManager)
     expect(isManager).to.be.true
+
+    const isManager2 = await pool.isManager(randomAddress())
+    expect(isManager2).to.be.false
   })
 
   it('gets active networks of a pool', async () => {
