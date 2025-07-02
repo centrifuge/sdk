@@ -30,6 +30,13 @@ The following config options can be passed on initialization of the SDK:
 - `rpcUrls: Record<number, string>`
   - Optional
   - A object mapping chain ids to RPC URLs
+- `indexerUrl: string`
+  - Optional
+  - A URL for the indexer
+- `ipfsUrl: string`
+  - Optional
+  - A URL for an IPFS gateway
+  - Default value: `https://centrifuge.mypinata.cloud`
 
 ## Queries
 
