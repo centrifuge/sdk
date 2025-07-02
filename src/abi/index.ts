@@ -2,6 +2,7 @@ import { parseAbi } from 'viem'
 import AccountingAbi from './Accounting.abi.js'
 import AsyncRequestsAbi from './AsyncRequestManager.abi.js'
 import AsyncVaultAbit from './AsyncVault.abi.js'
+import BalanceSheetAbi from './BalanceSheet.abi.js'
 import CurrencyAbi from './Currency.abi.js'
 import HoldingsAbi from './Holdings.abi.js'
 import HubAbi from './Hub.abi.js'
@@ -31,4 +32,5 @@ export const ABI = {
   SyncRequests: parseAbi(SyncRequestsAbi),
   AsyncRequests: parseAbi(AsyncRequestsAbi),
   MultiAdapter: parseAbi(MultiAdapterAbi),
+  BalanceSheet: parseAbi(BalanceSheetAbi),
 }

@@ -1,12 +1,15 @@
 import { expect } from 'chai'
+import { ABI } from '../abi/index.js'
 import { NULL_ADDRESS } from '../constants.js'
 import { context } from '../tests/setup.js'
-import { PoolId, ShareClassId } from '../utils/types.js'
+import { AssetId, PoolId, ShareClassId } from '../utils/types.js'
 import { Pool } from './Pool.js'
 import { PoolNetwork } from './PoolNetwork.js'
 
 const poolId = PoolId.from(1, 1)
 const scId = ShareClassId.from(poolId, 1)
+const chainId = 11155111
+const poolManager = '0x423420Ae467df6e90291fd0252c0A8a637C1e03f'
 
 describe('PoolNetwork', () => {
   let poolNetwork: PoolNetwork
@@ -33,45 +36,44 @@ describe('PoolNetwork', () => {
     expect(vaults[0]!.address.toLowerCase()).not.to.equal(NULL_ADDRESS)
   })
 
-  // it('should deploy a tranche', async () => {
-  //   const poolId = '1287682503'
-  //   const trancheId = '0x02bbf52e452ddb47103913051212382c'
-  //   const pool = new Pool(context.centrifuge, poolId, 11155111)
-  //   const poolNetwork = new PoolNetwork(context.centrifuge, pool, 11155111)
+  it('gets the details', async () => {
+    const details = await poolNetwork.details()
+    expect(details.isActive).to.equal(true)
+    expect(details.activeShareClasses).to.have.length(1)
+    expect(details.activeShareClasses[0]!.shareToken).not.to.equal(NULL_ADDRESS)
+    expect(details.activeShareClasses[0]!.id.equals(scId)).to.equal(true)
+    expect(details.activeShareClasses[0]!.vaults).to.have.length(1)
+  })
 
-  //   const canTrancheBeDeployed = await poolNetwork.canTrancheBeDeployed(trancheId)
-  //   expect(canTrancheBeDeployed).to.equal(true)
+  it('deploys share classes and vaults', async () => {
+    const { hub, freezeOnlyHook } = await context.centrifuge._protocolAddresses(chainId)
 
-  //   const result = await poolNetwork.deployTranche(trancheId)
-  //   expect(result.type).to.equal('TransactionConfirmed')
-  // })
+    context.tenderlyFork.impersonateAddress = poolManager
+    context.centrifuge.setSigner(context.tenderlyFork.signer)
 
-  // it('should deploy a vault', async () => {
-  //   const poolId = '1287682503'
-  //   const trancheId = '0x02bbf52e452ddb47103913051212382c'
-  //   const pool = new Pool(context.centrifuge, poolId, 11155111)
-  //   const poolNetwork = new PoolNetwork(context.centrifuge, pool, 11155111)
-  //   const tUSD = '0x8503b4452Bf6238cC76CdbEE223b46d7196b1c93'
+    await context.centrifuge._transact(
+      'Add share class',
+      async ({ walletClient }) => {
+        return walletClient.writeContract({
+          address: hub,
+          abi: ABI.Hub,
+          functionName: 'addShareClass',
+          args: [poolId.raw, 'Test Share Class', 'TSC', '0x1'.padEnd(66, '0') as any],
+        })
+      },
+      chainId
+    )
 
-  //   const result = await poolNetwork.deployVault(trancheId, tUSD)
-  //   expect(result.type).to.equal('TransactionConfirmed')
-  // })
+    const result = await poolNetwork.deploy(
+      [{ id: ShareClassId.from(poolId, 2), hook: freezeOnlyHook }],
+      [{ shareClassId: ShareClassId.from(poolId, 2), assetId: AssetId.from(1, 1), kind: 'syncDeposit' }]
+    )
+    expect(result.type).to.equal('TransactionConfirmed')
+
+    const details = await poolNetwork.details()
+    expect(details.activeShareClasses).to.have.length(2)
+    expect(details.activeShareClasses[1]!.id.equals(ShareClassId.from(poolId, 2))).to.equal(true)
+    expect(details.activeShareClasses[1]!.shareToken).not.to.equal(NULL_ADDRESS)
+    expect(details.activeShareClasses[1]!.vaults).to.have.length(1)
+  })
 })
-
-// // Set the storage to a value that will make the tranche undeployable
-// const poolLoc = mapLocation(6n, BigInt(poolId))
-// const createdAtLoc = poolLoc + BigInt(0)
-// const poolManager = await poolNetwork._poolManager()
-// const client = context.centrifuge.getClient()!
-// const data = await client.setStorageAt({
-//   address: poolManager,
-//   slot: toHex(createdAtLoc),
-// })
-
-// function mapLocation(slot: bigint, key: bigint) {
-//   return hexToBigInt(keccak256(encodePacked(['uint256', 'uint256'], [key, slot])))
-// }
-
-// function arrLocation(slot: bigint, index: bigint, elementSize: bigint) {
-//   return hexToBigInt(keccak256(toHex(slot))) + index * elementSize
-// }
