@@ -201,7 +201,7 @@ export class ShareClass extends Entity {
     )
   }
 
-  investorOrder(assetId: AssetId, investor: string) {
+  investorOrder(assetId: AssetId, investor: HexString) {
     return this._query(['maxClaims', assetId.toString(), investor.toLowerCase()], () =>
       this._root._protocolAddresses(this.pool.chainId).pipe(
         switchMap(({ shareClassManager }) =>
@@ -255,8 +255,8 @@ export class ShareClass extends Entity {
    * @param address Address to check
    * @param chainId Chain ID of the network on which to check the member
    */
-  member(address: string, chainId: number) {
-    const addr = address.toLowerCase()
+  member(address: HexString, chainId: number) {
+    const addr = address.toLowerCase() as HexString
     return this._query(['member', addr, chainId], () =>
       combineLatest([this._share(chainId), this._restrictionManager(chainId)]).pipe(
         switchMap(([share, restrictionManager]) =>
@@ -265,7 +265,7 @@ export class ShareClass extends Entity {
               address: restrictionManager,
               abi: ABI.RestrictionManager,
               functionName: 'isMember',
-              args: [share, addr as HexString],
+              args: [share, addr],
             })
             return {
               isMember: res[0],
@@ -589,7 +589,7 @@ export class ShareClass extends Entity {
     }, this.pool.chainId)
   }
 
-  claimDeposit(assetId: AssetId, investor: string) {
+  claimDeposit(assetId: AssetId, investor: HexString) {
     const self = this
     return this._transactSequence(async function* ({ walletClient, publicClient }) {
       const [{ hub }, investorOrder, estimate] = await Promise.all([
@@ -615,7 +615,7 @@ export class ShareClass extends Entity {
     }, this.pool.chainId)
   }
 
-  claimRedeem(assetId: AssetId, investor: string) {
+  claimRedeem(assetId: AssetId, investor: HexString) {
     const self = this
     return this._transactSequence(async function* ({ walletClient, publicClient }) {
       const [{ hub }, investorOrder, estimate] = await Promise.all([
@@ -641,7 +641,7 @@ export class ShareClass extends Entity {
    * @param validUntil Time in seconds from Unix epoch until the investor is valid
    * @param chainId Chain ID of the network on which to update the member
    */
-  updateMember(address: string, validUntil: number, chainId: number) {
+  updateMember(address: HexString, validUntil: number, chainId: number) {
     const self = this
     return this._transactSequence(async function* ({ walletClient, publicClient }) {
       const [{ hub }, id, estimate] = await Promise.all([
@@ -812,7 +812,7 @@ export class ShareClass extends Entity {
   }
 
   /** @internal */
-  _updateContract(chainId: number, target: string, payload: HexString) {
+  _updateContract(chainId: number, target: HexString, payload: HexString) {
     const self = this
     return this._transactSequence(async function* ({ walletClient, publicClient }) {
       const id = await self._root.id(chainId)

@@ -145,7 +145,7 @@ export class PoolNetwork extends Entity {
    * @param scId - The share class ID
    * @param asset - The investment currency address
    */
-  vault(scId: ShareClassId, asset: string) {
+  vault(scId: ShareClassId, asset: HexString) {
     const assetAddress = asset.toLowerCase()
     return this._query(null, () =>
       this.vaults(scId).pipe(

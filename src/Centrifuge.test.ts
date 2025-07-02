@@ -458,6 +458,22 @@ describe('Centrifuge', () => {
   })
 
   describe('Transactions', () => {
+    it('should register an asset', async () => {
+      const centrifuge = new Centrifuge({
+        environment: 'demo',
+        rpcUrls: {
+          11155111: context.tenderlyFork.rpcUrl,
+        },
+      })
+
+      const assetAddress = '0x86eb50b22dd226fe5d1f0753a40e247fd711ad6e'
+      context.tenderlyFork.impersonateAddress = poolManager
+      centrifuge.setSigner(context.tenderlyFork.signer)
+
+      const result = await centrifuge.registerAsset(chainId, chainId, assetAddress)
+      expect(result.type).to.equal('TransactionConfirmed')
+    })
+
     it('should create a pool', async () => {
       const centrifugeWithPin = new Centrifuge({
         environment: 'dev',
