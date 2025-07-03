@@ -470,6 +470,7 @@ export class Centrifuge {
                     address: assetReg.asset!.address,
                     name: assetReg.name,
                     symbol: assetReg.symbol,
+                    decimals: assetReg.decimals,
                   }
                 })
             }
