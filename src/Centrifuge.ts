@@ -457,17 +457,17 @@ export class Centrifuge {
                   symbol: string
                   id: string
                   decimals: number
-                  asset: { centrifugeId: string; address: HexString }
+                  asset: { centrifugeId: string; address: HexString } | null
                 }[]
               }
             }) => {
               return data.assetRegistrations.items
-                .filter((assetReg) => Number(assetReg.asset.centrifugeId) === spokeCentId)
+                .filter((assetReg) => assetReg.asset && Number(assetReg.asset.centrifugeId) === spokeCentId)
                 .map((assetReg) => {
                   return {
                     registeredOnCentrifugeId: hubCentId,
                     id: new AssetId(assetReg.id),
-                    address: assetReg.asset.address,
+                    address: assetReg.asset!.address,
                     name: assetReg.name,
                     symbol: assetReg.symbol,
                   }

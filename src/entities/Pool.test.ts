@@ -22,7 +22,7 @@ describe('Pool', () => {
     pool = new Pool(centrifuge, poolId.raw, chainId)
   })
 
-  it.only('gets whether an address is manager', async () => {
+  it('gets whether an address is manager', async () => {
     const isManager = await pool.isManager(poolManager)
     expect(isManager).to.be.true
 
