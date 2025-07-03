@@ -1,5 +1,5 @@
 import { catchError, combineLatest, defer, EMPTY, expand, filter, map, of, switchMap } from 'rxjs'
-import { encodeFunctionData, encodePacked, getContract, parseAbi } from 'viem'
+import { encodeFunctionData, encodePacked, getAddress, getContract, parseAbi } from 'viem'
 import { ABI } from '../abi/index.js'
 import type { Centrifuge } from '../Centrifuge.js'
 import { AccountType } from '../types/holdings.js'
@@ -12,6 +12,7 @@ import { AssetId, ShareClassId } from '../utils/types.js'
 import { Entity } from './Entity.js'
 import type { Pool } from './Pool.js'
 import { PoolNetwork } from './PoolNetwork.js'
+import { Vault } from './Vault.js'
 
 /**
  * Query and interact with a share class, which allows querying total issuance, NAV per share,
@@ -71,12 +72,12 @@ export class ShareClass extends Entity {
           items: {
             totalIssuance: bigint
             tokenPrice: bigint
-            blockchain: { id: number }
+            blockchain: { id: string }
           }[]
         }
       }) =>
         data.tokenInstances.items.map((item) => ({
-          chainId: item.blockchain.id,
+          chainId: Number(item.blockchain.id),
           totalIssuance: new Balance(item.totalIssuance, 18), // TODO: Replace with pool currency decimals
           pricePerShare: new Price(item.tokenPrice),
           nav: new Balance(item.totalIssuance, 18).mul(new Price(item.tokenPrice)),
@@ -89,7 +90,47 @@ export class ShareClass extends Entity {
    * @param chainId The chain ID to query the vaults on.
    * @returns The vaults of the share class on the given chain.
    */
-  vaults(chainId: number) {
+  vaults(chainId?: number) {
+    if (!chainId) {
+      return this._root._queryIndexer(
+        `query ($scId: String!) {
+          vaults(where: { tokenId: $scId }) {
+            items {
+              address: id
+              poolId
+              assetAddress
+              tokenId
+              blockchain {
+                id
+              }
+            }
+          }
+        }`,
+        { scId: this.id.raw },
+        (data: {
+          vaults: {
+            items: {
+              address: HexString
+              poolId: string
+              assetAddress: HexString
+              tokenId: string
+              blockchain: { id: string }
+            }[]
+          }
+        }) =>
+          data.vaults.items.map(
+            (item) =>
+              new Vault(
+                this._root,
+                new PoolNetwork(this._root, this.pool, Number(item.blockchain.id)),
+                this,
+                item.assetAddress,
+                item.address
+              )
+          )
+      )
+    }
+
     return this._query(null, () => new PoolNetwork(this._root, this.pool, chainId).vaults(this.id))
   }
 
@@ -194,6 +235,37 @@ export class ShareClass extends Entity {
                 },
               },
               this.pool.chainId
+            )
+          )
+        )
+      )
+    )
+  }
+
+  /**
+   * Get the pending and approved amounts for deposits and redemptions for each asset.
+   */
+  pendingAmounts() {
+    return this._query(null, () =>
+      // TODO: Simplify when indexer includes the asset ID in the Asset entity
+      // can then query the asset id on { vaults { asset { id } }}
+      this.vaults().pipe(
+        switchMap((vaults) =>
+          this._assetIdsByAddress(vaults.map((vault) => vault._asset)).pipe(
+            switchMap((assetIdsByAddress) =>
+              combineLatest(vaults.map((vault) => this._epoch(assetIdsByAddress[vault._asset]!))).pipe(
+                map((epochs) => {
+                  return epochs.map((epoch, i) => {
+                    const vault = vaults[i]!
+                    const assetId = assetIdsByAddress[vault._asset]!
+                    return {
+                      assetId,
+                      chainId: vault.chainId,
+                      ...epoch,
+                    }
+                  })
+                })
+              )
             )
           )
         )
@@ -499,93 +571,209 @@ export class ShareClass extends Entity {
     }, this.pool.chainId)
   }
 
-  approveDeposits(assetId: AssetId, assetAmount: Balance, pricePerShare: Price) {
+  /**
+   * Approve deposits and issue shares for the given assets.
+   * @param assets - Array of assets to approve deposits and/or issue shares for
+   */
+  approveDepositsAndIssueShares(
+    assets: { assetId: AssetId; approveAssetAmount?: Balance; issuePricePerShare?: Price }[]
+  ) {
+    // TODO: Also claim orders
     const self = this
     return this._transactSequence(async function* ({ walletClient, publicClient }) {
-      const [{ hub }, epoch, estimate] = await Promise.all([
+      const centIds = [...new Set(assets.map((a) => a.assetId.centrifugeId))]
+      const [
+        { hub },
+        pendingAmounts,
+        // ...estimates
+      ] = await Promise.all([
         self._root._protocolAddresses(self.pool.chainId),
-        self._epoch(assetId),
-        self._root._estimate(self.pool.chainId, { centId: assetId.centrifugeId }),
+        self.pendingAmounts(),
+        ...centIds.map((centId) => self._root._estimate(self.pool.chainId, { centId })),
       ])
+      // const estimateByCentId: Map<number, bigint> = new Map(centIds.map((centId, i) => [centId, estimates[i]!]))
 
-      // TODO: Get asset decimals and throw if mismatch with assetAmount decimals
+      const batch: HexString[] = []
+      const estimate = 0n
 
-      // const updateAssetData = encodeFunctionData({
-      //   abi: ABI.Hub,
-      //   functionName: 'notifyAssetPrice',
-      //   args: [self.pool.id.raw, self.id.raw, assetId.raw],
-      // })
-      // TODO: Remove when BalanceSheet bug is fixed
-      const updateShareData = encodeFunctionData({
-        abi: ABI.Hub,
-        functionName: 'notifySharePrice',
-        args: [self.pool.id.raw, self.id.raw, 1],
-      })
-      const approveData = encodeFunctionData({
-        abi: ABI.Hub,
-        functionName: 'approveDeposits',
-        args: [self.pool.id.raw, self.id.raw, assetId.raw, epoch.depositEpoch, assetAmount.toBigInt()],
-      })
-      const issueData = encodeFunctionData({
-        abi: ABI.Hub,
-        functionName: 'issueShares',
-        args: [self.pool.id.raw, self.id.raw, assetId.raw, epoch.issueEpoch, pricePerShare.toBigInt()],
-      })
-      yield* doTransaction('Approve deposits', publicClient, () =>
-        walletClient.writeContract({
+      for (const asset of assets) {
+        const pending = pendingAmounts.find((e) => e.assetId.equals(asset.assetId))
+        if (!pending) {
+          throw new Error(`No pending amount found for asset "${asset.assetId.toString()}"`)
+        }
+
+        let nextDepositEpoch = pending?.depositEpoch + 1
+
+        if (asset.approveAssetAmount) {
+          if (asset.approveAssetAmount.gt(pending.pendingDeposit)) {
+            throw new Error(`Approve amount exceeds pending amount for asset "${asset.assetId.toString()}"`)
+          }
+          if (asset.approveAssetAmount.lte(0n)) {
+            throw new Error(`Approve amount must be greater than 0 for asset "${asset.assetId.toString()}"`)
+          }
+          batch.push(
+            encodeFunctionData({
+              abi: ABI.Hub,
+              functionName: 'approveDeposits',
+              args: [
+                self.pool.id.raw,
+                self.id.raw,
+                asset.assetId.raw,
+                nextDepositEpoch,
+                asset.approveAssetAmount.toBigInt(),
+              ],
+            })
+          )
+          nextDepositEpoch++
+        }
+
+        const nextIssueEpoch = pending.issueEpoch + 1
+        if (asset.issuePricePerShare) {
+          if (nextIssueEpoch >= nextDepositEpoch) throw new Error('Nothing to issue')
+
+          batch.push(
+            ...Array.from({ length: nextDepositEpoch - nextIssueEpoch }, (_, i) =>
+              encodeFunctionData({
+                abi: ABI.Hub,
+                functionName: 'issueShares',
+                args: [
+                  self.pool.id.raw,
+                  self.id.raw,
+                  asset.assetId.raw,
+                  nextIssueEpoch + i,
+                  asset.issuePricePerShare!.toBigInt(),
+                ],
+              })
+            )
+          )
+        }
+      }
+
+      if (batch.length === 0) {
+        throw new Error('No approve or issue actions provided')
+      }
+
+      yield* doTransaction('Approve and issue', publicClient, () => {
+        if (batch.length === 1) {
+          return walletClient.sendTransaction({
+            data: batch[0],
+            to: hub,
+            value: estimate,
+          })
+        }
+        return walletClient.writeContract({
           address: hub,
           abi: ABI.Hub,
           functionName: 'multicall',
-          args: [
-            [
-              //updateAssetData,
-              updateShareData,
-              approveData,
-              issueData,
-            ],
-          ],
-          value: estimate * 3n, // for 3 messages
+          args: [batch],
+          value: estimate,
         })
-      )
+      })
     }, this.pool.chainId)
   }
 
-  approveRedeems(assetId: AssetId, shareAmount: Balance, pricePerShare: Price) {
+  /**
+   * Approve redeems and revoke shares for the given assets.
+   * @param assets - Array of assets to approve redeems and/or revoke shares for
+   */
+  approveRedeemsAndRevokeShares(
+    assets: { assetId: AssetId; approveShareAmount?: Balance; revokePricePerShare?: Price }[]
+  ) {
+    // TODO: Also claim orders
     const self = this
     return this._transactSequence(async function* ({ walletClient, publicClient }) {
-      const [{ hub }, epoch, estimate] = await Promise.all([
+      const centIds = [...new Set(assets.map((a) => a.assetId.centrifugeId))]
+      const [
+        { hub },
+        pendingAmounts,
+        // ...estimates
+      ] = await Promise.all([
         self._root._protocolAddresses(self.pool.chainId),
-        self._epoch(assetId),
-        self._root._estimate(self.pool.chainId, { centId: assetId.centrifugeId }),
+        self.pendingAmounts(),
+        ...centIds.map((centId) => self._root._estimate(self.pool.chainId, { centId })),
       ])
+      // const estimateByCentId: Map<number, bigint> = new Map(centIds.map((centId, i) => [centId, estimates[i]!]))
 
-      // TODO: Get share decimals and throw if mismatch with shareAmount decimals
+      const batch: HexString[] = []
+      const estimate = 0n
 
-      // TODO: Remove when BalanceSheet bug is fixed
-      const updateShareData = encodeFunctionData({
-        abi: ABI.Hub,
-        functionName: 'notifySharePrice',
-        args: [self.pool.id.raw, self.id.raw, 1],
-      })
-      const approveData = encodeFunctionData({
-        abi: ABI.Hub,
-        functionName: 'approveRedeems',
-        args: [self.pool.id.raw, self.id.raw, assetId.raw, epoch.redeemEpoch, shareAmount.toBigInt()],
-      })
-      const issueData = encodeFunctionData({
-        abi: ABI.Hub,
-        functionName: 'revokeShares',
-        args: [self.pool.id.raw, self.id.raw, assetId.raw, epoch.revokeEpoch, pricePerShare.toBigInt()],
-      })
-      yield* doTransaction('Approve redeems', publicClient, () =>
-        walletClient.writeContract({
+      for (const asset of assets) {
+        const pending = pendingAmounts.find((e) => e.assetId.equals(asset.assetId))
+        if (!pending) {
+          throw new Error(`No pending amount found for asset "${asset.assetId.toString()}"`)
+        }
+
+        let nextRedeemEpoch = pending.redeemEpoch + 1
+
+        if (asset.approveShareAmount) {
+          if (asset.approveShareAmount.gt(pending.pendingRedeem)) {
+            throw new Error(`Share amount exceeds pending redeem for asset "${asset.assetId.toString()}"`)
+          }
+          if (asset.approveShareAmount.lte(0n)) {
+            throw new Error(`Share amount must be greater than 0 for asset "${asset.assetId.toString()}"`)
+          }
+          batch.push(
+            encodeFunctionData({
+              abi: ABI.Hub,
+              functionName: 'approveRedeems',
+              args: [
+                self.pool.id.raw,
+                self.id.raw,
+                asset.assetId.raw,
+                nextRedeemEpoch,
+                asset.approveShareAmount.toBigInt(),
+              ],
+            })
+          )
+          nextRedeemEpoch++
+        }
+
+        const nextRevokeEpoch = pending.revokeEpoch + 1
+        if (nextRevokeEpoch >= nextRedeemEpoch) throw new Error('Nothing to revoke')
+
+        if (asset.revokePricePerShare) {
+          if (nextRevokeEpoch >= nextRedeemEpoch) throw new Error('Nothing to revoke')
+
+          if (asset.revokePricePerShare.lte(0n)) {
+            throw new Error(`Revoke price per share must be greater than 0 for asset "${asset.assetId.toString()}"`)
+          }
+
+          batch.push(
+            ...Array.from({ length: nextRedeemEpoch - nextRevokeEpoch }, (_, i) =>
+              encodeFunctionData({
+                abi: ABI.Hub,
+                functionName: 'revokeShares',
+                args: [
+                  self.pool.id.raw,
+                  self.id.raw,
+                  asset.assetId.raw,
+                  nextRevokeEpoch + i,
+                  asset.revokePricePerShare!.toBigInt(),
+                ],
+              })
+            )
+          )
+        }
+      }
+      if (batch.length === 0) {
+        throw new Error('No approve or revoke actions provided')
+      }
+      yield* doTransaction('Approve and revoke', publicClient, () => {
+        if (batch.length === 1) {
+          return walletClient.sendTransaction({
+            data: batch[0],
+            to: hub,
+            value: estimate,
+          })
+        }
+        return walletClient.writeContract({
           address: hub,
           abi: ABI.Hub,
           functionName: 'multicall',
-          args: [[updateShareData, approveData, issueData]],
-          value: estimate * 3n, // for 3 messages
+          args: [batch],
+          value: estimate,
         })
-      )
+      })
     }, this.pool.chainId)
   }
 
@@ -664,6 +852,29 @@ export class ShareClass extends Entity {
         })
       )
     }, this.pool.chainId)
+  }
+
+  /** @internal */
+  _assetIdsByAddress(assetAddresses: HexString[]) {
+    return this._root._queryIndexer(
+      `query ($assetAddresses: [String!]!) {
+        assetRegistrations(where: { assetAddress_in: $assetAddresses }) {
+          items {
+            id
+            assetAddress
+          }
+        }
+      }`,
+      { assetAddresses: assetAddresses.map((a) => getAddress(a)) },
+      (data: { assetRegistrations: { items: { id: string; assetAddress: HexString }[] } }) => {
+        return Object.fromEntries(
+          data.assetRegistrations.items.map((item) => {
+            const assetId = new AssetId(item.id)
+            return [item.assetAddress.toLowerCase() as HexString, assetId]
+          })
+        )
+      }
+    )
   }
 
   /** @internal */
@@ -771,15 +982,38 @@ export class ShareClass extends Entity {
               }),
             ])
 
+            const depositEpoch = epoch[0]
+            const redeemEpoch = epoch[1]
+            const issueEpoch = epoch[2]
+            const revokeEpoch = epoch[3]
+
+            const [depositEpochAmounts, redeemEpochAmount] = await Promise.all([
+              Promise.all(
+                Array.from({ length: depositEpoch - issueEpoch }).map((_, i) =>
+                  scm.read.epochInvestAmounts([this.id.raw, assetId.raw, issueEpoch + i + 1])
+                )
+              ),
+              Promise.all(
+                Array.from({ length: redeemEpoch - revokeEpoch }).map((_, i) =>
+                  scm.read.epochRedeemAmounts([this.id.raw, assetId.raw, revokeEpoch + i + 1])
+                )
+              ),
+            ])
+
+            const approvedDeposit = depositEpochAmounts.reduce((acc, amount) => acc + amount[1], 0n)
+            const approvedRedeem = redeemEpochAmount.reduce((acc, amount) => acc + amount[1], 0n)
+
             return {
-              depositEpoch: epoch[0] + 1,
-              redeemEpoch: epoch[1] + 1,
-              issueEpoch: epoch[2] + 1,
-              revokeEpoch: epoch[3] + 1,
+              depositEpoch,
+              redeemEpoch,
+              issueEpoch,
+              revokeEpoch,
               // TODO: Replace with assetDecimals()
               pendingDeposit: new Balance(pendingDeposit, assetDecimals),
               // TODO: Replace with assetDecimals()
               pendingRedeem: new Balance(pendingRedeem, 18),
+              approvedDeposit: new Balance(approvedDeposit, assetDecimals),
+              approvedRedeem: new Balance(approvedRedeem, 18),
             }
           }).pipe(
             repeatOnEvents(

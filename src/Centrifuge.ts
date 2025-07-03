@@ -907,7 +907,7 @@ export class Centrifuge {
       }
 
       const baseUrl = 'https://raw.githubusercontent.com/centrifuge/protocol-v3/refs/heads'
-      const branch = 'post-electisec' // TODO: replace with 'main' when merged
+      const branch = 'main'
       const folder = 'env'
       const url = `${baseUrl}/${branch}/${folder}/${network}.json`
 

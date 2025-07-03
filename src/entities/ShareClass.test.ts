@@ -114,37 +114,14 @@ describe('ShareClass', () => {
     expect(memberAfter.validUntil.toISOString()).to.equal(new Date(1800000000 * 1000).toISOString())
   })
 
-  // Done in Vault.test.ts
-  // it('approves deposits and claims shares', async () => {
-  //   context.tenderlyFork.impersonateAddress = fundManager
-  //   context.centrifuge.setSigner(context.tenderlyFork.signer)
-  //   const result = await shareClass.approveDeposits(assetId, Balance.fromFloat(100, 6), Price.fromFloat(1))
-  //   expect(result.type).to.equal('TransactionConfirmed')
-
-  //   const order = await shareClass.investorOrder(assetId, investorB)
-
-  //   expect(order.maxDepositClaims).to.equal(1)
-
-  //   const result2 = await shareClass.claimDeposit(assetId, investorB)
-  //   expect(result2.type).to.equal('TransactionConfirmed')
-  // })
+  it('gets pending amounts', async () => {
+    const pendingAmounts = await shareClass.pendingAmounts()
+    expect(pendingAmounts.length).to.be.greaterThan(0)
+    expect(pendingAmounts[0]!.assetId.equals(assetId)).to.be.true
+    expect(pendingAmounts[0]!.chainId).to.equal(chainId)
+    expect(pendingAmounts[0]!.pendingDeposit).to.be.instanceOf(Balance)
+    expect(pendingAmounts[0]!.pendingRedeem).to.be.instanceOf(Balance)
+    expect(pendingAmounts[0]!.approvedDeposit).to.be.instanceOf(Balance)
+    expect(pendingAmounts[0]!.approvedRedeem).to.be.instanceOf(Balance)
+  })
 })
-
-// const { poolManager } = await context.centrifuge._protocolAddresses(chainId)
-// const client = context.centrifuge.getClient(chainId)!
-// const poolLoc = mapLocation(6n, poolId.raw, 'uint128')
-// const scLoc = mapLocation(poolLoc + 1n, scId.raw, 'bytes16')
-// const assetLoc = mapLocation(scLoc + 3n, '0xd54864475D5b1a0F235A751b6fddc8bb28FD3b9b', 'address')
-// const priceLoc = mapLocation(assetLoc, 0n, 'uint256')
-// const data = await client.getStorageAt({
-//   address: poolManager,
-//   slot: '0xb4aaa343c87a4bd58f639be7336d06126be71acdd096ecaad93182fd909f8e59',
-// })
-
-// function mapLocation(slot: bigint, key: bigint | string, keyType: string) {
-//   return hexToBigInt(keccak256(encodePacked([keyType, 'uint256'], [key, slot])))
-// }
-
-// function arrLocation(slot: bigint, index: bigint, elementSize: bigint) {
-//   return hexToBigInt(keccak256(toHex(slot))) + index * elementSize
-// }

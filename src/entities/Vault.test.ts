@@ -94,8 +94,6 @@ describe('Vault - Async', () => {
       firstValueFrom(vault.investment(investorA).pipe(skip(1))),
     ])
 
-    console.log('member updated')
-
     expect(investment.isAllowedToInvest).to.equal(true)
     expect(investment.isAllowedToRedeem).to.equal(true)
     expect(investment.shareBalance.toBigInt()).to.equal(0n)
@@ -112,12 +110,7 @@ describe('Vault - Async', () => {
     ;[result, investment] = await Promise.all([
       lastValueFrom(vault.increaseInvestOrder(defaultAssetsAmount).pipe(toArray())),
       firstValueFrom(
-        vault.investment(investorA).pipe(
-          skipWhile((i) => {
-            console.log('investment update', i.pendingInvestCurrency.toBigInt())
-            return !i.pendingInvestCurrency.eq(defaultAssetsAmount.toBigInt())
-          })
-        )
+        vault.investment(investorA).pipe(skipWhile((i) => !i.pendingInvestCurrency.eq(defaultAssetsAmount.toBigInt())))
       ),
     ])
 
@@ -130,10 +123,17 @@ describe('Vault - Async', () => {
     context.tenderlyFork.impersonateAddress = fundManager
     context.centrifuge.setSigner(context.tenderlyFork.signer)
 
-    let epoch = await vault.shareClass._epoch(assetId)
+    let pendingAmounts = await vault.shareClass.pendingAmounts()
+    let pendingAmount = pendingAmounts.find((p) => p.assetId.equals(assetId))!
 
     // Approve deposits
-    await vault.shareClass.approveDeposits(assetId, epoch.pendingDeposit, Price.fromFloat(1))
+    await vault.shareClass.approveDepositsAndIssueShares([
+      {
+        assetId,
+        approveAssetAmount: pendingAmount.pendingDeposit,
+        issuePricePerShare: Price.fromFloat(1),
+      },
+    ])
     ;[, investment] = await Promise.all([
       vault.shareClass.claimDeposit(assetId, investorA),
       firstValueFrom(
@@ -155,12 +155,16 @@ describe('Vault - Async', () => {
     expect(investment.shareBalance.toBigInt()).to.equal(defaultSharesAmount.toBigInt())
 
     const redeemShares = Balance.fromFloat(40, 18)
-    ;[, investment, epoch] = await Promise.all([
+    ;[, investment, pendingAmounts] = await Promise.all([
       vault.increaseRedeemOrder(redeemShares),
       firstValueFrom(
         vault.investment(investorA).pipe(skipWhile((i) => !i.pendingRedeemShares.eq(redeemShares.toBigInt())))
       ),
-      firstValueFrom(vault.shareClass._epoch(assetId).pipe(skipWhile((e) => e.pendingRedeem.eq(0n)))),
+      firstValueFrom(
+        vault.shareClass
+          .pendingAmounts()
+          .pipe(skipWhile((p) => p.find((a) => a.assetId.equals(assetId))!.pendingRedeem.eq(0n)))
+      ),
     ])
 
     expect(investment.pendingRedeemShares.toBigInt()).to.equal(redeemShares.toBigInt())
@@ -169,9 +173,17 @@ describe('Vault - Async', () => {
     context.tenderlyFork.impersonateAddress = fundManager
     context.centrifuge.setSigner(context.tenderlyFork.signer)
 
+    pendingAmount = pendingAmounts.find((p) => p.assetId.equals(assetId))!
+
     // Approve redeems
     await Promise.all([
-      vault.shareClass.approveRedeems(assetId, epoch.pendingRedeem, Price.fromFloat(1)),
+      vault.shareClass.approveRedeemsAndRevokeShares([
+        {
+          assetId,
+          approveShareAmount: pendingAmount.pendingRedeem,
+          revokePricePerShare: Price.fromFloat(1),
+        },
+      ]),
       // claimRedeem() relies on the investOrder being up-to-date, so waiting here for it to be updated
       // TODO: Fix this somehow
       firstValueFrom(
