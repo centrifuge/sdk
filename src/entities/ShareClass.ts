@@ -247,6 +247,8 @@ export class ShareClass extends Entity {
    */
   pendingAmounts() {
     return this._query(null, () =>
+      // TODO: Simplify when indexer includes the asset ID in the Asset entity
+      // can then query the asset id on { vaults { asset { id } }}
       this.vaults().pipe(
         switchMap((vaults) =>
           this._assetIdsByAddress(vaults.map((vault) => vault._asset)).pipe(
@@ -576,6 +578,7 @@ export class ShareClass extends Entity {
   approveDepositsAndIssueShares(
     assets: { assetId: AssetId; approveAssetAmount?: Balance; issuePricePerShare?: Price }[]
   ) {
+    // TODO: Also claim orders
     const self = this
     return this._transactSequence(async function* ({ walletClient, publicClient }) {
       const centIds = [...new Set(assets.map((a) => a.assetId.centrifugeId))]
@@ -676,6 +679,7 @@ export class ShareClass extends Entity {
   approveRedeemsAndRevokeShares(
     assets: { assetId: AssetId; approveShareAmount?: Balance; revokePricePerShare?: Price }[]
   ) {
+    // TODO: Also claim orders
     const self = this
     return this._transactSequence(async function* ({ walletClient, publicClient }) {
       const centIds = [...new Set(assets.map((a) => a.assetId.centrifugeId))]
