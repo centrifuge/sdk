@@ -181,7 +181,7 @@ export class PoolNetwork extends Entity {
     vaults: { shareClassId: ShareClassId; assetId: AssetId; kind: 'async' | 'syncDeposit' }[] = []
   ) {
     const self = this
-    return this._transactSequence(async function* ({ walletClient, publicClient }) {
+    return this._transact(async function* ({ walletClient, publicClient }) {
       const [
         { hub },
         { balanceSheet, syncDepositVaultFactory, asyncVaultFactory, syncManager, asyncRequestManager },

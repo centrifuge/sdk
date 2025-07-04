@@ -199,7 +199,7 @@ export class Vault extends Entity {
    */
   increaseInvestOrder(amount: Balance) {
     const self = this
-    return this._transactSequence(async function* ({ walletClient, publicClient, signer, signingAddress }) {
+    return this._transact(async function* ({ walletClient, publicClient, signer, signingAddress }) {
       const [estimate, investment, { vaultRouter }, isSyncDeposit] = await Promise.all([
         self.network._estimate(),
         self.investment(signingAddress),
@@ -296,7 +296,7 @@ export class Vault extends Entity {
    */
   cancelInvestOrder() {
     const self = this
-    return this._transactSequence(async function* ({ walletClient, signingAddress, publicClient }) {
+    return this._transact(async function* ({ walletClient, signingAddress, publicClient }) {
       const [estimate, investment, { vaultRouter }] = await Promise.all([
         self.network._estimate(),
         self.investment(signingAddress),
@@ -323,7 +323,7 @@ export class Vault extends Entity {
    */
   increaseRedeemOrder(sharesAmount: Balance) {
     const self = this
-    return this._transactSequence(async function* ({ walletClient, signingAddress, publicClient }) {
+    return this._transact(async function* ({ walletClient, signingAddress, publicClient }) {
       const [estimate, investment, { vaultRouter }] = await Promise.all([
         self.network._estimate(),
         self.investment(signingAddress),
@@ -352,7 +352,7 @@ export class Vault extends Entity {
    */
   cancelRedeemOrder() {
     const self = this
-    return this._transactSequence(async function* ({ walletClient, signingAddress, publicClient }) {
+    return this._transact(async function* ({ walletClient, signingAddress, publicClient }) {
       const [estimate, investment, { vaultRouter }] = await Promise.all([
         self.network._estimate(),
         self.investment(signingAddress),
@@ -381,7 +381,7 @@ export class Vault extends Entity {
    */
   claim(receiver?: HexString, controller?: HexString) {
     const self = this
-    return this._transactSequence(async function* ({ walletClient, signingAddress, publicClient }) {
+    return this._transact(async function* ({ walletClient, signingAddress, publicClient }) {
       const [investment, { vaultRouter }] = await Promise.all([
         self.investment(signingAddress),
         self._root._protocolAddresses(self.chainId),

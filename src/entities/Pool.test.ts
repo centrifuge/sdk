@@ -23,10 +23,10 @@ describe('Pool', () => {
   })
 
   it('gets whether an address is manager', async () => {
-    const isManager = await pool.isManager(poolManager)
+    const isManager = await pool.isPoolManager(poolManager)
     expect(isManager).to.be.true
 
-    const isManager2 = await pool.isManager(randomAddress())
+    const isManager2 = await pool.isPoolManager(randomAddress())
     expect(isManager2).to.be.false
   })
 
@@ -93,5 +93,17 @@ describe('Pool', () => {
     expect(details.metadata).to.not.be.undefined
     expect(details.shareClasses).to.have.length(1)
     expect(details.currency).to.exist
+  })
+
+  it('updates pool managers', async () => {
+    context.tenderlyFork.impersonateAddress = poolManager
+    context.centrifuge.setSigner(context.tenderlyFork.signer)
+
+    const newManager = randomAddress()
+    const result = await pool.updatePoolManagers([{ address: newManager, canManage: true }])
+    expect(result.type).to.equal('TransactionConfirmed')
+
+    const isNewManager = await pool.isPoolManager(newManager)
+    expect(isNewManager).to.be.true
   })
 })
