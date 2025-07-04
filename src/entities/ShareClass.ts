@@ -387,7 +387,7 @@ export class ShareClass extends Entity {
       : { [key in AccountType.Asset | AccountType.Equity | AccountType.Loss | AccountType.Gain]?: number }
   ) {
     const self = this
-    return this._transactSequence(async function* ({ walletClient, publicClient }) {
+    return this._transact(async function* ({ walletClient, publicClient }) {
       const [{ hub }, metadata] = await Promise.all([
         self._root._protocolAddresses(self.pool.chainId),
         self.pool.metadata(),
@@ -492,7 +492,7 @@ export class ShareClass extends Entity {
 
   updateSharePrice(pricePerShare: Price) {
     const self = this
-    return this._transactSequence(async function* ({ walletClient, publicClient }) {
+    return this._transact(async function* ({ walletClient, publicClient }) {
       const { hub } = await self._root._protocolAddresses(self.pool.chainId)
       yield* doTransaction('Update price', publicClient, () =>
         walletClient.writeContract({
@@ -507,7 +507,7 @@ export class ShareClass extends Entity {
 
   setMaxAssetPriceAge(assetId: AssetId, maxPriceAge: number) {
     const self = this
-    return this._transactSequence(async function* ({ walletClient, publicClient }) {
+    return this._transact(async function* ({ walletClient, publicClient }) {
       const { hub } = await self._root._protocolAddresses(self.pool.chainId)
       yield* doTransaction('Set max asset price age', publicClient, () =>
         walletClient.writeContract({
@@ -522,7 +522,7 @@ export class ShareClass extends Entity {
 
   setMaxSharePriceAge(chainId: number, maxPriceAge: number) {
     const self = this
-    return this._transactSequence(async function* ({ walletClient, publicClient }) {
+    return this._transact(async function* ({ walletClient, publicClient }) {
       const [{ hub }, id] = await Promise.all([
         self._root._protocolAddresses(self.pool.chainId),
         self._root.id(chainId),
@@ -540,7 +540,7 @@ export class ShareClass extends Entity {
 
   notifyAssetPrice(assetId: AssetId) {
     const self = this
-    return this._transactSequence(async function* ({ walletClient, publicClient }) {
+    return this._transact(async function* ({ walletClient, publicClient }) {
       const { hub } = await self._root._protocolAddresses(self.pool.chainId)
       yield* doTransaction('Notify asset price', publicClient, () =>
         walletClient.writeContract({
@@ -555,7 +555,7 @@ export class ShareClass extends Entity {
 
   notifySharePrice(chainId: number) {
     const self = this
-    return this._transactSequence(async function* ({ walletClient, publicClient }) {
+    return this._transact(async function* ({ walletClient, publicClient }) {
       const [{ hub }, id] = await Promise.all([
         self._root._protocolAddresses(self.pool.chainId),
         self._root.id(chainId),
@@ -580,7 +580,7 @@ export class ShareClass extends Entity {
   ) {
     // TODO: Also claim orders
     const self = this
-    return this._transactSequence(async function* ({ walletClient, publicClient }) {
+    return this._transact(async function* ({ walletClient, publicClient }) {
       const centIds = [...new Set(assets.map((a) => a.assetId.centrifugeId))]
       const [
         { hub },
@@ -681,7 +681,7 @@ export class ShareClass extends Entity {
   ) {
     // TODO: Also claim orders
     const self = this
-    return this._transactSequence(async function* ({ walletClient, publicClient }) {
+    return this._transact(async function* ({ walletClient, publicClient }) {
       const centIds = [...new Set(assets.map((a) => a.assetId.centrifugeId))]
       const [
         { hub },
@@ -779,7 +779,7 @@ export class ShareClass extends Entity {
 
   claimDeposit(assetId: AssetId, investor: HexString) {
     const self = this
-    return this._transactSequence(async function* ({ walletClient, publicClient }) {
+    return this._transact(async function* ({ walletClient, publicClient }) {
       const [{ hub }, investorOrder, estimate] = await Promise.all([
         self._root._protocolAddresses(self.pool.chainId),
         self.investorOrder(assetId, investor),
@@ -805,7 +805,7 @@ export class ShareClass extends Entity {
 
   claimRedeem(assetId: AssetId, investor: HexString) {
     const self = this
-    return this._transactSequence(async function* ({ walletClient, publicClient }) {
+    return this._transact(async function* ({ walletClient, publicClient }) {
       const [{ hub }, investorOrder, estimate] = await Promise.all([
         self._root._protocolAddresses(self.pool.chainId),
         self.investorOrder(assetId, investor),
@@ -831,7 +831,7 @@ export class ShareClass extends Entity {
    */
   updateMember(address: HexString, validUntil: number, chainId: number) {
     const self = this
-    return this._transactSequence(async function* ({ walletClient, publicClient }) {
+    return this._transact(async function* ({ walletClient, publicClient }) {
       const [{ hub }, id, estimate] = await Promise.all([
         self._root._protocolAddresses(self.pool.chainId),
         self._root.id(chainId),
@@ -1048,7 +1048,7 @@ export class ShareClass extends Entity {
   /** @internal */
   _updateContract(chainId: number, target: HexString, payload: HexString) {
     const self = this
-    return this._transactSequence(async function* ({ walletClient, publicClient }) {
+    return this._transact(async function* ({ walletClient, publicClient }) {
       const id = await self._root.id(chainId)
       const [{ hub }, estimate] = await Promise.all([
         self._root._protocolAddresses(self.pool.chainId),

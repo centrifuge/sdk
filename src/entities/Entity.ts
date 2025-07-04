@@ -6,8 +6,6 @@ export class Entity {
   #baseKeys: (string | number)[]
   /** @internal */
   _transact: Centrifuge['_transact']
-  /** @internal */
-  _transactSequence: Centrifuge['_transactSequence']
   constructor(
     /** @internal */
     public _root: Centrifuge,
@@ -15,7 +13,6 @@ export class Entity {
   ) {
     this.#baseKeys = queryKeys
     this._transact = this._root._transact.bind(this._root)
-    this._transactSequence = this._root._transactSequence.bind(this._root)
   }
 
   /** @internal */

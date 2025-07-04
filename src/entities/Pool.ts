@@ -5,8 +5,9 @@ import type { Centrifuge } from '../Centrifuge.js'
 import { HexString } from '../types/index.js'
 import { PoolMetadata } from '../types/poolMetadata.js'
 import { NATIONAL_CURRENCY_METADATA } from '../utils/currencies.js'
+import { addressToBytes32 } from '../utils/index.js'
 import { repeatOnEvents } from '../utils/rx.js'
-import { doTransaction } from '../utils/transaction.js'
+import { doTransaction, wrapTransaction } from '../utils/transaction.js'
 import { AssetId, PoolId, ShareClassId } from '../utils/types.js'
 import { Entity } from './Entity.js'
 import { PoolNetwork } from './PoolNetwork.js'
@@ -121,15 +122,34 @@ export class Pool extends Entity {
   /**
    * Check if an address is a manager of the pool.
    * @param address - The address to check
-   * @returns True if the address is a manager, false otherwise
    */
-  isManager(address: HexString) {
-    return this._query(['isManager', address], () => {
+  isPoolManager(address: HexString) {
+    return this._query(['isManager', address.toLowerCase()], () => {
       return this._root._protocolAddresses(this.chainId).pipe(
         switchMap(({ hubRegistry }) => {
           return this._root.getClient(this.chainId)!.readContract({
             address: hubRegistry,
             abi: ABI.HubRegistry,
+            functionName: 'manager',
+            args: [this.id.raw, address],
+          })
+        })
+      )
+    })
+  }
+
+  /**
+   * Check if an address is a Balance Sheet manager of the pool.
+   * @param chainId - The chain ID of the Spoke to check
+   * @param address - The address to check
+   */
+  isBalanceSheetManager(chainId: number, address: HexString) {
+    return this._query(['isBSManager', chainId, address.toLowerCase()], () => {
+      return this._root._protocolAddresses(chainId).pipe(
+        switchMap(({ balanceSheet }) => {
+          return this._root.getClient(chainId)!.readContract({
+            address: balanceSheet,
+            abi: ABI.BalanceSheet,
             functionName: 'manager',
             args: [this.id.raw, address],
           })
@@ -235,7 +255,7 @@ export class Pool extends Entity {
 
   updateMetadata(metadata: PoolMetadata) {
     const self = this
-    return this._transactSequence(async function* ({ walletClient, publicClient }) {
+    return this._transact(async function* ({ walletClient, publicClient }) {
       const cid = await self._root.config.pinJson(metadata)
 
       const { hub } = await self._root._protocolAddresses(self.chainId)
@@ -256,7 +276,7 @@ export class Pool extends Entity {
    */
   updatePoolManagers(updates: { address: HexString; canManage: boolean }[]) {
     const self = this
-    return this._transactSequence(async function* ({ walletClient, publicClient }) {
+    return this._transact(async function* (ctx) {
       const { hub } = await self._root._protocolAddresses(self.chainId)
       const batch = updates.map(({ address, canManage }) =>
         encodeFunctionData({
@@ -266,26 +286,44 @@ export class Pool extends Entity {
         })
       )
 
-      yield* doTransaction('Update manager', publicClient, () => {
-        if (batch.length === 1) {
-          return walletClient.sendTransaction({
-            data: batch[0],
-            to: hub,
-          })
-        }
-        return walletClient.writeContract({
-          address: hub,
+      yield* wrapTransaction('Update pool managers', ctx, {
+        contract: hub,
+        data: batch,
+      })
+    }, this.chainId)
+  }
+
+  /**
+   * Update balance sheet managers.
+   */
+  updateBalanceSheetManagers(updates: { chainId: number; address: HexString; canManage: boolean }[]) {
+    const self = this
+    return this._transact(async function* (ctx) {
+      const [{ hub }, centIds, estimates] = await Promise.all([
+        self._root._protocolAddresses(self.chainId),
+        Promise.all(updates.map(({ chainId }) => self._root.id(chainId))),
+        Promise.all(updates.map(({ chainId }) => self._root._estimate(self.chainId, { chainId }))),
+      ])
+      const estimate = estimates.reduce((acc, e) => acc + e, 0n)
+      const batch = updates.map(({ address, canManage }, i) =>
+        encodeFunctionData({
           abi: ABI.Hub,
-          functionName: 'multicall',
-          args: [batch],
+          functionName: 'updateBalanceSheetManager',
+          args: [centIds[i]!, self.id.raw, addressToBytes32(address), canManage],
         })
+      )
+
+      yield* wrapTransaction('Update balance sheet managers', ctx, {
+        contract: hub,
+        data: batch,
+        value: estimate,
       })
     }, this.chainId)
   }
 
   createAccounts(accounts: { accountId: number; isDebitNormal: boolean }[]) {
     const self = this
-    return this._transactSequence(async function* ({ walletClient, publicClient }) {
+    return this._transact(async function* ({ walletClient, publicClient }) {
       const { hub } = await self._root._protocolAddresses(self.chainId)
       const txBatch = accounts.map(({ accountId, isDebitNormal }) =>
         encodeFunctionData({

@@ -57,7 +57,10 @@ export type EIP1193ProviderLike = {
 }
 export type Signer = EIP1193ProviderLike | LocalAccount
 
-export type TransactionCallbackParams = {
+export type Transaction = Query<OperationStatus> & { chainId: number }
+
+export type TransactionContext = {
+  isBatching?: boolean
   signingAddress: HexString
   chain: Chain
   chainId: number
@@ -65,5 +68,3 @@ export type TransactionCallbackParams = {
   walletClient: WalletClient<any, Chain, Account>
   signer: Signer
 }
-
-export type Transaction = Query<OperationStatus>
