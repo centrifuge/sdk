@@ -2,6 +2,7 @@ import { expect } from 'chai'
 import { ABI } from '../abi/index.js'
 import { NULL_ADDRESS } from '../constants.js'
 import { context } from '../tests/setup.js'
+import { doTransaction } from '../utils/transaction.js'
 import { AssetId, PoolId, ShareClassId } from '../utils/types.js'
 import { Pool } from './Pool.js'
 import { PoolNetwork } from './PoolNetwork.js'
@@ -51,18 +52,16 @@ describe('PoolNetwork', () => {
     context.tenderlyFork.impersonateAddress = poolManager
     context.centrifuge.setSigner(context.tenderlyFork.signer)
 
-    await context.centrifuge._transact(
-      'Add share class',
-      async ({ walletClient }) => {
-        return walletClient.writeContract({
+    await context.centrifuge._transact(async function* (ctx) {
+      yield* doTransaction('Mint', ctx.publicClient, async () => {
+        return ctx.walletClient.writeContract({
           address: hub,
           abi: ABI.Hub,
           functionName: 'addShareClass',
           args: [poolId.raw, 'Test Share Class', 'TSC', '0x1'.padEnd(66, '0') as any],
         })
-      },
-      chainId
-    )
+      })
+    }, chainId)
 
     const result = await poolNetwork.deploy(
       [{ id: ShareClassId.from(poolId, 2), hook: freezeOnlyHook }],

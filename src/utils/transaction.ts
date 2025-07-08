@@ -1,12 +1,61 @@
 import { signERC2612Permit } from 'eth-permit'
-import type { Account, Chain, LocalAccount, PublicClient, TransactionReceipt, WalletClient } from 'viem'
+import {
+  parseAbi,
+  type Account,
+  type Chain,
+  type LocalAccount,
+  type PublicClient,
+  type TransactionReceipt,
+  type WalletClient,
+} from 'viem'
 import type { HexString } from '../types/index.js'
-import type { OperationStatus, Signer } from '../types/transaction.js'
+import type { OperationStatus, Signer, TransactionContext } from '../types/transaction.js'
 
 class TransactionError extends Error {
   override name = 'TransactionError'
   constructor(public receipt: TransactionReceipt) {
     super('Transaction reverted')
+  }
+}
+
+export async function* wrapTransaction(
+  title: string,
+  ctx: TransactionContext,
+  {
+    contract,
+    data: data_,
+    value,
+  }: {
+    contract: HexString
+    data: HexString | HexString[]
+    value?: bigint
+  }
+): AsyncGenerator<any> {
+  const data = Array.isArray(data_) ? data_ : [data_]
+  if (ctx.isBatching) {
+    yield {
+      contract,
+      data,
+      value,
+    }
+  } else {
+    const result = yield* doTransaction(title, ctx.publicClient, async () => {
+      if (data.length === 1) {
+        return ctx.walletClient.sendTransaction({
+          to: contract,
+          data: data[0],
+          value,
+        })
+      }
+      return ctx.walletClient.writeContract({
+        address: contract,
+        abi: parseAbi(['function multicall(bytes[] data) payable']),
+        functionName: 'multicall',
+        args: [data],
+        value,
+      })
+    })
+    return result
   }
 }
 

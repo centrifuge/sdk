@@ -49,7 +49,7 @@ import type {
 import { PoolMetadataInput } from './types/poolInput.js'
 import { PoolMetadata } from './types/poolMetadata.js'
 import type { CentrifugeQueryOptions, Query } from './types/query.js'
-import type { OperationStatus, Signer, Transaction, TransactionCallbackParams } from './types/transaction.js'
+import type { OperationStatus, Signer, Transaction, TransactionContext } from './types/transaction.js'
 import { Balance } from './utils/BigInt.js'
 import { randomUint } from './utils/index.js'
 import { createPinning, getUrlFromHash } from './utils/ipfs.js'
@@ -155,7 +155,7 @@ export class Centrifuge {
    */
   createPool(metadataInput: PoolMetadataInput, currencyCode = 840, chainId: number, counter?: number | bigint) {
     const self = this
-    return this._transactSequence(async function* ({ walletClient, signingAddress, publicClient }) {
+    return this._transact(async function* ({ walletClient, signingAddress, publicClient }) {
       const [addresses, id] = await Promise.all([self._protocolAddresses(chainId), self.id(chainId)])
       const poolId = PoolId.from(id, counter ?? randomUint(48))
 
@@ -481,6 +481,21 @@ export class Centrifuge {
   }
 
   /**
+   * Get the valuation addresses that can be used for holdings.
+   */
+  valuations(chainId: number) {
+    return this._query(null, () =>
+      this._protocolAddresses(chainId).pipe(
+        map(({ identityValuation }) => {
+          return {
+            identityValuation,
+          }
+        })
+      )
+    )
+  }
+
+  /**
    * Register an asset
    * @param originChainId - The chain ID where the asset exists
    * @param registerOnChainId - The chain ID where the asset should be registered
@@ -768,55 +783,9 @@ export class Centrifuge {
   }
 
   /**
-   * Executes a transaction on a given chain.
+   * Executes one or more transactions on a given chain.
    * When subscribed to, it emits status updates as it progresses.
-   * When awaited, it returns the final confirmed if successful.
-   * Will additionally prompt the user to switch chains if they're not on the correct chain.
-   *
-   * @example
-   * ```ts
-   * const tx = this._transact(
-   *   'Transfer',
-   *   ({ walletClient }) =>
-   *     walletClient.writeContract({
-   *       address: '0xabc...123',
-   *       abi: ABI.Currency,
-   *       functionName: 'transfer',
-   *       args: ['0xdef...456', 1000000n],
-   *     }),
-   *   1
-   * )
-   * tx.subscribe(status => console.log(status))
-   *
-   * // Results in something like the following values being emitted (assuming the user wasn't connected to mainnet):
-   * // { type: 'SwitchingChain', chainId: 1 }
-   * // { type: 'SigningTransaction', title: 'Transfer' }
-   * // { type: 'TransactionPending', title: 'Transfer', hash: '0x123...abc' }
-   * // { type: 'TransactionConfirmed', title: 'Transfer', hash: '0x123...abc', receipt: { ... } }
-   * ```
-   *
-   * ```ts
-   * const finalResult = await this._transact(...)
-   * console.log(finalResult) // { type: 'TransactionConfirmed', title: 'Transfer', hash: '0x123...abc', receipt: { ... } }
-   * ```
-   *
-   * @internal
-   */
-  _transact(
-    title: string,
-    transactionCallback: (params: TransactionCallbackParams) => Promise<HexString>,
-    chainId: number
-  ) {
-    return this._transactSequence(async function* (params) {
-      const transaction = transactionCallback(params)
-      yield* doTransaction(title, params.publicClient, () => transaction)
-    }, chainId)
-  }
-
-  /**
-   * Executes a sequence of transactions on a given chain.
-   * When subscribed to, it emits status updates as it progresses.
-   * When awaited, it returns the final confirmed if successful.
+   * When awaited, it returns the final confirmed result if successful.
    * Will additionally prompt the user to switch chains if they're not on the correct chain.
    *
    * @example
@@ -847,10 +816,8 @@ export class Centrifuge {
    *
    * @internal
    */
-  _transactSequence(
-    transactionCallback: (
-      params: TransactionCallbackParams
-    ) => AsyncGenerator<OperationStatus> | Observable<OperationStatus>,
+  _transact(
+    transactionCallback: (params: TransactionContext) => AsyncGenerator<OperationStatus> | Observable<OperationStatus>,
     chainId: number
   ): Transaction {
     const self = this
@@ -895,10 +862,16 @@ export class Centrifuge {
         throw new Error('Invalid arguments')
       }
     }
-    const $tx = defer(transact).pipe(mergeMap((d) => (isObservable(d) ? d : of(d))))
-    return makeThenable($tx, true)
+    const $tx = defer(transact).pipe(mergeMap((d) => (isObservable(d) ? d : of(d)))) as Transaction
+    makeThenable($tx, true)
+    Object.assign($tx, {
+      chainId,
+    })
+    return $tx
+  }
   }
 
+  /** @internal */
   _protocolAddresses(chainId: number) {
     return this._query(['protocolAddresses', chainId], () => {
       const network = chainIdToNetwork[chainId as keyof typeof chainIdToNetwork]
@@ -930,6 +903,7 @@ export class Centrifuge {
     })
   }
 
+  /** @internal */
   _getQuote(
     valuationAddress: HexString,
     baseAmount: Balance,

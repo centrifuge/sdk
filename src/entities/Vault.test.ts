@@ -4,6 +4,7 @@ import { parseAbi } from 'viem'
 import { currencies } from '../config/protocol.js'
 import { context } from '../tests/setup.js'
 import { Balance, Price } from '../utils/BigInt.js'
+import { doTransaction } from '../utils/transaction.js'
 import { AssetId, PoolId, ShareClassId } from '../utils/types.js'
 import { Pool } from './Pool.js'
 import { PoolNetwork } from './PoolNetwork.js'
@@ -49,18 +50,16 @@ async function mint(address: string) {
   context.tenderlyFork.impersonateAddress = protocolAdmin
   context.centrifuge.setSigner(context.tenderlyFork.signer)
 
-  await context.centrifuge._transact(
-    'mint',
-    async ({ walletClient }) => {
-      return await walletClient.writeContract({
+  await context.centrifuge._transact(async function* (ctx) {
+    yield* doTransaction('Mint', ctx.publicClient, async () => {
+      return ctx.walletClient.writeContract({
         address: currencies[chainId]![0]!,
         abi: parseAbi(['function mint(address, uint256)']),
         functionName: 'mint',
         args: [address as any, defaultAssetsAmount.toBigInt()],
       })
-    },
-    chainId
-  )
+    })
+  }, chainId)
 }
 
 describe('Vault - Async', () => {
