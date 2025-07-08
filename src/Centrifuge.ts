@@ -115,7 +115,7 @@ export class Centrifuge {
   }
 
   constructor(config: UserProvidedConfig = {}) {
-    const defaultConfigForEnv = envConfig[config?.environment ?? 'mainnet']
+    const defaultConfigForEnv = envConfig[config?.environment || 'mainnet']
     this.#config = {
       ...defaultConfig,
       ...defaultConfigForEnv,
@@ -438,7 +438,7 @@ export class Centrifuge {
             `query ($hubCentId: String!) {
               assetRegistrations(where: { centrifugeId: $hubCentId, decimals_gt: 0 }) {
                 items {
-                  id
+                  assetId
                   name
                   symbol
                   decimals
@@ -455,7 +455,7 @@ export class Centrifuge {
                 items: {
                   name: string
                   symbol: string
-                  id: string
+                  assetId: string
                   decimals: number
                   asset: { centrifugeId: string; address: HexString } | null
                 }[]
@@ -466,7 +466,7 @@ export class Centrifuge {
                 .map((assetReg) => {
                   return {
                     registeredOnCentrifugeId: hubCentId,
-                    id: new AssetId(assetReg.id),
+                    id: new AssetId(assetReg.assetId),
                     address: assetReg.asset!.address,
                     name: assetReg.name,
                     symbol: assetReg.symbol,
@@ -509,7 +509,7 @@ export class Centrifuge {
     tokenId: number | bigint = 0
   ) {
     const self = this
-    return this._transactSequence(async function* ({ walletClient, publicClient }) {
+    return this._transact(async function* ({ walletClient, publicClient }) {
       const [addresses, id, estimate] = await Promise.all([
         self._protocolAddresses(originChainId),
         self.id(registerOnChainId),
@@ -758,7 +758,7 @@ export class Centrifuge {
             ? shareReplayWithDelayedReset({
                 bufferSize: cache ? 1 : 0,
                 resetDelay: cache ? obsCacheTime : 0,
-                windowTime: options?.valueCacheTime ?? Infinity,
+                // windowTime: options?.valueCacheTime ?? Infinity,
               })
             : map((val) => val)
         )
