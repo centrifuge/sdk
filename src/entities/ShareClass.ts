@@ -1,5 +1,5 @@
 import { catchError, combineLatest, defer, EMPTY, expand, filter, map, of, switchMap } from 'rxjs'
-import { encodeFunctionData, encodePacked, getAddress, getContract, parseAbi } from 'viem'
+import { encodeFunctionData, encodePacked, getContract, parseAbi } from 'viem'
 import { ABI } from '../abi/index.js'
 import type { Centrifuge } from '../Centrifuge.js'
 import { AccountType } from '../types/holdings.js'
@@ -12,7 +12,6 @@ import { AssetId, ShareClassId } from '../utils/types.js'
 import { Entity } from './Entity.js'
 import type { Pool } from './Pool.js'
 import { PoolNetwork } from './PoolNetwork.js'
-import { Vault } from './Vault.js'
 
 /**
  * Query and interact with a share class, which allows querying total issuance, NAV per share,
@@ -90,81 +89,22 @@ export class ShareClass extends Entity {
    * @param chainId The chain ID to query the vaults on.
    * @returns The vaults of the share class on the given chain.
    */
-  vaults(chainId?: number) {
-    if (!chainId) {
-      return this._root._queryIndexer(
-        `query ($scId: String!) {
-          vaults(where: { tokenId: $scId }) {
-            items {
-              address: id
-              poolId
-              assetAddress
-              tokenId
-              blockchain {
-                id
-              }
-            }
-          }
-        }`,
-        { scId: this.id.raw },
-        (data: {
-          vaults: {
-            items: {
-              address: HexString
-              poolId: string
-              assetAddress: HexString
-              tokenId: string
-              blockchain: { id: string }
-            }[]
-          }
-        }) =>
-          data.vaults.items.map(
-            (item) =>
-              new Vault(
-                this._root,
-                new PoolNetwork(this._root, this.pool, Number(item.blockchain.id)),
-                this,
-                item.assetAddress,
-                item.address
-              )
-          )
-      )
-    }
-
+  vaults(chainId: number) {
     return this._query(null, () => new PoolNetwork(this._root, this.pool, chainId).vaults(this.id))
   }
 
   holdings() {
     return this._query(null, () =>
-      this._root
-        ._queryIndexer<{
-          holdings: {
-            items: {
-              assetRegistrationId: string
-            }[]
-          }
-        }>(
-          `query ($scId: String!) {
-            holdings(where: { tokenId: $scId }) {
-              items {
-                assetRegistrationId
-              }
-            }
-          }`,
-          {
-            scId: this.id.raw,
-          }
-        )
-        .pipe(
-          switchMap((res) =>
-            combineLatest(
-              res.holdings.items.map((holding) => {
-                const assetId = new AssetId(holding.assetRegistrationId)
-                return this.holding(assetId)
-              })
-            )
+      this._holdings().pipe(
+        switchMap((res) =>
+          combineLatest(
+            res.holdings.items.map((holding) => {
+              const assetId = new AssetId(holding.assetId)
+              return this.holding(assetId)
+            })
           )
         )
+      )
     )
   }
 
@@ -247,26 +187,19 @@ export class ShareClass extends Entity {
    */
   pendingAmounts() {
     return this._query(null, () =>
-      // TODO: Simplify when indexer includes the asset ID in the Asset entity
-      // can then query the asset id on { vaults { asset { id } }}
-      this.vaults().pipe(
+      this._allVaults().pipe(
         switchMap((vaults) =>
-          this._assetIdsByAddress(vaults.map((vault) => vault._asset)).pipe(
-            switchMap((assetIdsByAddress) =>
-              combineLatest(vaults.map((vault) => this._epoch(assetIdsByAddress[vault._asset]!))).pipe(
-                map((epochs) => {
-                  return epochs.map((epoch, i) => {
-                    const vault = vaults[i]!
-                    const assetId = assetIdsByAddress[vault._asset]!
-                    return {
-                      assetId,
-                      chainId: vault.chainId,
-                      ...epoch,
-                    }
-                  })
-                })
-              )
-            )
+          combineLatest(vaults.map((vault) => this._epoch(vault.assetId))).pipe(
+            map((epochs) => {
+              return epochs.map((epoch, i) => {
+                const vault = vaults[i]!
+                return {
+                  assetId: vault.assetId,
+                  chainId: vault.chainId,
+                  ...epoch,
+                }
+              })
+            })
           )
         )
       )
@@ -854,26 +787,61 @@ export class ShareClass extends Entity {
     }, this.pool.chainId)
   }
 
-  /** @internal */
-  _assetIdsByAddress(assetAddresses: HexString[]) {
-    return this._root._queryIndexer(
-      `query ($assetAddresses: [String!]!) {
-        assetRegistrations(where: { assetAddress_in: $assetAddresses }) {
-          items {
-            id
-            assetAddress
-          }
-        }
-      }`,
-      { assetAddresses: assetAddresses.map((a) => getAddress(a)) },
-      (data: { assetRegistrations: { items: { id: string; assetAddress: HexString }[] } }) => {
-        return Object.fromEntries(
-          data.assetRegistrations.items.map((item) => {
-            const assetId = new AssetId(item.id)
-            return [item.assetAddress.toLowerCase() as HexString, assetId]
-          })
-        )
+  _holdings() {
+    return this._root._queryIndexer<{
+      holdings: {
+        items: {
+          assetId: string
+        }[]
       }
+    }>(
+      `query ($scId: String!) {
+            holdings(where: { tokenId: $scId }) {
+              items {
+                assetId
+              }
+            }
+          }`,
+      {
+        scId: this.id.raw,
+      }
+    )
+  }
+
+  _allVaults() {
+    return this._root._queryIndexer(
+      `query ($scId: String!) {
+          vaults(where: { tokenId: $scId }) {
+            items {
+              asset {
+                id
+              }
+              address: id
+              poolId
+              assetAddress
+              blockchain {
+                id
+              }
+            }
+          }
+        }`,
+      { scId: this.id.raw },
+      (data: {
+        vaults: {
+          items: {
+            address: HexString
+            poolId: string
+            assetAddress: HexString
+            blockchain: { id: string }
+            asset: { id: string }
+          }[]
+        }
+      }) =>
+        data.vaults.items.map(({ blockchain, asset, ...rest }) => ({
+          ...rest,
+          chainId: Number(blockchain.id),
+          assetId: new AssetId(asset.id),
+        }))
     )
   }
 
