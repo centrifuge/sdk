@@ -257,7 +257,7 @@ describe('Centrifuge', () => {
     })
 
     it("shouldn't cache the latest value when `cache` is `false` on the Centrifuge instance", async () => {
-      const centrifuge = new Centrifuge({ environment: 'dev', cache: false })
+      const centrifuge = new Centrifuge({ environment: 'testnet', cache: false })
       let value = 0
       const query1 = centrifuge._query([Math.random()], () =>
         defer(() => {
@@ -348,7 +348,7 @@ describe('Centrifuge', () => {
 
     it('should batch calls', async () => {
       const fetchSpy = sinon.spy(globalThis, 'fetch')
-      const centrifuge = new Centrifuge({ environment: 'dev' })
+      const centrifuge = new Centrifuge({ environment: 'testnet' })
       const tUSD = '0x8503b4452Bf6238cC76CdbEE223b46d7196b1c93'
       const user = '0x423420Ae467df6e90291fd0252c0A8a637C1e03f'
       await centrifuge.balance(tUSD, user, chainId)
@@ -360,7 +360,7 @@ describe('Centrifuge', () => {
   describe('Transact', () => {
     it('should throw when no account is selected', async () => {
       const cent = new Centrifuge({
-        environment: 'dev',
+        environment: 'testnet',
       })
       cent.setSigner(mockProvider({ accounts: [] }))
 
@@ -378,7 +378,7 @@ describe('Centrifuge', () => {
 
     it('should try to switch chains when the signer is connected to a different one', async () => {
       const cent = new Centrifuge({
-        environment: 'dev',
+        environment: 'testnet',
       })
       const signer = mockProvider({ chainId: 1 })
       const spy = sinon.spy(signer, 'request')
@@ -399,7 +399,7 @@ describe('Centrifuge', () => {
 
     it("shouldn't try to switch chains when the signer is connected to the right chain", async () => {
       const cent = new Centrifuge({
-        environment: 'dev',
+        environment: 'testnet',
       })
       cent.setSigner(mockProvider())
 
@@ -407,14 +407,14 @@ describe('Centrifuge', () => {
         yield* doTransaction('Test', publicClient, async () => '0x1')
       }, chainId)
 
-      const status: any = await tx
+      const status: any = await firstValueFrom(tx)
       expect(status.type).to.equal('SigningTransaction')
       expect(status.title).to.equal('Test')
     })
 
     it('should emit status updates', async () => {
       const cent = new Centrifuge({
-        environment: 'dev',
+        environment: 'testnet',
       })
       cent.setSigner(mockProvider())
       const publicClient: any = createClient({ transport: custom(mockProvider()) }).extend(() => ({
@@ -437,7 +437,7 @@ describe('Centrifuge', () => {
 
     it('should emit status updates for a sequence of transactions', async () => {
       const cent = new Centrifuge({
-        environment: 'dev',
+        environment: 'testnet',
       })
       cent.setSigner(mockProvider())
       const tx = cent._transact(async function* () {
@@ -473,7 +473,7 @@ describe('Centrifuge', () => {
   describe('Transactions', () => {
     it('should register an asset', async () => {
       const centrifuge = new Centrifuge({
-        environment: 'demo',
+        environment: 'testnet',
         rpcUrls: {
           11155111: context.tenderlyFork.rpcUrl,
         },
@@ -489,7 +489,7 @@ describe('Centrifuge', () => {
 
     it('should create a pool', async () => {
       const centrifugeWithPin = new Centrifuge({
-        environment: 'dev',
+        environment: 'testnet',
         pinJson: async () => {
           return 'abc'
         },

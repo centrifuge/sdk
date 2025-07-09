@@ -24,7 +24,7 @@ const centrifuge = new Centrifuge()
 
 The following config options can be passed on initialization of the SDK:
 
-- `environment: 'mainnet' | 'demo' | 'dev'`
+- `environment: 'mainnet' | 'testnet'`
   - Optional
   - Default value: `mainnet`
 - `rpcUrls: Record<number, string>`

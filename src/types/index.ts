@@ -1,8 +1,8 @@
 import { Chain, PublicClient } from 'viem'
 
 export type Config = {
-  environment: 'mainnet' | 'demo' | 'dev'
-  rpcUrls?: Record<number | string, string>
+  environment: 'mainnet' | 'testnet'
+  rpcUrls?: Record<number | string, string | string[]>
   indexerUrl: string
   ipfsUrl: string
   /**
@@ -18,8 +18,6 @@ export type Config = {
 export type UserProvidedConfig = Partial<Config>
 export type EnvConfig = {
   indexerUrl: string
-  alchemyKey: string
-  infuraKey: string
   ipfsUrl: string
   pinFile: (b64URI: string) => Promise<string>
   pinJson: (json: any) => Promise<string>

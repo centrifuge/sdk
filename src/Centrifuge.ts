@@ -20,6 +20,7 @@ import {
   createWalletClient,
   custom,
   encodeFunctionData,
+  fallback,
   getContract,
   http,
   parseAbi,
@@ -63,22 +64,11 @@ const PINNING_API_DEMO = 'https://europe-central2-peak-vista-185616.cloudfunctio
 const envConfig = {
   mainnet: {
     indexerUrl: 'https://api-v3-hitz.marble.live/graphql',
-    alchemyKey: 'KNR-1LZhNqWOxZS2AN8AFeaiESBV10qZ',
-    infuraKey: '8ed99a9a115349bbbc01dcf3a24edc96',
     ipfsUrl: 'https://centrifuge.mypinata.cloud',
     ...createPinning(PINNING_API_DEMO),
   },
-  demo: {
+  testnet: {
     indexerUrl: 'https://api-v3-hitz.marble.live/graphql',
-    alchemyKey: 'KNR-1LZhNqWOxZS2AN8AFeaiESBV10qZ',
-    infuraKey: '8cd8e043ee8d4001b97a1c37e08fd9dd',
-    ipfsUrl: 'https://centrifuge.mypinata.cloud',
-    ...createPinning(PINNING_API_DEMO),
-  },
-  dev: {
-    indexerUrl: 'https://api-v3-hitz.marble.live/graphql',
-    alchemyKey: 'KNR-1LZhNqWOxZS2AN8AFeaiESBV10qZ',
-    infuraKey: '8cd8e043ee8d4001b97a1c37e08fd9dd',
     ipfsUrl: 'https://centrifuge.mypinata.cloud',
     ...createPinning(PINNING_API_DEMO),
   },
@@ -137,7 +127,7 @@ export class Centrifuge {
           chain.id,
           createPublicClient<any, Chain>({
             chain,
-            transport: http(rpcUrl),
+            transport: Array.isArray(rpcUrl) ? fallback(rpcUrl.map((url) => http(url))) : http(rpcUrl),
             batch: { multicall: true },
             pollingInterval: this.#config.pollingInterval,
             cacheTime: 100,
@@ -758,6 +748,7 @@ export class Centrifuge {
             ? shareReplayWithDelayedReset({
                 bufferSize: cache ? 1 : 0,
                 resetDelay: cache ? obsCacheTime : 0,
+                // TODO: Fix valueCacheTime to not cause an infinite loop when the value is expired.
                 // windowTime: options?.valueCacheTime ?? Infinity,
               })
             : map((val) => val)
@@ -828,7 +819,7 @@ export class Centrifuge {
       const publicClient = self.getClient(chainId)!
       const chain = self.getChainConfig(chainId)
       const bareWalletClient = isLocalAccount(signer)
-        ? createWalletClient({ account: signer, chain, transport: http(self.#config.rpcUrls?.[chain.id]) })
+        ? createWalletClient({ account: signer, chain, transport: http() })
         : createWalletClient({ transport: custom(signer) })
 
       const [address] = await bareWalletClient.getAddresses()
@@ -868,7 +859,6 @@ export class Centrifuge {
       chainId,
     })
     return $tx
-  }
   }
 
   /** @internal */
