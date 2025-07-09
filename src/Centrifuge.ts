@@ -860,7 +860,6 @@ export class Centrifuge {
     })
     return $tx
   }
-  }
 
   /** @internal */
   _protocolAddresses(chainId: number) {
