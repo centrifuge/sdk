@@ -407,7 +407,7 @@ describe('Centrifuge', () => {
         yield* doTransaction('Test', publicClient, async () => '0x1')
       }, chainId)
 
-      const status: any = await tx
+      const status: any = await firstValueFrom(tx)
       expect(status.type).to.equal('SigningTransaction')
       expect(status.title).to.equal('Test')
     })
