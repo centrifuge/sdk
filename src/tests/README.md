@@ -47,7 +47,7 @@ const tenderlyFork = new TenderlyFork(sepolia, '<vnet-id>')
 
 // connect to centrifuge
 const centrifuge = new Centrifuge({
-  environment: 'demo',
+  environment: 'testnet',
   rpcUrls: {
     11155111: tenderlyFork.rpcUrl,
   },

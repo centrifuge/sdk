@@ -473,7 +473,7 @@ describe('Centrifuge', () => {
   describe('Transactions', () => {
     it('should register an asset', async () => {
       const centrifuge = new Centrifuge({
-        environment: 'demo',
+        environment: 'testnet',
         rpcUrls: {
           11155111: context.tenderlyFork.rpcUrl,
         },

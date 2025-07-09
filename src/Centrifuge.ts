@@ -819,7 +819,7 @@ export class Centrifuge {
       const publicClient = self.getClient(chainId)!
       const chain = self.getChainConfig(chainId)
       const bareWalletClient = isLocalAccount(signer)
-        ? createWalletClient({ account: signer, chain, transport: http(self.#config.rpcUrls?.[chain.id]) })
+        ? createWalletClient({ account: signer, chain, transport: http() })
         : createWalletClient({ transport: custom(signer) })
 
       const [address] = await bareWalletClient.getAddresses()
