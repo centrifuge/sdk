@@ -3,7 +3,7 @@ import { encodeFunctionData, encodePacked, getContract, parseAbi } from 'viem'
 import { ABI } from '../abi/index.js'
 import type { Centrifuge } from '../Centrifuge.js'
 import { AccountType } from '../types/holdings.js'
-import { HexString } from '../types/index.js'
+import { CurrencyDetails, HexString } from '../types/index.js'
 import { Balance, Price } from '../utils/BigInt.js'
 import { addressToBytes32, randomUint } from '../utils/index.js'
 import { repeatOnEvents } from '../utils/rx.js'
@@ -38,15 +38,21 @@ export class ShareClass extends Entity {
    */
   details() {
     return this._query(null, () =>
-      combineLatest([this._metrics(), this._metadata()]).pipe(
-        map(([metrics, metadata]) => {
+      combineLatest([this._metrics(), this._metadata(), this.navPerNetwork()]).pipe(
+        map(([metrics, metadata, navPerNetwork]) => {
+          const totalIssuance = navPerNetwork.reduce(
+            (acc, item) => acc.add(item.totalIssuance),
+            new Balance(0n, 18) // TODO: Replace with pool currency decimals
+          )
+
           return {
             id: this.id,
             name: metadata.name,
             symbol: metadata.symbol,
-            totalIssuance: metrics.totalIssuance,
+            totalIssuance,
             pricePerShare: metrics.pricePerShare,
-            nav: metrics.totalIssuance.mul(metrics.pricePerShare),
+            nav: totalIssuance.mul(metrics.pricePerShare),
+            navPerNetwork,
           }
         })
       )
@@ -54,7 +60,17 @@ export class ShareClass extends Entity {
   }
 
   balanceSheet(chainId: number) {
-    return new BalanceSheet(this._root, new PoolNetwork(this._root, this.pool, chainId), this)
+    return this._query(null, () =>
+      this.pool.activeNetworks().pipe(
+        map((networks) => {
+          const network = networks.find((n) => n.chainId === chainId)
+          if (!network) {
+            throw new Error(`No active network found for chain ID ${chainId}`)
+          }
+          return new BalanceSheet(this._root, network, this)
+        })
+      )
+    )
   }
 
   navPerNetwork() {
@@ -98,6 +114,9 @@ export class ShareClass extends Entity {
     return this._query(null, () => new PoolNetwork(this._root, this.pool, chainId).vaults(this.id))
   }
 
+  /**
+   * Query all the holdings of the share class.
+   */
   holdings() {
     return this._query(null, () =>
       this._holdings().pipe(
@@ -105,20 +124,32 @@ export class ShareClass extends Entity {
           combineLatest(
             res.holdings.items.map((holding) => {
               const assetId = new AssetId(holding.assetId)
-              return this.holding(assetId)
+              return this._holding(assetId)
             })
+          ).pipe(
+            map((holdings) =>
+              holdings.map(({ assetDecimals: _, ...holding }, i) => {
+                const data = res.holdings.items[i]!
+                return {
+                  ...holding,
+                  asset: {
+                    decimals: data.holdingEscrow.asset.decimals,
+                    address: data.holdingEscrow.asset.address,
+                    name: data.holdingEscrow.asset.name,
+                    symbol: data.holdingEscrow.asset.symbol,
+                    chainId: Number(data.holdingEscrow.asset.blockchain.id),
+                  } satisfies Omit<CurrencyDetails, 'supportsPermit'>,
+                }
+              })
+            )
           )
         )
       )
     )
   }
 
-  /**
-   * Query a holding of the share class.
-   * @param assetId The asset ID
-   * @returns The details of the holding
-   */
-  holding(assetId: AssetId) {
+  /** @internal */
+  _holding(assetId: AssetId) {
     return this._query(['holding', assetId.toString()], () =>
       this._root._protocolAddresses(this.pool.chainId).pipe(
         switchMap(({ holdings: holdingsAddr, hubRegistry }) =>
@@ -806,16 +837,38 @@ export class ShareClass extends Entity {
       holdings: {
         items: {
           assetId: string
+          holdingEscrow: {
+            asset: {
+              decimals: number
+              assetTokenId: string
+              address: HexString
+              name: string
+              symbol: string
+              blockchain: { id: string }
+            }
+          }
         }[]
       }
     }>(
       `query ($scId: String!) {
-            holdings(where: { tokenId: $scId }) {
-              items {
-                assetId
+        holdings(where: { tokenId: $scId }) {
+          items {
+            assetId
+            holdingEscrow {
+              asset {
+                decimals
+                assetTokenId
+                address
+                name
+                symbol
+                blockchain {
+                  id
+                }
               }
             }
-          }`,
+          }
+        }
+      }`,
       {
         scId: this.id.raw,
       }

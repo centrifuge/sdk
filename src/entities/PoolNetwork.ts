@@ -1,4 +1,4 @@
-import { combineLatest, defer, map, switchMap } from 'rxjs'
+import { combineLatest, defer, map, of, switchMap } from 'rxjs'
 import { encodeFunctionData, getContract } from 'viem'
 import { ABI } from '../abi/index.js'
 import type { Centrifuge } from '../Centrifuge.js'
@@ -63,7 +63,9 @@ export class PoolNetwork extends Entity {
   }
 
   balanceSheet(scId: ShareClassId) {
-    return new BalanceSheet(this._root, this, new ShareClass(this._root, this.pool, scId.raw))
+    return this._query(null, () =>
+      of(new BalanceSheet(this._root, this, new ShareClass(this._root, this.pool, scId.raw)))
+    )
   }
 
   /**

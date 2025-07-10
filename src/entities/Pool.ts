@@ -255,19 +255,18 @@ export class Pool extends Entity {
 
   updateMetadata(metadata: PoolMetadata) {
     const self = this
-    return this._transact(async function* ({ walletClient, publicClient }) {
+    return this._transact(async function* (ctx) {
       const cid = await self._root.config.pinJson(metadata)
 
       const { hub } = await self._root._protocolAddresses(self.chainId)
-      yield* doTransaction('Update metadata', publicClient, () =>
-        walletClient.writeContract({
-          address: hub,
+      yield* wrapTransaction('Update metadata', ctx, {
+        contract: hub,
+        data: encodeFunctionData({
           abi: ABI.Hub,
           functionName: 'setPoolMetadata',
           args: [self.id.raw, toHex(cid)],
-          value: 0n,
         })
-      )
+      })
     }, this.chainId)
   }
 
