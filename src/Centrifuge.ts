@@ -916,32 +916,59 @@ export class Centrifuge {
 
   /** @internal */
   _protocolAddresses(chainId: number) {
-    return this._query(['protocolAddresses', chainId], () => {
+    return this._query(null, () => {
       const network = chainIdToNetwork[chainId as keyof typeof chainIdToNetwork]
       const chainCurrencies = currencies[chainId]
       if (!network || !chainCurrencies) {
-        throw new Error(`No protocol config mapping for chain id ${chainId}`)
+        throw new Error(`No protocol config found for chain id ${chainId}`)
       }
 
-      const baseUrl = 'https://raw.githubusercontent.com/centrifuge/protocol-v3/refs/heads'
-      const branch = 'main'
-      const folder = 'env'
-      const url = `${baseUrl}/${branch}/${folder}/${network}.json`
-
-      return fromFetch(url).pipe(
-        switchMap((response) => {
-          if (response.ok) {
-            return response.json().then(() => {
-              // TODO: Replace temp addresses
-              return TEMP_DEPLOYMENTS.find((d) => d.network.chainId === chainId)!
-            })
+      return this._queryIndexer(
+        `query ($chainId: String!) {
+          deployment(chainId: $chainId) {
+            accounting
+            asyncRequestManager
+            asyncVaultFactory
+            axelarAdapter
+            balanceSheet
+            centrifugeId
+            chainId
+            freezeOnlyHook
+            fullRestrictionsHook
+            gasService
+            gateway
+            globalEscrow
+            guardian
+            holdings
+            hub
+            hubRegistry
+            identityValuation
+            messageDispatcher
+            messageProcessor
+            multiAdapter
+            poolEscrowFactory
+            redemptionRestrictionsHook
+            root
+            routerEscrow
+            shareClassManager
+            spoke
+            syncDepositVaultFactory
+            syncManager
+            wormholeAdapter
+            vaultRouter
+            tokenFactory
           }
-          throw new Error(`Error ${response.status}`)
-        }),
-        map((data: { contracts: ProtocolContracts }) => ({
-          ...data.contracts,
-          currencies: chainCurrencies,
-        }))
+        }`,
+        { chainId: String(chainId) },
+        (data: { deployment: ProtocolContracts | null }) => {
+          if (!data.deployment) {
+            throw new Error(`No protocol contracts found for chain id ${chainId}`)
+          }
+          return {
+            ...data.deployment,
+            currencies: chainCurrencies,
+          }
+        }
       )
     })
   }
