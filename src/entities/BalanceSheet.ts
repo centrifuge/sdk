@@ -3,14 +3,14 @@ import { encodeFunctionData, getContract } from 'viem'
 import { ABI } from '../abi/index.js'
 import type { Centrifuge } from '../Centrifuge.js'
 import type { HexString } from '../types/index.js'
+import { Balance } from '../utils/BigInt.js'
 import { repeatOnEvents } from '../utils/rx.js'
+import { doTransaction, wrapTransaction } from '../utils/transaction.js'
+import { AssetId } from '../utils/types.js'
 import { Entity } from './Entity.js'
 import type { Pool } from './Pool.js'
 import { PoolNetwork } from './PoolNetwork.js'
 import { ShareClass } from './ShareClass.js'
-import { AssetId } from '../utils/types.js'
-import { Balance } from '../utils/BigInt.js'
-import { doTransaction, wrapTransaction } from '../utils/transaction.js'
 
 /**
  * Query and interact with the balanceSheet, which is the main entry point for withdrawing and depositing funds.
@@ -77,10 +77,7 @@ export class BalanceSheet extends Entity {
     const self = this
     return this._transact(async function* (ctx) {
       const client = self._root.getClient(self.chainId)!
-      const [
-        { balanceSheet, spoke },
-        isBalanceSheetManager,
-      ] = await Promise.all([
+      const [{ balanceSheet, spoke }, isBalanceSheetManager] = await Promise.all([
         self._root._protocolAddresses(self.chainId),
         self.pool.isBalanceSheetManager(self.chainId, ctx.signingAddress),
       ])
@@ -96,15 +93,8 @@ export class BalanceSheet extends Entity {
         args: [assetId.raw],
       })
 
-      const allowance = 
-        await self._root._allowance(
-          ctx.signingAddress,
-          spoke,
-          self.chainId,
-          assetAddress,
-          tokenId
-        )
-        console.log('allowance', allowance)
+      const allowance = await self._root._allowance(ctx.signingAddress, spoke, self.chainId, assetAddress, tokenId)
+      console.log('allowance', allowance)
 
       if (allowance < amount.toBigInt()) {
         yield* doTransaction('Approve', ctx.publicClient, () => {
@@ -130,27 +120,18 @@ export class BalanceSheet extends Entity {
           address: balanceSheet,
           abi: ABI.BalanceSheet,
           functionName: 'deposit',
-          args: [
-            self.pool.id.raw,
-            self.shareClass.id.raw,
-            assetAddress,
-            tokenId,
-            amount.toBigInt(),
-          ],
+          args: [self.pool.id.raw, self.shareClass.id.raw, assetAddress, tokenId, amount.toBigInt()],
         })
       })
-    }, this.chainId) 
+    }, this.chainId)
   }
 
   withdraw(assetId: AssetId, to: HexString, amount: Balance) {
     const self = this
     return this._transact(async function* (ctx) {
-      const [
-        { balanceSheet, spoke },
-        isBalanceSheetManager
-      ] = await Promise.all([
+      const [{ balanceSheet, spoke }, isBalanceSheetManager] = await Promise.all([
         self._root._protocolAddresses(self.chainId),
-        self.pool.isBalanceSheetManager(self.chainId, ctx.signingAddress)
+        self.pool.isBalanceSheetManager(self.chainId, ctx.signingAddress),
       ])
 
       if (!isBalanceSheetManager) {
@@ -163,20 +144,12 @@ export class BalanceSheet extends Entity {
         functionName: 'idToAsset',
         args: [assetId.raw],
       })
-      
-      const tx = 
-            encodeFunctionData({
-              abi: ABI.BalanceSheet,
-              functionName: 'withdraw',
-              args: [
-                self.pool.id.raw,
-                self.shareClass.id.raw,
-                assetAddress,
-                tokenId,
-                to,
-                amount.toBigInt(),
-              ],
-            })     
+
+      const tx = encodeFunctionData({
+        abi: ABI.BalanceSheet,
+        functionName: 'withdraw',
+        args: [self.pool.id.raw, self.shareClass.id.raw, assetAddress, tokenId, to, amount.toBigInt()],
+      })
 
       yield* wrapTransaction('Withdraw', ctx, {
         contract: balanceSheet,
