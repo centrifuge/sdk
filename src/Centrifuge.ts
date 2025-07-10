@@ -63,12 +63,12 @@ const PINNING_API_DEMO = 'https://europe-central2-peak-vista-185616.cloudfunctio
 
 const envConfig = {
   mainnet: {
-    indexerUrl: 'https://api-v3-hitz.marble.live/graphql',
+    indexerUrl: 'https://api.centrifuge.io',
     ipfsUrl: 'https://centrifuge.mypinata.cloud',
     ...createPinning(PINNING_API_DEMO),
   },
   testnet: {
-    indexerUrl: 'https://api-v3-hitz.marble.live/graphql',
+    indexerUrl: 'https://api.centrifuge.io',
     ipfsUrl: 'https://centrifuge.mypinata.cloud',
     ...createPinning(PINNING_API_DEMO),
   },
