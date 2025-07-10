@@ -9,6 +9,7 @@ import { addressToBytes32, randomUint } from '../utils/index.js'
 import { repeatOnEvents } from '../utils/rx.js'
 import { doTransaction } from '../utils/transaction.js'
 import { AssetId, ShareClassId } from '../utils/types.js'
+import { BalanceSheet } from './BalanceSheet.js'
 import { Entity } from './Entity.js'
 import type { Pool } from './Pool.js'
 import { PoolNetwork } from './PoolNetwork.js'
@@ -50,6 +51,10 @@ export class ShareClass extends Entity {
         })
       )
     )
+  }
+
+  balanceSheet(chainId: number) {
+    return new BalanceSheet(this._root, new PoolNetwork(this._root, this.pool, chainId), this)
   }
 
   navPerNetwork() {
@@ -710,6 +715,10 @@ export class ShareClass extends Entity {
     }, this.pool.chainId)
   }
 
+  /**
+   * Claim a deposit on the Hub side for the given asset and investor after the shares have been issued.
+   * This will send a message to the Spoke that will allow the investor to claim their shares.
+   */
   claimDeposit(assetId: AssetId, investor: HexString) {
     const self = this
     return this._transact(async function* ({ walletClient, publicClient }) {
@@ -736,6 +745,10 @@ export class ShareClass extends Entity {
     }, this.pool.chainId)
   }
 
+  /**
+   * Claim a redemption on the Hub side for the given asset and investor after the shares have been revoked.
+   * This will send a message to the Spoke that will allow the investor to claim their redeemed currency.
+   */
   claimRedeem(assetId: AssetId, investor: HexString) {
     const self = this
     return this._transact(async function* ({ walletClient, publicClient }) {
@@ -787,6 +800,7 @@ export class ShareClass extends Entity {
     }, this.pool.chainId)
   }
 
+  /** @internal */
   _holdings() {
     return this._root._queryIndexer<{
       holdings: {
@@ -808,6 +822,7 @@ export class ShareClass extends Entity {
     )
   }
 
+  /** @internal */
   _allVaults() {
     return this._root._queryIndexer(
       `query ($scId: String!) {

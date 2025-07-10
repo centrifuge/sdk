@@ -323,7 +323,7 @@ export class Pool extends Entity {
 
   createAccounts(accounts: { accountId: number; isDebitNormal: boolean }[]) {
     const self = this
-    return this._transact(async function* ({ walletClient, publicClient }) {
+    return this._transact(async function* (ctx) {
       const { hub } = await self._root._protocolAddresses(self.chainId)
       const txBatch = accounts.map(({ accountId, isDebitNormal }) =>
         encodeFunctionData({
@@ -332,19 +332,10 @@ export class Pool extends Entity {
           args: [self.id.raw, accountId, isDebitNormal],
         })
       )
-      yield* doTransaction('Create accounts', publicClient, () => {
-        if (txBatch.length === 1) {
-          return walletClient.sendTransaction({
-            data: txBatch[0],
-            to: hub,
-          })
-        }
-        return walletClient.writeContract({
-          address: hub,
-          abi: ABI.Hub,
-          functionName: 'multicall',
-          args: [txBatch],
-        })
+
+      yield* wrapTransaction('Create accounts', ctx, {
+        contract: hub,
+        data: txBatch,
       })
     }, this.chainId)
   }

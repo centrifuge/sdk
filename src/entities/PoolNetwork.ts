@@ -8,6 +8,7 @@ import { addressToBytes32 } from '../utils/index.js'
 import { repeatOnEvents } from '../utils/rx.js'
 import { doTransaction } from '../utils/transaction.js'
 import { AssetId, ShareClassId } from '../utils/types.js'
+import { BalanceSheet } from './BalanceSheet.js'
 import { Entity } from './Entity.js'
 import type { Pool } from './Pool.js'
 import { ShareClass } from './ShareClass.js'
@@ -59,6 +60,10 @@ export class PoolNetwork extends Entity {
         })
       )
     )
+  }
+
+  balanceSheet(scId: ShareClassId) {
+    return new BalanceSheet(this._root, this, new ShareClass(this._root, this.pool, scId.raw))
   }
 
   /**

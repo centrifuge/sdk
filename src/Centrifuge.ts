@@ -536,6 +536,59 @@ export class Centrifuge {
   }
 
   /**
+   * Get the allowance of an ERC20 or ERC6909 token.
+   * which is the contract that moves funds into the vault on behalf of the investor.
+   * @param owner - The address of the owner
+   * @param spender - The address of the spender
+   * @param chainId - The chain ID where the asset is located
+   * @param asset - The address of the asset
+   * @param tokenId - Optional token ID for ERC6909 assets
+   * @internal
+   */
+  _allowance(owner: HexString, spender: HexString, chainId: number, asset: HexString, tokenId?: bigint) {
+    return this._query(
+      ['allowance', owner.toLowerCase(), spender.toLowerCase(), asset.toLowerCase(), chainId, tokenId],
+      () =>
+        defer(async () => {
+          const client = this.getClient(chainId)!
+          if (tokenId) {
+            return client.readContract({
+              address: asset,
+              abi: ABI.ERC6909,
+              functionName: 'allowance',
+              args: [owner, spender, tokenId],
+            })
+          }
+          return client.readContract({
+            address: asset,
+            abi: ABI.Currency,
+            functionName: 'allowance',
+            args: [owner, spender],
+          })
+        }).pipe(
+          repeatOnEvents(
+            this,
+            {
+              address: asset,
+              abi: [ABI.Currency, ABI.ERC6909],
+              eventName: ['Approval', 'Transfer'],
+              filter: (events) => {
+                return events.some((event) => {
+                  return (
+                    event.args.owner?.toLowerCase() === owner.toLowerCase() ||
+                    event.args.spender?.toLowerCase() === owner.toLowerCase() ||
+                    event.args.from?.toLowerCase() === owner.toLowerCase()
+                  )
+                })
+              },
+            },
+            chainId
+          )
+        )
+    )
+  }
+
+  /**
    * Returns an observable of all events on a given chain.
    * @internal
    */
