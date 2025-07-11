@@ -56,7 +56,7 @@ describe('ShareClass', () => {
     const holdings = await shareClass.holdings()
     expect(holdings.length).to.be.greaterThan(0)
     expect(typeof holdings[0]!.valuation).to.equal('string')
-    expect(holdings[0]!.assetDecimals).to.equal(6)
+    expect(holdings[0]!.asset.decimals).to.equal(6)
     expect(holdings[0]!.assetId.equals(assetId)).to.be.true
     expect(holdings[0]!.amount.decimals).to.equal(6)
     expect(holdings[0]!.value.decimals).to.equal(18)
@@ -65,7 +65,7 @@ describe('ShareClass', () => {
   })
 
   it('gets a holding', async () => {
-    const holding = await shareClass.holding(assetId)
+    const holding = await shareClass._holding(assetId)
     expect(typeof holding.valuation).to.equal('string')
     expect(holding.assetDecimals).to.equal(6)
     expect(holding.assetId.equals(assetId)).to.be.true
@@ -88,7 +88,7 @@ describe('ShareClass', () => {
     })
     expect(result.type).to.equal('TransactionConfirmed')
 
-    const holding = await shareClass2.holding(assetId2)
+    const holding = await shareClass2._holding(assetId2)
     expect(holding).not.to.be.undefined
     expect(holding.assetId.equals(assetId2)).to.be.true
     expect(holding.amount.toFloat()).to.equal(0)

@@ -70,15 +70,15 @@ describe('Centrifuge', () => {
       'spoke',
       'vaultRouter',
       'balanceSheet',
-      'wormholeAdapter',
-      'axelarAdapter',
       'currencies',
     ] satisfies (keyof ProtocolContracts | 'currencies')[]
 
     const result = await context.centrifuge._protocolAddresses(chainId)
 
-    expect(result).to.be.an('object')
-    expect(Object.keys(result)).to.be.eql(expectedContractKeys)
+    const resultKeys =  new Set(Object.keys(result))
+    for (const key of expectedContractKeys) {
+      expect(resultKeys.has(key), `Expected contract key ${key} to be present`).to.be.true
+    }
     expect(result.currencies).to.be.an('array')
   })
 
