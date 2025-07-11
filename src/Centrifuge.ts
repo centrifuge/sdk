@@ -924,48 +924,52 @@ export class Centrifuge {
       }
 
       return this._queryIndexer(
-        `query ($chainId: String!) {
-          deployment(chainId: $chainId) {
-            accounting
-            asyncRequestManager
-            asyncVaultFactory
-            axelarAdapter
-            balanceSheet
-            centrifugeId
-            chainId
-            freezeOnlyHook
-            fullRestrictionsHook
-            gasService
-            gateway
-            globalEscrow
-            guardian
-            holdings
-            hub
-            hubRegistry
-            identityValuation
-            messageDispatcher
-            messageProcessor
-            multiAdapter
-            poolEscrowFactory
-            redemptionRestrictionsHook
-            root
-            routerEscrow
-            shareClassManager
-            spoke
-            syncDepositVaultFactory
-            syncManager
-            wormholeAdapter
-            vaultRouter
-            tokenFactory
+        `{
+          deployments { 
+            items {
+              accounting
+              asyncRequestManager
+              asyncVaultFactory
+              axelarAdapter
+              balanceSheet
+              centrifugeId
+              chainId
+              freezeOnlyHook
+              fullRestrictionsHook
+              gasService
+              gateway
+              globalEscrow
+              guardian
+              holdings
+              hub
+              hubRegistry
+              identityValuation
+              messageDispatcher
+              messageProcessor
+              multiAdapter
+              poolEscrowFactory
+              redemptionRestrictionsHook
+              root
+              routerEscrow
+              shareClassManager
+              spoke
+              syncDepositVaultFactory
+              syncManager
+              wormholeAdapter
+              vaultRouter
+              tokenFactory
+            }
           }
         }`,
         { chainId: String(chainId) },
-        (data: { deployment: ProtocolContracts | null }) => {
-          if (!data.deployment) {
+        (data: { deployments: { items: (ProtocolContracts & { chainId?: string })[] } }) => {
+          const deployment = data.deployments.items.find((d) => d.chainId === String(chainId))
+          if (!deployment) {
             throw new Error(`No protocol contracts found for chain id ${chainId}`)
           }
+          delete deployment.chainId
           return {
-            ...data.deployment,
+            ...(deployment as ProtocolContracts),
             currencies: chainCurrencies,
           }
         }

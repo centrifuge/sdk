@@ -70,8 +70,6 @@ describe('Centrifuge', () => {
       'spoke',
       'vaultRouter',
       'balanceSheet',
-      'wormholeAdapter',
-      'axelarAdapter',
       'currencies',
     ] satisfies (keyof ProtocolContracts | 'currencies')[]
 
