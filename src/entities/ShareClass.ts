@@ -120,8 +120,11 @@ export class ShareClass extends Entity {
   holdings() {
     return this._query(null, () =>
       this._holdings().pipe(
-        switchMap((res) =>
-          combineLatest(
+        switchMap((res) => {
+          if (res.holdings.items.length === 0) {
+            return of([])
+          }
+          return combineLatest(
             res.holdings.items.map((holding) => {
               const assetId = new AssetId(holding.assetId)
               return this._holding(assetId)
@@ -143,7 +146,7 @@ export class ShareClass extends Entity {
               })
             )
           )
-        )
+        })
       )
     )
   }
@@ -224,8 +227,11 @@ export class ShareClass extends Entity {
   pendingAmounts() {
     return this._query(null, () =>
       this._allVaults().pipe(
-        switchMap((vaults) =>
-          combineLatest(vaults.map((vault) => this._epoch(vault.assetId))).pipe(
+        switchMap((vaults) => {
+          if (vaults.length === 0) {
+            return of([])
+          }
+          return combineLatest(vaults.map((vault) => this._epoch(vault.assetId))).pipe(
             map((epochs) => {
               return epochs.map((epoch, i) => {
                 const vault = vaults[i]!
@@ -237,7 +243,7 @@ export class ShareClass extends Entity {
               })
             })
           )
-        )
+        })
       )
     )
   }
