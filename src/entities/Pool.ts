@@ -113,6 +113,7 @@ export class Pool extends Entity {
     return this._query(null, () => {
       return this.shareClasses().pipe(
         switchMap((shareClasses) => {
+          if (shareClasses.length === 0) return of([])
           return combineLatest(shareClasses.map((sc) => sc.details()))
         })
       )
