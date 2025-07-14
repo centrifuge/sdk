@@ -28,9 +28,8 @@ describe('BalanceSheet', () => {
 
   it('gets the balances', async () => {
     const balances = await balanceSheet.balances()
-    expect(balances).to.be.an('array')
     expect(balances).to.have.length.greaterThan(0)
-    expect(balances[0]?.amount).to.be.instanceOf(Balance)
+    expect(balances[0]!.amount).to.be.instanceOf(Balance)
   })
 
   it('withdraws and deposits funds', async () => {
@@ -48,9 +47,9 @@ describe('BalanceSheet', () => {
 
     const result = await firstValueFrom(balanceSheet.deposit(assetId, amount).pipe(toArray()))
 
-    expect(result[2]?.type).to.equal('TransactionConfirmed')
+    expect(result[2]!.type).to.equal('TransactionConfirmed')
     expect((result[2] as any).title).to.equal('Approve')
-    expect(result[5]?.type).to.equal('TransactionConfirmed')
+    expect(result[5]!.type).to.equal('TransactionConfirmed')
     expect((result[5] as any).title).to.equal('Deposit')
   })
 })
