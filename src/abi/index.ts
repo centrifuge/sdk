@@ -15,6 +15,7 @@ import SpokeAbi from './Spoke.abi.js'
 import SyncRequestsAbi from './SyncRequestManager.abi.js'
 import ValuationAbi from './Valuation.abi.js'
 import VaultRouterAbi from './VaultRouter.abi.js'
+import ERC6909Abi from './ERC6909.abi.js'
 
 export const ABI = {
   Hub: parseAbi(HubAbi),
@@ -22,6 +23,7 @@ export const ABI = {
   HubRegistry: parseAbi(HubRegistryAbi),
   MessageDispatcher: parseAbi(MessageDispatcherAbi),
   Currency: parseAbi(CurrencyAbi),
+  ERC6909: parseAbi(ERC6909Abi),
   RestrictionManager: parseAbi(RestrictionManagerAbi),
   AsyncVault: parseAbi(AsyncVaultAbit),
   Spoke: parseAbi(SpokeAbi),

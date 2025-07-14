@@ -7,7 +7,7 @@ import { PoolMetadata } from '../types/poolMetadata.js'
 import { NATIONAL_CURRENCY_METADATA } from '../utils/currencies.js'
 import { addressToBytes32 } from '../utils/index.js'
 import { repeatOnEvents } from '../utils/rx.js'
-import { doTransaction, wrapTransaction } from '../utils/transaction.js'
+import { wrapTransaction } from '../utils/transaction.js'
 import { AssetId, PoolId, ShareClassId } from '../utils/types.js'
 import { Entity } from './Entity.js'
 import { PoolNetwork } from './PoolNetwork.js'
@@ -255,19 +255,18 @@ export class Pool extends Entity {
 
   updateMetadata(metadata: PoolMetadata) {
     const self = this
-    return this._transact(async function* ({ walletClient, publicClient }) {
+    return this._transact(async function* (ctx) {
       const cid = await self._root.config.pinJson(metadata)
 
       const { hub } = await self._root._protocolAddresses(self.chainId)
-      yield* doTransaction('Update metadata', publicClient, () =>
-        walletClient.writeContract({
-          address: hub,
+      yield* wrapTransaction('Update metadata', ctx, {
+        contract: hub,
+        data: encodeFunctionData({
           abi: ABI.Hub,
           functionName: 'setPoolMetadata',
           args: [self.id.raw, toHex(cid)],
-          value: 0n,
-        })
-      )
+        }),
+      })
     }, this.chainId)
   }
 
@@ -278,6 +277,14 @@ export class Pool extends Entity {
     const self = this
     return this._transact(async function* (ctx) {
       const { hub } = await self._root._protocolAddresses(self.chainId)
+
+      // Ensure that updating the signer's address is always last in the batch,
+      // to prevent removing the signer from the list of managers, before having added others,
+      // which would cause the other updates to fail.
+      const selfUpdateIndex = updates.findIndex((u) => u.address.toLowerCase() === ctx.signingAddress.toLowerCase())
+      const selfUpdate = updates.splice(selfUpdateIndex >>> 0, 1)
+      updates.push(...selfUpdate)
+
       const batch = updates.map(({ address, canManage }) =>
         encodeFunctionData({
           abi: ABI.Hub,
@@ -323,7 +330,7 @@ export class Pool extends Entity {
 
   createAccounts(accounts: { accountId: number; isDebitNormal: boolean }[]) {
     const self = this
-    return this._transact(async function* ({ walletClient, publicClient }) {
+    return this._transact(async function* (ctx) {
       const { hub } = await self._root._protocolAddresses(self.chainId)
       const txBatch = accounts.map(({ accountId, isDebitNormal }) =>
         encodeFunctionData({
@@ -332,19 +339,10 @@ export class Pool extends Entity {
           args: [self.id.raw, accountId, isDebitNormal],
         })
       )
-      yield* doTransaction('Create accounts', publicClient, () => {
-        if (txBatch.length === 1) {
-          return walletClient.sendTransaction({
-            data: txBatch[0],
-            to: hub,
-          })
-        }
-        return walletClient.writeContract({
-          address: hub,
-          abi: ABI.Hub,
-          functionName: 'multicall',
-          args: [txBatch],
-        })
+
+      yield* wrapTransaction('Create accounts', ctx, {
+        contract: hub,
+        data: txBatch,
       })
     }, this.chainId)
   }

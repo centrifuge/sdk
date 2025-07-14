@@ -3,12 +3,13 @@ import { encodeFunctionData, encodePacked, getContract, parseAbi } from 'viem'
 import { ABI } from '../abi/index.js'
 import type { Centrifuge } from '../Centrifuge.js'
 import { AccountType } from '../types/holdings.js'
-import { HexString } from '../types/index.js'
+import { CurrencyDetails, HexString } from '../types/index.js'
 import { Balance, Price } from '../utils/BigInt.js'
 import { addressToBytes32, randomUint } from '../utils/index.js'
 import { repeatOnEvents } from '../utils/rx.js'
 import { doTransaction } from '../utils/transaction.js'
 import { AssetId, ShareClassId } from '../utils/types.js'
+import { BalanceSheet } from './BalanceSheet.js'
 import { Entity } from './Entity.js'
 import type { Pool } from './Pool.js'
 import { PoolNetwork } from './PoolNetwork.js'
@@ -37,16 +38,36 @@ export class ShareClass extends Entity {
    */
   details() {
     return this._query(null, () =>
-      combineLatest([this._metrics(), this._metadata()]).pipe(
-        map(([metrics, metadata]) => {
+      combineLatest([this._metrics(), this._metadata(), this.navPerNetwork()]).pipe(
+        map(([metrics, metadata, navPerNetwork]) => {
+          const totalIssuance = navPerNetwork.reduce(
+            (acc, item) => acc.add(item.totalIssuance),
+            new Balance(0n, 18) // TODO: Replace with pool currency decimals
+          )
+
           return {
             id: this.id,
             name: metadata.name,
             symbol: metadata.symbol,
-            totalIssuance: metrics.totalIssuance,
+            totalIssuance,
             pricePerShare: metrics.pricePerShare,
-            nav: metrics.totalIssuance.mul(metrics.pricePerShare),
+            nav: totalIssuance.mul(metrics.pricePerShare),
+            navPerNetwork,
           }
+        })
+      )
+    )
+  }
+
+  balanceSheet(chainId: number) {
+    return this._query(null, () =>
+      this.pool.activeNetworks().pipe(
+        map((networks) => {
+          const network = networks.find((n) => n.chainId === chainId)
+          if (!network) {
+            throw new Error(`No active network found for chain ID ${chainId}`)
+          }
+          return new BalanceSheet(this._root, network, this)
         })
       )
     )
@@ -93,27 +114,45 @@ export class ShareClass extends Entity {
     return this._query(null, () => new PoolNetwork(this._root, this.pool, chainId).vaults(this.id))
   }
 
+  /**
+   * Query all the holdings of the share class.
+   */
   holdings() {
     return this._query(null, () =>
       this._holdings().pipe(
-        switchMap((res) =>
-          combineLatest(
+        switchMap((res) => {
+          if (res.holdings.items.length === 0) {
+            return of([])
+          }
+          return combineLatest(
             res.holdings.items.map((holding) => {
               const assetId = new AssetId(holding.assetId)
-              return this.holding(assetId)
+              return this._holding(assetId)
             })
+          ).pipe(
+            map((holdings) =>
+              holdings.map(({ assetDecimals: _, ...holding }, i) => {
+                const data = res.holdings.items[i]!
+                return {
+                  ...holding,
+                  asset: {
+                    decimals: data.holdingEscrow.asset.decimals,
+                    address: data.holdingEscrow.asset.address,
+                    name: data.holdingEscrow.asset.name,
+                    symbol: data.holdingEscrow.asset.symbol,
+                    chainId: Number(data.holdingEscrow.asset.blockchain.id),
+                  } satisfies Omit<CurrencyDetails, 'supportsPermit'>,
+                }
+              })
+            )
           )
-        )
+        })
       )
     )
   }
 
-  /**
-   * Query a holding of the share class.
-   * @param assetId The asset ID
-   * @returns The details of the holding
-   */
-  holding(assetId: AssetId) {
+  /** @internal */
+  _holding(assetId: AssetId) {
     return this._query(['holding', assetId.toString()], () =>
       this._root._protocolAddresses(this.pool.chainId).pipe(
         switchMap(({ holdings: holdingsAddr, hubRegistry }) =>
@@ -188,8 +227,11 @@ export class ShareClass extends Entity {
   pendingAmounts() {
     return this._query(null, () =>
       this._allVaults().pipe(
-        switchMap((vaults) =>
-          combineLatest(vaults.map((vault) => this._epoch(vault.assetId))).pipe(
+        switchMap((vaults) => {
+          if (vaults.length === 0) {
+            return of([])
+          }
+          return combineLatest(vaults.map((vault) => this._epoch(vault.assetId))).pipe(
             map((epochs) => {
               return epochs.map((epoch, i) => {
                 const vault = vaults[i]!
@@ -201,7 +243,7 @@ export class ShareClass extends Entity {
               })
             })
           )
-        )
+        })
       )
     )
   }
@@ -710,6 +752,10 @@ export class ShareClass extends Entity {
     }, this.pool.chainId)
   }
 
+  /**
+   * Claim a deposit on the Hub side for the given asset and investor after the shares have been issued.
+   * This will send a message to the Spoke that will allow the investor to claim their shares.
+   */
   claimDeposit(assetId: AssetId, investor: HexString) {
     const self = this
     return this._transact(async function* ({ walletClient, publicClient }) {
@@ -736,6 +782,10 @@ export class ShareClass extends Entity {
     }, this.pool.chainId)
   }
 
+  /**
+   * Claim a redemption on the Hub side for the given asset and investor after the shares have been revoked.
+   * This will send a message to the Spoke that will allow the investor to claim their redeemed currency.
+   */
   claimRedeem(assetId: AssetId, investor: HexString) {
     const self = this
     return this._transact(async function* ({ walletClient, publicClient }) {
@@ -787,27 +837,51 @@ export class ShareClass extends Entity {
     }, this.pool.chainId)
   }
 
+  /** @internal */
   _holdings() {
     return this._root._queryIndexer<{
       holdings: {
         items: {
           assetId: string
+          holdingEscrow: {
+            asset: {
+              decimals: number
+              assetTokenId: string
+              address: HexString
+              name: string
+              symbol: string
+              blockchain: { id: string }
+            }
+          }
         }[]
       }
     }>(
       `query ($scId: String!) {
-            holdings(where: { tokenId: $scId }) {
-              items {
-                assetId
+        holdings(where: { tokenId: $scId }) {
+          items {
+            assetId
+            holdingEscrow {
+              asset {
+                decimals
+                assetTokenId
+                address
+                name
+                symbol
+                blockchain {
+                  id
+                }
               }
             }
-          }`,
+          }
+        }
+      }`,
       {
         scId: this.id.raw,
       }
     )
   }
 
+  /** @internal */
   _allVaults() {
     return this._root._queryIndexer(
       `query ($scId: String!) {

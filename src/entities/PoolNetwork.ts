@@ -1,4 +1,4 @@
-import { combineLatest, defer, map, switchMap } from 'rxjs'
+import { combineLatest, defer, map, of, switchMap } from 'rxjs'
 import { encodeFunctionData, getContract } from 'viem'
 import { ABI } from '../abi/index.js'
 import type { Centrifuge } from '../Centrifuge.js'
@@ -8,6 +8,7 @@ import { addressToBytes32 } from '../utils/index.js'
 import { repeatOnEvents } from '../utils/rx.js'
 import { doTransaction } from '../utils/transaction.js'
 import { AssetId, ShareClassId } from '../utils/types.js'
+import { BalanceSheet } from './BalanceSheet.js'
 import { Entity } from './Entity.js'
 import type { Pool } from './Pool.js'
 import { ShareClass } from './ShareClass.js'
@@ -58,6 +59,12 @@ export class PoolNetwork extends Entity {
           )
         })
       )
+    )
+  }
+
+  balanceSheet(scId: ShareClassId) {
+    return this._query(null, () =>
+      of(new BalanceSheet(this._root, this, new ShareClass(this._root, this.pool, scId.raw)))
     )
   }
 
@@ -208,9 +215,7 @@ export class PoolNetwork extends Entity {
 
       const batch: HexString[] = []
 
-      // TODO: Set async request manager if not already set.
-      // Can't currently query whether it is set on the Spoke contract. Needs a view method.
-
+      // Set vault managers as balance sheet managers if not already set
       if (!isAsyncManagerSet && vaults.some((v) => v.kind === 'async')) {
         batch.push(
           encodeFunctionData({
@@ -261,7 +266,16 @@ export class PoolNetwork extends Entity {
         if (!enabledShareClasses.has(vault.shareClassId.raw)) {
           throw new Error(`Share class "${vault.shareClassId.raw}" is not enabled in pool "${self.pool.id.raw}"`)
         }
+
         batch.push(
+          // TODO: When we have fully sync vaults, we have to check if a vault for this share class and asset already exists
+          // and if so, we shouldn't set the request manager again.
+          // `setRequestManager` will revert if the share class / asset combination already has a vault.
+          encodeFunctionData({
+            abi: ABI.Hub,
+            functionName: 'setRequestManager',
+            args: [self.pool.id.raw, vault.shareClassId.raw, vault.assetId.raw, asyncRequestManager],
+          }),
           encodeFunctionData({
             abi: ABI.Hub,
             functionName: 'updateVault',

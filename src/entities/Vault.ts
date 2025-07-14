@@ -271,11 +271,11 @@ export class Vault extends Entity {
             args: [
               investmentCurrency.address,
               vaultRouter,
-              amount.toString() as any,
-              permit.deadline as any,
+              amount.toBigInt(),
+              BigInt(permit.deadline),
               permit.v,
-              permit.r as any,
-              permit.s as any,
+              permit.r as HexString,
+              permit.s as HexString,
             ],
           })
         yield* doTransaction('Invest', publicClient, () =>
@@ -470,40 +470,12 @@ export class Vault extends Entity {
    * @internal
    */
   _allowance(owner: HexString) {
-    const address = owner.toLowerCase() as HexString
-    return this._query(['allowance', address], () =>
+    return this._query(null, () =>
       combineLatest([this._investmentCurrency(), this._root._protocolAddresses(this.chainId)]).pipe(
         switchMap(([currency, { vaultRouter }]) =>
-          defer(() =>
-            this._root
-              .getClient(this.chainId)!
-              .readContract({
-                address: this._asset,
-                abi: ABI.Currency,
-                functionName: 'allowance',
-                args: [address, vaultRouter],
-              })
-              .then((val) => new Balance(val, currency.decimals))
-          ).pipe(
-            repeatOnEvents(
-              this._root,
-              {
-                address: this._asset,
-                abi: ABI.Currency,
-                eventName: ['Approval', 'Transfer'],
-                filter: (events) => {
-                  return events.some((event) => {
-                    return (
-                      event.args.owner?.toLowerCase() === address ||
-                      event.args.spender?.toLowerCase() === this._asset ||
-                      event.args.from?.toLowerCase() === address
-                    )
-                  })
-                },
-              },
-              this.chainId
-            )
-          )
+          this._root
+            ._allowance(owner, vaultRouter, this.chainId, currency.address)
+            .pipe(map((allowance) => new Balance(allowance, currency.decimals)))
         )
       )
     )
