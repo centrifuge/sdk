@@ -4,8 +4,11 @@ import sinon from 'sinon'
 import { createClient, custom } from 'viem'
 import { Centrifuge } from './Centrifuge.js'
 import { currencies } from './config/protocol.js'
+import { Pool } from './entities/Pool.js'
 import { context } from './tests/setup.js'
+import { randomAddress } from './tests/utils.js'
 import { ProtocolContracts } from './types/index.js'
+import { MessageType } from './types/transaction.js'
 import { Balance } from './utils/BigInt.js'
 import { doSignMessage, doTransaction } from './utils/transaction.js'
 import { AssetId, PoolId } from './utils/types.js'
@@ -114,10 +117,10 @@ describe('Centrifuge', () => {
     })
 
     it('should estimate the gas for a bridge transaction', async () => {
-      const estimate = await context.centrifuge._estimate(chainId, { chainId })
-      expect(typeof estimate).to.equal('bigint')
+      const estimate = await context.centrifuge._estimate(chainId, { chainId }, MessageType.NotifyPool)
+      expect(estimate).to.equal(0n)
 
-      const estimate2 = await context.centrifuge._estimate(chainId, { centId: 2 })
+      const estimate2 = await context.centrifuge._estimate(chainId, { centId: 2 }, MessageType.NotifyPool)
       expect(typeof estimate2).to.equal('bigint')
     })
 
@@ -346,6 +349,47 @@ describe('Centrifuge', () => {
       subscription1.unsubscribe()
     })
 
+    it("doesn't go into an infinite loop when the observable is recreated", async () => {
+      let value = 0
+      const query1 = context.centrifuge._query([Math.random()], () => defer(() => lazy(++value)), {
+        valueCacheTime: 1000,
+      })
+      let lastValue: number | null = null
+      let lastValue2: number | null = null
+      const subscription = query1.subscribe((next) => {
+        console.log('next', next)
+        lastValue = next
+      })
+      await query1
+      clock.tick(60_000)
+
+      const subscription2 = query1.subscribe((next) => {
+        console.log('next2', next)
+        lastValue2 = next
+      })
+      await query1
+      await query1
+      await query1
+      await query1
+      await query1
+      await query1
+      await query1
+      await query1
+      await query1
+      await query1
+      await query1
+      await query1
+      await query1
+      await query1
+      await query1
+      await query1
+      expect(lastValue).to.equal(2)
+      await lazy(null, 1000)
+      console.log('value', lastValue, lastValue2)
+      subscription.unsubscribe()
+      subscription2.unsubscribe()
+    })
+
     it('should batch calls', async () => {
       const fetchSpy = sinon.spy(globalThis, 'fetch')
       const centrifuge = new Centrifuge({ environment: 'testnet' })
@@ -470,6 +514,30 @@ describe('Centrifuge', () => {
     })
   })
 
+  describe('Batch', () => {
+    it('can batch transactions', async () => {
+      const { centrifuge } = context
+      const pool = new Pool(centrifuge, poolId.raw, chainId)
+
+      context.tenderlyFork.impersonateAddress = poolManager
+      context.centrifuge.setSigner(context.tenderlyFork.signer)
+
+      const newManager = randomAddress()
+      const newManager2 = randomAddress()
+      const result = await context.centrifuge._experimental_batch('Test', [
+        pool.updatePoolManagers([{ address: newManager, canManage: true }]),
+        pool.updateBalanceSheetManagers([{ chainId, address: newManager2, canManage: true }]),
+      ])
+      expect(result.type).to.equal('TransactionConfirmed')
+      expect((result as any).title).to.equal('Test')
+
+      const isNewManager = await pool.isPoolManager(newManager)
+      const isNewManager2 = await pool.isBalanceSheetManager(chainId, newManager2)
+      expect(isNewManager).to.be.true
+      expect(isNewManager2).to.be.true
+    })
+  })
+
   describe('Transactions', () => {
     it('should register an asset', async () => {
       const centrifuge = new Centrifuge({
@@ -554,6 +622,9 @@ describe('Centrifuge', () => {
 
 function lazy<T>(value: T, t = 10) {
   return new Promise<T>((res) => setTimeout(() => res(value), t))
+}
+function lazyThrow(reason: string, t = 10) {
+  return new Promise<never>((_, rej) => setTimeout(() => rej(reason), t))
 }
 
 function mockProvider({ chainId = 11155111, accounts = ['0x2'] } = {}) {

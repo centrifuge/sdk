@@ -5,6 +5,7 @@ import {
   defaultIfEmpty,
   defer,
   filter,
+  first,
   identity,
   isObservable,
   map,
@@ -16,6 +17,9 @@ import {
 } from 'rxjs'
 import { fromFetch } from 'rxjs/fetch'
 import {
+  type Abi,
+  type Account,
+  type Chain,
   createPublicClient,
   createWalletClient,
   custom,
@@ -26,9 +30,6 @@ import {
   parseAbi,
   parseEventLogs,
   toHex,
-  type Abi,
-  type Account as AccountType,
-  type Chain,
   type WalletClient,
   type WatchEventOnLogsParameter,
 } from 'viem'
@@ -62,7 +63,7 @@ import { randomUint } from './utils/index.js'
 import { createPinning, getUrlFromHash } from './utils/ipfs.js'
 import { hashKey } from './utils/query.js'
 import { makeThenable, repeatOnEvents, shareReplayWithDelayedReset } from './utils/rx.js'
-import { doTransaction, isLocalAccount } from './utils/transaction.js'
+import { BatchTransactionData, doTransaction, isLocalAccount, wrapTransaction } from './utils/transaction.js'
 import { AssetId, PoolId, ShareClassId } from './utils/types.js'
 
 const PINNING_API_DEMO = 'https://europe-central2-peak-vista-185616.cloudfunctions.net/pinning-api-demo'
@@ -109,6 +110,8 @@ export class Centrifuge {
   get signer() {
     return this.#signer
   }
+
+  #isBatching = new WeakSet<Transaction>()
 
   constructor(config: UserProvidedConfig = {}) {
     const defaultConfigForEnv = envConfig[config?.environment || 'mainnet']
@@ -867,42 +870,56 @@ export class Centrifuge {
    * @internal
    */
   _transact(
-    transactionCallback: (params: TransactionContext) => AsyncGenerator<OperationStatus> | Observable<OperationStatus>,
+    transactionCallback: (
+      params: TransactionContext
+    ) => AsyncGenerator<OperationStatus | BatchTransactionData> | Observable<OperationStatus | BatchTransactionData>,
     chainId: number
   ): Transaction {
     const self = this
     async function* transact() {
+      let isBatching = false
+      if (self.#isBatching.has($tx)) {
+        isBatching = true
+      }
       const { signer } = self
       if (!signer) throw new Error('Signer not set')
 
       const publicClient = self.getClient(chainId)!
       const chain = self.getChainConfig(chainId)
-      const bareWalletClient = isLocalAccount(signer)
-        ? createWalletClient({ account: signer, chain, transport: http() })
+      let walletClient: WalletClient<any, Chain, Account> = isLocalAccount(signer)
+        ? createWalletClient({
+            account: signer,
+            chain,
+            transport: http(),
+          })
         : createWalletClient({ transport: custom(signer) })
 
-      const [address] = await bareWalletClient.getAddresses()
+      const [address] = await walletClient.getAddresses()
       if (!address) throw new Error('No account selected')
 
-      const selectedChain = await bareWalletClient.getChainId()
-      if (selectedChain !== chainId) {
-        yield { type: 'SwitchingChain', chainId } as const
-        await bareWalletClient.switchChain({ id: chainId })
+      if (!isBatching) {
+        const selectedChain = await walletClient.getChainId()
+        if (selectedChain !== chainId) {
+          yield { type: 'SwitchingChain', chainId } as const
+          await walletClient.switchChain({ id: chainId })
+        }
       }
 
       // Re-create the wallet client with the correct chain and account
       // Saves having to pass `account` and `chain` to every `writeContract` call
-      const walletClient = isLocalAccount(signer)
-        ? (bareWalletClient as WalletClient<any, Chain, AccountType>)
+      walletClient = isLocalAccount(signer)
+        ? walletClient
         : createWalletClient({ account: address, chain, transport: custom(signer) })
 
       const transaction = transactionCallback({
+        isBatching,
         signingAddress: address,
         chain,
         chainId,
         publicClient,
         walletClient,
         signer,
+        root: self,
       })
       if (Symbol.asyncIterator in transaction) {
         yield* transaction
@@ -918,6 +935,63 @@ export class Centrifuge {
       chainId,
     })
     return $tx
+  }
+
+  /**
+   * Batch multiple transactions together into a single transaction.
+   * It's not exposed, because it is somewhat limited and requires knowledge of internals.
+   * It only works when there's only a single transaction being done in the method.
+   * It only works for methods that wrap the transaction in `wrapTransaction`.
+   * It only works when the transactions are executed on the same contract on the same chain,
+   * and that contract supports multicall
+   * @internal
+   */
+  _experimental_batch(title: string, transactions: Transaction[]): Transaction {
+    const chainIds = [...new Set(transactions.map((tx) => tx.chainId))]
+    if (chainIds.length !== 1) {
+      throw new Error(`Cannot batch transactions on different chains: ${chainIds.join(', ')}`)
+    }
+    for (const tx of transactions) {
+      this.#isBatching.add(tx)
+    }
+
+    return this._transact(
+      (ctx) =>
+        combineLatest(transactions.map((tx) => tx.pipe(first()))).pipe(
+          switchMap(async function* (batches_) {
+            const batches = batches_ as any as {
+              data: HexString[]
+              contract: HexString
+              value?: bigint
+              messages?: Record<number, MessageType[]>
+            }[]
+            if (!batches.every((b) => b.data && b.contract)) {
+              throw new Error('Not all transactions can be batched')
+            }
+            const value = batches.reduce((acc, b) => acc + (b.value ?? 0n), 0n)
+            const data = batches.map((b) => b.data).flat()
+            const messages = batches.reduce(
+              (acc, b) => {
+                if (b.messages) {
+                  Object.entries(b.messages).forEach(([cid, types]) => {
+                    const chainId = Number(cid)
+                    if (!acc[chainId]) acc[chainId] = []
+                    acc[chainId].push(...types)
+                  })
+                }
+                return acc
+              },
+              {} as Record<number, MessageType[]>
+            )
+            const contracts = [...new Set(batches.map((b) => b.contract))]
+            if (contracts.length !== 1) {
+              throw new Error(`Cannot batch transactions to different contracts: ${contracts.join(', ')}`)
+            }
+            yield* wrapTransaction(title, ctx, { data, value, contract: contracts[0] as HexString, messages })
+          })
+        ),
+      chainIds[0]!
+    )
   }
 
   /** @internal */
@@ -1024,30 +1098,32 @@ export class Centrifuge {
    * that results from a transaction
    * @internal
    */
-  _estimate(fromChain: number, to: { chainId: number } | { centId: number }, messageType: MessageType) {
+  _estimate(fromChain: number, to: { chainId: number } | { centId: number }, messageType: MessageType | MessageType[]) {
     return this._query(['estimate', fromChain, to], () =>
       this._protocolAddresses(fromChain).pipe(
-        switchMap(({ multiAdapter, gasService }) =>
-          combineLatest([
+        switchMap(({ multiAdapter, gasService }) => {
+          const types = Array.isArray(messageType) ? messageType : [messageType]
+          return combineLatest([
             'chainId' in to ? this.id(to.chainId) : of(to.centId),
-            this.getClient(fromChain)!.readContract({
-              address: gasService,
-              abi: ABI.GasService,
-              functionName: 'batchGasLimit',
-              args: [messageType],
-            }),
+            ...types.map((type) =>
+              this.getClient(fromChain)!.readContract({
+                address: gasService,
+                abi: ABI.GasService,
+                functionName: 'batchGasLimit',
+                args: [type],
+              })
+            ),
           ]).pipe(
-            switchMap(([toCentId, gasLimit]) => {
-              const bytes = '0x12'
+            switchMap(([toCentId, ...gasLimits]) => {
               return this.getClient(fromChain)!.readContract({
                 address: multiAdapter,
                 abi: ABI.MultiAdapter,
                 functionName: 'estimate',
-                args: [toCentId, bytes, gasLimit],
+                args: [toCentId, '0x0', gasLimits.reduce((acc, val) => acc + val, 0n)],
               })
             })
           )
-        )
+        })
       )
     )
   }
