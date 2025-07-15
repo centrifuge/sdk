@@ -4,6 +4,8 @@ import AsyncRequestsAbi from './AsyncRequestManager.abi.js'
 import AsyncVaultAbit from './AsyncVault.abi.js'
 import BalanceSheetAbi from './BalanceSheet.abi.js'
 import CurrencyAbi from './Currency.abi.js'
+import ERC6909Abi from './ERC6909.abi.js'
+import GasServiceAbi from './GasService.abi.js'
 import HoldingsAbi from './Holdings.abi.js'
 import HubAbi from './Hub.abi.js'
 import HubRegistryAbi from './HubRegistry.abi.js'
@@ -15,7 +17,6 @@ import SpokeAbi from './Spoke.abi.js'
 import SyncRequestsAbi from './SyncRequestManager.abi.js'
 import ValuationAbi from './Valuation.abi.js'
 import VaultRouterAbi from './VaultRouter.abi.js'
-import ERC6909Abi from './ERC6909.abi.js'
 
 export const ABI = {
   Hub: parseAbi(HubAbi),
@@ -35,4 +36,5 @@ export const ABI = {
   AsyncRequests: parseAbi(AsyncRequestsAbi),
   MultiAdapter: parseAbi(MultiAdapterAbi),
   BalanceSheet: parseAbi(BalanceSheetAbi),
+  GasService: parseAbi(GasServiceAbi),
 }

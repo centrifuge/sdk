@@ -357,7 +357,7 @@ export class ShareClass extends Entity {
     assetId: AssetId,
     valuation: HexString,
     isLiability: Liability,
-    accounts: Liability extends true
+    accounts?: Liability extends true
       ? { [key in AccountType.Expense | AccountType.Liability]?: number }
       : { [key in AccountType.Asset | AccountType.Equity | AccountType.Loss | AccountType.Gain]?: number }
   ) {

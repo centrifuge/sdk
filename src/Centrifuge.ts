@@ -50,7 +50,13 @@ import type {
 import { PoolMetadataInput } from './types/poolInput.js'
 import { PoolMetadata } from './types/poolMetadata.js'
 import type { CentrifugeQueryOptions, Query } from './types/query.js'
-import type { OperationStatus, Signer, Transaction, TransactionContext } from './types/transaction.js'
+import {
+  MessageType,
+  type OperationStatus,
+  type Signer,
+  type Transaction,
+  type TransactionContext,
+} from './types/transaction.js'
 import { Balance } from './utils/BigInt.js'
 import { randomUint } from './utils/index.js'
 import { createPinning, getUrlFromHash } from './utils/ipfs.js'
@@ -503,7 +509,7 @@ export class Centrifuge {
       const [addresses, id, estimate] = await Promise.all([
         self._protocolAddresses(originChainId),
         self.id(registerOnChainId),
-        self._estimate(originChainId, { chainId: registerOnChainId }),
+        self._estimate(originChainId, { chainId: registerOnChainId }, MessageType.RegisterAsset),
       ])
       yield* doTransaction('Register asset', publicClient, () =>
         walletClient.writeContract({
@@ -919,42 +925,42 @@ export class Centrifuge {
     return this._query(['protocolAddresses'], () =>
       this._getIndexerObservable<{ deployments: { items: (ProtocolContracts & { chainId?: string })[] } }>(
         `{
-              deployments { 
-                items {
-                  accounting
-                  asyncRequestManager
-                  asyncVaultFactory
-                  axelarAdapter
-                  balanceSheet
-                  centrifugeId
-                  chainId
-                  freezeOnlyHook
-                  fullRestrictionsHook
-                  gasService
-                  gateway
-                  globalEscrow
-                  guardian
-                  holdings
-                  hub
-                  hubRegistry
-                  identityValuation
-                  messageDispatcher
-                  messageProcessor
-                  multiAdapter
-                  poolEscrowFactory
-                  redemptionRestrictionsHook
-                  root
-                  routerEscrow
-                  shareClassManager
-                  spoke
-                  syncDepositVaultFactory
-                  syncManager
-                  wormholeAdapter
-                  vaultRouter
-                  tokenFactory
-                }
-              }
-            }`,
+          deployments { 
+            items {
+              accounting
+              asyncRequestManager
+              asyncVaultFactory
+              axelarAdapter
+              balanceSheet
+              centrifugeId
+              chainId
+              freezeOnlyHook
+              fullRestrictionsHook
+              gasService
+              gateway
+              globalEscrow
+              guardian
+              holdings
+              hub
+              hubRegistry
+              identityValuation
+              messageDispatcher
+              messageProcessor
+              multiAdapter
+              poolEscrowFactory
+              redemptionRestrictionsHook
+              root
+              routerEscrow
+              shareClassManager
+              spoke
+              syncDepositVaultFactory
+              syncManager
+              wormholeAdapter
+              vaultRouter
+              tokenFactory
+            }
+          }
+        }`,
         { chainId: String(chainId) }
       ).pipe(
         map((data) => {
@@ -1018,18 +1024,30 @@ export class Centrifuge {
    * that results from a transaction
    * @internal
    */
-  _estimate(fromChain: number, to: { chainId: number } | { centId: number }) {
+  _estimate(fromChain: number, to: { chainId: number } | { centId: number }, messageType: MessageType) {
     return this._query(['estimate', fromChain, to], () =>
-      combineLatest([this._protocolAddresses(fromChain), 'chainId' in to ? this.id(to.chainId) : of(to.centId)]).pipe(
-        switchMap(([{ multiAdapter }, toCentId]) => {
-          const bytes = toHex(new Uint8Array([0x12]))
-          return this.getClient(fromChain)!.readContract({
-            address: multiAdapter,
-            abi: ABI.MultiAdapter,
-            functionName: 'estimate',
-            args: [toCentId, bytes, 15_000_000n],
-          })
-        })
+      this._protocolAddresses(fromChain).pipe(
+        switchMap(({ multiAdapter, gasService }) =>
+          combineLatest([
+            'chainId' in to ? this.id(to.chainId) : of(to.centId),
+            this.getClient(fromChain)!.readContract({
+              address: gasService,
+              abi: ABI.GasService,
+              functionName: 'batchGasLimit',
+              args: [messageType],
+            }),
+          ]).pipe(
+            switchMap(([toCentId, gasLimit]) => {
+              const bytes = '0x12'
+              return this.getClient(fromChain)!.readContract({
+                address: multiAdapter,
+                abi: ABI.MultiAdapter,
+                functionName: 'estimate',
+                args: [toCentId, bytes, gasLimit],
+              })
+            })
+          )
+        )
       )
     )
   }
