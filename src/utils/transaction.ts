@@ -9,7 +9,7 @@ import {
   type WalletClient,
 } from 'viem'
 import type { HexString } from '../types/index.js'
-import type { OperationStatus, Signer, TransactionContext } from '../types/transaction.js'
+import type { MessageType, OperationStatus, Signer, TransactionContext } from '../types/transaction.js'
 
 class TransactionError extends Error {
   override name = 'TransactionError'
@@ -18,27 +18,46 @@ class TransactionError extends Error {
   }
 }
 
+export type BatchTransactionData = {
+  contract: HexString
+  data: HexString[]
+  value?: bigint
+  messages?: Record<number, MessageType[]>
+}
+
 export async function* wrapTransaction(
   title: string,
   ctx: TransactionContext,
   {
     contract,
     data: data_,
-    value,
+    value: value_,
+    messages,
   }: {
     contract: HexString
     data: HexString | HexString[]
     value?: bigint
+    messages?: Record<number /* Centrifuge ID */, MessageType[]>
   }
-): AsyncGenerator<any> {
+): AsyncGenerator<OperationStatus | BatchTransactionData> {
   const data = Array.isArray(data_) ? data_ : [data_]
   if (ctx.isBatching) {
     yield {
       contract,
       data,
-      value,
+      value: value_,
+      messages,
     }
   } else {
+    const messagesEstimates = messages
+      ? await Promise.all(
+          Object.entries(messages).map(async ([centId, messageTypes]) =>
+            ctx.root._estimate(ctx.chainId, { centId: Number(centId) }, messageTypes)
+          )
+        )
+      : []
+    const estimate = messagesEstimates.reduce((acc, val) => acc + val, 0n)
+    const value = (value_ ?? 0n) + estimate
     const result = yield* doTransaction(title, ctx.publicClient, async () => {
       if (data.length === 1) {
         return ctx.walletClient.sendTransaction({

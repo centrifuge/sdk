@@ -1,4 +1,5 @@
 import type { Account, Chain, LocalAccount, PublicClient, TransactionReceipt, WalletClient } from 'viem'
+import type { Centrifuge } from '../Centrifuge.js'
 import type { HexString } from './index.js'
 import type { Query } from './query.js'
 
@@ -67,6 +68,7 @@ export type TransactionContext = {
   publicClient: PublicClient
   walletClient: WalletClient<any, Chain, Account>
   signer: Signer
+  root: Centrifuge
 }
 
 export enum MessageType {

@@ -4,10 +4,11 @@ import { ABI } from '../abi/index.js'
 import type { Centrifuge } from '../Centrifuge.js'
 import { AccountType } from '../types/holdings.js'
 import { CurrencyDetails, HexString } from '../types/index.js'
+import { MessageType } from '../types/transaction.js'
 import { Balance, Price } from '../utils/BigInt.js'
 import { addressToBytes32, randomUint } from '../utils/index.js'
 import { repeatOnEvents } from '../utils/rx.js'
-import { doTransaction } from '../utils/transaction.js'
+import { doTransaction, wrapTransaction } from '../utils/transaction.js'
 import { AssetId, ShareClassId } from '../utils/types.js'
 import { BalanceSheet } from './BalanceSheet.js'
 import { Entity } from './Entity.js'
@@ -555,21 +556,18 @@ export class ShareClass extends Entity {
   ) {
     // TODO: Also claim orders
     const self = this
-    return this._transact(async function* ({ walletClient, publicClient }) {
-      const centIds = [...new Set(assets.map((a) => a.assetId.centrifugeId))]
-      const [
-        { hub },
-        pendingAmounts,
-        // ...estimates
-      ] = await Promise.all([
+    return this._transact(async function* (ctx) {
+      const [{ hub }, pendingAmounts] = await Promise.all([
         self._root._protocolAddresses(self.pool.chainId),
         self.pendingAmounts(),
-        ...centIds.map((centId) => self._root._estimate(self.pool.chainId, { centId })),
       ])
-      // const estimateByCentId: Map<number, bigint> = new Map(centIds.map((centId, i) => [centId, estimates[i]!]))
 
       const batch: HexString[] = []
-      const estimate = 0n
+      const messages: Record<number, MessageType[]> = {}
+      // function addMessage(centId: number, message: MessageType) {
+      //   if (!messages[centId]) messages[centId] = []
+      //   messages[centId].push(message)
+      // }
 
       for (const asset of assets) {
         const pending = pendingAmounts.find((e) => e.assetId.equals(asset.assetId))
@@ -628,21 +626,10 @@ export class ShareClass extends Entity {
         throw new Error('No approve or issue actions provided')
       }
 
-      yield* doTransaction('Approve and issue', publicClient, () => {
-        if (batch.length === 1) {
-          return walletClient.sendTransaction({
-            data: batch[0],
-            to: hub,
-            value: estimate,
-          })
-        }
-        return walletClient.writeContract({
-          address: hub,
-          abi: ABI.Hub,
-          functionName: 'multicall',
-          args: [batch],
-          value: estimate,
-        })
+      yield* wrapTransaction('Approve and issue', ctx, {
+        contract: hub,
+        data: batch,
+        messages,
       })
     }, this.pool.chainId)
   }
@@ -656,21 +643,18 @@ export class ShareClass extends Entity {
   ) {
     // TODO: Also claim orders
     const self = this
-    return this._transact(async function* ({ walletClient, publicClient }) {
-      const centIds = [...new Set(assets.map((a) => a.assetId.centrifugeId))]
-      const [
-        { hub },
-        pendingAmounts,
-        // ...estimates
-      ] = await Promise.all([
+    return this._transact(async function* (ctx) {
+      const [{ hub }, pendingAmounts] = await Promise.all([
         self._root._protocolAddresses(self.pool.chainId),
         self.pendingAmounts(),
-        ...centIds.map((centId) => self._root._estimate(self.pool.chainId, { centId })),
       ])
-      // const estimateByCentId: Map<number, bigint> = new Map(centIds.map((centId, i) => [centId, estimates[i]!]))
 
       const batch: HexString[] = []
-      const estimate = 0n
+      const messages: Record<number, MessageType[]> = {}
+      // function addMessage(centId: number, message: MessageType) {
+      //   if (!messages[centId]) messages[centId] = []
+      //   messages[centId].push(message)
+      // }
 
       for (const asset of assets) {
         const pending = pendingAmounts.find((e) => e.assetId.equals(asset.assetId))
@@ -733,21 +717,10 @@ export class ShareClass extends Entity {
       if (batch.length === 0) {
         throw new Error('No approve or revoke actions provided')
       }
-      yield* doTransaction('Approve and revoke', publicClient, () => {
-        if (batch.length === 1) {
-          return walletClient.sendTransaction({
-            data: batch[0],
-            to: hub,
-            value: estimate,
-          })
-        }
-        return walletClient.writeContract({
-          address: hub,
-          abi: ABI.Hub,
-          functionName: 'multicall',
-          args: [batch],
-          value: estimate,
-        })
+      yield* wrapTransaction('Approve and revoke', ctx, {
+        contract: hub,
+        data: batch,
+        messages,
       })
     }, this.pool.chainId)
   }
@@ -758,15 +731,14 @@ export class ShareClass extends Entity {
    */
   claimDeposit(assetId: AssetId, investor: HexString) {
     const self = this
-    return this._transact(async function* ({ walletClient, publicClient }) {
-      const [{ hub }, investorOrder, estimate] = await Promise.all([
+    return this._transact(async function* (ctx) {
+      const [{ hub }, investorOrder] = await Promise.all([
         self._root._protocolAddresses(self.pool.chainId),
         self.investorOrder(assetId, investor),
-        self._root._estimate(self.pool.chainId, { centId: assetId.centrifugeId }),
       ])
-      yield* doTransaction('Claim deposit', publicClient, () =>
-        walletClient.writeContract({
-          address: hub,
+      yield* wrapTransaction('Claim deposit', ctx, {
+        contract: hub,
+        data: encodeFunctionData({
           abi: ABI.Hub,
           functionName: 'notifyDeposit',
           args: [
@@ -776,9 +748,9 @@ export class ShareClass extends Entity {
             addressToBytes32(investor),
             investorOrder.maxDepositClaims,
           ],
-          value: estimate,
-        })
-      )
+        }),
+        messages: { [assetId.centrifugeId]: [MessageType.RequestCallback] },
+      })
     }, this.pool.chainId)
   }
 
@@ -788,21 +760,20 @@ export class ShareClass extends Entity {
    */
   claimRedeem(assetId: AssetId, investor: HexString) {
     const self = this
-    return this._transact(async function* ({ walletClient, publicClient }) {
-      const [{ hub }, investorOrder, estimate] = await Promise.all([
+    return this._transact(async function* (ctx) {
+      const [{ hub }, investorOrder] = await Promise.all([
         self._root._protocolAddresses(self.pool.chainId),
         self.investorOrder(assetId, investor),
-        self._root._estimate(self.pool.chainId, { centId: assetId.centrifugeId }),
       ])
-      yield* doTransaction('Claim redeem', publicClient, () =>
-        walletClient.writeContract({
-          address: hub,
+      yield* wrapTransaction('Claim redeem', ctx, {
+        contract: hub,
+        data: encodeFunctionData({
           abi: ABI.Hub,
           functionName: 'notifyRedeem',
           args: [self.pool.id.raw, self.id.raw, assetId.raw, addressToBytes32(investor), investorOrder.maxRedeemClaims],
-          value: estimate,
-        })
-      )
+        }),
+        messages: { [assetId.centrifugeId]: [MessageType.RequestCallback] },
+      })
     }, this.pool.chainId)
   }
 
@@ -814,26 +785,25 @@ export class ShareClass extends Entity {
    */
   updateMember(address: HexString, validUntil: number, chainId: number) {
     const self = this
-    return this._transact(async function* ({ walletClient, publicClient }) {
-      const [{ hub }, id, estimate] = await Promise.all([
+    return this._transact(async function* (ctx) {
+      const [{ hub }, id] = await Promise.all([
         self._root._protocolAddresses(self.pool.chainId),
         self._root.id(chainId),
-        self._root._estimate(self.pool.chainId, { chainId }),
       ])
 
       const payload = encodePacked(
         ['uint8', 'bytes32', 'uint64'],
         [/* UpdateRestrictionType.Member */ 1, addressToBytes32(address), BigInt(validUntil)]
       )
-      yield* doTransaction('Update restriction', publicClient, () =>
-        walletClient.writeContract({
-          address: hub,
+      yield* wrapTransaction('Update member', ctx, {
+        contract: hub,
+        data: encodeFunctionData({
           abi: ABI.Hub,
           functionName: 'updateRestriction',
           args: [self.pool.id.raw, self.id.raw, id, payload, 0n],
-          value: estimate,
-        })
-      )
+        }),
+        messages: { [id]: [MessageType.UpdateRestriction] },
+      })
     }, this.pool.chainId)
   }
 
@@ -1090,22 +1060,20 @@ export class ShareClass extends Entity {
   /** @internal */
   _updateContract(chainId: number, target: HexString, payload: HexString) {
     const self = this
-    return this._transact(async function* ({ walletClient, publicClient }) {
-      const id = await self._root.id(chainId)
-      const [{ hub }, estimate] = await Promise.all([
+    return this._transact(async function* (ctx) {
+      const [id, { hub }] = await Promise.all([
+        self._root.id(chainId),
         self._root._protocolAddresses(self.pool.chainId),
-        self._root._estimate(self.pool.chainId, { centId: id }),
       ])
-
-      yield* doTransaction('Update contract', publicClient, () =>
-        walletClient.writeContract({
-          address: hub,
+      yield* wrapTransaction('Update contract', ctx, {
+        contract: hub,
+        data: encodeFunctionData({
           abi: ABI.Hub,
           functionName: 'updateContract',
           args: [self.pool.id.raw, self.id.raw, id, addressToBytes32(target), payload, 0n],
-          value: estimate,
-        })
-      )
+        }),
+        messages: { [self.pool.chainId]: [MessageType.UpdateContract] },
+      })
     }, this.pool.chainId)
   }
 

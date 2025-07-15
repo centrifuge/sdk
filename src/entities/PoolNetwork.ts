@@ -4,9 +4,10 @@ import { ABI } from '../abi/index.js'
 import type { Centrifuge } from '../Centrifuge.js'
 import { NULL_ADDRESS } from '../constants.js'
 import { HexString } from '../types/index.js'
+import { MessageType } from '../types/transaction.js'
 import { addressToBytes32 } from '../utils/index.js'
 import { repeatOnEvents } from '../utils/rx.js'
-import { doTransaction } from '../utils/transaction.js'
+import { wrapTransaction } from '../utils/transaction.js'
 import { AssetId, ShareClassId } from '../utils/types.js'
 import { BalanceSheet } from './BalanceSheet.js'
 import { Entity } from './Entity.js'
@@ -188,23 +189,21 @@ export class PoolNetwork extends Entity {
     vaults: { shareClassId: ShareClassId; assetId: AssetId; kind: 'async' | 'syncDeposit' }[] = []
   ) {
     const self = this
-    return this._transact(async function* ({ walletClient, publicClient }) {
+    return this._transact(async function* (ctx) {
       const [
         { hub },
         { balanceSheet, syncDepositVaultFactory, asyncVaultFactory, syncManager, asyncRequestManager },
         id,
-        estimate,
         details,
       ] = await Promise.all([
         self._root._protocolAddresses(self.pool.chainId),
         self._root._protocolAddresses(self.chainId),
         self._root.id(self.chainId),
-        self._root._estimate(self.pool.chainId, { chainId: self.chainId }),
         self.details(),
       ])
 
       const balanceSheetContract = getContract({
-        client: publicClient,
+        client: ctx.publicClient,
         address: balanceSheet,
         abi: ABI.BalanceSheet,
       })
@@ -214,6 +213,7 @@ export class PoolNetwork extends Entity {
       ])
 
       const batch: HexString[] = []
+      const messageTypes: MessageType[] = []
 
       // Set vault managers as balance sheet managers if not already set
       if (!isAsyncManagerSet && vaults.some((v) => v.kind === 'async')) {
@@ -224,6 +224,7 @@ export class PoolNetwork extends Entity {
             args: [id, self.pool.id.raw, addressToBytes32(asyncRequestManager), true],
           })
         )
+        messageTypes.push(MessageType.UpdateBalanceSheetManager)
       }
       if (!isSyncManagerSet && vaults.some((v) => v.kind === 'syncDeposit')) {
         batch.push(
@@ -233,6 +234,7 @@ export class PoolNetwork extends Entity {
             args: [id, self.pool.id.raw, addressToBytes32(syncManager), true],
           })
         )
+        messageTypes.push(MessageType.UpdateBalanceSheetManager)
       }
 
       if (!details.isActive) {
@@ -243,6 +245,7 @@ export class PoolNetwork extends Entity {
             args: [self.pool.id.raw, id],
           })
         )
+        messageTypes.push(MessageType.NotifyPool)
       }
 
       const enabledShareClasses = new Set(details.activeShareClasses.map((sc) => sc.id.raw))
@@ -260,6 +263,7 @@ export class PoolNetwork extends Entity {
             args: [self.pool.id.raw, sc.id.raw, id, addressToBytes32(sc.hook)],
           })
         )
+        messageTypes.push(MessageType.NotifyShareClass)
       }
 
       for (const vault of vaults) {
@@ -285,31 +289,21 @@ export class PoolNetwork extends Entity {
               vault.assetId.raw,
               addressToBytes32(vault.kind === 'syncDeposit' ? syncDepositVaultFactory : asyncVaultFactory),
               0, // VaultUpdateKind.DeployAndLink
-              1_000_000n, // gas limit
+              0n, // gas limit
             ],
           })
         )
+        messageTypes.push(MessageType.SetRequestManager, MessageType.UpdateVault)
       }
 
       if (batch.length === 0) {
         throw new Error('No share classes / vaults to deploy')
       }
 
-      yield* doTransaction('Deploy share classes and vaults', publicClient, () => {
-        if (batch.length === 1) {
-          return walletClient.sendTransaction({
-            data: batch[0],
-            to: hub,
-            value: estimate,
-          })
-        }
-        return walletClient.writeContract({
-          address: hub,
-          abi: ABI.Hub,
-          functionName: 'multicall',
-          args: [batch],
-          value: estimate * BigInt(batch.length),
-        })
+      yield* wrapTransaction('Deploy share classes and vaults', ctx, {
+        data: batch,
+        contract: hub,
+        messages: { [self.chainId]: messageTypes },
       })
     }, this.pool.chainId)
   }
@@ -373,14 +367,5 @@ export class PoolNetwork extends Entity {
         })
       )
     )
-  }
-
-  /**
-   * Estimates the gas cost needed to bridge the message from the Vaults side to the Pool side,
-   * that results from a transaction
-   * @internal
-   */
-  _estimate() {
-    return this._query(null, () => this._root._estimate(this.chainId, { chainId: this.pool.chainId }))
   }
 }
