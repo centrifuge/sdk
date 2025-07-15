@@ -8,7 +8,7 @@ import { MessageType } from '../types/transaction.js'
 import { Balance, Price } from '../utils/BigInt.js'
 import { addressToBytes32, randomUint } from '../utils/index.js'
 import { repeatOnEvents } from '../utils/rx.js'
-import { doTransaction, wrapTransaction } from '../utils/transaction.js'
+import { wrapTransaction } from '../utils/transaction.js'
 import { AssetId, ShareClassId } from '../utils/types.js'
 import { BalanceSheet } from './BalanceSheet.js'
 import { Entity } from './Entity.js'
@@ -363,13 +363,13 @@ export class ShareClass extends Entity {
       : { [key in AccountType.Asset | AccountType.Equity | AccountType.Loss | AccountType.Gain]?: number }
   ) {
     const self = this
-    return this._transact(async function* ({ walletClient, publicClient }) {
+    return this._transact(async function* (ctx) {
       const [{ hub }, metadata] = await Promise.all([
         self._root._protocolAddresses(self.pool.chainId),
         self.pool.metadata(),
       ])
 
-      let tx
+      let data: HexString | HexString[]
       if (isLiability) {
         const expenseAccount =
           (accounts as any)[AccountType.Expense] || metadata?.shareClasses?.[self.id.raw]?.defaultAccounts?.expense
@@ -379,8 +379,7 @@ export class ShareClass extends Entity {
           throw new Error('Missing required accounts for liability creation')
         }
         if (expenseAccount) {
-          tx = walletClient.writeContract({
-            address: hub,
+          data = encodeFunctionData({
             abi: ABI.Hub,
             functionName: 'initializeLiability',
             args: [self.pool.id.raw, self.id.raw, assetId.raw, valuation, expenseAccount, liabilityAccount],
@@ -397,12 +396,7 @@ export class ShareClass extends Entity {
             functionName: 'initializeLiability',
             args: [self.pool.id.raw, self.id.raw, assetId.raw, valuation, newExpenseAccount, liabilityAccount],
           })
-          tx = walletClient.writeContract({
-            address: hub,
-            abi: ABI.Hub,
-            functionName: 'multicall',
-            args: [[createAccountData, initHoldingData]],
-          })
+          data = [createAccountData, initHoldingData]
         }
       } else {
         const assetAccount =
@@ -417,8 +411,7 @@ export class ShareClass extends Entity {
           throw new Error('Missing required accounts for holding creation')
         }
         if (assetAccount) {
-          tx = walletClient.writeContract({
-            address: hub,
+          data = encodeFunctionData({
             abi: ABI.Hub,
             functionName: 'initializeHolding',
             args: [
@@ -453,97 +446,106 @@ export class ShareClass extends Entity {
               lossAccount,
             ],
           })
-          tx = walletClient.writeContract({
-            address: hub,
-            abi: ABI.Hub,
-            functionName: 'multicall',
-            args: [[createAccountData, initHoldingData]],
-          })
+          data = [createAccountData, initHoldingData]
         }
       }
-
-      yield* doTransaction('Create holding', publicClient, () => tx)
+      yield* wrapTransaction('Create holding', ctx, {
+        contract: hub,
+        data,
+      })
     }, this.pool.chainId)
   }
 
   updateSharePrice(pricePerShare: Price) {
     const self = this
-    return this._transact(async function* ({ walletClient, publicClient }) {
+    return this._transact(async function* (ctx) {
       const { hub } = await self._root._protocolAddresses(self.pool.chainId)
-      yield* doTransaction('Update price', publicClient, () =>
-        walletClient.writeContract({
-          address: hub,
+      yield* wrapTransaction('Update share price', ctx, {
+        contract: hub,
+        data: encodeFunctionData({
           abi: ABI.Hub,
           functionName: 'updateSharePrice',
           args: [self.pool.id.raw, self.id.raw, pricePerShare.toBigInt()],
-        })
-      )
+        }),
+      })
     }, this.pool.chainId)
   }
 
   setMaxAssetPriceAge(assetId: AssetId, maxPriceAge: number) {
     const self = this
-    return this._transact(async function* ({ walletClient, publicClient }) {
+    return this._transact(async function* (ctx) {
       const { hub } = await self._root._protocolAddresses(self.pool.chainId)
-      yield* doTransaction('Set max asset price age', publicClient, () =>
-        walletClient.writeContract({
-          address: hub,
+      yield* wrapTransaction('Set max asset price age', ctx, {
+        contract: hub,
+        data: encodeFunctionData({
           abi: ABI.Hub,
           functionName: 'setMaxAssetPriceAge',
           args: [self.pool.id.raw, self.id.raw, assetId.raw, BigInt(maxPriceAge)],
-        })
-      )
+        }),
+        messages: {
+          [assetId.centrifugeId]: [MessageType.MaxAssetPriceAge],
+        },
+      })
     }, this.pool.chainId)
   }
 
   setMaxSharePriceAge(chainId: number, maxPriceAge: number) {
     const self = this
-    return this._transact(async function* ({ walletClient, publicClient }) {
+    return this._transact(async function* (ctx) {
       const [{ hub }, id] = await Promise.all([
         self._root._protocolAddresses(self.pool.chainId),
         self._root.id(chainId),
       ])
-      yield* doTransaction('Set max share price age', publicClient, () =>
-        walletClient.writeContract({
-          address: hub,
+      yield* wrapTransaction('Set max share price age', ctx, {
+        contract: hub,
+        data: encodeFunctionData({
           abi: ABI.Hub,
           functionName: 'setMaxSharePriceAge',
           args: [id, self.pool.id.raw, self.id.raw, BigInt(maxPriceAge)],
-        })
-      )
+        }),
+        messages: {
+          [id]: [MessageType.MaxSharePriceAge],
+        },
+      })
     }, this.pool.chainId)
   }
 
   notifyAssetPrice(assetId: AssetId) {
     const self = this
-    return this._transact(async function* ({ walletClient, publicClient }) {
+    return this._transact(async function* (ctx) {
       const { hub } = await self._root._protocolAddresses(self.pool.chainId)
-      yield* doTransaction('Notify asset price', publicClient, () =>
-        walletClient.writeContract({
-          address: hub,
+      yield* wrapTransaction('Notify asset price', ctx, {
+        contract: hub,
+        data: encodeFunctionData({
           abi: ABI.Hub,
           functionName: 'notifyAssetPrice',
           args: [self.pool.id.raw, self.id.raw, assetId.raw],
-        })
-      )
+        }),
+        messages: {
+          [assetId.centrifugeId]: [MessageType.NotifyPricePoolPerAsset],
+        },
+      })
     }, this.pool.chainId)
   }
 
   notifySharePrice(chainId: number) {
     const self = this
-    return this._transact(async function* ({ walletClient, publicClient }) {
+    return this._transact(async function* (ctx) {
       const [{ hub }, id] = await Promise.all([
         self._root._protocolAddresses(self.pool.chainId),
         self._root.id(chainId),
       ])
-      yield* doTransaction('Notify share price', publicClient, () =>
-        walletClient.writeContract({
-          address: hub,
+      yield* wrapTransaction('Notify share price', ctx, {
+        contract: hub,
+        data: encodeFunctionData({
           abi: ABI.Hub,
           functionName: 'notifySharePrice',
           args: [self.pool.id.raw, self.id.raw, id],
-        })
-      )
+        }),
+        messages: {
+          [id]: [MessageType.NotifyPricePoolPerShare],
+        },
+      })
     }, this.pool.chainId)
   }
 
