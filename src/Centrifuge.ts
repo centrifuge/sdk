@@ -299,7 +299,7 @@ export class Centrifuge {
    * Get the existing pools on the different chains.
    */
   pools() {
-    return this._queryIndexer<{ pools: { items: { id: string; blockchain: { id: string } }[] } }>(
+    return this._queryIndexer(
       `{
         pools {
           items {
@@ -309,14 +309,14 @@ export class Centrifuge {
             }
           }
         }
-      }`
-    ).pipe(
-      map((data) => {
+      }`,
+      {},
+      (data: { pools: { items: { id: string; blockchain: { id: string } }[] } }) => {
         return data.pools.items.map((pool) => {
           const poolId = new PoolId(pool.id)
           return new Pool(this, poolId.toString(), Number(pool.blockchain.id))
         })
-      })
+      }
     )
   }
 
@@ -916,65 +916,64 @@ export class Centrifuge {
 
   /** @internal */
   _protocolAddresses(chainId: number) {
-    return this._query(null, () => {
-      const network = chainIdToNetwork[chainId as keyof typeof chainIdToNetwork]
-      const chainCurrencies = currencies[chainId]
-      if (!network || !chainCurrencies) {
-        throw new Error(`No protocol config found for chain id ${chainId}`)
-      }
-
-      return this._queryIndexer(
+    return this._query(['protocolAddresses'], () =>
+      this._getIndexerObservable<{ deployments: { items: (ProtocolContracts & { chainId?: string })[] } }>(
         `{
-          deployments { 
-            items {
-              accounting
-              asyncRequestManager
-              asyncVaultFactory
-              axelarAdapter
-              balanceSheet
-              centrifugeId
-              chainId
-              freezeOnlyHook
-              fullRestrictionsHook
-              gasService
-              gateway
-              globalEscrow
-              guardian
-              holdings
-              hub
-              hubRegistry
-              identityValuation
-              messageDispatcher
-              messageProcessor
-              multiAdapter
-              poolEscrowFactory
-              redemptionRestrictionsHook
-              root
-              routerEscrow
-              shareClassManager
-              spoke
-              syncDepositVaultFactory
-              syncManager
-              wormholeAdapter
-              vaultRouter
-              tokenFactory
-            }
+              deployments { 
+                items {
+                  accounting
+                  asyncRequestManager
+                  asyncVaultFactory
+                  axelarAdapter
+                  balanceSheet
+                  centrifugeId
+                  chainId
+                  freezeOnlyHook
+                  fullRestrictionsHook
+                  gasService
+                  gateway
+                  globalEscrow
+                  guardian
+                  holdings
+                  hub
+                  hubRegistry
+                  identityValuation
+                  messageDispatcher
+                  messageProcessor
+                  multiAdapter
+                  poolEscrowFactory
+                  redemptionRestrictionsHook
+                  root
+                  routerEscrow
+                  shareClassManager
+                  spoke
+                  syncDepositVaultFactory
+                  syncManager
+                  wormholeAdapter
+                  vaultRouter
+                  tokenFactory
+                }
+              }
+            }`,
+        { chainId: String(chainId) }
+      ).pipe(
+        map((data) => {
+          const network = chainIdToNetwork[chainId as keyof typeof chainIdToNetwork]
+          const chainCurrencies = currencies[chainId]
+          if (!network || !chainCurrencies) {
+            throw new Error(`No protocol config found for chain id ${chainId}`)
           }
-        }`,
-        { chainId: String(chainId) },
-        (data: { deployments: { items: (ProtocolContracts & { chainId?: string })[] } }) => {
-          const deployment = data.deployments.items.find((d) => d.chainId === String(chainId))
+          const deployment = data.deployments.items.find((d) => Number(d.chainId) === chainId)
           if (!deployment) {
             throw new Error(`No protocol contracts found for chain id ${chainId}`)
           }
-          delete deployment.chainId
           return {
             ...(deployment as ProtocolContracts),
             currencies: chainCurrencies,
           }
-        }
+        })
       )
-    })
+    )
   }
 
   /** @internal */

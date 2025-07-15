@@ -113,9 +113,9 @@ describe('Vault - Async', () => {
       ),
     ])
 
-    expect(result[2]?.type).to.equal('TransactionConfirmed')
+    expect(result[2]!.type).to.equal('TransactionConfirmed')
     expect((result[2] as any).title).to.equal('Approve')
-    expect(result[5]?.type).to.equal('TransactionConfirmed')
+    expect(result[5]!.type).to.equal('TransactionConfirmed')
     expect((result[5] as any).title).to.equal('Invest')
     expect(investment.pendingInvestCurrency.toBigInt()).to.equal(defaultAssetsAmount.toBigInt())
 
@@ -219,7 +219,7 @@ describe('Vault - Async', () => {
     } catch (e: any) {
       error = e
     }
-    expect(error?.message).to.equal('Insufficient balance')
+    expect(error!.message).to.equal('Insufficient balance')
     expect(emittedSigningStatus).to.equal(false)
   })
 
@@ -344,9 +344,9 @@ describe('Vault - Sync invest', () => {
       firstValueFrom(vault.investment(investorA).pipe(skipWhile((i) => i.shareBalance.eq(0n)))),
     ])
 
-    expect(result[2]?.type).to.equal('TransactionConfirmed')
+    expect(result[2]!.type).to.equal('TransactionConfirmed')
     expect((result[2] as any).title).to.equal('Approve')
-    expect(result[5]?.type).to.equal('TransactionConfirmed')
+    expect(result[5]!.type).to.equal('TransactionConfirmed')
     expect((result[5] as any).title).to.equal('Invest')
     expect(investmentAfter.shareBalance.toBigInt()).to.equal(defaultSharesAmount.toBigInt())
   })

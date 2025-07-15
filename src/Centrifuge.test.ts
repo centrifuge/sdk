@@ -4,9 +4,7 @@ import sinon from 'sinon'
 import { createClient, custom } from 'viem'
 import { Centrifuge } from './Centrifuge.js'
 import { currencies } from './config/protocol.js'
-import { Pool } from './entities/Pool.js'
 import { context } from './tests/setup.js'
-import { randomAddress } from './tests/utils.js'
 import { ProtocolContracts } from './types/index.js'
 import { Balance } from './utils/BigInt.js'
 import { doSignMessage, doTransaction } from './utils/transaction.js'
@@ -75,11 +73,13 @@ describe('Centrifuge', () => {
 
     const result = await context.centrifuge._protocolAddresses(chainId)
 
-    const resultKeys =  new Set(Object.keys(result))
     for (const key of expectedContractKeys) {
-      expect(resultKeys.has(key), `Expected contract key ${key} to be present`).to.be.true
+      if (key === 'currencies') {
+        expect(result[key][0]!.startsWith('0x'), `Expected key ${key} to be a contract address`).to.be.true
+      } else {
+        expect(result[key].startsWith('0x'), `Expected key ${key} to be a contract address`).to.be.true
+      }
     }
-    expect(result.currencies).to.be.an('array')
   })
 
   describe('Queries', () => {
