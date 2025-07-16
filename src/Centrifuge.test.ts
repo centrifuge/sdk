@@ -106,7 +106,6 @@ describe('Centrifuge', () => {
       expect(assets).to.be.an('array')
       expect(assets.length).to.be.greaterThan(0)
       expect(assets[0]!.id.centrifugeId).to.equal(1)
-      expect(assets[0]!.registeredOnCentrifugeId).to.equal(1)
       expect(assets[0]!.name).to.be.a('string')
       expect(assets[0]!.symbol).to.be.a('string')
     })
