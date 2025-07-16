@@ -464,7 +464,6 @@ export class Centrifuge {
                 .filter((assetReg) => assetReg.asset && Number(assetReg.asset.centrifugeId) === spokeCentId)
                 .map((assetReg) => {
                   return {
-                    registeredOnCentrifugeId: hubCentId,
                     id: new AssetId(assetReg.assetId),
                     address: assetReg.asset!.address,
                     name: assetReg.name,
@@ -488,6 +487,23 @@ export class Centrifuge {
         map(({ identityValuation }) => {
           return {
             identityValuation,
+          }
+        })
+      )
+    )
+  }
+
+  /**
+   * Get the restriction hook addresses that can be used for share tokens.
+   */
+  restrictionHooks(chainId: number) {
+    return this._query(null, () =>
+      this._protocolAddresses(chainId).pipe(
+        map(({ freezeOnlyHook, redemptionRestrictionsHook, fullRestrictionsHook /* freelyTransferableHook */ }) => {
+          return {
+            freezeOnlyHook,
+            redemptionRestrictionsHook,
+            fullRestrictionsHook,
           }
         })
       )

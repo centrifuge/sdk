@@ -320,9 +320,10 @@ export class Pool extends Entity {
         })
       )
       const messages: Record<number, MessageType[]> = {}
-      updates.forEach(({ chainId }) => {
-        if (!messages[chainId]) messages[chainId] = []
-        messages[chainId].push(MessageType.UpdateBalanceSheetManager)
+      updates.forEach((_, i) => {
+        const centId = centIds[i]!
+        if (!messages[centId]) messages[centId] = []
+        messages[centId].push(MessageType.UpdateBalanceSheetManager)
       })
 
       yield* wrapTransaction('Update balance sheet managers', ctx, {

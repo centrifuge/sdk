@@ -1074,7 +1074,7 @@ export class ShareClass extends Entity {
           functionName: 'updateContract',
           args: [self.pool.id.raw, self.id.raw, id, addressToBytes32(target), payload, 0n],
         }),
-        messages: { [self.pool.chainId]: [MessageType.UpdateContract] },
+        messages: { [id]: [MessageType.UpdateContract] },
       })
     }, this.pool.chainId)
   }

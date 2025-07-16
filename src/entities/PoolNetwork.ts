@@ -303,7 +303,7 @@ export class PoolNetwork extends Entity {
       yield* wrapTransaction('Deploy share classes and vaults', ctx, {
         data: batch,
         contract: hub,
-        messages: { [self.chainId]: messageTypes },
+        messages: { [id]: messageTypes },
       })
     }, this.pool.chainId)
   }
