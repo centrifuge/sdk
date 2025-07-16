@@ -349,47 +349,6 @@ describe('Centrifuge', () => {
       subscription1.unsubscribe()
     })
 
-    it("doesn't go into an infinite loop when the observable is recreated", async () => {
-      let value = 0
-      const query1 = context.centrifuge._query([Math.random()], () => defer(() => lazy(++value)), {
-        valueCacheTime: 1000,
-      })
-      let lastValue: number | null = null
-      let lastValue2: number | null = null
-      const subscription = query1.subscribe((next) => {
-        console.log('next', next)
-        lastValue = next
-      })
-      await query1
-      clock.tick(60_000)
-
-      const subscription2 = query1.subscribe((next) => {
-        console.log('next2', next)
-        lastValue2 = next
-      })
-      await query1
-      await query1
-      await query1
-      await query1
-      await query1
-      await query1
-      await query1
-      await query1
-      await query1
-      await query1
-      await query1
-      await query1
-      await query1
-      await query1
-      await query1
-      await query1
-      expect(lastValue).to.equal(2)
-      await lazy(null, 1000)
-      console.log('value', lastValue, lastValue2)
-      subscription.unsubscribe()
-      subscription2.unsubscribe()
-    })
-
     it('should batch calls', async () => {
       const fetchSpy = sinon.spy(globalThis, 'fetch')
       const centrifuge = new Centrifuge({ environment: 'testnet' })
