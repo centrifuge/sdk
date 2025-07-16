@@ -68,7 +68,7 @@ const envConfig = {
     ...createPinning(PINNING_API_DEMO),
   },
   testnet: {
-    indexerUrl: 'https://api.centrifuge.io',
+    indexerUrl: 'https://api-v3-hitz.marble.live/graphql',
     ipfsUrl: 'https://centrifuge.mypinata.cloud',
     ...createPinning(PINNING_API_DEMO),
   },
