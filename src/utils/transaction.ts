@@ -37,6 +37,9 @@ export async function* wrapTransaction(
     contract: HexString
     data: HexString | HexString[]
     value?: bigint
+    // Messages to estimate gas for, that will be sent as a result of the transaction, separated by Centrifuge ID.
+    // Used to estimate the payment for the transaction.
+    // It is assumed that the messages belong to a single pool.
     messages?: Record<number /* Centrifuge ID */, MessageType[]>
   }
 ): AsyncGenerator<OperationStatus | BatchTransactionData> {
