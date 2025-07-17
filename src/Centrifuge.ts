@@ -7,13 +7,13 @@ import {
   filter,
   first,
   identity,
-  interval,
   isObservable,
   map,
   mergeMap,
   of,
   Subject,
   switchMap,
+  timer,
   using,
 } from 'rxjs'
 import { fromFetch } from 'rxjs/fetch'
@@ -698,7 +698,7 @@ export class Centrifuge {
   ) {
     return this._query([query, variables], () =>
       // If subscribed, refetch every 2 minutes
-      interval(120_000).pipe(
+      timer(0, 120_000).pipe(
         switchMap(() => this._getIndexerObservable(query, variables).pipe(map(postProcess ?? identity)))
       )
     )
@@ -1081,7 +1081,7 @@ export class Centrifuge {
     chainId: number
   ) {
     return this._query(['getQuote', baseAmount, baseAssetId.toString(), quoteAssetId.toString()], () =>
-      interval(60_000).pipe(
+      timer(0, 60_000).pipe(
         switchMap(() => this._protocolAddresses(chainId)),
         switchMap(({ hubRegistry }) =>
           defer(async () => {

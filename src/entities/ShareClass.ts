@@ -120,8 +120,8 @@ export class ShareClass extends Entity {
    */
   balances(chainId?: number) {
     return this._query(null, () =>
-      this._balances().pipe(
-        switchMap((res) => {
+      combineLatest([this._balances(), this.pool.currency()]).pipe(
+        switchMap(([res, poolCurrency]) => {
           if (res.length === 0) {
             return of([])
           }
@@ -150,12 +150,17 @@ export class ShareClass extends Entity {
               items.map((data, i) => {
                 const holding = holdings[i]
                 const balance = balances[i]!
+                // If the holding hasn't been initialized yet, the price is 1
+                const price = holding ? balance.price : Price.fromFloat(1)
+                const value = Balance.fromFloat(
+                  balance.amount.toDecimal().mul(price.toDecimal()),
+                  poolCurrency.decimals
+                )
                 return {
                   assetId: new AssetId(data.assetId),
-                  chainId: Number(data.asset.blockchain.id),
                   amount: balance.amount,
-                  value: balance.value,
-                  price: balance.price,
+                  value,
+                  price,
                   asset: {
                     decimals: data.asset.decimals,
                     address: data.asset.address,
@@ -911,7 +916,7 @@ export class ShareClass extends Entity {
 
             const amount = new Balance(amountBn, asset.decimals)
             const price = new Price(priceBn)
-            const value = new Balance(amount.toDecimal().mul(price.toDecimal()), poolCurrency.decimals)
+            const value = Balance.fromFloat(amount.toDecimal().mul(price.toDecimal()), poolCurrency.decimals)
 
             return {
               amount,
