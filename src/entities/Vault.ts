@@ -3,6 +3,7 @@ import { encodeFunctionData, getContract } from 'viem'
 import { ABI } from '../abi/index.js'
 import type { Centrifuge } from '../Centrifuge.js'
 import type { HexString } from '../types/index.js'
+import { MessageType } from '../types/transaction.js'
 import { Balance } from '../utils/BigInt.js'
 import { repeatOnEvents } from '../utils/rx.js'
 import { doSignMessage, doTransaction, signPermit, type Permit } from '../utils/transaction.js'
@@ -201,7 +202,7 @@ export class Vault extends Entity {
     const self = this
     return this._transact(async function* ({ walletClient, publicClient, signer, signingAddress }) {
       const [estimate, investment, { vaultRouter }, isSyncDeposit] = await Promise.all([
-        self.network._estimate(),
+        self._root._estimate(self.chainId, { centId: self.pool.id.centrifugeId }, MessageType.Request),
         self.investment(signingAddress),
         self._root._protocolAddresses(self.chainId),
         self._isSyncDeposit(),
@@ -283,7 +284,7 @@ export class Vault extends Entity {
             address: vaultRouter,
             abi: ABI.VaultRouter,
             functionName: 'multicall',
-            args: [[permitData as any, enableData, requestData].filter(Boolean)],
+            args: [[permitData!, enableData, requestData].filter(Boolean)],
             value: estimate, // only one message is sent as a result of the multicall
           })
         )
@@ -298,7 +299,7 @@ export class Vault extends Entity {
     const self = this
     return this._transact(async function* ({ walletClient, signingAddress, publicClient }) {
       const [estimate, investment, { vaultRouter }] = await Promise.all([
-        self.network._estimate(),
+        self._root._estimate(self.chainId, { centId: self.pool.id.centrifugeId }, MessageType.Request),
         self.investment(signingAddress),
         self._root._protocolAddresses(self.chainId),
       ])
@@ -325,7 +326,7 @@ export class Vault extends Entity {
     const self = this
     return this._transact(async function* ({ walletClient, signingAddress, publicClient }) {
       const [estimate, investment, { vaultRouter }] = await Promise.all([
-        self.network._estimate(),
+        self._root._estimate(self.chainId, { centId: self.pool.id.centrifugeId }, MessageType.Request),
         self.investment(signingAddress),
         self._root._protocolAddresses(self.chainId),
       ])
@@ -354,7 +355,7 @@ export class Vault extends Entity {
     const self = this
     return this._transact(async function* ({ walletClient, signingAddress, publicClient }) {
       const [estimate, investment, { vaultRouter }] = await Promise.all([
-        self.network._estimate(),
+        self._root._estimate(self.chainId, { centId: self.pool.id.centrifugeId }, MessageType.Request),
         self.investment(signingAddress),
         self._root._protocolAddresses(self.chainId),
       ])

@@ -4,8 +4,11 @@ import sinon from 'sinon'
 import { createClient, custom } from 'viem'
 import { Centrifuge } from './Centrifuge.js'
 import { currencies } from './config/protocol.js'
+import { Pool } from './entities/Pool.js'
 import { context } from './tests/setup.js'
+import { randomAddress } from './tests/utils.js'
 import { ProtocolContracts } from './types/index.js'
+import { MessageType } from './types/transaction.js'
 import { Balance } from './utils/BigInt.js'
 import { doSignMessage, doTransaction } from './utils/transaction.js'
 import { AssetId, PoolId } from './utils/types.js'
@@ -103,7 +106,6 @@ describe('Centrifuge', () => {
       expect(assets).to.be.an('array')
       expect(assets.length).to.be.greaterThan(0)
       expect(assets[0]!.id.centrifugeId).to.equal(1)
-      expect(assets[0]!.registeredOnCentrifugeId).to.equal(1)
       expect(assets[0]!.name).to.be.a('string')
       expect(assets[0]!.symbol).to.be.a('string')
     })
@@ -114,10 +116,10 @@ describe('Centrifuge', () => {
     })
 
     it('should estimate the gas for a bridge transaction', async () => {
-      const estimate = await context.centrifuge._estimate(chainId, { chainId })
-      expect(typeof estimate).to.equal('bigint')
+      const estimate = await context.centrifuge._estimate(chainId, { chainId }, MessageType.NotifyPool)
+      expect(estimate).to.equal(0n)
 
-      const estimate2 = await context.centrifuge._estimate(chainId, { centId: 2 })
+      const estimate2 = await context.centrifuge._estimate(chainId, { centId: 2 }, MessageType.NotifyPool)
       expect(typeof estimate2).to.equal('bigint')
     })
 
@@ -470,6 +472,30 @@ describe('Centrifuge', () => {
     })
   })
 
+  describe('Batch', () => {
+    it('can batch transactions', async () => {
+      const { centrifuge } = context
+      const pool = new Pool(centrifuge, poolId.raw, chainId)
+
+      context.tenderlyFork.impersonateAddress = poolManager
+      context.centrifuge.setSigner(context.tenderlyFork.signer)
+
+      const newManager = randomAddress()
+      const newManager2 = randomAddress()
+      const result = await context.centrifuge._experimental_batch('Test', [
+        pool.updatePoolManagers([{ address: newManager, canManage: true }]),
+        pool.updateBalanceSheetManagers([{ chainId, address: newManager2, canManage: true }]),
+      ])
+      expect(result.type).to.equal('TransactionConfirmed')
+      expect((result as any).title).to.equal('Test')
+
+      const isNewManager = await pool.isPoolManager(newManager)
+      const isNewManager2 = await pool.isBalanceSheetManager(chainId, newManager2)
+      expect(isNewManager).to.be.true
+      expect(isNewManager2).to.be.true
+    })
+  })
+
   describe('Transactions', () => {
     it('should register an asset', async () => {
       const centrifuge = new Centrifuge({
@@ -554,6 +580,9 @@ describe('Centrifuge', () => {
 
 function lazy<T>(value: T, t = 10) {
   return new Promise<T>((res) => setTimeout(() => res(value), t))
+}
+function lazyThrow(reason: string, t = 10) {
+  return new Promise<never>((_, rej) => setTimeout(() => rej(reason), t))
 }
 
 function mockProvider({ chainId = 11155111, accounts = ['0x2'] } = {}) {

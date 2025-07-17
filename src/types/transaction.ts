@@ -1,4 +1,5 @@
 import type { Account, Chain, LocalAccount, PublicClient, TransactionReceipt, WalletClient } from 'viem'
+import type { Centrifuge } from '../Centrifuge.js'
 import type { HexString } from './index.js'
 import type { Query } from './query.js'
 
@@ -67,4 +68,45 @@ export type TransactionContext = {
   publicClient: PublicClient
   walletClient: WalletClient<any, Chain, Account>
   signer: Signer
+  root: Centrifuge
+}
+
+export enum MessageType {
+  _Invalid,
+  // -- Pool independent messages
+  ScheduleUpgrade,
+  CancelUpgrade,
+  RecoverTokens,
+  RegisterAsset,
+  _Placeholder5,
+  _Placeholder6,
+  _Placeholder7,
+  _Placeholder8,
+  _Placeholder9,
+  _Placeholder10,
+  _Placeholder11,
+  _Placeholder12,
+  _Placeholder13,
+  _Placeholder14,
+  _Placeholder15,
+  // -- Pool dependent messages
+  NotifyPool,
+  NotifyShareClass,
+  NotifyPricePoolPerShare,
+  NotifyPricePoolPerAsset,
+  NotifyShareMetadata,
+  UpdateShareHook,
+  InitiateTransferShares,
+  ExecuteTransferShares,
+  UpdateRestriction,
+  UpdateContract,
+  UpdateVault,
+  UpdateBalanceSheetManager,
+  UpdateHoldingAmount,
+  UpdateShares,
+  MaxAssetPriceAge,
+  MaxSharePriceAge,
+  Request,
+  RequestCallback,
+  SetRequestManager,
 }

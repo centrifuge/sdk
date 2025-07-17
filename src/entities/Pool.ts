@@ -4,6 +4,7 @@ import { ABI } from '../abi/index.js'
 import type { Centrifuge } from '../Centrifuge.js'
 import { HexString } from '../types/index.js'
 import { PoolMetadata } from '../types/poolMetadata.js'
+import { MessageType } from '../types/transaction.js'
 import { NATIONAL_CURRENCY_METADATA } from '../utils/currencies.js'
 import { addressToBytes32 } from '../utils/index.js'
 import { repeatOnEvents } from '../utils/rx.js'
@@ -307,12 +308,10 @@ export class Pool extends Entity {
   updateBalanceSheetManagers(updates: { chainId: number; address: HexString; canManage: boolean }[]) {
     const self = this
     return this._transact(async function* (ctx) {
-      const [{ hub }, centIds, estimates] = await Promise.all([
+      const [{ hub }, centIds] = await Promise.all([
         self._root._protocolAddresses(self.chainId),
         Promise.all(updates.map(({ chainId }) => self._root.id(chainId))),
-        Promise.all(updates.map(({ chainId }) => self._root._estimate(self.chainId, { chainId }))),
       ])
-      const estimate = estimates.reduce((acc, e) => acc + e, 0n)
       const batch = updates.map(({ address, canManage }, i) =>
         encodeFunctionData({
           abi: ABI.Hub,
@@ -320,11 +319,17 @@ export class Pool extends Entity {
           args: [centIds[i]!, self.id.raw, addressToBytes32(address), canManage],
         })
       )
+      const messages: Record<number, MessageType[]> = {}
+      updates.forEach((_, i) => {
+        const centId = centIds[i]!
+        if (!messages[centId]) messages[centId] = []
+        messages[centId].push(MessageType.UpdateBalanceSheetManager)
+      })
 
       yield* wrapTransaction('Update balance sheet managers', ctx, {
         contract: hub,
         data: batch,
-        value: estimate,
+        messages,
       })
     }, this.chainId)
   }
