@@ -7,6 +7,7 @@ import {
   filter,
   first,
   identity,
+  interval,
   isObservable,
   map,
   mergeMap,
@@ -695,12 +696,11 @@ export class Centrifuge {
     variables?: Record<string, any>,
     postProcess?: (data: Result) => Return
   ) {
-    return this._query(
-      [query, variables],
-      () => this._getIndexerObservable(query, variables).pipe(map(postProcess ?? identity)),
-      {
-        valueCacheTime: 120_000,
-      }
+    return this._query([query, variables], () =>
+      // If subscribed, refetch every 2 minutes
+      interval(120_000).pipe(
+        switchMap(() => this._getIndexerObservable(query, variables).pipe(map(postProcess ?? identity)))
+      )
     )
   }
 
@@ -1080,32 +1080,30 @@ export class Centrifuge {
     quoteAssetId: AssetId,
     chainId: number
   ) {
-    return this._query(
-      ['getQuote', baseAmount, baseAssetId.toString(), quoteAssetId.toString()],
-      () =>
-        this._protocolAddresses(chainId).pipe(
-          switchMap(({ hubRegistry }) =>
-            defer(async () => {
-              const [quote, quoteDecimals] = await Promise.all([
-                this.getClient(chainId)!.readContract({
-                  address: valuationAddress,
-                  abi: ABI.Valuation,
-                  functionName: 'getQuote',
-                  args: [baseAmount.toBigInt(), baseAssetId.raw, quoteAssetId.raw],
-                }),
-                this.getClient(chainId)!.readContract({
-                  address: hubRegistry,
-                  // Use inline ABI because of function overload
-                  abi: parseAbi(['function decimals(uint256) view returns (uint8)']),
-                  functionName: 'decimals',
-                  args: [quoteAssetId.raw],
-                }),
-              ])
-              return new Balance(quote, quoteDecimals)
-            })
-          )
-        ),
-      { valueCacheTime: 120_000 }
+    return this._query(['getQuote', baseAmount, baseAssetId.toString(), quoteAssetId.toString()], () =>
+      interval(60_000).pipe(
+        switchMap(() => this._protocolAddresses(chainId)),
+        switchMap(({ hubRegistry }) =>
+          defer(async () => {
+            const [quote, quoteDecimals] = await Promise.all([
+              this.getClient(chainId)!.readContract({
+                address: valuationAddress,
+                abi: ABI.Valuation,
+                functionName: 'getQuote',
+                args: [baseAmount.toBigInt(), baseAssetId.raw, quoteAssetId.raw],
+              }),
+              this.getClient(chainId)!.readContract({
+                address: hubRegistry,
+                // Use inline ABI because of function overload
+                abi: parseAbi(['function decimals(uint256) view returns (uint8)']),
+                functionName: 'decimals',
+                args: [quoteAssetId.raw],
+              }),
+            ])
+            return new Balance(quote, quoteDecimals)
+          })
+        )
+      )
     )
   }
 
