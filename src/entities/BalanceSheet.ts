@@ -87,7 +87,7 @@ export class BalanceSheet extends Entity {
   withdraw(assetId: AssetId, to: HexString, amount: Balance) {
     const self = this
     return this._transact(async function* (ctx) {
-      const [{ balanceSheet, spoke }, isBalanceSheetManager] = await Promise.all([
+      const [{ balanceSheet }, isBalanceSheetManager] = await Promise.all([
         self._root._protocolAddresses(self.chainId),
         self.pool.isBalanceSheetManager(self.chainId, ctx.signingAddress),
       ])
@@ -96,12 +96,7 @@ export class BalanceSheet extends Entity {
         throw new Error('Signing address is not a BalanceSheetManager')
       }
 
-      const [assetAddress, tokenId] = await self._root.getClient(self.chainId)!.readContract({
-        address: spoke,
-        abi: ABI.Spoke,
-        functionName: 'idToAsset',
-        args: [assetId.raw],
-      })
+      const { address: assetAddress, tokenId } = await self._root._asset(assetId, self.chainId)
 
       const tx = encodeFunctionData({
         abi: ABI.BalanceSheet,

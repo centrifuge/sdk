@@ -1,7 +1,6 @@
-import { combineLatest, map, of, switchMap } from 'rxjs'
+import { combineLatest, map, switchMap } from 'rxjs'
 import { getAddress } from 'viem'
 import type { Centrifuge } from '../Centrifuge.js'
-import { currencies } from '../config/protocol.js'
 import type { HexString } from '../types/index.js'
 import { PoolId, ShareClassId } from '../utils/types.js'
 import { Entity } from './Entity.js'
@@ -16,12 +15,56 @@ export class Investor extends Entity {
     this.address = getAddress(addr)
   }
 
-  portfolio() {
-    // TODO: fetch from indexer
+  portfolio(chainId?: number) {
     return this._query(null, () =>
-      combineLatest(this._root.chains.map((chainId) => this.currencyBalances(chainId))).pipe(
-        map((balances) => balances.flat())
-      )
+      this._root
+        ._queryIndexer<{
+          vaults: { items: { assetAddress: HexString; blockchain: { id: string } }[] }
+          tokenInstances: { items: { address: HexString; blockchain: { id: number } }[] }
+        }>(
+          `{
+            vaults {
+              items {
+                assetAddress
+                blockchain {
+                  id
+                }
+              }
+            }
+            tokenInstances {
+              items {
+                address
+                blockchain {
+                  id
+                }
+              }
+            }
+          }`
+        )
+        .pipe(
+          switchMap(({ vaults, tokenInstances }) => {
+            const seenTuples = new Set()
+            function check(chainId: string, asset: string) {
+              const key = `${chainId}|${asset}`
+              if (seenTuples.has(key)) {
+                return true
+              }
+              seenTuples.add(key)
+              return false
+            }
+            const all = [
+              ...vaults.items
+                .map((item) => ({ ...item, address: item.assetAddress }))
+                // Exclude duplicate chainId/asset combinations
+                .filter((item) => !check(item.blockchain.id, item.assetAddress)),
+              ...tokenInstances.items,
+            ].filter((item) => !chainId || Number(item.blockchain.id) === chainId)
+            return combineLatest(
+              all.map((item) => this._root.balance(item.address, this.address, Number(item.blockchain.id)))
+            )
+          }),
+          map((balances) => balances.filter((b) => b.balance.gt(0n)))
+        )
     )
   }
 
@@ -41,14 +84,6 @@ export class Investor extends Entity {
         switchMap((shareClass) => shareClass.member(this.address, chainId)),
         map(({ isMember }) => isMember)
       )
-    )
-  }
-
-  currencyBalances(chainId: number) {
-    return this._query(null, () =>
-      currencies[chainId]
-        ? combineLatest(currencies[chainId].map((currency) => this._root.balance(currency, this.address, chainId)))
-        : of([])
     )
   }
 }

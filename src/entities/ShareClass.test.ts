@@ -9,12 +9,13 @@ import { Pool } from './Pool.js'
 import { ShareClass } from './ShareClass.js'
 
 const chainId = 11155111
-const poolId = PoolId.from(1, 1)
-const poolId2 = PoolId.from(1, 2)
+const centId = 2
+const poolId = PoolId.from(centId, 1)
+const poolId2 = PoolId.from(centId, 2)
 const scId = ShareClassId.from(poolId, 1)
 const scId2 = ShareClassId.from(poolId2, 1)
-const assetId = AssetId.from(1, 1)
-const assetId2 = AssetId.from(1, 2)
+const assetId = AssetId.from(centId, 1)
+const assetId2 = AssetId.from(centId, 2)
 
 const fundManager = '0x423420Ae467df6e90291fd0252c0A8a637C1e03f'
 
@@ -40,7 +41,7 @@ describe('ShareClass', () => {
   })
 
   it('gets the nav per network', async () => {
-    const nav = await shareClass.navPerNetwork()
+    const nav = await shareClass2.navPerNetwork()
     expect(nav[0]!.totalIssuance).to.be.instanceOf(Balance)
     expect(nav[0]!.pricePerShare).to.be.instanceOf(Price)
     expect(nav[0]!.pricePerShare.toFloat()).to.be.greaterThan(0)
@@ -54,7 +55,6 @@ describe('ShareClass', () => {
 
   it('gets all balances', async () => {
     const balances = await shareClass.balances()
-    console.log('balances', balances)
     expect(balances.length).to.be.greaterThan(0)
     expect(balances[0]!.asset.decimals).to.equal(6)
     expect(balances[0]!.assetId.equals(assetId)).to.be.true

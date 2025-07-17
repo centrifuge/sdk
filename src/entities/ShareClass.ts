@@ -14,6 +14,7 @@ import { BalanceSheet } from './BalanceSheet.js'
 import { Entity } from './Entity.js'
 import type { Pool } from './Pool.js'
 import { PoolNetwork } from './PoolNetwork.js'
+import { Vault } from './Vault.js'
 
 /**
  * Query and interact with a share class, which allows querying total issuance, NAV per share,
@@ -39,11 +40,11 @@ export class ShareClass extends Entity {
    */
   details() {
     return this._query(null, () =>
-      combineLatest([this._metrics(), this._metadata(), this.navPerNetwork()]).pipe(
-        map(([metrics, metadata, navPerNetwork]) => {
+      combineLatest([this._metrics(), this._metadata(), this.navPerNetwork(), this.pool.currency()]).pipe(
+        map(([metrics, metadata, navPerNetwork, poolCurrency]) => {
           const totalIssuance = navPerNetwork.reduce(
             (acc, item) => acc.add(item.totalIssuance),
-            new Balance(0n, 18) // TODO: Replace with pool currency decimals
+            new Balance(0n, poolCurrency.decimals)
           )
 
           return {
@@ -75,44 +76,66 @@ export class ShareClass extends Entity {
   }
 
   navPerNetwork() {
-    return this._root._queryIndexer(
-      `query ($scId: String!) {
-        tokenInstances(where: { tokenId: $scId }) {
-          items {
-            totalIssuance
-            tokenPrice
-            blockchain {
-              id
-            }
-          }
-        }
-      }`,
-      { scId: this.id.raw },
-      (data: {
-        tokenInstances: {
-          items: {
-            totalIssuance: bigint
-            tokenPrice: bigint
-            blockchain: { id: string }
-          }[]
-        }
-      }) =>
-        data.tokenInstances.items.map((item) => ({
-          chainId: Number(item.blockchain.id),
-          totalIssuance: new Balance(item.totalIssuance, 18), // TODO: Replace with pool currency decimals
-          pricePerShare: new Price(item.tokenPrice),
-          nav: new Balance(item.totalIssuance, 18).mul(new Price(item.tokenPrice)),
-        }))
+    return this._query(null, () =>
+      this.pool.currency().pipe(
+        switchMap((poolCurrency) =>
+          this._root._queryIndexer(
+            `query ($scId: String!) {
+              tokenInstances(where: { tokenId: $scId }) {
+                items {
+                  totalIssuance
+                  tokenPrice
+                  blockchain {
+                    id
+                  }
+                }
+              }
+            }`,
+            { scId: this.id.raw },
+            (data: {
+              tokenInstances: {
+                items: {
+                  totalIssuance: bigint
+                  tokenPrice: bigint
+                  blockchain: { id: string }
+                }[]
+              }
+            }) =>
+              data.tokenInstances.items.map((item) => ({
+                chainId: Number(item.blockchain.id),
+                totalIssuance: new Balance(item.totalIssuance, poolCurrency.decimals),
+                pricePerShare: new Price(item.tokenPrice),
+                nav: new Balance(item.totalIssuance, poolCurrency.decimals).mul(new Price(item.tokenPrice)),
+              }))
+          )
+        )
+      )
     )
   }
 
   /**
    * Query the vaults of the share class.
-   * @param chainId The chain ID to query the vaults on.
-   * @returns The vaults of the share class on the given chain.
+   * @param chainId The optional chain ID to query the vaults on.
+   * @returns All vaults of the share class, or filtered by the given chain.
    */
-  vaults(chainId: number) {
-    return this._query(null, () => new PoolNetwork(this._root, this.pool, chainId).vaults(this.id))
+  vaults(chainId?: number) {
+    return this._query(null, () =>
+      this._allVaults().pipe(
+        map((allVaults) => {
+          const vaults = allVaults.filter((vault) => vault.chainId === chainId || !chainId)
+          return vaults.map(
+            (vault) =>
+              new Vault(
+                this._root,
+                new PoolNetwork(this._root, this.pool, vault.chainId),
+                this,
+                vault.assetAddress,
+                vault.address
+              )
+          )
+        })
+      )
+    )
   }
 
   /**
@@ -825,8 +848,8 @@ export class ShareClass extends Entity {
   /** @internal */
   _holding(assetId: AssetId) {
     return this._query(['holding', assetId.toString()], () =>
-      this._root._protocolAddresses(this.pool.chainId).pipe(
-        switchMap(({ holdings: holdingsAddr, hubRegistry }) =>
+      combineLatest([this._root._protocolAddresses(this.pool.chainId), this.pool.currency()]).pipe(
+        switchMap(([{ holdings: holdingsAddr, hubRegistry }, poolCurrency]) =>
           defer(async () => {
             const holdings = getContract({
               address: holdingsAddr,
@@ -860,7 +883,7 @@ export class ShareClass extends Entity {
               assetDecimals,
               valuation,
               amount: new Balance(amount, assetDecimals),
-              value: new Balance(value, 18), // TODO: Replace with pool currency decimals
+              value: new Balance(value, poolCurrency.decimals),
               isLiability,
               accounts: {
                 [AccountType.Asset]: accounts[0] || null,
@@ -913,6 +936,8 @@ export class ShareClass extends Entity {
                 args: [this.pool.id.raw, this.id.raw, asset.id.raw, false],
               }),
             ])
+            console.log('addresses.spoke', addresses.spoke)
+            console.log('priceBn', priceBn, this.pool.id.raw, this.id.raw, asset.id.raw)
 
             const amount = new Balance(amountBn, asset.decimals)
             const price = new Price(priceBn)
@@ -1070,8 +1095,12 @@ export class ShareClass extends Entity {
   /** @internal */
   _epoch(assetId: AssetId) {
     return this._query(['epoch', assetId.toString()], () =>
-      this._root._protocolAddresses(this.pool.chainId).pipe(
-        switchMap(({ shareClassManager, hubRegistry }) =>
+      combineLatest([
+        this._root._protocolAddresses(this.pool.chainId),
+        this.pool.currency(),
+        this._root.assetDecimals(assetId, this.pool.chainId),
+      ]).pipe(
+        switchMap(([{ shareClassManager }, poolCurrency, assetDecimals]) =>
           defer(async () => {
             const scm = getContract({
               address: shareClassManager,
@@ -1079,17 +1108,10 @@ export class ShareClass extends Entity {
               client: this._root.getClient(this.pool.chainId)!,
             })
 
-            const [epoch, pendingDeposit, pendingRedeem, assetDecimals] = await Promise.all([
+            const [epoch, pendingDeposit, pendingRedeem] = await Promise.all([
               scm.read.epochId([this.id.raw, assetId.raw]),
               scm.read.pendingDeposit([this.id.raw, assetId.raw]),
               scm.read.pendingRedeem([this.id.raw, assetId.raw]),
-              this._root.getClient(this.pool.chainId)!.readContract({
-                address: hubRegistry,
-                // Use inline ABI because of function overload
-                abi: parseAbi(['function decimals(uint256) view returns (uint8)']),
-                functionName: 'decimals',
-                args: [assetId.raw],
-              }),
             ])
 
             const depositEpoch = epoch[0]
@@ -1118,12 +1140,10 @@ export class ShareClass extends Entity {
               redeemEpoch,
               issueEpoch,
               revokeEpoch,
-              // TODO: Replace with assetDecimals()
               pendingDeposit: new Balance(pendingDeposit, assetDecimals),
-              // TODO: Replace with assetDecimals()
-              pendingRedeem: new Balance(pendingRedeem, 18),
+              pendingRedeem: new Balance(pendingRedeem, poolCurrency.decimals),
               approvedDeposit: new Balance(approvedDeposit, assetDecimals),
-              approvedRedeem: new Balance(approvedRedeem, 18),
+              approvedRedeem: new Balance(approvedRedeem, poolCurrency.decimals),
             }
           }).pipe(
             repeatOnEvents(

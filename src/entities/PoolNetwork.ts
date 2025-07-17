@@ -1,4 +1,4 @@
-import { combineLatest, defer, map, of, switchMap } from 'rxjs'
+import { combineLatest, defer, map, of, switchMap, withLatestFrom } from 'rxjs'
 import { encodeFunctionData, getContract } from 'viem'
 import { ABI } from '../abi/index.js'
 import type { Centrifuge } from '../Centrifuge.js'
@@ -13,7 +13,6 @@ import { BalanceSheet } from './BalanceSheet.js'
 import { Entity } from './Entity.js'
 import type { Pool } from './Pool.js'
 import { ShareClass } from './ShareClass.js'
-import { Vault } from './Vault.js'
 
 /**
  * Query and interact with a pool on a specific network.
@@ -85,41 +84,10 @@ export class PoolNetwork extends Entity {
    * @param scId - The share class ID
    */
   vaults(scId: ShareClassId) {
-    return this._query(['vaults', scId.toString()], () =>
-      this._root._protocolAddresses(this.chainId).pipe(
-        switchMap(({ spoke, vaultRouter, currencies }) =>
-          defer(async () => {
-            if (!currencies.length) return []
-            const contract = getContract({
-              address: vaultRouter,
-              abi: ABI.VaultRouter,
-              client: this._root.getClient(this.chainId)!,
-            })
-            const results = await Promise.allSettled(
-              currencies.map(async (curAddr) => {
-                const vaultAddr = await contract.read.getVault!([this.pool.id.raw, scId.raw, curAddr])
-                if (vaultAddr === NULL_ADDRESS) {
-                  throw new Error()
-                }
-                return new Vault(this._root, this, new ShareClass(this._root, this.pool, scId.raw), curAddr, vaultAddr)
-              })
-            )
-            return results.filter((result) => result.status === 'fulfilled').map((result) => result.value)
-          }).pipe(
-            repeatOnEvents(
-              this._root,
-              {
-                address: spoke,
-                abi: ABI.Spoke,
-                eventName: 'DeployVault',
-                filter: (events) => {
-                  return events.some((event) => event.args.poolId === this.pool.id.raw && event.args.scId === scId.raw)
-                },
-              },
-              this.chainId
-            )
-          )
-        )
+    return this._query(null, () =>
+      this._root.pool(this.pool.id).pipe(
+        switchMap((pool) => pool.shareClass(scId)),
+        switchMap((shareClass) => shareClass.vaults(this.chainId))
       )
     )
   }
@@ -127,14 +95,17 @@ export class PoolNetwork extends Entity {
   /**
    * Get a specific Vault for a given share class and investment currency.
    * @param scId - The share class ID
-   * @param asset - The investment currency address
+   * @param asset - The investment currency address or asset ID
    */
-  vault(scId: ShareClassId, asset: HexString) {
-    const assetAddress = asset.toLowerCase()
+  vault(scId: ShareClassId, asset: HexString | AssetId) {
     return this._query(null, () =>
       this.vaults(scId).pipe(
-        map((vaults) => {
-          const vault = vaults.find((v) => v._asset === assetAddress)
+        withLatestFrom(
+          typeof asset === 'string' ? of({ address: asset, tokenId: 0n }) : this._root._asset(asset, this.chainId)
+        ),
+        map(([vaults, { address }]) => {
+          const addr = address.toLowerCase()
+          const vault = vaults.find((v) => v._asset === addr)
           if (!vault) throw new Error('Vault not found')
           return vault
         })
