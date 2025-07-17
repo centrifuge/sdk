@@ -1,18 +1,18 @@
 import { expect } from 'chai'
 import { firstValueFrom, skip } from 'rxjs'
 import { Centrifuge } from '../Centrifuge.js'
-import { currencies } from '../config/protocol.js'
 import { NULL_ADDRESS } from '../constants.js'
 import { mockPoolMetadata } from '../tests/mocks/mockPoolMetadata.js'
 import { context } from '../tests/setup.js'
 import { randomAddress } from '../tests/utils.js'
-import { PoolId, ShareClassId } from '../utils/types.js'
+import { AssetId, PoolId, ShareClassId } from '../utils/types.js'
 import { Pool } from './Pool.js'
 
 const chainId = 11155111
-const poolId = PoolId.from(1, 1)
+const centId = 1
+const poolId = PoolId.from(centId, 1)
 const scId = ShareClassId.from(poolId, 1)
-const asset = currencies[chainId]![0]!
+const assetId = AssetId.from(centId, 1)
 const poolManager = '0x423420Ae467df6e90291fd0252c0A8a637C1e03f'
 
 describe('Pool', () => {
@@ -43,7 +43,7 @@ describe('Pool', () => {
   })
 
   it('can query a vault', async () => {
-    const vault = await pool.vault(chainId, scId, asset)
+    const vault = await pool.vault(chainId, scId, assetId)
     expect(vault).to.not.be.undefined
     expect(vault.address).to.not.equal(NULL_ADDRESS)
   })

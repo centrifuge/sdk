@@ -9,12 +9,13 @@ import { Pool } from './Pool.js'
 import { ShareClass } from './ShareClass.js'
 
 const chainId = 11155111
-const poolId = PoolId.from(1, 1)
-const poolId2 = PoolId.from(1, 2)
+const centId = 2
+const poolId = PoolId.from(centId, 1)
+const poolId2 = PoolId.from(centId, 2)
 const scId = ShareClassId.from(poolId, 1)
 const scId2 = ShareClassId.from(poolId2, 1)
-const assetId = AssetId.from(1, 1)
-const assetId2 = AssetId.from(1, 2)
+const assetId = AssetId.from(centId, 1)
+const assetId2 = AssetId.from(centId, 2)
 
 const fundManager = '0x423420Ae467df6e90291fd0252c0A8a637C1e03f'
 
@@ -34,13 +35,13 @@ describe('ShareClass', () => {
     const details = await shareClass.details()
     expect(details.totalIssuance).to.be.instanceOf(Balance)
     expect(details.pricePerShare).to.be.instanceOf(Price)
-    expect(details.name).to.equal('Tokenized MMF')
-    expect(details.symbol).to.equal('MMF')
+    expect(typeof details.name).to.equal('string')
+    expect(typeof details.symbol).to.equal('string')
     expect(details.id.raw).to.equal(scId.raw)
   })
 
   it('gets the nav per network', async () => {
-    const nav = await shareClass.navPerNetwork()
+    const nav = await shareClass2.navPerNetwork()
     expect(nav[0]!.totalIssuance).to.be.instanceOf(Balance)
     expect(nav[0]!.pricePerShare).to.be.instanceOf(Price)
     expect(nav[0]!.pricePerShare.toFloat()).to.be.greaterThan(0)
@@ -52,16 +53,14 @@ describe('ShareClass', () => {
     expect(vaults[0]!.shareClass.id.raw).to.equal(scId.raw)
   })
 
-  it('gets all holdings', async () => {
-    const holdings = await shareClass.holdings()
-    expect(holdings.length).to.be.greaterThan(0)
-    expect(typeof holdings[0]!.valuation).to.equal('string')
-    expect(holdings[0]!.asset.decimals).to.equal(6)
-    expect(holdings[0]!.assetId.equals(assetId)).to.be.true
-    expect(holdings[0]!.amount.decimals).to.equal(6)
-    expect(holdings[0]!.value.decimals).to.equal(18)
-    expect(holdings[0]!.accounts[AccountType.Asset]).not.to.be.undefined
-    expect(holdings[0]!.accounts[AccountType.Equity]).not.to.be.undefined
+  it('gets all balances', async () => {
+    const balances = await shareClass.balances()
+    expect(balances.length).to.be.greaterThan(0)
+    expect(balances[0]!.asset.decimals).to.equal(6)
+    expect(balances[0]!.assetId.equals(assetId)).to.be.true
+    expect(balances[0]!.amount.decimals).to.equal(6)
+    expect(balances[0]!.value.decimals).to.equal(18)
+    expect(balances[0]!.value.toFloat()).to.be.greaterThan(0)
   })
 
   it('gets a holding', async () => {

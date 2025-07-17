@@ -14,6 +14,7 @@ import { BalanceSheet } from './BalanceSheet.js'
 import { Entity } from './Entity.js'
 import type { Pool } from './Pool.js'
 import { PoolNetwork } from './PoolNetwork.js'
+import { Vault } from './Vault.js'
 
 /**
  * Query and interact with a share class, which allows querying total issuance, NAV per share,
@@ -39,11 +40,11 @@ export class ShareClass extends Entity {
    */
   details() {
     return this._query(null, () =>
-      combineLatest([this._metrics(), this._metadata(), this.navPerNetwork()]).pipe(
-        map(([metrics, metadata, navPerNetwork]) => {
+      combineLatest([this._metrics(), this._metadata(), this.navPerNetwork(), this.pool.currency()]).pipe(
+        map(([metrics, metadata, navPerNetwork, poolCurrency]) => {
           const totalIssuance = navPerNetwork.reduce(
             (acc, item) => acc.add(item.totalIssuance),
-            new Balance(0n, 18) // TODO: Replace with pool currency decimals
+            new Balance(0n, poolCurrency.decimals)
           )
 
           return {
@@ -75,149 +76,133 @@ export class ShareClass extends Entity {
   }
 
   navPerNetwork() {
-    return this._root._queryIndexer(
-      `query ($scId: String!) {
-        tokenInstances(where: { tokenId: $scId }) {
-          items {
-            totalIssuance
-            tokenPrice
-            blockchain {
-              id
-            }
-          }
-        }
-      }`,
-      { scId: this.id.raw },
-      (data: {
-        tokenInstances: {
-          items: {
-            totalIssuance: bigint
-            tokenPrice: bigint
-            blockchain: { id: string }
-          }[]
-        }
-      }) =>
-        data.tokenInstances.items.map((item) => ({
-          chainId: Number(item.blockchain.id),
-          totalIssuance: new Balance(item.totalIssuance, 18), // TODO: Replace with pool currency decimals
-          pricePerShare: new Price(item.tokenPrice),
-          nav: new Balance(item.totalIssuance, 18).mul(new Price(item.tokenPrice)),
-        }))
+    return this._query(null, () =>
+      this.pool.currency().pipe(
+        switchMap((poolCurrency) =>
+          this._root._queryIndexer(
+            `query ($scId: String!) {
+              tokenInstances(where: { tokenId: $scId }) {
+                items {
+                  totalIssuance
+                  tokenPrice
+                  blockchain {
+                    id
+                  }
+                }
+              }
+            }`,
+            { scId: this.id.raw },
+            (data: {
+              tokenInstances: {
+                items: {
+                  totalIssuance: bigint
+                  tokenPrice: bigint
+                  blockchain: { id: string }
+                }[]
+              }
+            }) =>
+              data.tokenInstances.items.map((item) => ({
+                chainId: Number(item.blockchain.id),
+                totalIssuance: new Balance(item.totalIssuance, poolCurrency.decimals),
+                pricePerShare: new Price(item.tokenPrice),
+                nav: new Balance(item.totalIssuance, poolCurrency.decimals).mul(new Price(item.tokenPrice)),
+              }))
+          )
+        )
+      )
     )
   }
 
   /**
    * Query the vaults of the share class.
-   * @param chainId The chain ID to query the vaults on.
-   * @returns The vaults of the share class on the given chain.
+   * @param chainId The optional chain ID to query the vaults on.
+   * @returns All vaults of the share class, or filtered by the given chain.
    */
-  vaults(chainId: number) {
-    return this._query(null, () => new PoolNetwork(this._root, this.pool, chainId).vaults(this.id))
-  }
-
-  /**
-   * Query all the holdings of the share class.
-   */
-  holdings() {
+  vaults(chainId?: number) {
     return this._query(null, () =>
-      this._holdings().pipe(
-        switchMap((res) => {
-          if (res.holdings.items.length === 0) {
-            return of([])
-          }
-          return combineLatest(
-            res.holdings.items.map((holding) => {
-              const assetId = new AssetId(holding.assetId)
-              return this._holding(assetId)
-            })
-          ).pipe(
-            map((holdings) =>
-              holdings.map(({ assetDecimals: _, ...holding }, i) => {
-                const data = res.holdings.items[i]!
-                return {
-                  ...holding,
-                  asset: {
-                    decimals: data.holdingEscrow.asset.decimals,
-                    address: data.holdingEscrow.asset.address,
-                    name: data.holdingEscrow.asset.name,
-                    symbol: data.holdingEscrow.asset.symbol,
-                    chainId: Number(data.holdingEscrow.asset.blockchain.id),
-                  } satisfies Omit<CurrencyDetails, 'supportsPermit'>,
-                }
-              })
-            )
+      this._allVaults().pipe(
+        map((allVaults) => {
+          const vaults = allVaults.filter((vault) => vault.chainId === chainId || !chainId)
+          return vaults.map(
+            (vault) =>
+              new Vault(
+                this._root,
+                new PoolNetwork(this._root, this.pool, vault.chainId),
+                this,
+                vault.assetAddress,
+                vault.address
+              )
           )
         })
       )
     )
   }
 
-  /** @internal */
-  _holding(assetId: AssetId) {
-    return this._query(['holding', assetId.toString()], () =>
-      this._root._protocolAddresses(this.pool.chainId).pipe(
-        switchMap(({ holdings: holdingsAddr, hubRegistry }) =>
-          defer(async () => {
-            const holdings = getContract({
-              address: holdingsAddr,
-              abi: ABI.Holdings,
-              client: this._root.getClient(this.pool.chainId)!,
-            })
-
-            const [valuation, amount, value, assetDecimals, isLiability, ...accounts] = await Promise.all([
-              holdings.read.valuation([this.pool.id.raw, this.id.raw, assetId.raw]),
-              holdings.read.amount([this.pool.id.raw, this.id.raw, assetId.raw]),
-              holdings.read.value([this.pool.id.raw, this.id.raw, assetId.raw]),
-              this._root.getClient(this.pool.chainId)!.readContract({
-                address: hubRegistry,
-                // Use inline ABI because of function overload
-                abi: parseAbi(['function decimals(uint256) view returns (uint8)']),
-                functionName: 'decimals',
-                args: [assetId.raw],
-              }),
-              holdings.read.isLiability([this.pool.id.raw, this.id.raw, assetId.raw]),
-              ...[
-                AccountType.Asset,
-                AccountType.Equity,
-                AccountType.Loss,
-                AccountType.Gain,
-                AccountType.Expense,
-                AccountType.Liability,
-              ].map((kind) => holdings.read.accountId([this.pool.id.raw, this.id.raw, assetId.raw, kind])),
-            ])
-            return {
-              assetId,
-              assetDecimals,
-              valuation,
-              amount: new Balance(amount, assetDecimals),
-              value: new Balance(value, 18), // TODO: Replace with pool currency decimals
-              isLiability,
-              accounts: {
-                [AccountType.Asset]: accounts[0] || null,
-                [AccountType.Equity]: accounts[1] || null,
-                [AccountType.Loss]: accounts[2] || null,
-                [AccountType.Gain]: accounts[3] || null,
-                [AccountType.Expense]: accounts[4] || null,
-                [AccountType.Liability]: accounts[5] || null,
-              },
-            }
-          }).pipe(
-            repeatOnEvents(
-              this._root,
-              {
-                address: holdingsAddr,
-                abi: ABI.Holdings,
-                eventName: ['Increase', 'Decrease', 'Update', 'UpdateValuation'],
-                filter: (events) => {
-                  return events.some((event) => {
-                    return event.args.scId === this.id && event.args.assetId === assetId.raw
-                  })
-                },
-              },
-              this.pool.chainId
+  /**
+   * Query all the balances of the share class (from BalanceSheet and Holdings).
+   */
+  balances(chainId?: number) {
+    return this._query(null, () =>
+      combineLatest([this._balances(), this.pool.currency()]).pipe(
+        switchMap(([res, poolCurrency]) => {
+          if (res.length === 0) {
+            return of([])
+          }
+          const items = res.filter((item) => Number(item.asset.blockchain.id) === chainId || !chainId)
+          return combineLatest([
+            combineLatest(
+              items.map((holding) => {
+                if (!holding.holding) return of(null)
+                const assetId = new AssetId(holding.assetId)
+                return this._holding(assetId)
+              })
+            ),
+            combineLatest(
+              items.map((holding) => {
+                const assetId = new AssetId(holding.assetId)
+                return this._balance(Number(holding.asset.blockchain.id), {
+                  address: holding.asset.address,
+                  assetTokenId: BigInt(holding.asset.assetTokenId),
+                  id: assetId,
+                  decimals: holding.asset.decimals,
+                })
+              })
+            ),
+          ]).pipe(
+            map(([holdings, balances]) =>
+              items.map((data, i) => {
+                const holding = holdings[i]
+                const balance = balances[i]!
+                // If the holding hasn't been initialized yet, the price is 1
+                const price = holding ? balance.price : Price.fromFloat(1)
+                const value = Balance.fromFloat(
+                  balance.amount.toDecimal().mul(price.toDecimal()),
+                  poolCurrency.decimals
+                )
+                return {
+                  assetId: new AssetId(data.assetId),
+                  amount: balance.amount,
+                  value,
+                  price,
+                  asset: {
+                    decimals: data.asset.decimals,
+                    address: data.asset.address,
+                    name: data.asset.name,
+                    symbol: data.asset.symbol,
+                    chainId: Number(data.asset.blockchain.id),
+                  } satisfies Omit<CurrencyDetails, 'supportsPermit'>,
+                  holding: holding && {
+                    valuation: holding.valuation,
+                    amount: holding.amount,
+                    value: holding.value,
+                    isLiability: holding.isLiability,
+                    accounts: holding.accounts,
+                  },
+                }
+              })
             )
           )
-        )
+        })
       )
     )
   }
@@ -810,12 +795,42 @@ export class ShareClass extends Entity {
   }
 
   /** @internal */
-  _holdings() {
-    return this._root._queryIndexer<{
-      holdings: {
-        items: {
-          assetId: string
-          holdingEscrow: {
+  _balances() {
+    return this._root._queryIndexer(
+      `query ($scId: String!) {
+        holdingEscrows(where: { tokenId: $scId }) {
+          items {
+            holding {
+              updatedAt
+            }
+            assetAmount
+            assetPrice
+            assetId
+            asset {
+              decimals
+              assetTokenId
+              address
+              name
+              symbol
+              blockchain {
+                id
+              }
+            }
+          }
+        }
+      }`,
+      {
+        scId: this.id.raw,
+      },
+      (data: {
+        holdingEscrows: {
+          items: {
+            holding: {
+              updatedAt: string | null
+            }
+            assetId: string
+            assetAmount: string
+            assetPrice: string
             asset: {
               decimals: number
               assetTokenId: string
@@ -824,32 +839,138 @@ export class ShareClass extends Entity {
               symbol: string
               blockchain: { id: string }
             }
-          }
-        }[]
-      }
-    }>(
-      `query ($scId: String!) {
-        holdings(where: { tokenId: $scId }) {
-          items {
-            assetId
-            holdingEscrow {
-              asset {
-                decimals
-                assetTokenId
-                address
-                name
-                symbol
-                blockchain {
-                  id
-                }
-              }
-            }
-          }
+          }[]
         }
-      }`,
-      {
-        scId: this.id.raw,
-      }
+      }) => data.holdingEscrows.items
+    )
+  }
+
+  /** @internal */
+  _holding(assetId: AssetId) {
+    return this._query(['holding', assetId.toString()], () =>
+      combineLatest([this._root._protocolAddresses(this.pool.chainId), this.pool.currency()]).pipe(
+        switchMap(([{ holdings: holdingsAddr, hubRegistry }, poolCurrency]) =>
+          defer(async () => {
+            const holdings = getContract({
+              address: holdingsAddr,
+              abi: ABI.Holdings,
+              client: this._root.getClient(this.pool.chainId)!,
+            })
+
+            const [valuation, amount, value, assetDecimals, isLiability, ...accounts] = await Promise.all([
+              holdings.read.valuation([this.pool.id.raw, this.id.raw, assetId.raw]),
+              holdings.read.amount([this.pool.id.raw, this.id.raw, assetId.raw]),
+              holdings.read.value([this.pool.id.raw, this.id.raw, assetId.raw]),
+              this._root.getClient(this.pool.chainId)!.readContract({
+                address: hubRegistry,
+                // Use inline ABI because of function overload
+                abi: parseAbi(['function decimals(uint256) view returns (uint8)']),
+                functionName: 'decimals',
+                args: [assetId.raw],
+              }),
+              holdings.read.isLiability([this.pool.id.raw, this.id.raw, assetId.raw]),
+              ...[
+                AccountType.Asset,
+                AccountType.Equity,
+                AccountType.Loss,
+                AccountType.Gain,
+                AccountType.Expense,
+                AccountType.Liability,
+              ].map((kind) => holdings.read.accountId([this.pool.id.raw, this.id.raw, assetId.raw, kind])),
+            ])
+            return {
+              assetId,
+              assetDecimals,
+              valuation,
+              amount: new Balance(amount, assetDecimals),
+              value: new Balance(value, poolCurrency.decimals),
+              isLiability,
+              accounts: {
+                [AccountType.Asset]: accounts[0] || null,
+                [AccountType.Equity]: accounts[1] || null,
+                [AccountType.Loss]: accounts[2] || null,
+                [AccountType.Gain]: accounts[3] || null,
+                [AccountType.Expense]: accounts[4] || null,
+                [AccountType.Liability]: accounts[5] || null,
+              },
+            }
+          }).pipe(
+            repeatOnEvents(
+              this._root,
+              {
+                address: holdingsAddr,
+                abi: ABI.Holdings,
+                eventName: ['Increase', 'Decrease', 'Update', 'UpdateValuation'],
+                filter: (events) => {
+                  return events.some((event) => {
+                    return event.args.scId === this.id && event.args.assetId === assetId.raw
+                  })
+                },
+              },
+              this.pool.chainId
+            )
+          )
+        )
+      )
+    )
+  }
+
+  /** @internal */
+  _balance(chainId: number, asset: { address: HexString; assetTokenId?: bigint; id: AssetId; decimals: number }) {
+    return this._query(['balance', asset.id.toString()], () =>
+      combineLatest([this._root._protocolAddresses(chainId), this.pool.currency()]).pipe(
+        switchMap(([addresses, poolCurrency]) =>
+          defer(async () => {
+            const client = this._root.getClient(chainId)!
+            const [amountBn, priceBn] = await Promise.all([
+              client.readContract({
+                address: addresses.balanceSheet,
+                abi: ABI.BalanceSheet,
+                functionName: 'availableBalanceOf',
+                args: [this.pool.id.raw, this.id.raw, asset.address, BigInt(asset.assetTokenId ?? 0n)],
+              }),
+              client.readContract({
+                address: addresses.spoke,
+                abi: ABI.Spoke,
+                functionName: 'pricePoolPerAsset',
+                args: [this.pool.id.raw, this.id.raw, asset.id.raw, false],
+              }),
+            ])
+            console.log('addresses.spoke', addresses.spoke)
+            console.log('priceBn', priceBn, this.pool.id.raw, this.id.raw, asset.id.raw)
+
+            const amount = new Balance(amountBn, asset.decimals)
+            const price = new Price(priceBn)
+            const value = Balance.fromFloat(amount.toDecimal().mul(price.toDecimal()), poolCurrency.decimals)
+
+            return {
+              amount,
+              value,
+              price,
+            }
+          }).pipe(
+            repeatOnEvents(
+              this._root,
+              {
+                address: [addresses.balanceSheet, addresses.spoke],
+                abi: [ABI.ShareClassManager, ABI.Spoke],
+                eventName: ['NoteDeposit', 'Deposit', 'Withdraw', 'UpdateAssetPrice'],
+                filter: (events) => {
+                  return events.some(
+                    (event) =>
+                      event.args.scId === this.id.raw &&
+                      // UpdateAssetPrice event
+                      (event.args.assetId === asset.id.raw ||
+                        // NoteDeposit, Deposit, Withdraw events
+                        event.args.asset?.toLowerCase() === asset.address?.toLowerCase())
+                  )
+                },
+              },
+              chainId
+            )
+          )
+        )
+      )
     )
   }
 
@@ -974,8 +1095,12 @@ export class ShareClass extends Entity {
   /** @internal */
   _epoch(assetId: AssetId) {
     return this._query(['epoch', assetId.toString()], () =>
-      this._root._protocolAddresses(this.pool.chainId).pipe(
-        switchMap(({ shareClassManager, hubRegistry }) =>
+      combineLatest([
+        this._root._protocolAddresses(this.pool.chainId),
+        this.pool.currency(),
+        this._root.assetDecimals(assetId, this.pool.chainId),
+      ]).pipe(
+        switchMap(([{ shareClassManager }, poolCurrency, assetDecimals]) =>
           defer(async () => {
             const scm = getContract({
               address: shareClassManager,
@@ -983,17 +1108,10 @@ export class ShareClass extends Entity {
               client: this._root.getClient(this.pool.chainId)!,
             })
 
-            const [epoch, pendingDeposit, pendingRedeem, assetDecimals] = await Promise.all([
+            const [epoch, pendingDeposit, pendingRedeem] = await Promise.all([
               scm.read.epochId([this.id.raw, assetId.raw]),
               scm.read.pendingDeposit([this.id.raw, assetId.raw]),
               scm.read.pendingRedeem([this.id.raw, assetId.raw]),
-              this._root.getClient(this.pool.chainId)!.readContract({
-                address: hubRegistry,
-                // Use inline ABI because of function overload
-                abi: parseAbi(['function decimals(uint256) view returns (uint8)']),
-                functionName: 'decimals',
-                args: [assetId.raw],
-              }),
             ])
 
             const depositEpoch = epoch[0]
@@ -1022,12 +1140,10 @@ export class ShareClass extends Entity {
               redeemEpoch,
               issueEpoch,
               revokeEpoch,
-              // TODO: Replace with assetDecimals()
               pendingDeposit: new Balance(pendingDeposit, assetDecimals),
-              // TODO: Replace with assetDecimals()
-              pendingRedeem: new Balance(pendingRedeem, 18),
+              pendingRedeem: new Balance(pendingRedeem, poolCurrency.decimals),
               approvedDeposit: new Balance(approvedDeposit, assetDecimals),
-              approvedRedeem: new Balance(approvedRedeem, 18),
+              approvedRedeem: new Balance(approvedRedeem, poolCurrency.decimals),
             }
           }).pipe(
             repeatOnEvents(

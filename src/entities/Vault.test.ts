@@ -1,31 +1,24 @@
 import { expect } from 'chai'
 import { firstValueFrom, lastValueFrom, skip, skipWhile, tap, toArray } from 'rxjs'
 import { parseAbi } from 'viem'
-import { currencies } from '../config/protocol.js'
 import { context } from '../tests/setup.js'
 import { Balance, Price } from '../utils/BigInt.js'
 import { doTransaction } from '../utils/transaction.js'
 import { AssetId, PoolId, ShareClassId } from '../utils/types.js'
 import { Pool } from './Pool.js'
-import { PoolNetwork } from './PoolNetwork.js'
 import { ShareClass } from './ShareClass.js'
 import { Vault } from './Vault.js'
 
 const chainId = 11155111
-const asset = currencies[chainId]![0]!
 
 // Pool with async vault, permissioned redeem
 const poolId = PoolId.from(1, 1)
 const scId = ShareClassId.from(poolId, 1)
 const assetId = AssetId.from(1, 1)
 
-// Async deposit/redeem vault with permissioned redeem
-const asyncVaultAddress = '0x0d05d9d4a4c68aea2fabb70b2cc629757ea0285c'
-
 // Pool with sync deposit vault, and permissioned async redeem
 const poolId2 = PoolId.from(1, 2)
 const scId2 = ShareClassId.from(poolId2, 1)
-const syncVaultAddress = '0x7372b99c9df983d14d016807b9da387c90159251'
 
 // Active investor with a pending redeem order
 // Investor with a pending invest order on async vault
@@ -46,14 +39,14 @@ const protocolAdmin = '0x423420Ae467df6e90291fd0252c0A8a637C1e03f'
 const defaultAssetsAmount = Balance.fromFloat(100, 6)
 const defaultSharesAmount = Balance.fromFloat(100, 18)
 
-async function mint(address: string) {
+async function mint(asset: string, address: string) {
   context.tenderlyFork.impersonateAddress = protocolAdmin
   context.centrifuge.setSigner(context.tenderlyFork.signer)
 
   await context.centrifuge._transact(async function* (ctx) {
     yield* doTransaction('Mint', ctx.publicClient, async () => {
       return ctx.walletClient.writeContract({
-        address: currencies[chainId]![0]!,
+        address: asset as any,
         abi: parseAbi(['function mint(address, uint256)']),
         functionName: 'mint',
         args: [address as any, defaultAssetsAmount.toBigInt()],
@@ -64,16 +57,15 @@ async function mint(address: string) {
 
 describe('Vault - Async', () => {
   let vault: Vault
-  beforeEach(() => {
+  before(async () => {
     const { centrifuge } = context
     const pool = new Pool(centrifuge, poolId.raw, chainId)
     const sc = new ShareClass(centrifuge, pool, scId.raw)
-    const poolNetwork = new PoolNetwork(centrifuge, pool, chainId)
-    vault = new Vault(centrifuge, poolNetwork, sc, asset, asyncVaultAddress)
+    vault = await pool.vault(chainId, sc.id, assetId)
   })
 
   it('completes the invest/redeem flow', async () => {
-    await mint(investorA)
+    await mint(vault._asset, investorA)
 
     let investment = await vault.investment(investorA)
     expect(investment.isAllowedToRedeem).to.equal(false)
@@ -239,7 +231,7 @@ describe('Vault - Async', () => {
   // })
 
   it('cancels an invest order and claims the tokens back', async () => {
-    await mint(investorC)
+    await mint(vault._asset, investorC)
 
     context.tenderlyFork.impersonateAddress = investorC
     context.centrifuge.setSigner(context.tenderlyFork.signer)
@@ -271,7 +263,7 @@ describe('Vault - Async', () => {
   })
 
   it('should throw when trying to cancel a non-existing order', async () => {
-    await mint(investorA)
+    await mint(vault._asset, investorA)
 
     context.tenderlyFork.impersonateAddress = investorA
     context.centrifuge.setSigner(context.tenderlyFork.signer)
@@ -303,16 +295,15 @@ describe('Vault - Async', () => {
 
 describe('Vault - Sync invest', () => {
   let vault: Vault
-  beforeEach(() => {
+  before(async () => {
     const { centrifuge } = context
     const pool = new Pool(centrifuge, poolId2.raw, chainId)
     const sc = new ShareClass(centrifuge, pool, scId2.raw)
-    const poolNetwork = new PoolNetwork(centrifuge, pool, chainId)
-    vault = new Vault(centrifuge, poolNetwork, sc, asset, syncVaultAddress)
+    vault = await pool.vault(chainId, sc.id, assetId)
   })
 
   it('invests', async () => {
-    await mint(investorA)
+    await mint(vault._asset, investorA)
 
     const investmentBefore = await vault.investment(investorA)
 

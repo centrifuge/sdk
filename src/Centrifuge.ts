@@ -13,6 +13,7 @@ import {
   of,
   Subject,
   switchMap,
+  timer,
   using,
 } from 'rxjs'
 import { fromFetch } from 'rxjs/fetch'
@@ -34,9 +35,8 @@ import {
   type WatchEventOnLogsParameter,
 } from 'viem'
 import { ABI } from './abi/index.js'
-import { chainIdToNetwork, chains } from './config/chains.js'
-import { currencies } from './config/protocol.js'
-import { PERMIT_TYPEHASH } from './constants.js'
+import { chains } from './config/chains.js'
+import { NULL_ADDRESS, PERMIT_TYPEHASH } from './constants.js'
 import { Investor } from './entities/Investor.js'
 import { Pool } from './entities/Pool.js'
 import type {
@@ -127,10 +127,6 @@ export class Centrifuge {
         const rpcUrl = this.#config.rpcUrls?.[chain.id] ?? undefined
         if (!rpcUrl) {
           console.warn(`No rpcUrl defined for chain ${chain.id}. Using public RPC endpoint.`)
-        }
-        if (!currencies[chain.id]) {
-          console.warn(`No config defined for chain ${chain.id}. Skipping.`)
-          return
         }
         this.#clients.set(
           chain.id,
@@ -551,6 +547,7 @@ export class Centrifuge {
         switchMap(({ hubRegistry }) =>
           this.getClient(chainId)!.readContract({
             address: hubRegistry,
+            // Use inline ABI because of function overload
             abi: parseAbi(['function decimals(uint128) view returns (uint8)']),
             functionName: 'decimals',
             args: [assetId.raw],
@@ -695,12 +692,11 @@ export class Centrifuge {
     variables?: Record<string, any>,
     postProcess?: (data: Result) => Return
   ) {
-    return this._query(
-      [query, variables],
-      () => this._getIndexerObservable(query, variables).pipe(map(postProcess ?? identity)),
-      {
-        valueCacheTime: 120_000,
-      }
+    return this._query([query, variables], () =>
+      // If subscribed, refetch every 2 minutes
+      timer(0, 120_000).pipe(
+        switchMap(() => this._getIndexerObservable(query, variables).pipe(map(postProcess ?? identity)))
+      )
     )
   }
 
@@ -1054,19 +1050,14 @@ export class Centrifuge {
         { chainId: String(chainId) }
       ).pipe(
         map((data) => {
-          const network = chainIdToNetwork[chainId as keyof typeof chainIdToNetwork]
-          const chainCurrencies = currencies[chainId]
-          if (!network || !chainCurrencies) {
-            throw new Error(`No protocol config found for chain id ${chainId}`)
+          if (!this.chains.includes(chainId)) {
+            throw new Error(`Chain ID "${chainId}" not supported`)
           }
           const deployment = data.deployments.items.find((d) => Number(d.chainId) === chainId)
           if (!deployment) {
-            throw new Error(`No protocol contracts found for chain id ${chainId}`)
+            throw new Error(`No protocol contracts found for chain ID "${chainId}"`)
           }
-          return {
-            ...(deployment as ProtocolContracts),
-            currencies: chainCurrencies,
-          }
+          return deployment as ProtocolContracts
         })
       )
     )
@@ -1080,32 +1071,30 @@ export class Centrifuge {
     quoteAssetId: AssetId,
     chainId: number
   ) {
-    return this._query(
-      ['getQuote', baseAmount, baseAssetId.toString(), quoteAssetId.toString()],
-      () =>
-        this._protocolAddresses(chainId).pipe(
-          switchMap(({ hubRegistry }) =>
-            defer(async () => {
-              const [quote, quoteDecimals] = await Promise.all([
-                this.getClient(chainId)!.readContract({
-                  address: valuationAddress,
-                  abi: ABI.Valuation,
-                  functionName: 'getQuote',
-                  args: [baseAmount.toBigInt(), baseAssetId.raw, quoteAssetId.raw],
-                }),
-                this.getClient(chainId)!.readContract({
-                  address: hubRegistry,
-                  // Use inline ABI because of function overload
-                  abi: parseAbi(['function decimals(uint256) view returns (uint8)']),
-                  functionName: 'decimals',
-                  args: [quoteAssetId.raw],
-                }),
-              ])
-              return new Balance(quote, quoteDecimals)
-            })
-          )
-        ),
-      { valueCacheTime: 120_000 }
+    return this._query(['getQuote', baseAmount, baseAssetId.toString(), quoteAssetId.toString()], () =>
+      timer(0, 60_000).pipe(
+        switchMap(() => this._protocolAddresses(chainId)),
+        switchMap(({ hubRegistry }) =>
+          defer(async () => {
+            const [quote, quoteDecimals] = await Promise.all([
+              this.getClient(chainId)!.readContract({
+                address: valuationAddress,
+                abi: ABI.Valuation,
+                functionName: 'getQuote',
+                args: [baseAmount.toBigInt(), baseAssetId.raw, quoteAssetId.raw],
+              }),
+              this.getClient(chainId)!.readContract({
+                address: hubRegistry,
+                // Use inline ABI because of function overload
+                abi: parseAbi(['function decimals(uint256) view returns (uint8)']),
+                functionName: 'decimals',
+                args: [quoteAssetId.raw],
+              }),
+            ])
+            return new Balance(quote, quoteDecimals)
+          })
+        )
+      )
     )
   }
 
@@ -1139,6 +1128,33 @@ export class Centrifuge {
               })
             })
           )
+        })
+      )
+    )
+  }
+
+  /**
+   * Get the asset address and token ID for a given asset ID on a specific chain.
+   * @param assetId - The asset ID to query
+   * @param chainId - The chain ID of the Spoke where the asset was registered
+   * @internal
+   */
+  _asset(assetId: AssetId, chainId: number) {
+    return this._query(['asset', assetId.toString(), chainId], () =>
+      this._protocolAddresses(chainId).pipe(
+        switchMap(async ({ spoke }) => {
+          const [assetAddress, tokenId] = await this.getClient(chainId)!.readContract({
+            address: spoke,
+            abi: ABI.Spoke,
+            functionName: 'idToAsset',
+            args: [assetId.raw],
+          })
+          if (assetAddress === NULL_ADDRESS)
+            throw new Error(`Asset with ID "${assetId}" not found on chain "${chainId}"`)
+          return {
+            address: assetAddress,
+            tokenId,
+          }
         })
       )
     )

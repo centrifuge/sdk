@@ -212,7 +212,7 @@ export class Pool extends Entity {
     })
   }
 
-  vault(chainId: number, scId: ShareClassId, asset: HexString) {
+  vault(chainId: number, scId: ShareClassId, asset: HexString | AssetId) {
     return this._query(null, () => this.network(chainId).pipe(switchMap((network) => network.vault(scId, asset))))
   }
 
@@ -368,7 +368,20 @@ export class Pool extends Entity {
               args: [this.id.raw],
             })
             return Array.from({ length: count }, (_, i) => ShareClassId.from(this.id, i + 1))
-          })
+          }).pipe(
+            repeatOnEvents(
+              this._root,
+              {
+                address: shareClassManager,
+                abi: ABI.ShareClassManager,
+                eventName: 'AddShareClass',
+                filter: (events) => {
+                  return events.some((event) => event.args.poolId === this.id.raw)
+                },
+              },
+              this.chainId
+            )
+          )
         )
       )
     )
