@@ -1,6 +1,6 @@
 {
   "name": "@centrifuge/sdk",
-  "version": "0.0.0-alpha.29",
+  "version": "0.0.0-alpha.30",
   "description": "",
   "homepage": "https://github.com/centrifuge/sdk/tree/main#readme",
   "author": "",
@@ -68,10 +68,10 @@
     "typedoc-plugin-markdown": "^4.4.1",
     "typescript": "~5.6.3",
     "typescript-eslint": "^8.8.1",
-    "viem": "^2.21.25"
+    "viem": "^2.23.11"
   },
   "peerDependencies": {
-    "viem": "^2"
+    "viem": ">=2.23.11"
   },
   "stableVersion": "0.0.0-alpha"
 }

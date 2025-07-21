@@ -3,7 +3,6 @@ import { combineLatest, defer, firstValueFrom, interval, map, of, Subject, take,
 import sinon from 'sinon'
 import { createClient, custom } from 'viem'
 import { Centrifuge } from './Centrifuge.js'
-import { currencies } from './config/protocol.js'
 import { Pool } from './entities/Pool.js'
 import { context } from './tests/setup.js'
 import { randomAddress } from './tests/utils.js'
@@ -16,8 +15,9 @@ import { AssetId, PoolId } from './utils/types.js'
 const chainId = 11155111
 const poolId = PoolId.from(1, 1)
 const assetId = AssetId.from(1, 1)
-const asset = currencies[chainId]![0]!
 const poolManager = '0x423420Ae467df6e90291fd0252c0A8a637C1e03f'
+
+const someErc20 = '0x3aaaa86458d576BafCB1B7eD290434F0696dA65c'
 
 const publicClient: any = createClient({ transport: custom(mockProvider()) }).extend(() => ({
   waitForTransactionReceipt: async () => ({}),
@@ -71,17 +71,12 @@ describe('Centrifuge', () => {
       'spoke',
       'vaultRouter',
       'balanceSheet',
-      'currencies',
-    ] satisfies (keyof ProtocolContracts | 'currencies')[]
+    ] satisfies (keyof ProtocolContracts)[]
 
     const result = await context.centrifuge._protocolAddresses(chainId)
 
     for (const key of expectedContractKeys) {
-      if (key === 'currencies') {
-        expect(result[key][0]!.startsWith('0x'), `Expected key ${key} to be a contract address`).to.be.true
-      } else {
-        expect(result[key].startsWith('0x'), `Expected key ${key} to be a contract address`).to.be.true
-      }
+      expect(result[key].startsWith('0x'), `Expected key ${key} to be a contract address`).to.be.true
     }
   })
 
@@ -92,12 +87,12 @@ describe('Centrifuge', () => {
     })
 
     it('should fetch a currency', async () => {
-      const currency = await context.centrifuge.currency(asset, chainId)
+      const currency = await context.centrifuge.currency(someErc20, chainId)
       expect(currency.decimals).to.equal(6)
       expect(currency.symbol).to.equal('USDC')
       expect(currency.name).to.equal('USD Coin')
       expect(currency.chainId).to.equal(chainId)
-      expect(currency.address.toLowerCase()).to.equal(asset.toLowerCase())
+      expect(currency.address.toLowerCase()).to.equal(someErc20.toLowerCase())
       expect(currency.supportsPermit).to.be.true
     })
 
