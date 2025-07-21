@@ -1150,13 +1150,13 @@ export class ShareClass extends Entity {
               pendingIssuancesTotal: new Balance(approvedDeposit, assetDecimals),
               pendingIssuances: depositEpochAmounts.map(([, amount], i) => ({
                 amount: new Balance(amount, assetDecimals),
-                approvedAt: new Date(Date.now()),
+                approvedAt: new Date(Date.now()), // TODO: Get from indexer
                 epoch: issueEpoch + i,
               })),
               pendingRevocationsTotal: new Balance(approvedRedeem, poolCurrency.decimals),
               pendingRevocations: redeemEpochAmount.map(([, amount], i) => ({
                 amount: new Balance(amount, poolCurrency.decimals),
-                approvedAt: new Date(Date.now()),
+                approvedAt: new Date(Date.now()), // TODO: Get from indexer
                 epoch: revokeEpoch + i,
               })),
             }
