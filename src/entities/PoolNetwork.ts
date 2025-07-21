@@ -253,6 +253,11 @@ export class PoolNetwork extends Entity {
           }),
           encodeFunctionData({
             abi: ABI.Hub,
+            functionName: 'notifyAssetPrice',
+            args: [self.pool.id.raw, vault.shareClassId.raw, vault.assetId.raw],
+          }),
+          encodeFunctionData({
+            abi: ABI.Hub,
             functionName: 'updateVault',
             args: [
               self.pool.id.raw,
@@ -264,7 +269,7 @@ export class PoolNetwork extends Entity {
             ],
           })
         )
-        messageTypes.push(MessageType.SetRequestManager, MessageType.UpdateVault)
+        messageTypes.push(MessageType.SetRequestManager, MessageType.NotifyPricePoolPerAsset, MessageType.UpdateVault)
       }
 
       if (batch.length === 0) {
