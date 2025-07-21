@@ -574,7 +574,7 @@ export class Centrifuge {
       ['allowance', owner.toLowerCase(), spender.toLowerCase(), asset.toLowerCase(), chainId, tokenId],
       () =>
         defer(async () => {
-          const client = this.getClient(chainId
+          const client = this.getClient(chainId)
           if (tokenId) {
             return client.readContract({
               address: asset,
@@ -623,7 +623,7 @@ export class Centrifuge {
         using(
           () => {
             const subject = new Subject<WatchEventOnLogsParameter>()
-            const unwatch = this.getClient(chainId.watchEvent({
+            const unwatch = this.getClient(chainId).watchEvent({
               onLogs: (logs) => subject.next(logs),
             })
             return {
@@ -898,7 +898,7 @@ export class Centrifuge {
       const { signer } = self
       if (!signer) throw new Error('Signer not set')
 
-      const publicClient = self.getClient(chainId
+      const publicClient = self.getClient(chainId)
       const chain = self.getChainConfig(chainId)
       let walletClient: WalletClient<any, Chain, Account> = isLocalAccount(signer)
         ? createWalletClient({
@@ -1079,13 +1079,13 @@ export class Centrifuge {
         switchMap(({ hubRegistry }) =>
           defer(async () => {
             const [quote, quoteDecimals] = await Promise.all([
-              this.getClient(chainId.readContract({
+              this.getClient(chainId).readContract({
                 address: valuationAddress,
                 abi: ABI.Valuation,
                 functionName: 'getQuote',
                 args: [baseAmount.toBigInt(), baseAssetId.raw, quoteAssetId.raw],
               }),
-              this.getClient(chainId.readContract({
+              this.getClient(chainId).readContract({
                 address: hubRegistry,
                 // Use inline ABI because of function overload
                 abi: parseAbi(['function decimals(uint256) view returns (uint8)']),
@@ -1145,7 +1145,7 @@ export class Centrifuge {
     return this._query(['asset', assetId.toString(), chainId], () =>
       this._protocolAddresses(chainId).pipe(
         switchMap(async ({ spoke }) => {
-          const [assetAddress, tokenId] = await this.getClient(chainId.readContract({
+          const [assetAddress, tokenId] = await this.getClient(chainId).readContract({
             address: spoke,
             abi: ABI.Spoke,
             functionName: 'idToAsset',

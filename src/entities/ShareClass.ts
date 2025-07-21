@@ -926,7 +926,7 @@ export class ShareClass extends Entity {
       combineLatest([this._root._protocolAddresses(chainId), this.pool.currency()]).pipe(
         switchMap(([addresses, poolCurrency]) =>
           defer(async () => {
-            const client = this._root.getClient(chainId
+            const client = this._root.getClient(chainId)
             const [amountBn, priceBn] = await Promise.all([
               client.readContract({
                 address: addresses.balanceSheet,

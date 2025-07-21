@@ -149,7 +149,7 @@ export class Pool extends Entity {
     return this._query(['isBSManager', chainId, address.toLowerCase()], () => {
       return this._root._protocolAddresses(chainId).pipe(
         switchMap(({ balanceSheet }) => {
-          return this._root.getClient(chainId.readContract({
+          return this._root.getClient(chainId).readContract({
             address: balanceSheet,
             abi: ABI.BalanceSheet,
             functionName: 'manager',
