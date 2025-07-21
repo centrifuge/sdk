@@ -552,7 +552,7 @@ describe('Centrifuge', () => {
               symbolName: 'TST',
               minInvestment: 1000,
               apyPercentage: 5,
-              apy: '5%',
+              apy: 'target',
               defaultAccounts: {
                 asset: 1000,
                 equity: 1001,

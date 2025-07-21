@@ -167,7 +167,7 @@ export class Centrifuge {
       const shareClassesById: PoolMetadata['shareClasses'] = {}
       metadataInput.shareClasses.forEach((sc, index) => {
         shareClassesById[scIds[index]!.raw] = {
-          minInitialInvestment: Balance.fromFloat(sc.minInvestment, 18).toString(),
+          minInitialInvestment: sc.minInvestment,
           apyPercentage: sc.apyPercentage,
           apy: sc.apy,
           defaultAccounts: sc.defaultAccounts,

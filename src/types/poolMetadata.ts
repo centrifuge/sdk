@@ -57,7 +57,7 @@ export type PoolMetadata = {
     string,
     {
       icon?: FileType | null
-      minInitialInvestment?: number
+      minInitialInvestment?: number | null
       apyPercentage?: number | null
       apy?: string | null
       defaultAccounts?: {
