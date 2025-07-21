@@ -123,7 +123,7 @@ export class PoolNetwork extends Entity {
         switchMap(({ spoke }) => {
           return defer(
             () =>
-              this._root.getClient(this.chainId)!.readContract({
+              this._root.getClient(this.chainId).readContract({
                 address: spoke,
                 abi: ABI.Spoke,
                 functionName: 'isPoolActive',
@@ -289,7 +289,7 @@ export class PoolNetwork extends Entity {
         switchMap(({ spoke }) =>
           defer(async () => {
             try {
-              const address = await this._root.getClient(this.chainId)!.readContract({
+              const address = await this._root.getClient(this.chainId).readContract({
                 address: spoke,
                 abi: ABI.Spoke,
                 functionName: 'shareToken',

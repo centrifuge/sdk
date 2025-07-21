@@ -242,7 +242,7 @@ export class ShareClass extends Entity {
             const contract = getContract({
               address: shareClassManager,
               abi: ABI.ShareClassManager,
-              client: this._root.getClient(this.pool.chainId)!,
+              client: this._root.getClient(this.pool.chainId),
             })
 
             const [maxDepositClaims, maxRedeemClaims] = await Promise.all([
@@ -294,7 +294,7 @@ export class ShareClass extends Entity {
       combineLatest([this._share(chainId), this._restrictionManager(chainId)]).pipe(
         switchMap(([share, restrictionManager]) =>
           defer(async () => {
-            const res = await this._root.getClient(this.pool.chainId)!.readContract({
+            const res = await this._root.getClient(this.pool.chainId).readContract({
               address: restrictionManager,
               abi: ABI.RestrictionManager,
               functionName: 'isMember',
@@ -859,14 +859,14 @@ export class ShareClass extends Entity {
             const holdings = getContract({
               address: holdingsAddr,
               abi: ABI.Holdings,
-              client: this._root.getClient(this.pool.chainId)!,
+              client: this._root.getClient(this.pool.chainId),
             })
 
             const [valuation, amount, value, assetDecimals, isLiability, ...accounts] = await Promise.all([
               holdings.read.valuation([this.pool.id.raw, this.id.raw, assetId.raw]),
               holdings.read.amount([this.pool.id.raw, this.id.raw, assetId.raw]),
               holdings.read.value([this.pool.id.raw, this.id.raw, assetId.raw]),
-              this._root.getClient(this.pool.chainId)!.readContract({
+              this._root.getClient(this.pool.chainId).readContract({
                 address: hubRegistry,
                 // Use inline ABI because of function overload
                 abi: parseAbi(['function decimals(uint256) view returns (uint8)']),
@@ -926,7 +926,7 @@ export class ShareClass extends Entity {
       combineLatest([this._root._protocolAddresses(chainId), this.pool.currency()]).pipe(
         switchMap(([addresses, poolCurrency]) =>
           defer(async () => {
-            const client = this._root.getClient(chainId)!
+            const client = this._root.getClient(chainId
             const [amountBn, priceBn] = await Promise.all([
               client.readContract({
                 address: addresses.balanceSheet,
@@ -1023,7 +1023,7 @@ export class ShareClass extends Entity {
       this._root._protocolAddresses(this.pool.chainId).pipe(
         switchMap(({ shareClassManager }) =>
           defer(async () => {
-            const [name, symbol] = await this._root.getClient(this.pool.chainId)!.readContract({
+            const [name, symbol] = await this._root.getClient(this.pool.chainId).readContract({
               address: shareClassManager,
               abi: ABI.ShareClassManager,
               functionName: 'metadata',
@@ -1060,7 +1060,7 @@ export class ShareClass extends Entity {
       this._root._protocolAddresses(this.pool.chainId).pipe(
         switchMap(({ shareClassManager }) =>
           defer(async () => {
-            const [totalIssuance, pricePerShare] = await this._root.getClient(this.pool.chainId)!.readContract({
+            const [totalIssuance, pricePerShare] = await this._root.getClient(this.pool.chainId).readContract({
               address: shareClassManager,
               abi: ABI.ShareClassManager,
               functionName: 'metrics',
@@ -1110,7 +1110,7 @@ export class ShareClass extends Entity {
             const scm = getContract({
               address: shareClassManager,
               abi: ABI.ShareClassManager,
-              client: this._root.getClient(this.pool.chainId)!,
+              client: this._root.getClient(this.pool.chainId),
             })
 
             const [epoch, pendingDeposit, pendingRedeem] = await Promise.all([
@@ -1150,13 +1150,13 @@ export class ShareClass extends Entity {
               pendingIssuancesTotal: new Balance(approvedDeposit, assetDecimals),
               pendingIssuances: depositEpochAmounts.map(([, amount], i) => ({
                 amount: new Balance(amount, assetDecimals),
-                approvedAt: new Date(Date.now()), // TODO: Get from indexer
+                approvedAt: new Date('2025'), // TODO: Get from indexer
                 epoch: issueEpoch + i,
               })),
               pendingRevocationsTotal: new Balance(approvedRedeem, poolCurrency.decimals),
               pendingRevocations: redeemEpochAmount.map(([, amount], i) => ({
                 amount: new Balance(amount, poolCurrency.decimals),
-                approvedAt: new Date(Date.now()), // TODO: Get from indexer
+                approvedAt: new Date('2025'), // TODO: Get from indexer
                 epoch: revokeEpoch + i,
               })),
             }
@@ -1221,7 +1221,7 @@ export class ShareClass extends Entity {
       this._share(chainId).pipe(
         switchMap((share) =>
           defer(async () => {
-            const address = await this._root.getClient(this.pool.chainId)!.readContract({
+            const address = await this._root.getClient(this.pool.chainId).readContract({
               address: share,
               abi: ABI.Currency,
               functionName: 'hook',
@@ -1244,7 +1244,7 @@ export class ShareClass extends Entity {
           if (triesLeft <= 0) return EMPTY
 
           return defer(async () => {
-            const exists = await this._root.getClient(this.pool.chainId)!.readContract({
+            const exists = await this._root.getClient(this.pool.chainId).readContract({
               address: accounting,
               abi: ABI.Accounting,
               functionName: 'exists',

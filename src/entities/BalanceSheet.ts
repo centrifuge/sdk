@@ -35,7 +35,7 @@ export class BalanceSheet extends Entity {
   deposit(assetId: AssetId, amount: Balance) {
     const self = this
     return this._transact(async function* (ctx) {
-      const client = self._root.getClient(self.chainId)!
+      const client = self._root.getClient(self.chainId)
       const [{ balanceSheet, spoke }, isBalanceSheetManager] = await Promise.all([
         self._root._protocolAddresses(self.chainId),
         self.pool.isBalanceSheetManager(self.chainId, ctx.signingAddress),
