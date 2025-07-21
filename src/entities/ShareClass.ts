@@ -537,9 +537,10 @@ export class ShareClass extends Entity {
   /**
    * Approve deposits and issue shares for the given assets.
    * @param assets - Array of assets to approve deposits and/or issue shares for
+   * `issuePricePerShare` can be a single price for all epochs or an array of prices for each epoch to be issued for.
    */
   approveDepositsAndIssueShares(
-    assets: { assetId: AssetId; approveAssetAmount?: Balance; issuePricePerShare?: Price }[]
+    assets: { assetId: AssetId; approveAssetAmount?: Balance; issuePricePerShare?: Price | Price[] }[]
   ) {
     // TODO: Also claim orders
     const self = this
@@ -551,10 +552,10 @@ export class ShareClass extends Entity {
 
       const batch: HexString[] = []
       const messages: Record<number, MessageType[]> = {}
-      // function addMessage(centId: number, message: MessageType) {
-      //   if (!messages[centId]) messages[centId] = []
-      //   messages[centId].push(message)
-      // }
+      function addMessage(centId: number, message: MessageType) {
+        if (!messages[centId]) messages[centId] = []
+        messages[centId].push(message)
+      }
 
       for (const asset of assets) {
         const pending = pendingAmounts.find((e) => e.assetId.equals(asset.assetId))
@@ -584,6 +585,7 @@ export class ShareClass extends Entity {
               ],
             })
           )
+          addMessage(asset.assetId.centrifugeId, MessageType.RequestCallback)
           nextDepositEpoch++
         }
 
@@ -591,21 +593,25 @@ export class ShareClass extends Entity {
         if (asset.issuePricePerShare) {
           if (nextIssueEpoch >= nextDepositEpoch) throw new Error('Nothing to issue')
 
-          batch.push(
-            ...Array.from({ length: nextDepositEpoch - nextIssueEpoch }, (_, i) =>
+          for (let i = 0; i < nextDepositEpoch - nextIssueEpoch; i++) {
+            const price = Array.isArray(asset.issuePricePerShare)
+              ? asset.issuePricePerShare[i]
+              : asset.issuePricePerShare
+            if (!price) break
+
+            if (price.lte(0n)) {
+              throw new Error(`Issue price per share must be greater than 0 for asset "${asset.assetId.toString()}"`)
+            }
+
+            batch.push(
               encodeFunctionData({
                 abi: ABI.Hub,
                 functionName: 'issueShares',
-                args: [
-                  self.pool.id.raw,
-                  self.id.raw,
-                  asset.assetId.raw,
-                  nextIssueEpoch + i,
-                  asset.issuePricePerShare!.toBigInt(),
-                ],
+                args: [self.pool.id.raw, self.id.raw, asset.assetId.raw, nextIssueEpoch + i, price.toBigInt(), 0n],
               })
             )
-          )
+            addMessage(asset.assetId.centrifugeId, MessageType.RequestCallback)
+          }
         }
       }
 
@@ -624,9 +630,10 @@ export class ShareClass extends Entity {
   /**
    * Approve redeems and revoke shares for the given assets.
    * @param assets - Array of assets to approve redeems and/or revoke shares for
+   * `approveShareAmount` can be a single amount for all epochs or an array of amounts for each epoch to be revoked.
    */
   approveRedeemsAndRevokeShares(
-    assets: { assetId: AssetId; approveShareAmount?: Balance; revokePricePerShare?: Price }[]
+    assets: { assetId: AssetId; approveShareAmount?: Balance; revokePricePerShare?: Price | Price[] }[]
   ) {
     // TODO: Also claim orders
     const self = this
@@ -638,10 +645,10 @@ export class ShareClass extends Entity {
 
       const batch: HexString[] = []
       const messages: Record<number, MessageType[]> = {}
-      // function addMessage(centId: number, message: MessageType) {
-      //   if (!messages[centId]) messages[centId] = []
-      //   messages[centId].push(message)
-      // }
+      function addMessage(centId: number, message: MessageType) {
+        if (!messages[centId]) messages[centId] = []
+        messages[centId].push(message)
+      }
 
       for (const asset of assets) {
         const pending = pendingAmounts.find((e) => e.assetId.equals(asset.assetId))
@@ -675,30 +682,28 @@ export class ShareClass extends Entity {
         }
 
         const nextRevokeEpoch = pending.revokeEpoch + 1
-        if (nextRevokeEpoch >= nextRedeemEpoch) throw new Error('Nothing to revoke')
-
         if (asset.revokePricePerShare) {
           if (nextRevokeEpoch >= nextRedeemEpoch) throw new Error('Nothing to revoke')
 
-          if (asset.revokePricePerShare.lte(0n)) {
-            throw new Error(`Revoke price per share must be greater than 0 for asset "${asset.assetId.toString()}"`)
-          }
+          for (let i = 0; i < nextRedeemEpoch - nextRevokeEpoch; i++) {
+            const price = Array.isArray(asset.revokePricePerShare)
+              ? asset.revokePricePerShare[i]
+              : asset.revokePricePerShare
+            if (!price) break
 
-          batch.push(
-            ...Array.from({ length: nextRedeemEpoch - nextRevokeEpoch }, (_, i) =>
+            if (price.lte(0n)) {
+              throw new Error(`Revoke price per share must be greater than 0 for asset "${asset.assetId.toString()}"`)
+            }
+
+            batch.push(
               encodeFunctionData({
                 abi: ABI.Hub,
                 functionName: 'revokeShares',
-                args: [
-                  self.pool.id.raw,
-                  self.id.raw,
-                  asset.assetId.raw,
-                  nextRevokeEpoch + i,
-                  asset.revokePricePerShare!.toBigInt(),
-                ],
+                args: [self.pool.id.raw, self.id.raw, asset.assetId.raw, nextRevokeEpoch + i, price.toBigInt(), 0n],
               })
             )
-          )
+            addMessage(asset.assetId.centrifugeId, MessageType.RequestCallback)
+          }
         }
       }
       if (batch.length === 0) {
@@ -1142,8 +1147,10 @@ export class ShareClass extends Entity {
               revokeEpoch,
               pendingDeposit: new Balance(pendingDeposit, assetDecimals),
               pendingRedeem: new Balance(pendingRedeem, poolCurrency.decimals),
-              approvedDeposit: new Balance(approvedDeposit, assetDecimals),
-              approvedRedeem: new Balance(approvedRedeem, poolCurrency.decimals),
+              pendingIssuancesTotal: new Balance(approvedDeposit, assetDecimals),
+              pendingIssuances: depositEpochAmounts.map(([, amount]) => new Balance(amount, assetDecimals)),
+              pendingRevocationsTotal: new Balance(approvedRedeem, poolCurrency.decimals),
+              pendingRevocations: redeemEpochAmount.map(([, amount]) => new Balance(amount, poolCurrency.decimals)),
             }
           }).pipe(
             repeatOnEvents(

@@ -8,7 +8,7 @@ import { AssetId, PoolId, ShareClassId } from '../utils/types.js'
 import { Pool } from './Pool.js'
 import { ShareClass } from './ShareClass.js'
 
-const chainId = 11155111
+const chainId = 84532
 const centId = 2
 const poolId = PoolId.from(centId, 1)
 const poolId2 = PoolId.from(centId, 2)
@@ -120,7 +120,7 @@ describe('ShareClass', () => {
     expect(pendingAmounts[0]!.chainId).to.equal(chainId)
     expect(pendingAmounts[0]!.pendingDeposit).to.be.instanceOf(Balance)
     expect(pendingAmounts[0]!.pendingRedeem).to.be.instanceOf(Balance)
-    expect(pendingAmounts[0]!.approvedDeposit).to.be.instanceOf(Balance)
-    expect(pendingAmounts[0]!.approvedRedeem).to.be.instanceOf(Balance)
+    expect(pendingAmounts[0]!.pendingIssuancesTotal).to.be.instanceOf(Balance)
+    expect(pendingAmounts[0]!.pendingRevocationsTotal).to.be.instanceOf(Balance)
   })
 })

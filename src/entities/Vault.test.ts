@@ -9,15 +9,16 @@ import { Pool } from './Pool.js'
 import { ShareClass } from './ShareClass.js'
 import { Vault } from './Vault.js'
 
-const chainId = 11155111
+const chainId = 84532
+const centId = 2
 
 // Pool with async vault, permissioned redeem
-const poolId = PoolId.from(1, 1)
+const poolId = PoolId.from(centId, 1)
 const scId = ShareClassId.from(poolId, 1)
-const assetId = AssetId.from(1, 1)
+const assetId = AssetId.from(centId, 1)
 
 // Pool with sync deposit vault, and permissioned async redeem
-const poolId2 = PoolId.from(1, 2)
+const poolId2 = PoolId.from(centId, 2)
 const scId2 = ShareClassId.from(poolId2, 1)
 
 // Active investor with a pending redeem order
