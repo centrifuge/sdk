@@ -59,7 +59,7 @@ export type PoolMetadata = {
       icon?: FileType | null
       minInitialInvestment?: number | null
       apyPercentage?: number | null
-      apy?: string | null
+      apy?: 'target' | '7day' | '30day' | '90day' | 'ytd' | 'sinceInception' | 'automatic' | null
       defaultAccounts?: {
         asset?: number
         equity?: number

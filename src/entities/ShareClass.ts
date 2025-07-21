@@ -36,16 +36,24 @@ export class ShareClass extends Entity {
 
   /**
    * Query the details of the share class.
-   * @returns The details of the share class, including name, symbol, total issuance, and NAV per share.
+   * @returns The details of the share class, including name, symbol, total issuance, NAV per share and relavant metadata from the pool metadata.
    */
   details() {
     return this._query(null, () =>
-      combineLatest([this._metrics(), this._metadata(), this.navPerNetwork(), this.pool.currency()]).pipe(
-        map(([metrics, metadata, navPerNetwork, poolCurrency]) => {
+      combineLatest([
+        this._metrics(),
+        this._metadata(),
+        this.navPerNetwork(),
+        this.pool.currency(),
+        this.pool.metadata(),
+      ]).pipe(
+        map(([metrics, metadata, navPerNetwork, poolCurrency, poolMeta]) => {
           const totalIssuance = navPerNetwork.reduce(
             (acc, item) => acc.add(item.totalIssuance),
             new Balance(0n, poolCurrency.decimals)
           )
+
+          const meta = poolMeta?.shareClasses?.[this.id.raw]
 
           return {
             id: this.id,
@@ -55,6 +63,18 @@ export class ShareClass extends Entity {
             pricePerShare: metrics.pricePerShare,
             nav: totalIssuance.mul(metrics.pricePerShare),
             navPerNetwork,
+            icon: meta?.icon || null,
+            minInitialInvestment: meta?.minInitialInvestment || null,
+            apyPercentage: meta?.apyPercentage || null,
+            apy: meta?.apy || null,
+            defaultAccounts: {
+              asset: meta?.defaultAccounts?.asset || null,
+              equity: meta?.defaultAccounts?.equity || null,
+              gain: meta?.defaultAccounts?.gain || null,
+              loss: meta?.defaultAccounts?.loss || null,
+              expense: meta?.defaultAccounts?.expense || null,
+              liability: meta?.defaultAccounts?.liability || null,
+            },
           }
         })
       )
