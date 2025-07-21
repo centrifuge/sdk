@@ -563,7 +563,7 @@ export class ShareClass extends Entity {
           throw new Error(`No pending amount found for asset "${asset.assetId.toString()}"`)
         }
 
-        let nextDepositEpoch = pending?.depositEpoch + 1
+        let nowDepositEpoch = pending?.depositEpoch
 
         if (asset.approveAssetAmount) {
           if (asset.approveAssetAmount.gt(pending.pendingDeposit)) {
@@ -580,20 +580,20 @@ export class ShareClass extends Entity {
                 self.pool.id.raw,
                 self.id.raw,
                 asset.assetId.raw,
-                nextDepositEpoch,
+                nowDepositEpoch,
                 asset.approveAssetAmount.toBigInt(),
               ],
             })
           )
           addMessage(asset.assetId.centrifugeId, MessageType.RequestCallback)
-          nextDepositEpoch++
+          nowDepositEpoch++
         }
 
-        const nextIssueEpoch = pending.issueEpoch + 1
+        const nowIssueEpoch = pending.issueEpoch
         if (asset.issuePricePerShare) {
-          if (nextIssueEpoch >= nextDepositEpoch) throw new Error('Nothing to issue')
+          if (nowIssueEpoch >= nowDepositEpoch) throw new Error('Nothing to issue')
 
-          for (let i = 0; i < nextDepositEpoch - nextIssueEpoch; i++) {
+          for (let i = 0; i < nowDepositEpoch - nowIssueEpoch; i++) {
             const price = Array.isArray(asset.issuePricePerShare)
               ? asset.issuePricePerShare[i]
               : asset.issuePricePerShare
@@ -607,7 +607,7 @@ export class ShareClass extends Entity {
               encodeFunctionData({
                 abi: ABI.Hub,
                 functionName: 'issueShares',
-                args: [self.pool.id.raw, self.id.raw, asset.assetId.raw, nextIssueEpoch + i, price.toBigInt(), 0n],
+                args: [self.pool.id.raw, self.id.raw, asset.assetId.raw, nowIssueEpoch + i, price.toBigInt(), 0n],
               })
             )
             addMessage(asset.assetId.centrifugeId, MessageType.RequestCallback)
@@ -656,7 +656,7 @@ export class ShareClass extends Entity {
           throw new Error(`No pending amount found for asset "${asset.assetId.toString()}"`)
         }
 
-        let nextRedeemEpoch = pending.redeemEpoch + 1
+        let nowRedeemEpoch = pending.redeemEpoch
 
         if (asset.approveShareAmount) {
           if (asset.approveShareAmount.gt(pending.pendingRedeem)) {
@@ -673,19 +673,19 @@ export class ShareClass extends Entity {
                 self.pool.id.raw,
                 self.id.raw,
                 asset.assetId.raw,
-                nextRedeemEpoch,
+                nowRedeemEpoch,
                 asset.approveShareAmount.toBigInt(),
               ],
             })
           )
-          nextRedeemEpoch++
+          nowRedeemEpoch++
         }
 
-        const nextRevokeEpoch = pending.revokeEpoch + 1
+        const nowRevokeEpoch = pending.revokeEpoch
         if (asset.revokePricePerShare) {
-          if (nextRevokeEpoch >= nextRedeemEpoch) throw new Error('Nothing to revoke')
+          if (nowRevokeEpoch >= nowRedeemEpoch) throw new Error('Nothing to revoke')
 
-          for (let i = 0; i < nextRedeemEpoch - nextRevokeEpoch; i++) {
+          for (let i = 0; i < nowRedeemEpoch - nowRevokeEpoch; i++) {
             const price = Array.isArray(asset.revokePricePerShare)
               ? asset.revokePricePerShare[i]
               : asset.revokePricePerShare
@@ -699,7 +699,7 @@ export class ShareClass extends Entity {
               encodeFunctionData({
                 abi: ABI.Hub,
                 functionName: 'revokeShares',
-                args: [self.pool.id.raw, self.id.raw, asset.assetId.raw, nextRevokeEpoch + i, price.toBigInt(), 0n],
+                args: [self.pool.id.raw, self.id.raw, asset.assetId.raw, nowRevokeEpoch + i, price.toBigInt(), 0n],
               })
             )
             addMessage(asset.assetId.centrifugeId, MessageType.RequestCallback)
@@ -1119,20 +1119,20 @@ export class ShareClass extends Entity {
               scm.read.pendingRedeem([this.id.raw, assetId.raw]),
             ])
 
-            const depositEpoch = epoch[0]
-            const redeemEpoch = epoch[1]
-            const issueEpoch = epoch[2]
-            const revokeEpoch = epoch[3]
+            const depositEpoch = epoch[0] + 1
+            const redeemEpoch = epoch[1] + 1
+            const issueEpoch = epoch[2] + 1
+            const revokeEpoch = epoch[3] + 1
 
             const [depositEpochAmounts, redeemEpochAmount] = await Promise.all([
               Promise.all(
                 Array.from({ length: depositEpoch - issueEpoch }).map((_, i) =>
-                  scm.read.epochInvestAmounts([this.id.raw, assetId.raw, issueEpoch + i + 1])
+                  scm.read.epochInvestAmounts([this.id.raw, assetId.raw, issueEpoch + i])
                 )
               ),
               Promise.all(
                 Array.from({ length: redeemEpoch - revokeEpoch }).map((_, i) =>
-                  scm.read.epochRedeemAmounts([this.id.raw, assetId.raw, revokeEpoch + i + 1])
+                  scm.read.epochRedeemAmounts([this.id.raw, assetId.raw, revokeEpoch + i])
                 )
               ),
             ])
@@ -1148,9 +1148,17 @@ export class ShareClass extends Entity {
               pendingDeposit: new Balance(pendingDeposit, assetDecimals),
               pendingRedeem: new Balance(pendingRedeem, poolCurrency.decimals),
               pendingIssuancesTotal: new Balance(approvedDeposit, assetDecimals),
-              pendingIssuances: depositEpochAmounts.map(([, amount]) => new Balance(amount, assetDecimals)),
+              pendingIssuances: depositEpochAmounts.map(([, amount], i) => ({
+                amount: new Balance(amount, assetDecimals),
+                approvedAt: new Date(Date.now()),
+                epoch: issueEpoch + i,
+              })),
               pendingRevocationsTotal: new Balance(approvedRedeem, poolCurrency.decimals),
-              pendingRevocations: redeemEpochAmount.map(([, amount]) => new Balance(amount, poolCurrency.decimals)),
+              pendingRevocations: redeemEpochAmount.map(([, amount], i) => ({
+                amount: new Balance(amount, poolCurrency.decimals),
+                approvedAt: new Date(Date.now()),
+                epoch: revokeEpoch + i,
+              })),
             }
           }).pipe(
             repeatOnEvents(
