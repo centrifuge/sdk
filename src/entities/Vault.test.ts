@@ -9,8 +9,8 @@ import { Pool } from './Pool.js'
 import { ShareClass } from './ShareClass.js'
 import { Vault } from './Vault.js'
 
-const chainId = 84532
-const centId = 2
+const chainId = 11155111
+const centId = 1
 
 // Pool with async vault, permissioned redeem
 const poolId = PoolId.from(centId, 1)

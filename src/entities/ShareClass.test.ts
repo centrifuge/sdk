@@ -8,8 +8,8 @@ import { AssetId, PoolId, ShareClassId } from '../utils/types.js'
 import { Pool } from './Pool.js'
 import { ShareClass } from './ShareClass.js'
 
-const chainId = 84532
-const centId = 2
+const chainId = 11155111
+const centId = 1
 const poolId = PoolId.from(centId, 1)
 const poolId2 = PoolId.from(centId, 2)
 const scId = ShareClassId.from(poolId, 1)
