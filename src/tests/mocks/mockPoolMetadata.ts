@@ -70,13 +70,13 @@ export const mockPoolMetadata: PoolMetadata = {
   },
   shareClasses: {
     '0x6756e091ae798a8e51e12e27ee8facdf': {
-      minInitialInvestment: '25000000000',
+      minInitialInvestment: 2500,
       apyPercentage: 16,
-      apy: 'Target',
+      apy: 'target',
     },
     '0xda64aae939e4d3a981004619f1709d8f': {
-      minInitialInvestment: '5000000000',
-      apy: 'Target',
+      minInitialInvestment: 5000,
+      apy: 'target',
     },
   },
   onboarding: {

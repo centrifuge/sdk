@@ -92,7 +92,7 @@ export class Vault extends Entity {
             this._root.balance(shareCurrency.address, address, this.chainId),
             this._allowance(address),
             defer(async () => {
-              const client = this._root.getClient(this.chainId)!
+              const client = this._root.getClient(this.chainId)
               const vault = getContract({ address: this.address, abi: ABI.AsyncVault, client })
               const investmentManager = getContract({
                 address: addresses.asyncRequestManager,
@@ -417,7 +417,7 @@ export class Vault extends Entity {
     return this._query(['isSyncDeposit'], () =>
       defer(() =>
         this._root
-          .getClient(this.chainId)!
+          .getClient(this.chainId)
           .readContract({
             address: this.address,
             abi: ABI.AsyncVault,
@@ -438,7 +438,7 @@ export class Vault extends Entity {
       this.network._share(this.shareClass.id).pipe(
         switchMap(
           (share) =>
-            this._root.getClient(this.chainId)!.readContract({
+            this._root.getClient(this.chainId).readContract({
               address: share,
               abi: ABI.Currency,
               functionName: 'hook',

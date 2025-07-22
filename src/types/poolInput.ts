@@ -13,11 +13,9 @@ export type PoolReport = {
 export type ShareClassInput = {
   tokenName: string
   symbolName: string
-  // interestRate: number | ''
-  // minRiskBuffer: number | ''
-  minInvestment: number | ''
-  apyPercentage: number | null
-  apy: string | null
+  minInvestment?: number | null
+  apyPercentage?: number | null
+  apy?: 'target' | '7day' | '30day' | '90day' | 'ytd' | 'sinceInception' | 'automatic' | null
   salt?: string
   defaultAccounts?: PoolMetadata['shareClasses'][number]['defaultAccounts']
 }

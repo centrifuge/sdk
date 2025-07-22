@@ -123,7 +123,7 @@ export class PoolNetwork extends Entity {
         switchMap(({ spoke }) => {
           return defer(
             () =>
-              this._root.getClient(this.chainId)!.readContract({
+              this._root.getClient(this.chainId).readContract({
                 address: spoke,
                 abi: ABI.Spoke,
                 functionName: 'isPoolActive',
@@ -253,6 +253,11 @@ export class PoolNetwork extends Entity {
           }),
           encodeFunctionData({
             abi: ABI.Hub,
+            functionName: 'notifyAssetPrice',
+            args: [self.pool.id.raw, vault.shareClassId.raw, vault.assetId.raw],
+          }),
+          encodeFunctionData({
+            abi: ABI.Hub,
             functionName: 'updateVault',
             args: [
               self.pool.id.raw,
@@ -264,7 +269,7 @@ export class PoolNetwork extends Entity {
             ],
           })
         )
-        messageTypes.push(MessageType.SetRequestManager, MessageType.UpdateVault)
+        messageTypes.push(MessageType.SetRequestManager, MessageType.NotifyPricePoolPerAsset, MessageType.UpdateVault)
       }
 
       if (batch.length === 0) {
@@ -289,7 +294,7 @@ export class PoolNetwork extends Entity {
         switchMap(({ spoke }) =>
           defer(async () => {
             try {
-              const address = await this._root.getClient(this.chainId)!.readContract({
+              const address = await this._root.getClient(this.chainId).readContract({
                 address: spoke,
                 abi: ABI.Spoke,
                 functionName: 'shareToken',

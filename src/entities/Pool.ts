@@ -58,7 +58,7 @@ export class Pool extends Entity {
       this._root._protocolAddresses(this.chainId).pipe(
         switchMap(({ hubRegistry }) =>
           defer(() => {
-            return this._root.getClient(this.chainId)!.readContract({
+            return this._root.getClient(this.chainId).readContract({
               address: hubRegistry,
               abi: ABI.HubRegistry,
               functionName: 'metadata',
@@ -129,7 +129,7 @@ export class Pool extends Entity {
     return this._query(['isManager', address.toLowerCase()], () => {
       return this._root._protocolAddresses(this.chainId).pipe(
         switchMap(({ hubRegistry }) => {
-          return this._root.getClient(this.chainId)!.readContract({
+          return this._root.getClient(this.chainId).readContract({
             address: hubRegistry,
             abi: ABI.HubRegistry,
             functionName: 'manager',
@@ -149,7 +149,7 @@ export class Pool extends Entity {
     return this._query(['isBSManager', chainId, address.toLowerCase()], () => {
       return this._root._protocolAddresses(chainId).pipe(
         switchMap(({ balanceSheet }) => {
-          return this._root.getClient(chainId)!.readContract({
+          return this._root.getClient(chainId).readContract({
             address: balanceSheet,
             abi: ABI.BalanceSheet,
             functionName: 'manager',
@@ -223,7 +223,7 @@ export class Pool extends Entity {
     return this._query(['currency'], () => {
       return this._root._protocolAddresses(this.chainId).pipe(
         switchMap(({ hubRegistry }) => {
-          return this._root.getClient(this.chainId)!.readContract({
+          return this._root.getClient(this.chainId).readContract({
             address: hubRegistry,
             abi: ABI.HubRegistry,
             functionName: 'currency',
@@ -361,7 +361,7 @@ export class Pool extends Entity {
       this._root._protocolAddresses(this.chainId).pipe(
         switchMap(({ shareClassManager }) =>
           defer(async () => {
-            const count = await this._root.getClient(this.chainId)!.readContract({
+            const count = await this._root.getClient(this.chainId).readContract({
               address: shareClassManager,
               abi: ABI.ShareClassManager,
               functionName: 'shareClassCount',
