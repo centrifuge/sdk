@@ -187,7 +187,8 @@ export class PoolNetwork extends Entity {
       const messageTypes: MessageType[] = []
 
       // Set vault managers as balance sheet managers if not already set
-      if (!isAsyncManagerSet && vaults.some((v) => v.kind === 'async')) {
+      // Always set async manager, as it's used by both async and sync deposit vaults
+      if (!isAsyncManagerSet) {
         batch.push(
           encodeFunctionData({
             abi: ABI.Hub,
@@ -249,7 +250,7 @@ export class PoolNetwork extends Entity {
           encodeFunctionData({
             abi: ABI.Hub,
             functionName: 'setRequestManager',
-            args: [self.pool.id.raw, vault.shareClassId.raw, vault.assetId.raw, asyncRequestManager],
+            args: [self.pool.id.raw, vault.shareClassId.raw, vault.assetId.raw, addressToBytes32(asyncRequestManager)],
           }),
           encodeFunctionData({
             abi: ABI.Hub,
