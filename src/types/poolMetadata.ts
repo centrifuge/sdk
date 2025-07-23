@@ -5,7 +5,6 @@ export type PoolMetadata = {
   pool: {
     name: string
     icon: FileType | null
-    type: 'open' | 'closed'
     asset: {
       class: 'Public credit' | 'Private credit'
       subClass: string
