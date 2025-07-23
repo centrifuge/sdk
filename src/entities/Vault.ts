@@ -7,6 +7,7 @@ import { MessageType } from '../types/transaction.js'
 import { Balance } from '../utils/BigInt.js'
 import { repeatOnEvents } from '../utils/rx.js'
 import { doSignMessage, doTransaction, signPermit, type Permit } from '../utils/transaction.js'
+import { AssetId } from '../utils/types.js'
 import { Entity } from './Entity.js'
 import type { Pool } from './Pool.js'
 import { PoolNetwork } from './PoolNetwork.js'
@@ -42,7 +43,8 @@ export class Vault extends Entity {
     public network: PoolNetwork,
     public shareClass: ShareClass,
     asset: HexString,
-    address: HexString
+    address: HexString,
+    public assetId: AssetId
   ) {
     super(_root, ['vault', network.chainId, shareClass.id.toString(), asset.toLowerCase()])
     this.chainId = network.chainId

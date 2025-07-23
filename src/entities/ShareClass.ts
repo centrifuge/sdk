@@ -150,7 +150,8 @@ export class ShareClass extends Entity {
                 new PoolNetwork(this._root, this.pool, vault.chainId),
                 this,
                 vault.assetAddress,
-                vault.address
+                vault.address,
+                vault.assetId
               )
           )
         })

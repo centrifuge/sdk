@@ -181,6 +181,7 @@ export class Centrifuge {
         pool: {
           name: metadataInput.poolName,
           icon: metadataInput.poolIcon,
+          type: metadataInput.poolType,
           asset: {
             class: metadataInput.assetClass,
             subClass: metadataInput.subAssetClass,
