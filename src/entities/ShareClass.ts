@@ -819,6 +819,50 @@ export class ShareClass extends Entity {
     }, this.pool.chainId)
   }
 
+  updateMembers(members: { address: HexString; validUntil: number; chainId: number }[]) {
+    const self = this
+    const memberMap = new Map<number, { address: HexString; validUntil: number; chainId: number; hub: HexString }[]>()
+
+    return this._transact(async function* (ctx) {
+      await Promise.all(
+        members.map(async (member: { address: HexString; validUntil: number; chainId: number }) => {
+          const [{ hub }, id] = await Promise.all([
+            self._root._protocolAddresses(self.pool.chainId),
+            self._root.id(member.chainId),
+          ])
+
+          if (!memberMap.has(id)) {
+            memberMap.set(id, [
+              { address: member.address, validUntil: member.validUntil, chainId: member.chainId, hub },
+            ])
+          } else {
+            memberMap
+              .get(id)
+              ?.push({ address: member.address, validUntil: member.validUntil, chainId: member.chainId, hub })
+          }
+        })
+      )
+
+      for (const [id, membersForChain] of memberMap.entries()) {
+        for (const member of membersForChain) {
+          const payload = encodePacked(
+            ['uint8', 'bytes32', 'uint64'],
+            [1, addressToBytes32(member.address), BigInt(member.validUntil)]
+          )
+          yield* wrapTransaction('Update member', ctx, {
+            contract: member.hub,
+            data: encodeFunctionData({
+              abi: ABI.Hub,
+              functionName: 'updateRestriction',
+              args: [self.pool.id.raw, self.id.raw, id, payload, 0n],
+            }),
+            messages: { [id]: [MessageType.UpdateRestriction] },
+          })
+        }
+      }
+    }, this.pool.chainId)
+  }
+
   /** @internal */
   _balances() {
     return this._root._queryIndexer(
