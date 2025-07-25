@@ -796,25 +796,66 @@ export class ShareClass extends Entity {
    * @param chainId Chain ID of the network on which to update the member
    */
   updateMember(address: HexString, validUntil: number, chainId: number) {
+    return this.updateMembers([{ address, validUntil, chainId }])
+  }
+
+  /**
+   * Batch update a list of members of the share class.
+   * @param members Array of members to update, each with address, validUntil and chainId
+   * @param members.address Address of the investor
+   * @param members.validUntil Time in seconds from Unix epoch until the investor is valid
+   * @param members.chainId Chain ID of the network on which to update the member
+   */
+  updateMembers(members: { address: HexString; validUntil: number; chainId: number }[]) {
     const self = this
+
     return this._transact(async function* (ctx) {
-      const [{ hub }, id] = await Promise.all([
+      const [{ hub }, ...ids] = await Promise.all([
         self._root._protocolAddresses(self.pool.chainId),
-        self._root.id(chainId),
+        ...members.map((m) => self._root.id(m.chainId)),
       ])
 
-      const payload = encodePacked(
-        ['uint8', 'bytes32', 'uint64'],
-        [/* UpdateRestrictionType.Member */ 1, addressToBytes32(address), BigInt(validUntil)]
-      )
-      yield* wrapTransaction('Update member', ctx, {
+      const batch: HexString[] = []
+      const messages: Record<number, MessageType[]> = {}
+      function addMessage(centId: number, message: MessageType) {
+        if (!messages[centId]) messages[centId] = []
+        messages[centId].push(message)
+      }
+
+      members.forEach((member, index) => {
+        const id = ids[index]
+
+        if (!id) {
+          return
+        }
+
+        batch.push(
+          encodeFunctionData({
+            abi: ABI.Hub,
+            functionName: 'updateRestriction',
+            args: [
+              self.pool.id.raw,
+              self.id.raw,
+              id,
+              encodePacked(
+                ['uint8', 'bytes32', 'uint64'],
+                [/* UpdateRestrictionType.Member */ 1, addressToBytes32(member.address), BigInt(member.validUntil)]
+              ),
+              0n,
+            ],
+          })
+        )
+        addMessage(id, MessageType.UpdateRestriction)
+      })
+
+      if (batch.length === 0) {
+        throw new Error('No data to update members')
+      }
+
+      yield* wrapTransaction('Approve and issue', ctx, {
         contract: hub,
-        data: encodeFunctionData({
-          abi: ABI.Hub,
-          functionName: 'updateRestriction',
-          args: [self.pool.id.raw, self.id.raw, id, payload, 0n],
-        }),
-        messages: { [id]: [MessageType.UpdateRestriction] },
+        data: batch,
+        messages,
       })
     }, this.pool.chainId)
   }
