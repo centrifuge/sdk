@@ -571,6 +571,11 @@ export class ShareClass extends Entity {
         self.pendingAmounts(),
       ])
 
+      const uniqueAssets = new Set(assets.map((a) => a.assetId.toString()))
+      if (uniqueAssets.size !== assets.length) {
+        throw new Error('Assets array contains multiple entries for the same asset ID')
+      }
+
       const batch: HexString[] = []
       const messages: Record<number, MessageType[]> = {}
       function addMessage(centId: number, message: MessageType) {
@@ -663,6 +668,11 @@ export class ShareClass extends Entity {
         self._root._protocolAddresses(self.pool.chainId),
         self.pendingAmounts(),
       ])
+
+      const uniqueAssets = new Set(assets.map((a) => a.assetId.toString()))
+      if (uniqueAssets.size !== assets.length) {
+        throw new Error('Assets array contains multiple entries for the same asset ID')
+      }
 
       const batch: HexString[] = []
       const messages: Record<number, MessageType[]> = {}
