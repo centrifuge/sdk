@@ -1,4 +1,5 @@
 import { expect } from 'chai'
+import sinon from 'sinon'
 import { ABI } from '../abi/index.js'
 import { NULL_ADDRESS } from '../constants.js'
 import { context } from '../tests/setup.js'
@@ -6,6 +7,7 @@ import { doTransaction } from '../utils/transaction.js'
 import { AssetId, PoolId, ShareClassId } from '../utils/types.js'
 import { Pool } from './Pool.js'
 import { PoolNetwork } from './PoolNetwork.js'
+import { Vault } from './Vault.js'
 
 const poolId = PoolId.from(1, 1)
 const scId = ShareClassId.from(poolId, 1)
@@ -47,7 +49,7 @@ describe('PoolNetwork', () => {
   })
 
   it('deploys share classes and vaults', async () => {
-    const { hub, freezeOnlyHook } = await context.centrifuge._protocolAddresses(chainId)
+    const { hub, freezeOnlyHook, vaultRouter } = await context.centrifuge._protocolAddresses(chainId)
 
     context.tenderlyFork.impersonateAddress = poolManager
     context.centrifuge.setSigner(context.tenderlyFork.signer)
@@ -63,16 +65,72 @@ describe('PoolNetwork', () => {
       })
     }, chainId)
 
+    const scId = ShareClassId.from(poolId, 2)
+    const assetId = AssetId.from(1, 1)
+
     const result = await poolNetwork.deploy(
-      [{ id: ShareClassId.from(poolId, 2), hook: freezeOnlyHook }],
-      [{ shareClassId: ShareClassId.from(poolId, 2), assetId: AssetId.from(1, 1), kind: 'syncDeposit' }]
+      [{ id: scId, hook: freezeOnlyHook }],
+      [{ shareClassId: scId, assetId, kind: 'syncDeposit' }]
     )
     expect(result.type).to.equal('TransactionConfirmed')
 
     const details = await poolNetwork.details()
     expect(details.activeShareClasses).to.have.length(2)
-    expect(details.activeShareClasses[1]!.id.equals(ShareClassId.from(poolId, 2))).to.equal(true)
+    expect(details.activeShareClasses[1]!.id.equals(scId)).to.equal(true)
     expect(details.activeShareClasses[1]!.shareToken).not.to.equal(NULL_ADDRESS)
-    expect(details.activeShareClasses[1]!.vaults).to.have.length(1)
+
+    const asset = await context.centrifuge._asset(assetId, chainId)
+    const vaultAddr = await context.centrifuge.getClient(chainId).readContract({
+      address: vaultRouter,
+      abi: ABI.VaultRouter,
+      functionName: 'getVault',
+      args: [poolId.raw, scId.raw, asset.address],
+    })
+    const vault = new Vault(
+      context.centrifuge,
+      new PoolNetwork(context.centrifuge, new Pool(context.centrifuge, poolId.raw, chainId), chainId),
+      details.activeShareClasses[1]!.shareClass,
+      asset.address,
+      vaultAddr,
+      AssetId.from(1, 1)
+    )
+
+    const vaultDetails = await vault.details()
+
+    expect(vaultDetails.isSyncInvest).to.be.true
+  })
+
+  it('disables vaults', async () => {
+    const { vaultRouter } = await context.centrifuge._protocolAddresses(chainId)
+
+    context.tenderlyFork.impersonateAddress = poolManager
+    context.centrifuge.setSigner(context.tenderlyFork.signer)
+
+    const scId = ShareClassId.from(poolId, 2)
+    const assetId = AssetId.from(1, 1)
+    const asset = await context.centrifuge._asset(assetId, chainId)
+
+    const vaultAddr = await context.centrifuge.getClient(chainId).readContract({
+      address: vaultRouter,
+      abi: ABI.VaultRouter,
+      functionName: 'getVault',
+      args: [poolId.raw, scId.raw, asset.address],
+    })
+
+    const mock = sinon.mock(poolNetwork)
+    mock.expects('details').resolves({
+      activeShareClasses: [{ id: scId, vaults: [{ assetId, address: vaultAddr }] }],
+    })
+
+    const result = await poolNetwork.disableVaults([{ shareClassId: scId, assetId }])
+    expect(result.type).to.equal('TransactionConfirmed')
+
+    const vaultAddr2 = await context.centrifuge.getClient(chainId).readContract({
+      address: vaultRouter,
+      abi: ABI.VaultRouter,
+      functionName: 'getVault',
+      args: [poolId.raw, scId.raw, asset.address],
+    })
+    expect(vaultAddr2).to.equal(NULL_ADDRESS)
   })
 })

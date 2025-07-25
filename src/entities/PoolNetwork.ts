@@ -286,6 +286,60 @@ export class PoolNetwork extends Entity {
   }
 
   /**
+   * Disable vaults.
+   * @param vaults - An array of vaults to disable
+   */
+  disableVaults(vaults: { shareClassId: ShareClassId; assetId: AssetId }[]) {
+    const self = this
+    return this._transact(async function* (ctx) {
+      if (vaults.length === 0) {
+        throw new Error('No vaults to disable')
+      }
+
+      const [{ hub }, id, details] = await Promise.all([
+        self._root._protocolAddresses(self.pool.chainId),
+        self._root.id(self.chainId),
+        self.details(),
+      ])
+
+      const batch: HexString[] = []
+      const messageTypes: MessageType[] = []
+
+      for (const vault of vaults) {
+        const shareClass = details.activeShareClasses.find((sc) => sc.id.equals(vault.shareClassId))
+        const existingVault = shareClass?.vaults.find((v) => v.assetId.equals(vault.assetId))
+        if (!existingVault) {
+          throw new Error(
+            `Vault for share class "${vault.shareClassId.raw}" and asset ID "${vault.assetId.raw}" not found`
+          )
+        }
+
+        batch.push(
+          encodeFunctionData({
+            abi: ABI.Hub,
+            functionName: 'updateVault',
+            args: [
+              self.pool.id.raw,
+              vault.shareClassId.raw,
+              vault.assetId.raw,
+              addressToBytes32(existingVault.address),
+              2, // VaultUpdateKind.Unlink
+              0n, // gas limit
+            ],
+          })
+        )
+        messageTypes.push(MessageType.UpdateVault)
+      }
+
+      yield* wrapTransaction('Disable vault(s)', ctx, {
+        data: batch,
+        contract: hub,
+        messages: { [id]: messageTypes },
+      })
+    }, this.pool.chainId)
+  }
+
+  /**
    * Get the contract address of the share token.
    * @internal
    */
