@@ -796,29 +796,16 @@ export class ShareClass extends Entity {
    * @param chainId Chain ID of the network on which to update the member
    */
   updateMember(address: HexString, validUntil: number, chainId: number) {
-    const self = this
-    return this._transact(async function* (ctx) {
-      const [{ hub }, id] = await Promise.all([
-        self._root._protocolAddresses(self.pool.chainId),
-        self._root.id(chainId),
-      ])
-
-      const payload = encodePacked(
-        ['uint8', 'bytes32', 'uint64'],
-        [/* UpdateRestrictionType.Member */ 1, addressToBytes32(address), BigInt(validUntil)]
-      )
-      yield* wrapTransaction('Update member', ctx, {
-        contract: hub,
-        data: encodeFunctionData({
-          abi: ABI.Hub,
-          functionName: 'updateRestriction',
-          args: [self.pool.id.raw, self.id.raw, id, payload, 0n],
-        }),
-        messages: { [id]: [MessageType.UpdateRestriction] },
-      })
-    }, this.pool.chainId)
+    return this.updateMembers([{ address, validUntil, chainId }])
   }
 
+  /**
+   * Batch update a list of members of the share class.
+   * @param members Array of members to update, each with address, validUntil and chainId
+   * @param members.address Address of the investor
+   * @param members.validUntil Time in seconds from Unix epoch until the investor is valid
+   * @param members.chainId Chain ID of the network on which to update the member
+   */
   updateMembers(members: { address: HexString; validUntil: number; chainId: number }[]) {
     const self = this
 
@@ -852,7 +839,7 @@ export class ShareClass extends Entity {
               id,
               encodePacked(
                 ['uint8', 'bytes32', 'uint64'],
-                [1, addressToBytes32(member.address), BigInt(member.validUntil)]
+                [/* UpdateRestrictionType.Member */ 1, addressToBytes32(member.address), BigInt(member.validUntil)]
               ),
               0n,
             ],
