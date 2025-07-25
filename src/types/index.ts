@@ -28,6 +28,7 @@ export type HexString = `0x${string}`
 
 export type CurrencyDetails = {
   address: HexString
+  tokenId: bigint
   decimals: number
   name: string
   symbol: string

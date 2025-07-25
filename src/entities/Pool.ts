@@ -230,12 +230,12 @@ export class Pool extends Entity {
             args: [this.id.raw],
           })
         }),
-        map((rawCurrency: bigint) => {
+        switchMap((rawCurrency: bigint) => {
           const assetId = new AssetId(rawCurrency)
           const countryCode = assetId.nationalCurrencyCode
 
           if (!countryCode) {
-            throw new Error(`No currency found`)
+            return this._root.assetCurrency(assetId)
           }
 
           const currency = NATIONAL_CURRENCY_METADATA[countryCode]
@@ -244,12 +244,11 @@ export class Pool extends Entity {
             throw new Error(`No currency found for country code ${countryCode}`)
           }
 
-          return {
+          return of({
             name: currency.name,
             symbol: currency.symbol,
             decimals: 18,
-            id: assetId,
-          }
+          })
         })
       )
     })

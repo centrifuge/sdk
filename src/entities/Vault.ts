@@ -5,8 +5,9 @@ import type { Centrifuge } from '../Centrifuge.js'
 import type { HexString } from '../types/index.js'
 import { MessageType } from '../types/transaction.js'
 import { Balance } from '../utils/BigInt.js'
+import { Permit, signPermit } from '../utils/permit.js'
 import { repeatOnEvents } from '../utils/rx.js'
-import { doSignMessage, doTransaction, signPermit, type Permit } from '../utils/transaction.js'
+import { doSignMessage, doTransaction } from '../utils/transaction.js'
 import { AssetId } from '../utils/types.js'
 import { Entity } from './Entity.js'
 import type { Pool } from './Pool.js'
@@ -202,16 +203,16 @@ export class Vault extends Entity {
    */
   increaseInvestOrder(amount: Balance) {
     const self = this
-    return this._transact(async function* ({ walletClient, publicClient, signer, signingAddress }) {
+    return this._transact(async function* (ctx) {
       const [estimate, investment, { vaultRouter }, isSyncDeposit] = await Promise.all([
         self._root._estimate(self.chainId, { centId: self.pool.id.centrifugeId }, MessageType.Request),
-        self.investment(signingAddress),
+        self.investment(ctx.signingAddress),
         self._root._protocolAddresses(self.chainId),
         self._isSyncDeposit(),
       ])
       const { investmentCurrency, investmentCurrencyBalance, investmentCurrencyAllowance, isAllowedToInvest } =
         investment
-      const supportsPermit = investmentCurrency.supportsPermit && 'send' in signer // eth-permit uses the deprecated send method
+      const supportsPermit = investmentCurrency.supportsPermit
       const needsApproval = investmentCurrencyAllowance.lt(amount)
 
       if (!isAllowedToInvest) throw new Error('Not allowed to invest')
@@ -221,38 +222,35 @@ export class Vault extends Entity {
 
       let permit: Permit | null = null
       if (needsApproval) {
+        // For async deposits, the vault is the spender, for sync deposits, the vault router is the spender
+        const spender = isSyncDeposit ? vaultRouter : self.address
         if (supportsPermit) {
-          permit = yield* doSignMessage('Sign Permit', () =>
-            signPermit(
-              walletClient,
-              signer,
-              self.chainId,
-              signingAddress,
-              investmentCurrency.address,
-              isSyncDeposit ? vaultRouter : self.address,
-              amount.toBigInt()
+          try {
+            permit = yield* doSignMessage('Sign Permit', () =>
+              signPermit(ctx, investmentCurrency.address, spender, amount.toBigInt())
             )
-          )
-        } else {
-          yield* doTransaction('Approve', publicClient, () =>
-            walletClient.writeContract({
+          } catch {}
+        }
+        if (!permit) {
+          // Doesn't support permits or permit signing failed, go for a regular approval instead
+          yield* doTransaction('Approve', ctx.publicClient, () =>
+            ctx.walletClient.writeContract({
               address: investmentCurrency.address,
               abi: ABI.Currency,
               functionName: 'approve',
-              // For async deposits, the vault is the spender, for sync deposits, the vault router is the spender
-              args: [isSyncDeposit ? vaultRouter : self.address, amount.toBigInt()],
+              args: [spender, amount.toBigInt()],
             })
           )
         }
       }
 
       if (isSyncDeposit) {
-        yield* doTransaction('Invest', publicClient, () =>
-          walletClient.writeContract({
+        yield* doTransaction('Invest', ctx.publicClient, () =>
+          ctx.walletClient.writeContract({
             address: vaultRouter,
             abi: ABI.VaultRouter,
             functionName: 'deposit',
-            args: [self.address, amount.toBigInt(), signingAddress, signingAddress],
+            args: [self.address, amount.toBigInt(), ctx.signingAddress, ctx.signingAddress],
           })
         )
       } else {
@@ -264,7 +262,7 @@ export class Vault extends Entity {
         const requestData = encodeFunctionData({
           abi: ABI.VaultRouter,
           functionName: 'requestDeposit',
-          args: [self.address, amount.toBigInt(), signingAddress, signingAddress],
+          args: [self.address, amount.toBigInt(), ctx.signingAddress, ctx.signingAddress],
         })
         const permitData =
           permit &&
@@ -275,14 +273,14 @@ export class Vault extends Entity {
               investmentCurrency.address,
               vaultRouter,
               amount.toBigInt(),
-              BigInt(permit.deadline),
+              permit.deadline,
               permit.v,
               permit.r as HexString,
               permit.s as HexString,
             ],
           })
-        yield* doTransaction('Invest', publicClient, () =>
-          walletClient.writeContract({
+        yield* doTransaction('Invest', ctx.publicClient, () =>
+          ctx.walletClient.writeContract({
             address: vaultRouter,
             abi: ABI.VaultRouter,
             functionName: 'multicall',

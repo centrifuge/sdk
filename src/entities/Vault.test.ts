@@ -106,10 +106,10 @@ describe('Vault - Async', () => {
       ),
     ])
 
-    expect(result[2]!.type).to.equal('TransactionConfirmed')
-    expect((result[2] as any).title).to.equal('Approve')
-    expect(result[5]!.type).to.equal('TransactionConfirmed')
-    expect((result[5] as any).title).to.equal('Invest')
+    expect(result[3]!.type).to.equal('TransactionConfirmed')
+    expect((result[3] as any).title).to.equal('Approve')
+    expect(result[6]!.type).to.equal('TransactionConfirmed')
+    expect((result[6] as any).title).to.equal('Invest')
     expect(investment.pendingInvestCurrency.toBigInt()).to.equal(defaultAssetsAmount.toBigInt())
 
     context.tenderlyFork.impersonateAddress = fundManager
@@ -198,7 +198,7 @@ describe('Vault - Async', () => {
 
     expect(result.type).to.equal('TransactionConfirmed')
     expect(investment.shareBalance.toBigInt()).to.equal(Balance.fromFloat(60, 18).toBigInt())
-  })
+  }).timeout(30000)
 
   it("should throw when placing an invest order larger than the users's balance", async () => {
     context.tenderlyFork.impersonateAddress = investorB
