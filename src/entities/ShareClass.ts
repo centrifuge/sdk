@@ -208,6 +208,7 @@ export class ShareClass extends Entity {
                   asset: {
                     decimals: data.asset.decimals,
                     address: data.asset.address,
+                    tokenId: BigInt(data.asset.assetTokenId),
                     name: data.asset.name,
                     symbol: data.asset.symbol,
                     chainId: Number(data.asset.blockchain.id),

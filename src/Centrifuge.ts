@@ -36,7 +36,7 @@ import {
 } from 'viem'
 import { ABI } from './abi/index.js'
 import { chains } from './config/chains.js'
-import { NULL_ADDRESS, PERMIT_TYPEHASH } from './constants.js'
+import { PERMIT_TYPEHASH } from './constants.js'
 import { Investor } from './entities/Investor.js'
 import { Pool } from './entities/Pool.js'
 import type {
@@ -340,30 +340,46 @@ export class Centrifuge {
   }
 
   /**
-   * Get the metadata for an ERC20 token
+   * Get the metadata for an ERC20 or ERC6909 token
    * @param address - The token address
    * @param chainId - The chain ID
    */
-  currency(address: HexString, chainId: number): Query<CurrencyDetails> {
+  currency(address: HexString, chainId: number, tokenId = 0n): Query<CurrencyDetails> {
     const curAddress = address.toLowerCase() as HexString
-    return this._query(['currency', curAddress, chainId], () =>
+    return this._query(['currency', curAddress, chainId, tokenId], () =>
       defer(async () => {
-        const contract = getContract({
-          address: curAddress,
-          abi: ABI.Currency,
-          client: this.getClient(chainId),
-        })
-        const [decimals, name, symbol, supportsPermit] = await Promise.all([
-          contract.read.decimals(),
-          contract.read.name(),
-          contract.read.symbol(),
-          contract.read
-            .PERMIT_TYPEHASH()
-            .then((hash) => hash === PERMIT_TYPEHASH)
-            .catch(() => false),
-        ])
+        let decimals: number, name: string, symbol: string, supportsPermit: boolean
+        if (tokenId) {
+          const contract = getContract({
+            address: curAddress,
+            abi: ABI.ERC6909,
+            client: this.getClient(chainId),
+          })
+          ;[decimals, name, symbol] = await Promise.all([
+            contract.read.decimals([tokenId]),
+            contract.read.name([tokenId]),
+            contract.read.symbol([tokenId]),
+          ])
+          supportsPermit = false
+        } else {
+          const contract = getContract({
+            address: curAddress,
+            abi: ABI.Currency,
+            client: this.getClient(chainId),
+          })
+          ;[decimals, name, symbol, supportsPermit] = await Promise.all([
+            contract.read.decimals(),
+            contract.read.name(),
+            contract.read.symbol(),
+            contract.read
+              .PERMIT_TYPEHASH()
+              .then((hash) => hash === PERMIT_TYPEHASH)
+              .catch(() => false),
+          ])
+        }
         return {
           address: curAddress,
+          tokenId,
           decimals,
           name,
           symbol,
@@ -371,6 +387,27 @@ export class Centrifuge {
           supportsPermit,
         }
       })
+    )
+  }
+
+  /**
+   * Get the asset currency details for a given asset ID
+   * @param assetId - The asset ID to query
+   */
+  assetCurrency(assetId: AssetId) {
+    return this._query(['asset', assetId.toString()], () =>
+      this._idToChain(assetId.centrifugeId).pipe(
+        switchMap((chainId) => this._protocolAddresses(chainId).pipe(map(({ spoke }) => ({ chainId, spoke })))),
+        switchMap(async ({ spoke, chainId }) => {
+          const [assetAddress, tokenId] = await this.getClient(chainId).readContract({
+            address: spoke,
+            abi: ABI.Spoke,
+            functionName: 'idToAsset',
+            args: [assetId.raw],
+          })
+          return this.currency(assetAddress, chainId, tokenId)
+        })
+      )
     )
   }
 
@@ -1010,47 +1047,8 @@ export class Centrifuge {
 
   /** @internal */
   _protocolAddresses(chainId: number) {
-    return this._query(['protocolAddresses'], () =>
-      this._getIndexerObservable<{ deployments: { items: (ProtocolContracts & { chainId?: string })[] } }>(
-        `{
-          deployments { 
-            items {
-              accounting
-              asyncRequestManager
-              asyncVaultFactory
-              axelarAdapter
-              balanceSheet
-              centrifugeId
-              chainId
-              freezeOnlyHook
-              fullRestrictionsHook
-              gasService
-              gateway
-              globalEscrow
-              guardian
-              holdings
-              hub
-              hubRegistry
-              identityValuation
-              messageDispatcher
-              messageProcessor
-              multiAdapter
-              poolEscrowFactory
-              redemptionRestrictionsHook
-              root
-              routerEscrow
-              shareClassManager
-              spoke
-              syncDepositVaultFactory
-              syncManager
-              wormholeAdapter
-              vaultRouter
-              tokenFactory
-            }
-          }
-        }`,
-        { chainId: String(chainId) }
-      ).pipe(
+    return this._query(null, () =>
+      this._deployments().pipe(
         map((data) => {
           if (!this.chains.includes(chainId)) {
             throw new Error(`Chain ID "${chainId}" not supported`)
@@ -1135,29 +1133,69 @@ export class Centrifuge {
     )
   }
 
-  /**
-   * Get the asset address and token ID for a given asset ID on a specific chain.
-   * @param assetId - The asset ID to query
-   * @param chainId - The chain ID of the Spoke where the asset was registered
-   * @internal
-   */
-  _asset(assetId: AssetId, chainId: number) {
-    return this._query(['asset', assetId.toString(), chainId], () =>
-      this._protocolAddresses(chainId).pipe(
-        switchMap(async ({ spoke }) => {
-          const [assetAddress, tokenId] = await this.getClient(chainId).readContract({
-            address: spoke,
-            abi: ABI.Spoke,
-            functionName: 'idToAsset',
-            args: [assetId.raw],
-          })
-          if (assetAddress === NULL_ADDRESS)
-            throw new Error(`Asset with ID "${assetId}" not found on chain "${chainId}"`)
-          return {
-            address: assetAddress,
-            tokenId,
-          }
+  /** @internal */
+  _idToChain(centrifugeId: number) {
+    return this._query(null, () =>
+      this._deployments().pipe(
+        map((data) => {
+          const item = data.blockchains.items.find((b) => Number(b.centrifugeId) === centrifugeId)
+          if (!item) throw new Error(`Chain with Centrifuge ID "${centrifugeId}" not found`)
+          return Number(item.id)
         })
+      )
+    )
+  }
+
+  /** @internal */
+  _deployments() {
+    return this._query(['deployments'], () =>
+      this._getIndexerObservable<{
+        blockchains: { items: { id: string; centrifugeId: string; name: string; icon: string }[] }
+        deployments: { items: (ProtocolContracts & { chainId?: string })[] }
+      }>(
+        `{
+            blockchains {
+              items {
+                centrifugeId
+                id
+              }
+            }
+            deployments { 
+              items {
+                accounting
+                asyncRequestManager
+                asyncVaultFactory
+                axelarAdapter
+                balanceSheet
+                centrifugeId
+                chainId
+                freezeOnlyHook
+                fullRestrictionsHook
+                gasService
+                gateway
+                globalEscrow
+                guardian
+                holdings
+                hub
+                hubRegistry
+                identityValuation
+                messageDispatcher
+                messageProcessor
+                multiAdapter
+                poolEscrowFactory
+                redemptionRestrictionsHook
+                root
+                routerEscrow
+                shareClassManager
+                spoke
+                syncDepositVaultFactory
+                syncManager
+                wormholeAdapter
+                vaultRouter
+                tokenFactory
+              }
+            }
+          }`
       )
     )
   }

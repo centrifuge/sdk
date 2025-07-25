@@ -52,7 +52,13 @@ export class BalanceSheet extends Entity {
         args: [assetId.raw],
       })
 
-      const allowance = await self._root._allowance(ctx.signingAddress, spoke, self.chainId, assetAddress, tokenId)
+      const allowance = await self._root._allowance(
+        ctx.signingAddress,
+        balanceSheet,
+        self.chainId,
+        assetAddress,
+        tokenId
+      )
 
       if (allowance < amount.toBigInt()) {
         yield* doTransaction('Approve', ctx.publicClient, () => {
@@ -96,7 +102,7 @@ export class BalanceSheet extends Entity {
         throw new Error('Signing address is not a BalanceSheetManager')
       }
 
-      const { address: assetAddress, tokenId } = await self._root._asset(assetId, self.chainId)
+      const { address: assetAddress, tokenId } = await self._root.assetCurrency(assetId)
 
       const tx = encodeFunctionData({
         abi: ABI.BalanceSheet,
