@@ -1,5 +1,5 @@
 import { catchError, combineLatest, defer, EMPTY, expand, filter, map, of, switchMap } from 'rxjs'
-import { encodeFunctionData, encodePacked, getContract, parseAbi } from 'viem'
+import { encodeFunctionData, encodePacked, getContract } from 'viem'
 import { ABI } from '../abi/index.js'
 import type { Centrifuge } from '../Centrifuge.js'
 import { AccountType } from '../types/holdings.js'
@@ -926,8 +926,12 @@ export class ShareClass extends Entity {
   /** @internal */
   _holding(assetId: AssetId) {
     return this._query(['holding', assetId.toString()], () =>
-      combineLatest([this._root._protocolAddresses(this.pool.chainId), this.pool.currency()]).pipe(
-        switchMap(([{ holdings: holdingsAddr, hubRegistry }, poolCurrency]) =>
+      combineLatest([
+        this._root._protocolAddresses(this.pool.chainId),
+        this.pool.currency(),
+        this._root._assetDecimals(assetId, this.pool.chainId),
+      ]).pipe(
+        switchMap(([{ holdings: holdingsAddr }, poolCurrency, assetDecimals]) =>
           defer(async () => {
             const holdings = getContract({
               address: holdingsAddr,
@@ -935,17 +939,10 @@ export class ShareClass extends Entity {
               client: this._root.getClient(this.pool.chainId),
             })
 
-            const [valuation, amount, value, assetDecimals, isLiability, ...accounts] = await Promise.all([
+            const [valuation, amount, value, isLiability, ...accounts] = await Promise.all([
               holdings.read.valuation([this.pool.id.raw, this.id.raw, assetId.raw]),
               holdings.read.amount([this.pool.id.raw, this.id.raw, assetId.raw]),
               holdings.read.value([this.pool.id.raw, this.id.raw, assetId.raw]),
-              this._root.getClient(this.pool.chainId).readContract({
-                address: hubRegistry,
-                // Use inline ABI because of function overload
-                abi: parseAbi(['function decimals(uint256) view returns (uint8)']),
-                functionName: 'decimals',
-                args: [assetId.raw],
-              }),
               holdings.read.isLiability([this.pool.id.raw, this.id.raw, assetId.raw]),
               ...[
                 AccountType.Asset,
@@ -1176,7 +1173,7 @@ export class ShareClass extends Entity {
       combineLatest([
         this._root._protocolAddresses(this.pool.chainId),
         this.pool.currency(),
-        this._root.assetDecimals(assetId, this.pool.chainId),
+        this._root._assetDecimals(assetId, this.pool.chainId),
       ]).pipe(
         switchMap(([{ shareClassManager }, poolCurrency, assetDecimals]) =>
           defer(async () => {

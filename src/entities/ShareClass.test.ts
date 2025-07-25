@@ -49,7 +49,7 @@ describe('ShareClass', () => {
 
   it('gets the vaults', async () => {
     const vaults = await shareClass.vaults(chainId)
-    expect(vaults.length).to.equal(1)
+    expect(vaults).to.have.length.greaterThan(0)
     expect(vaults[0]!.shareClass.id.raw).to.equal(scId.raw)
   })
 

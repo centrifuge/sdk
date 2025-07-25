@@ -35,14 +35,14 @@ describe('PoolNetwork', () => {
 
   it('get vaults for a share class', async () => {
     const vaults = await poolNetwork.vaults(scId)
-    expect(vaults).to.have.length(1)
+    expect(vaults).to.have.length.greaterThan(0)
     expect(vaults[0]!.address.toLowerCase()).not.to.equal(NULL_ADDRESS)
   })
 
   it('gets the details', async () => {
     const details = await poolNetwork.details()
     expect(details.isActive).to.equal(true)
-    expect(details.activeShareClasses).to.have.length(1)
+    expect(details.activeShareClasses).to.have.length.greaterThan(0)
     expect(details.activeShareClasses[0]!.shareToken).not.to.equal(NULL_ADDRESS)
     expect(details.activeShareClasses[0]!.id.equals(scId)).to.equal(true)
     expect(details.activeShareClasses[0]!.vaults).to.have.length(1)

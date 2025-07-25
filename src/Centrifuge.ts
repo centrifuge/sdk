@@ -578,9 +578,10 @@ export class Centrifuge {
   }
 
   /**
-   * Get the decimals of asset
+   * Get the decimals of asset on the Hub side
+   * @internal
    */
-  assetDecimals(assetId: AssetId, chainId: number) {
+  _assetDecimals(assetId: AssetId, chainId: number) {
     return this._query(['assetDecimals', assetId.toString()], () =>
       this._protocolAddresses(chainId).pipe(
         switchMap(({ hubRegistry }) =>

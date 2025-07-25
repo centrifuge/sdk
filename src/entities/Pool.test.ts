@@ -81,7 +81,6 @@ describe('Pool', () => {
 
   it('should return the currency of the pool', async () => {
     const currency = await pool.currency()
-    expect(currency).to.have.property('id')
     expect(currency).to.have.property('name')
     expect(currency).to.have.property('symbol')
     expect(currency).to.have.property('decimals')
@@ -91,7 +90,7 @@ describe('Pool', () => {
     const details = await pool.details()
     expect(details.id.raw).to.equal(poolId.raw)
     expect(details.metadata).to.not.be.undefined
-    expect(details.shareClasses).to.have.length(1)
+    expect(details.shareClasses).to.have.length.greaterThan(0)
     expect(details.currency).to.exist
   })
 

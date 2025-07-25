@@ -106,7 +106,7 @@ describe('Centrifuge', () => {
     })
 
     it('should fetch the asset decimals', async () => {
-      const decimals = await context.centrifuge.assetDecimals(assetId, 11155111)
+      const decimals = await context.centrifuge._assetDecimals(assetId, 11155111)
       expect(decimals).to.equal(6)
     })
 
