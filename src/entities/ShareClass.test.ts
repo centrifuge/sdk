@@ -113,6 +113,38 @@ describe('ShareClass', () => {
     expect(memberAfter.validUntil.toISOString()).to.equal(new Date(1800000000 * 1000).toISOString())
   })
 
+  it('batch updates members', async () => {
+    const investor1 = randomAddress()
+    const investor2 = randomAddress()
+
+    const membersBefore = await Promise.all([
+      shareClass.member(investor1, chainId),
+      shareClass.member(investor2, chainId),
+    ])
+
+    expect(membersBefore[0]!.isMember).to.equal(false)
+    expect(membersBefore[1]!.isMember).to.equal(false)
+
+    context.tenderlyFork.impersonateAddress = fundManager
+    context.centrifuge.setSigner(context.tenderlyFork.signer)
+
+    const [, membersAfter] = await Promise.all([
+      shareClass.updateMembers([
+        { address: investor1, validUntil: 1800000000, chainId },
+        { address: investor2, validUntil: 1800000000, chainId },
+      ]),
+      Promise.all([
+        firstValueFrom(shareClass.member(investor1, chainId).pipe(skipWhile((m) => !m.isMember))),
+        firstValueFrom(shareClass.member(investor2, chainId).pipe(skipWhile((m) => !m.isMember))),
+      ]),
+    ])
+
+    expect(membersAfter).to.deep.equal([
+      { isMember: true, validUntil: new Date(1800000000 * 1000) },
+      { isMember: true, validUntil: new Date(1800000000 * 1000) },
+    ])
+  })
+
   it('gets pending amounts', async () => {
     const pendingAmounts = await shareClass.pendingAmounts()
     expect(pendingAmounts.length).to.be.greaterThan(0)
