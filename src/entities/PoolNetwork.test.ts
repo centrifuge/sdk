@@ -79,7 +79,7 @@ describe('PoolNetwork', () => {
     expect(details.activeShareClasses[1]!.id.equals(scId)).to.equal(true)
     expect(details.activeShareClasses[1]!.shareToken).not.to.equal(NULL_ADDRESS)
 
-    const asset = await context.centrifuge._asset(assetId, chainId)
+    const asset = await context.centrifuge.assetCurrency(assetId)
     const vaultAddr = await context.centrifuge.getClient(chainId).readContract({
       address: vaultRouter,
       abi: ABI.VaultRouter,
@@ -108,7 +108,7 @@ describe('PoolNetwork', () => {
 
     const scId = ShareClassId.from(poolId, 2)
     const assetId = AssetId.from(1, 1)
-    const asset = await context.centrifuge._asset(assetId, chainId)
+    const asset = await context.centrifuge.assetCurrency(assetId)
 
     const vaultAddr = await context.centrifuge.getClient(chainId).readContract({
       address: vaultRouter,
