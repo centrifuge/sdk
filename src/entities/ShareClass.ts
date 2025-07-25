@@ -835,11 +835,11 @@ export class ShareClass extends Entity {
         messages[centId].push(message)
       }
 
-      for (const member of members) {
-        const encodedId = await self._root.id(member.chainId)
-        const id = ids.find((id) => id === encodedId)
+      members.forEach((member, index) => {
+        const id = ids[index]
+
         if (!id) {
-          throw new Error(`No ID found for chain ID ${member.chainId}`)
+          return
         }
 
         batch.push(
@@ -859,7 +859,7 @@ export class ShareClass extends Entity {
           })
         )
         addMessage(id, MessageType.UpdateRestriction)
-      }
+      })
 
       if (batch.length === 0) {
         throw new Error('No data to update members')
