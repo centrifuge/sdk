@@ -2,6 +2,7 @@ export default [
   'event Approval(address indexed owner, address indexed spender, uint256 value)',
   'event Transfer(address indexed from, address indexed to, uint256 value)',
   'function PERMIT_TYPEHASH() view returns (bytes32)',
+  'function nonces(address) view returns (uint256)',
   'function approve(address, uint) external returns (bool)',
   'function transfer(address, uint) external returns (bool)',
   'function balanceOf(address) view returns (uint)',

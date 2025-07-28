@@ -1,6 +1,6 @@
 {
   "name": "@centrifuge/sdk",
-  "version": "0.0.0-alpha.34",
+  "version": "0.0.0-alpha.35",
   "description": "",
   "homepage": "https://github.com/centrifuge/sdk/tree/main#readme",
   "author": "",
@@ -40,7 +40,6 @@
   },
   "dependencies": {
     "decimal.js-light": "^2.5.1",
-    "eth-permit": "^0.2.3",
     "isomorphic-ws": "^5.0.0",
     "rxjs": "^7.8.1"
   },

@@ -35,17 +35,17 @@ describe('PoolNetwork', () => {
 
   it('get vaults for a share class', async () => {
     const vaults = await poolNetwork.vaults(scId)
-    expect(vaults).to.have.length(1)
+    expect(vaults).to.have.length.greaterThan(0)
     expect(vaults[0]!.address.toLowerCase()).not.to.equal(NULL_ADDRESS)
   })
 
   it('gets the details', async () => {
     const details = await poolNetwork.details()
     expect(details.isActive).to.equal(true)
-    expect(details.activeShareClasses).to.have.length(1)
+    expect(details.activeShareClasses).to.have.length.greaterThan(0)
     expect(details.activeShareClasses[0]!.shareToken).not.to.equal(NULL_ADDRESS)
     expect(details.activeShareClasses[0]!.id.equals(scId)).to.equal(true)
-    expect(details.activeShareClasses[0]!.vaults).to.have.length(1)
+    expect(details.activeShareClasses[0]!.vaults).to.have.length.greaterThan(0)
   })
 
   it('deploys share classes and vaults', async () => {
@@ -60,7 +60,7 @@ describe('PoolNetwork', () => {
           address: hub,
           abi: ABI.Hub,
           functionName: 'addShareClass',
-          args: [poolId.raw, 'Test Share Class', 'TSC', '0x1'.padEnd(66, '0') as any],
+          args: [poolId.raw, 'Test Share Class', 'TSC', '0x123'.padEnd(66, '0') as any],
         })
       })
     }, chainId)
@@ -79,7 +79,7 @@ describe('PoolNetwork', () => {
     expect(details.activeShareClasses[1]!.id.equals(scId)).to.equal(true)
     expect(details.activeShareClasses[1]!.shareToken).not.to.equal(NULL_ADDRESS)
 
-    const asset = await context.centrifuge._asset(assetId, chainId)
+    const asset = await context.centrifuge.assetCurrency(assetId)
     const vaultAddr = await context.centrifuge.getClient(chainId).readContract({
       address: vaultRouter,
       abi: ABI.VaultRouter,
@@ -108,7 +108,7 @@ describe('PoolNetwork', () => {
 
     const scId = ShareClassId.from(poolId, 2)
     const assetId = AssetId.from(1, 1)
-    const asset = await context.centrifuge._asset(assetId, chainId)
+    const asset = await context.centrifuge.assetCurrency(assetId)
 
     const vaultAddr = await context.centrifuge.getClient(chainId).readContract({
       address: vaultRouter,

@@ -18,7 +18,6 @@ export default [
   'function isEnabled(address vault, address controller) view returns (bool)',
   'function lockDepositRequest(address vault, uint256 amount, address controller, address owner) payable',
   'function lockedRequests(address controller, address vault) view returns (uint256 amount)',
-  'function messageDispatcher() view returns (address)',
   'function multicall(bytes[] data) payable',
   'function permit(address asset, address spender, uint256 assets, uint256 deadline, uint8 v, bytes32 r, bytes32 s) payable',
   'function recoverTokens(address token, address receiver, uint256 amount)',

@@ -101,7 +101,7 @@ export class PoolNetwork extends Entity {
     return this._query(null, () =>
       this.vaults(scId).pipe(
         withLatestFrom(
-          typeof asset === 'string' ? of({ address: asset, tokenId: 0n }) : this._root._asset(asset, this.chainId)
+          typeof asset === 'string' ? of({ address: asset, tokenId: 0n }) : this._root.assetCurrency(asset)
         ),
         map(([vaults, { address }]) => {
           const addr = address.toLowerCase()
