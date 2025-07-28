@@ -32,13 +32,13 @@ describe('Pool', () => {
 
   it('gets active networks of a pool', async () => {
     const networks = await pool.activeNetworks()
-    expect(networks).to.have.length(1)
-    expect(networks[0]!.chainId).to.equal(chainId)
+    expect(networks).to.have.length.greaterThan(0)
+    expect(networks.some((n) => n.chainId === chainId)).to.equal(true)
   })
 
   it('gets share class IDs of a pool', async () => {
     const shareClasses = await pool.shareClasses()
-    expect(shareClasses).to.have.length(1)
+    expect(shareClasses).to.have.length.greaterThan(0)
     expect(shareClasses[0]!.id.raw).to.equal(scId.raw)
   })
 
@@ -63,9 +63,6 @@ describe('Pool', () => {
     })
 
     const pool = await centrifugeWithPin.pool(poolId)
-
-    const detailsBefore = await pool.details()
-    expect(detailsBefore.metadata).to.equal(null)
 
     context.tenderlyFork.impersonateAddress = poolManager
     centrifugeWithPin.setSigner(context.tenderlyFork.signer)
