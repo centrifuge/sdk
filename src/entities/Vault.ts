@@ -229,7 +229,9 @@ export class Vault extends Entity {
             permit = yield* doSignMessage('Sign Permit', () =>
               signPermit(ctx, investmentCurrency.address, spender, amount.toBigInt())
             )
-          } catch {}
+          } catch {
+            console.warn('Permit signing failed, falling back to approval transaction')
+          }
         }
         if (!permit) {
           // Doesn't support permits or permit signing failed, go for a regular approval instead
