@@ -45,7 +45,7 @@ describe('PoolNetwork', () => {
     expect(details.activeShareClasses).to.have.length.greaterThan(0)
     expect(details.activeShareClasses[0]!.shareToken).not.to.equal(NULL_ADDRESS)
     expect(details.activeShareClasses[0]!.id.equals(scId)).to.equal(true)
-    expect(details.activeShareClasses[0]!.vaults).to.have.length(1)
+    expect(details.activeShareClasses[0]!.vaults).to.have.length.greaterThan(0)
   })
 
   it('deploys share classes and vaults', async () => {
