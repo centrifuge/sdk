@@ -60,7 +60,7 @@ describe('PoolNetwork', () => {
           address: hub,
           abi: ABI.Hub,
           functionName: 'addShareClass',
-          args: [poolId.raw, 'Test Share Class', 'TSC', '0x1'.padEnd(66, '0') as any],
+          args: [poolId.raw, 'Test Share Class', 'TSC', '0x123'.padEnd(66, '0') as any],
         })
       })
     }, chainId)
