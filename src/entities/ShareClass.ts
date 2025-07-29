@@ -1011,8 +1011,6 @@ export class ShareClass extends Entity {
                 args: [this.pool.id.raw, this.id.raw, asset.id.raw, false],
               }),
             ])
-            console.log('addresses.spoke', addresses.spoke)
-            console.log('priceBn', priceBn, this.pool.id.raw, this.id.raw, asset.id.raw)
 
             const amount = new Balance(amountBn, asset.decimals)
             const price = new Price(priceBn)

@@ -23,7 +23,7 @@ class TestContext {
   }
 
   async cleanup() {
-    if (process.env.DEBUG === 'true') {
+    if (process.env.DEBUG === 'true' && process.env.LOCAL !== 'true') {
       console.log('DEBUG is true, RPC endpoint will not be deleted', this.tenderlyFork.rpcUrl)
       return
     }
