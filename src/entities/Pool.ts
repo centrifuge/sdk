@@ -385,4 +385,21 @@ export class Pool extends Entity {
       )
     )
   }
+
+  /** @internal */
+  _escrow() {
+    return this._query(['escrow'], () =>
+      this._root._protocolAddresses(this.chainId).pipe(
+        switchMap(({ poolEscrowFactory }) => {
+          return this._root.getClient(this.chainId).readContract({
+            address: poolEscrowFactory,
+            abi: ABI.PoolEscrowFactory,
+            functionName: 'escrow',
+            args: [this.id.raw],
+          })
+        }),
+        map((address) => address.toLowerCase() as HexString)
+      )
+    )
+  }
 }
