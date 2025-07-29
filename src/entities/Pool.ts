@@ -14,6 +14,7 @@ import { Entity } from './Entity.js'
 import { PoolNetwork } from './PoolNetwork.js'
 import { Reports } from './Reports/index.js'
 import { ShareClass } from './ShareClass.js'
+import { PoolMetadataInput, ShareClassInput } from '../types/poolInput.js'
 export class Pool extends Entity {
   id: PoolId
 
@@ -268,6 +269,226 @@ export class Pool extends Entity {
           functionName: 'setPoolMetadata',
           args: [self.id.raw, toHex(cid)],
         }),
+      })
+    }, this.chainId)
+  }
+
+  updatePool(
+    metadataInput: Partial<PoolMetadataInput>,
+    updatedShareClasses: ({ id: ShareClassId } & ShareClassInput)[],
+    addedShareClasses: ShareClassInput[] = []
+  ) {
+    const self = this
+
+    return this._transact(async function* (ctx) {
+      const existingPool = await self._root.pool(self.id)
+      const poolDetails = await existingPool.details()
+      const poolMetadata = await existingPool.metadata()
+      const activeNetworks = await existingPool.activeNetworks()
+      const networksDetails = await Promise.all(
+        activeNetworks.map((network) => {
+          return network.details()
+        })
+      )
+
+      if (!poolDetails || !poolMetadata) {
+        throw new Error('Pool details or metadata not found')
+      }
+
+      // console.log({
+      //   existingPool,
+      //   poolDetails,
+      //   shareClasses: poolDetails.shareClasses,
+      //   activeNetworks,
+      //   activeShareClasses: networksDetails.flatMap((details) => details.activeShareClasses || []),
+      //   networksDetails,
+      //   metadataInput,
+      //   updatedShareClasses,
+      //   addedShareClasses,
+      // })
+      console.log(poolDetails.metadata?.shareClasses)
+      console.log(poolDetails.shareClasses)
+      // TODO: Implement the logic to update the pool metadata and share classes
+
+      const existingShareClassesCount = poolDetails.shareClasses.length
+      const scIds = Array.from({ length: addedShareClasses.length }, (_, index) =>
+        ShareClassId.from(poolDetails.id, existingShareClassesCount + index + 1)
+      )
+
+      const newShareClassesById: PoolMetadata['shareClasses'] = {}
+      addedShareClasses.forEach((sc, index) => {
+        newShareClassesById[scIds[index]!.raw] = {
+          minInitialInvestment: sc.minInvestment,
+          apyPercentage: sc.apyPercentage,
+          apy: sc.apy,
+          defaultAccounts: sc.defaultAccounts,
+        }
+      })
+
+      const poolStatus =
+        metadataInput.poolType === undefined
+          ? poolMetadata.pool.status
+          : metadataInput.poolType === 'open'
+            ? 'open'
+            : 'upcoming'
+
+      // get poolMetadata and spread there metadataInput - this will override the existing metadata and keep it updated
+      const formattedMetadata: PoolMetadata = {
+        version: 1,
+        pool: {
+          name: metadataInput.poolName || poolMetadata.pool.name,
+          icon: metadataInput.poolIcon || poolMetadata.pool.icon,
+          asset: {
+            class: metadataInput.assetClass || poolMetadata.pool.asset.class,
+            subClass: metadataInput.subAssetClass || poolMetadata.pool.asset.subClass,
+          },
+          issuer: {
+            name: metadataInput.issuerName || poolMetadata.pool.issuer.name,
+            repName: metadataInput.issuerRepName || poolMetadata?.pool.issuer.repName,
+            description: metadataInput.issuerDescription || poolMetadata.pool.issuer.description,
+            email: metadataInput.email || poolMetadata.pool.issuer.email,
+            logo: metadataInput.issuerLogo || poolMetadata.pool.issuer.logo,
+            shortDescription: metadataInput.issuerShortDescription || poolMetadata.pool.issuer.shortDescription,
+            categories: metadataInput.issuerCategories || poolMetadata.pool.issuer.categories,
+          },
+          poolStructure: metadataInput.poolStructure || poolMetadata.pool.poolStructure,
+          investorType: metadataInput.investorType || poolMetadata.pool.investorType,
+          links: {
+            executiveSummary: metadataInput.executiveSummary || poolMetadata.pool.links?.executiveSummary,
+            forum: metadataInput.forum || poolMetadata.pool.links?.forum,
+            website: metadataInput.website || poolMetadata.pool.links?.website,
+          },
+          details: metadataInput.details || poolMetadata.pool.details,
+          status: poolStatus,
+          listed: metadataInput.listed || poolMetadata.pool.listed,
+          poolRatings: metadataInput.poolRatings || poolMetadata.pool.poolRatings,
+          reports: metadataInput.report ? [metadataInput.report] : poolMetadata.pool.reports,
+        },
+        shareClasses: { ...poolMetadata.shareClasses, ...newShareClassesById },
+      }
+
+      // Loop through shareClassesInput and find by id inside new object poolDetails.metadata.shareClasses -> reoplace apy and minInvestment there
+      updatedShareClasses.forEach((sc) => {
+        const id = sc.id.toString()
+
+        if (!formattedMetadata.shareClasses[id]) {
+          throw new Error(`Share class ${id} not found in pool metadata`)
+        }
+
+        formattedMetadata.shareClasses[id] = {
+          ...formattedMetadata.shareClasses[id],
+          minInitialInvestment: sc.minInvestment,
+          apyPercentage: sc.apyPercentage,
+          apy: sc.apy,
+          defaultAccounts: sc.defaultAccounts,
+        }
+      })
+      // Call updateShareClassMetadata (formattedMetadata.shareClasses)
+      // Call updatePoolMetadata (formattedMetadata)
+
+      // Loop through shareClassesInput and find by id inside poolDetails.shareClasses -> check if name/symbol changed if yes, add them to some array (array of objects) - ShareClassesToBeUpdated
+      // loop through networkDetails and check if activeShareClasses contains one of ShareClassesToBeUpdated
+      // create Map<networkId, ShareClassesToBeUpdated>
+      // call notifyShareClass per network (shareClassesToBeUpdatedPerNetwork)
+      const shareClassesToBeUpdated = updatedShareClasses.filter((sc) => {
+        const shareClass = poolDetails.shareClasses.find((scDetails) => scDetails.details.id.equals(sc.id))
+
+        if (!shareClass) {
+          throw new Error(`Share class ${sc.id} not found in pool details`)
+        }
+
+        if (sc.symbolName !== shareClass.details.symbol || sc.tokenName !== shareClass.details.name) {
+          return true
+        }
+      })
+
+      const shareClassesToBeUpdatedIds = new Set(shareClassesToBeUpdated.map((sc) => sc.id.toString()))
+
+      const shareClassesToBeUpdatedPerNetwork = new Map<number, ShareClass[]>()
+      networksDetails.forEach((details, index) => {
+        const activeShareClasses = details.activeShareClasses || []
+        const shareClassesToUpdate = activeShareClasses.filter((asc) =>
+          shareClassesToBeUpdatedIds.has(asc.id.toString())
+        )
+        if (shareClassesToUpdate.length > 0) {
+          const poolNetwork = activeNetworks[index]
+          if (!poolNetwork) {
+            return
+          }
+          shareClassesToBeUpdatedPerNetwork.set(
+            poolNetwork.chainId,
+            shareClassesToUpdate.map((sc) => sc.shareClass)
+          )
+        }
+      })
+      // call notifyShareClass per network (shareClassesToBeUpdatedPerNetwork)
+      // call addShareClass per each newShareClassesById (newShareClassesById)
+
+      const accountIsDebitNormal = new Map<number, boolean>()
+      const exsitingAccounts = new Set(
+        poolDetails.shareClasses.flatMap((sc) =>
+          Object.entries(sc.details.defaultAccounts ?? {})
+            .filter(([k, v]) => {
+              if (!v) return false
+
+              if (['asset', 'expense'].includes(k)) {
+                if (accountIsDebitNormal.get(v) === false)
+                  throw new Error(`Account "${v}" is set as both credit normal and debit normal.`)
+                accountIsDebitNormal.set(v, true)
+              } else {
+                if (accountIsDebitNormal.get(v) === true)
+                  throw new Error(`Account "${v}" is set as both credit normal and debit normal.`)
+                accountIsDebitNormal.set(v, false)
+              }
+
+              return true
+            })
+            .map(([, v]) => v)
+        )
+      )
+
+      const updatedAccounts = new Set(
+        Object.values(formattedMetadata.shareClasses).flatMap((sc) =>
+          Object.entries(sc.defaultAccounts ?? {})
+            .filter(([k, v]) => {
+              if (!v) return false
+
+              if (['asset', 'expense'].includes(k)) {
+                if (accountIsDebitNormal.get(v) === false)
+                  throw new Error(`Account "${v}" is set as both credit normal and debit normal.`)
+                accountIsDebitNormal.set(v, true)
+              } else {
+                if (accountIsDebitNormal.get(v) === true)
+                  throw new Error(`Account "${v}" is set as both credit normal and debit normal.`)
+                accountIsDebitNormal.set(v, false)
+              }
+
+              return true
+            })
+            .map(([, v]) => v)
+        )
+      )
+
+      // Account numbers:
+      // Create new set of defaultAccountsInput based on shareClassesInput.defaultAccounts
+      // Create new set of poolDetails.shareClasses.defaultAccounts
+      // Diff those two sets create new variable newAccounts that contains only new accounts that are not in existing ones
+      const newAccounts = [...updatedAccounts].filter((account) => !exsitingAccounts.has(account))
+      // call createAccount per each account in newAccounts (newAccounts)
+
+      console.log({
+        formattedMetadata,
+        shareClassesToBeUpdated,
+        shareClassesToBeUpdatedPerNetwork: {
+          shareClassesToBeUpdatedPerNetwork,
+          perNetwork: shareClassesToBeUpdatedPerNetwork.get(11155111),
+          id: shareClassesToBeUpdatedPerNetwork.get(11155111)![0]!.id.raw,
+        },
+        newShareClassesById: {
+          newShareClassesById,
+          accounts: newShareClassesById['0x00010000000000010000000000000003']?.defaultAccounts,
+        },
+        newAccounts,
       })
     }, this.chainId)
   }

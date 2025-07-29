@@ -7,6 +7,7 @@ import { context } from '../tests/setup.js'
 import { randomAddress } from '../tests/utils.js'
 import { AssetId, PoolId, ShareClassId } from '../utils/types.js'
 import { Pool } from './Pool.js'
+import { PoolMetadataInput, ShareClassInput } from '../types/poolInput.js'
 
 const chainId = 11155111
 const centId = 1
@@ -105,5 +106,51 @@ describe('Pool', () => {
 
     const isNewManager = await pool.isPoolManager(newManager)
     expect(isNewManager).to.be.true
+  })
+
+  it.only('updates a pool', async () => {
+    const metadataInput: Partial<PoolMetadataInput> = {
+      poolName: 'Test Pool',
+      poolStructure: 'revolving',
+    }
+
+    const addedShareClasses: ShareClassInput[] = [
+      {
+        tokenName: 'Test Share Class2',
+        symbolName: 'TSC2',
+        minInvestment: 1000,
+        apyPercentage: 5,
+        apy: 'target',
+        defaultAccounts: {
+          asset: 1000,
+          equity: 10000,
+          gain: 5000,
+          loss: 500,
+          expense: 1,
+          liability: 2,
+        },
+      },
+    ]
+
+    const updatedShareClasses: ({ id: ShareClassId } & ShareClassInput)[] = [
+      {
+        id: ShareClassId.from(poolId, 1),
+        tokenName: 'Sepolia Pool One Token2',
+        symbolName: 'sep.poo.one2',
+        minInvestment: 1000,
+        apyPercentage: 6,
+        apy: 'target',
+        defaultAccounts: {
+          asset: 1000,
+          equity: 10000,
+          gain: 5000,
+          loss: 500,
+          expense: 1,
+          liability: 2,
+        },
+      },
+    ]
+
+    const result = await pool.updatePool(metadataInput, updatedShareClasses, addedShareClasses)
   })
 })
