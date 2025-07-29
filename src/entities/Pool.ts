@@ -6,7 +6,7 @@ import { HexString } from '../types/index.js'
 import { PoolMetadata } from '../types/poolMetadata.js'
 import { MessageType } from '../types/transaction.js'
 import { NATIONAL_CURRENCY_METADATA } from '../utils/currencies.js'
-import { addressToBytes32 } from '../utils/index.js'
+import { addressToBytes32, randomUint } from '../utils/index.js'
 import { repeatOnEvents } from '../utils/rx.js'
 import { wrapTransaction } from '../utils/transaction.js'
 import { AssetId, PoolId, ShareClassId } from '../utils/types.js'
@@ -281,6 +281,8 @@ export class Pool extends Entity {
     const self = this
 
     return this._transact(async function* (ctx) {
+      const [{ hub }] = await Promise.all([self._root._protocolAddresses(self.chainId)])
+
       const existingPool = await self._root.pool(self.id)
       const poolDetails = await existingPool.details()
       const poolMetadata = await existingPool.metadata()
@@ -294,21 +296,6 @@ export class Pool extends Entity {
       if (!poolDetails || !poolMetadata) {
         throw new Error('Pool details or metadata not found')
       }
-
-      // console.log({
-      //   existingPool,
-      //   poolDetails,
-      //   shareClasses: poolDetails.shareClasses,
-      //   activeNetworks,
-      //   activeShareClasses: networksDetails.flatMap((details) => details.activeShareClasses || []),
-      //   networksDetails,
-      //   metadataInput,
-      //   updatedShareClasses,
-      //   addedShareClasses,
-      // })
-      console.log(poolDetails.metadata?.shareClasses)
-      console.log(poolDetails.shareClasses)
-      // TODO: Implement the logic to update the pool metadata and share classes
 
       const existingShareClassesCount = poolDetails.shareClasses.length
       const scIds = Array.from({ length: addedShareClasses.length }, (_, index) =>
@@ -332,7 +319,6 @@ export class Pool extends Entity {
             ? 'open'
             : 'upcoming'
 
-      // get poolMetadata and spread there metadataInput - this will override the existing metadata and keep it updated
       const formattedMetadata: PoolMetadata = {
         version: 1,
         pool: {
@@ -367,7 +353,6 @@ export class Pool extends Entity {
         shareClasses: { ...poolMetadata.shareClasses, ...newShareClassesById },
       }
 
-      // Loop through shareClassesInput and find by id inside new object poolDetails.metadata.shareClasses -> reoplace apy and minInvestment there
       updatedShareClasses.forEach((sc) => {
         const id = sc.id.toString()
 
@@ -383,13 +368,7 @@ export class Pool extends Entity {
           defaultAccounts: sc.defaultAccounts,
         }
       })
-      // Call updateShareClassMetadata (formattedMetadata.shareClasses)
-      // Call updatePoolMetadata (formattedMetadata)
 
-      // Loop through shareClassesInput and find by id inside poolDetails.shareClasses -> check if name/symbol changed if yes, add them to some array (array of objects) - ShareClassesToBeUpdated
-      // loop through networkDetails and check if activeShareClasses contains one of ShareClassesToBeUpdated
-      // create Map<networkId, ShareClassesToBeUpdated>
-      // call notifyShareClass per network (shareClassesToBeUpdatedPerNetwork)
       const shareClassesToBeUpdated = updatedShareClasses.filter((sc) => {
         const shareClass = poolDetails.shareClasses.find((scDetails) => scDetails.details.id.equals(sc.id))
 
@@ -421,8 +400,6 @@ export class Pool extends Entity {
           )
         }
       })
-      // call notifyShareClass per network (shareClassesToBeUpdatedPerNetwork)
-      // call addShareClass per each newShareClassesById (newShareClassesById)
 
       const accountIsDebitNormal = new Map<number, boolean>()
       const exsitingAccounts = new Set(
@@ -469,26 +446,94 @@ export class Pool extends Entity {
         )
       )
 
-      // Account numbers:
-      // Create new set of defaultAccountsInput based on shareClassesInput.defaultAccounts
-      // Create new set of poolDetails.shareClasses.defaultAccounts
-      // Diff those two sets create new variable newAccounts that contains only new accounts that are not in existing ones
       const newAccounts = [...updatedAccounts].filter((account) => !exsitingAccounts.has(account))
-      // call createAccount per each account in newAccounts (newAccounts)
 
-      console.log({
-        formattedMetadata,
-        shareClassesToBeUpdated,
-        shareClassesToBeUpdatedPerNetwork: {
-          shareClassesToBeUpdatedPerNetwork,
-          perNetwork: shareClassesToBeUpdatedPerNetwork.get(11155111),
-          id: shareClassesToBeUpdatedPerNetwork.get(11155111)![0]!.id.raw,
-        },
-        newShareClassesById: {
-          newShareClassesById,
-          accounts: newShareClassesById['0x00010000000000010000000000000003']?.defaultAccounts,
-        },
-        newAccounts,
+      const cid = await self._root.config.pinJson(formattedMetadata)
+
+      const batch: HexString[] = []
+      const messages: Record<number, MessageType[]> = {}
+      function addMessage(centId: number, message: MessageType) {
+        if (!messages[centId]) messages[centId] = []
+        messages[centId].push(message)
+      }
+
+      batch.push(
+        encodeFunctionData({
+          abi: ABI.Hub,
+          functionName: 'setPoolMetadata',
+          args: [self.id.raw, toHex(cid)],
+        })
+      )
+
+      addedShareClasses.forEach((sc) => {
+        batch.push(
+          encodeFunctionData({
+            abi: ABI.Hub,
+            functionName: 'addShareClass',
+            args: [
+              self.id.raw,
+              sc.tokenName,
+              sc.symbolName,
+              sc.salt?.startsWith('0x') ? (sc.salt as HexString) : toHex(sc.salt ?? randomUint(256), { size: 32 }),
+            ],
+          })
+        )
+      })
+
+      shareClassesToBeUpdated.forEach((sc) => {
+        batch.push(
+          encodeFunctionData({
+            abi: ABI.Hub,
+            functionName: 'updateShareClassMetadata',
+            args: [self.id.raw, sc.id.raw, sc.tokenName, sc.symbolName],
+          })
+        )
+      })
+
+      for (const [chainId, shareClasses] of Object.entries(shareClassesToBeUpdatedPerNetwork)) {
+        if (shareClasses.length > 0) {
+          const id = await self._root.id(Number(chainId))
+          await Promise.all(
+            shareClasses.map(async (sc: ShareClass) => {
+              const address = await sc._restrictionManager(Number(chainId))
+              batch.push(
+                encodeFunctionData({
+                  abi: ABI.Hub,
+                  functionName: 'notifyShareClass',
+                  args: [self.id.raw, sc.id.raw, id, addressToBytes32(address)],
+                })
+              )
+
+              addMessage(Number(chainId), MessageType.NotifyShareClass)
+            })
+          )
+        }
+      }
+
+      newAccounts.map((accountId) => {
+        const isDebitNormal = accountIsDebitNormal.get(accountId)
+
+        if (isDebitNormal === undefined) {
+          return
+        }
+
+        batch.push(
+          encodeFunctionData({
+            abi: ABI.Hub,
+            functionName: 'createAccount',
+            args: [self.id.raw, accountId, isDebitNormal],
+          })
+        )
+      })
+
+      if (batch.length === 0) {
+        throw new Error('No changes to update')
+      }
+
+      yield* wrapTransaction('Update pool details', ctx, {
+        contract: hub,
+        data: batch,
+        messages,
       })
     }, this.chainId)
   }
