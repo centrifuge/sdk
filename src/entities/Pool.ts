@@ -320,34 +320,39 @@ export class Pool extends Entity {
             : 'upcoming'
 
       const formattedMetadata: PoolMetadata = {
+        ...poolMetadata,
         version: 1,
         pool: {
-          name: metadataInput.poolName || poolMetadata.pool.name,
-          icon: metadataInput.poolIcon || poolMetadata.pool.icon,
+          ...poolMetadata.pool,
+          name: metadataInput.poolName ?? poolMetadata.pool.name,
+          icon: metadataInput.poolIcon ?? poolMetadata.pool.icon,
           asset: {
-            class: metadataInput.assetClass || poolMetadata.pool.asset.class,
-            subClass: metadataInput.subAssetClass || poolMetadata.pool.asset.subClass,
+            ...poolMetadata.pool.asset,
+            class: metadataInput.assetClass ?? poolMetadata.pool.asset.class,
+            subClass: metadataInput.subAssetClass ?? poolMetadata.pool.asset.subClass,
           },
           issuer: {
-            name: metadataInput.issuerName || poolMetadata.pool.issuer.name,
-            repName: metadataInput.issuerRepName || poolMetadata?.pool.issuer.repName,
-            description: metadataInput.issuerDescription || poolMetadata.pool.issuer.description,
-            email: metadataInput.email || poolMetadata.pool.issuer.email,
-            logo: metadataInput.issuerLogo || poolMetadata.pool.issuer.logo,
-            shortDescription: metadataInput.issuerShortDescription || poolMetadata.pool.issuer.shortDescription,
-            categories: metadataInput.issuerCategories || poolMetadata.pool.issuer.categories,
+            ...poolMetadata.pool.issuer,
+            name: metadataInput.issuerName ?? poolMetadata.pool.issuer.name,
+            repName: metadataInput.issuerRepName ?? poolMetadata.pool.issuer.repName,
+            description: metadataInput.issuerDescription ?? poolMetadata.pool.issuer.description,
+            email: metadataInput.email ?? poolMetadata.pool.issuer.email,
+            logo: metadataInput.issuerLogo ?? poolMetadata.pool.issuer.logo,
+            shortDescription: metadataInput.issuerShortDescription ?? poolMetadata.pool.issuer.shortDescription,
+            categories: metadataInput.issuerCategories ?? poolMetadata.pool.issuer.categories,
           },
-          poolStructure: metadataInput.poolStructure || poolMetadata.pool.poolStructure,
-          investorType: metadataInput.investorType || poolMetadata.pool.investorType,
+          poolStructure: metadataInput.poolStructure ?? poolMetadata.pool.poolStructure,
+          investorType: metadataInput.investorType ?? poolMetadata.pool.investorType,
           links: {
-            executiveSummary: metadataInput.executiveSummary || poolMetadata.pool.links?.executiveSummary,
-            forum: metadataInput.forum || poolMetadata.pool.links?.forum,
-            website: metadataInput.website || poolMetadata.pool.links?.website,
+            ...poolMetadata.pool.links,
+            executiveSummary: metadataInput.executiveSummary ?? poolMetadata.pool.links?.executiveSummary,
+            forum: metadataInput.forum ?? poolMetadata.pool.links?.forum,
+            website: metadataInput.website ?? poolMetadata.pool.links?.website,
           },
-          details: metadataInput.details || poolMetadata.pool.details,
+          details: metadataInput.details ?? poolMetadata.pool.details,
           status: poolStatus,
-          listed: metadataInput.listed || poolMetadata.pool.listed,
-          poolRatings: metadataInput.poolRatings || poolMetadata.pool.poolRatings,
+          listed: metadataInput.listed ?? poolMetadata.pool.listed,
+          poolRatings: metadataInput.poolRatings ?? poolMetadata.pool.poolRatings,
           reports: metadataInput.report ? [metadataInput.report] : poolMetadata.pool.reports,
         },
         shareClasses: { ...poolMetadata.shareClasses, ...newShareClassesById },
@@ -490,21 +495,20 @@ export class Pool extends Entity {
         )
       })
 
-      for (const [chainId, shareClasses] of Object.entries(shareClassesToBeUpdatedPerNetwork)) {
+      for (const [chainId, shareClasses] of shareClassesToBeUpdatedPerNetwork) {
         if (shareClasses.length > 0) {
           const id = await self._root.id(Number(chainId))
           await Promise.all(
             shareClasses.map(async (sc: ShareClass) => {
-              const address = await sc._restrictionManager(Number(chainId))
               batch.push(
                 encodeFunctionData({
                   abi: ABI.Hub,
-                  functionName: 'notifyShareClass',
-                  args: [self.id.raw, sc.id.raw, id, addressToBytes32(address)],
+                  functionName: 'notifyShareMetadata',
+                  args: [self.id.raw, sc.id.raw, id],
                 })
               )
 
-              addMessage(Number(chainId), MessageType.NotifyShareClass)
+              addMessage(id, MessageType.NotifyShareClass)
             })
           )
         }
