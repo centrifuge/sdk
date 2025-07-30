@@ -175,7 +175,7 @@ describe.only('Pool', () => {
 
     const pool = await centrifugeWithPin.pool(poolId)
 
-    const result = await pool.updatePool(metadataInput, updatedShareClasses, addedShareClasses)
+    const result = await pool.update(metadataInput, updatedShareClasses, addedShareClasses)
 
     expect(result.type).to.equal('TransactionConfirmed')
 

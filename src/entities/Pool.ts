@@ -272,7 +272,7 @@ export class Pool extends Entity {
     }, this.chainId)
   }
 
-  updatePool(
+  update(
     metadataInput: Partial<PoolMetadataInput>,
     updatedShareClasses: ({ id: ShareClassId } & ShareClassInput)[],
     addedShareClasses: ShareClassInput[] = []
