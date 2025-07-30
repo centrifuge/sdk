@@ -1,4 +1,4 @@
-import { combineLatest, defer, map, of, switchMap, withLatestFrom } from 'rxjs'
+import { combineLatest, defer, map, of, switchMap } from 'rxjs'
 import { encodeFunctionData, getContract } from 'viem'
 import { ABI } from '../abi/index.js'
 import type { Centrifuge } from '../Centrifuge.js'
@@ -99,10 +99,10 @@ export class PoolNetwork extends Entity {
    */
   vault(scId: ShareClassId, asset: HexString | AssetId) {
     return this._query(null, () =>
-      this.vaults(scId).pipe(
-        withLatestFrom(
-          typeof asset === 'string' ? of({ address: asset, tokenId: 0n }) : this._root.assetCurrency(asset)
-        ),
+      combineLatest([
+        this.vaults(scId),
+        typeof asset === 'string' ? of({ address: asset, tokenId: 0n }) : this._root.assetCurrency(asset),
+      ]).pipe(
         map(([vaults, { address }]) => {
           const addr = address.toLowerCase()
           const vault = vaults.find((v) => v._asset === addr)

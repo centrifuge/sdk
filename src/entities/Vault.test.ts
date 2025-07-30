@@ -30,7 +30,7 @@ const scId2 = ShareClassId.from(poolId2, 1)
 const investorA = '0x5b66af49742157E360A2897e3F480d192305B2b5'
 const investorB = '0x54b1d961678C145a444765bB2d7aD6B029770D35'
 const investorC = '0x95d340e6d34418D9eBFD2e826b8f61967654C33e'
-// const investorD = '0x41fe7c3D0b4d8107929c08615adF5038Cb3EAf5C'
+const investorD = '0x41fe7c3D0b4d8107929c08615adF5038Cb3EAf5C'
 // const investorE = '0x897100032Fb126228dB14D7bD24d770770569AC9'
 
 const fundManager = '0x423420Ae467df6e90291fd0252c0A8a637C1e03f'
@@ -198,9 +198,13 @@ describe('Vault - Async', () => {
 
     expect(result.type).to.equal('TransactionConfirmed')
     expect(investment.shareBalance.toBigInt()).to.equal(Balance.fromFloat(60, 18).toBigInt())
-  }).timeout(30000)
+  })
 
-  it("should throw when placing an invest order larger than the users's balance", async () => {
+  it("throws when placing an invest order larger than the users's balance", async () => {
+    context.tenderlyFork.impersonateAddress = fundManager
+    context.centrifuge.setSigner(context.tenderlyFork.signer)
+    await vault.shareClass.updateMember(investorB, 1800000000, chainId)
+
     context.tenderlyFork.impersonateAddress = investorB
     context.centrifuge.setSigner(context.tenderlyFork.signer)
     let error: Error | null = null
@@ -234,6 +238,10 @@ describe('Vault - Async', () => {
   it('cancels an invest order and claims the tokens back', async () => {
     await mint(vault._asset, investorC)
 
+    context.tenderlyFork.impersonateAddress = fundManager
+    context.centrifuge.setSigner(context.tenderlyFork.signer)
+    await vault.shareClass.updateMember(investorC, 1800000000, chainId)
+
     context.tenderlyFork.impersonateAddress = investorC
     context.centrifuge.setSigner(context.tenderlyFork.signer)
 
@@ -263,19 +271,19 @@ describe('Vault - Async', () => {
     expect(investment.claimableCancelInvestCurrency.toBigInt()).to.equal(0n)
   })
 
-  it('should throw when trying to cancel a non-existing order', async () => {
-    await mint(vault._asset, investorA)
+  it('throws when trying to cancel a non-existing order', async () => {
+    await mint(vault._asset, investorD)
 
-    context.tenderlyFork.impersonateAddress = investorA
+    context.tenderlyFork.impersonateAddress = investorD
     context.centrifuge.setSigner(context.tenderlyFork.signer)
-    let thrown = false
+    let thrown = ''
     let emittedSigningStatus = false
     try {
       await lastValueFrom(vault.cancelRedeemOrder().pipe(tap(() => (emittedSigningStatus = true))))
-    } catch {
-      thrown = true
+    } catch (e: any) {
+      thrown = e.message
     }
-    expect(thrown).to.equal(true)
+    expect(thrown).to.equal('No order to cancel')
     expect(emittedSigningStatus).to.equal(false)
   })
 

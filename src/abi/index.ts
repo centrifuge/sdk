@@ -11,6 +11,8 @@ import HubAbi from './Hub.abi.js'
 import HubRegistryAbi from './HubRegistry.abi.js'
 import MessageDispatcherAbi from './MessageDispatcher.abi.js'
 import MultiAdapterAbi from './MultiAdapter.abi.js'
+import PoolEscrowAbi from './PoolEscrow.abi.js'
+import PoolEscrowFactoryAbi from './PoolEscrowFactory.abi.js'
 import RestrictionManagerAbi from './RestrictionManager.abi.js'
 import ShareClassManagerAbi from './ShareClassManager.abi.js'
 import SpokeAbi from './Spoke.abi.js'
@@ -37,4 +39,6 @@ export const ABI = {
   MultiAdapter: parseAbi(MultiAdapterAbi),
   BalanceSheet: parseAbi(BalanceSheetAbi),
   GasService: parseAbi(GasServiceAbi),
+  PoolEscrow: parseAbi(PoolEscrowAbi),
+  PoolEscrowFactory: parseAbi(PoolEscrowFactoryAbi),
 }

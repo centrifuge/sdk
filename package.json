@@ -1,6 +1,6 @@
 {
   "name": "@centrifuge/sdk",
-  "version": "0.0.0-alpha.35",
+  "version": "0.0.0-alpha.36",
   "description": "",
   "homepage": "https://github.com/centrifuge/sdk/tree/main#readme",
   "author": "",
@@ -35,6 +35,7 @@
     "test:single": "mocha --loader=ts-node/esm --require $(pwd)/src/tests/setup.ts --exit --timeout 20000",
     "test:ci": "yarn test --reporter mocha-multi-reporters --reporter-options configFile=mocha-reporter-config.json",
     "test:coverage": "c8 yarn test:ci",
+    "fork:server": "node ./src/tests/forkServer.mjs",
     "gen:docs": "typedoc",
     "format": "prettier --write '**/*.{ts,js,mjs,json,md,yml}'"
   },
