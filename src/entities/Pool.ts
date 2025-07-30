@@ -283,9 +283,12 @@ export class Pool extends Entity {
       const [{ hub }] = await Promise.all([self._root._protocolAddresses(self.chainId)])
 
       const existingPool = await self._root.pool(self.id)
-      const poolDetails = await existingPool.details()
-      const poolMetadata = await existingPool.metadata()
-      const activeNetworks = await existingPool.activeNetworks()
+
+      const [poolDetails, poolMetadata, activeNetworks] = await Promise.all([
+        existingPool.details(),
+        existingPool.metadata(),
+        existingPool.activeNetworks(),
+      ])
       const networksDetails = await Promise.all(
         activeNetworks.map((network) => {
           return network.details()

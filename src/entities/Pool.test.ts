@@ -19,7 +19,7 @@ const scId = ShareClassId.from(poolId, 1)
 const assetId = AssetId.from(centId, 1)
 const poolManager = '0x423420Ae467df6e90291fd0252c0A8a637C1e03f'
 
-describe('Pool', () => {
+describe.only('Pool', () => {
   let pool: Pool
   before(() => {
     const { centrifuge } = context
@@ -50,33 +50,6 @@ describe('Pool', () => {
     const vault = await pool.vault(chainId, scId, assetId)
     expect(vault).to.not.be.undefined
     expect(vault.address).to.not.equal(NULL_ADDRESS)
-  })
-
-  it('should update the pool metadata', async () => {
-    const fakeHash = 'QmPdzJkZ4PVJ21HfBXMJbGopSpUP9C9fqu3A1f9ZVhtRY2'
-
-    const centrifugeWithPin = new Centrifuge({
-      environment: 'testnet',
-      pinJson: async (data) => {
-        expect(data).to.deep.equal(mockPoolMetadata)
-        return fakeHash
-      },
-      rpcUrls: {
-        11155111: context.tenderlyFork.rpcUrl,
-      },
-    })
-
-    const pool = await centrifugeWithPin.pool(poolId)
-
-    context.tenderlyFork.impersonateAddress = poolManager
-    centrifugeWithPin.setSigner(context.tenderlyFork.signer)
-
-    const result = await pool.updateMetadata(mockPoolMetadata)
-
-    expect(result.type).to.equal('TransactionConfirmed')
-
-    const details = await pool.details()
-    expect(details.metadata!.pool.asset.class).to.equal('Private credit')
   })
 
   it('should return the currency of the pool', async () => {
@@ -249,5 +222,32 @@ describe('Pool', () => {
 
     expect(updateShareClassName).to.equal('Sepolia Pool One Token2')
     expect(updatedShareClassSymbol).to.equal('sep.poo.one2')
+  })
+
+  it('should update the pool metadata', async () => {
+    const fakeHash = 'QmPdzJkZ4PVJ21HfBXMJbGopSpUP9C9fqu3A1f9ZVhtRY2'
+
+    const centrifugeWithPin = new Centrifuge({
+      environment: 'testnet',
+      pinJson: async (data) => {
+        expect(data).to.deep.equal(mockPoolMetadata)
+        return fakeHash
+      },
+      rpcUrls: {
+        11155111: context.tenderlyFork.rpcUrl,
+      },
+    })
+
+    const pool = await centrifugeWithPin.pool(poolId)
+
+    context.tenderlyFork.impersonateAddress = poolManager
+    centrifugeWithPin.setSigner(context.tenderlyFork.signer)
+
+    const result = await pool.updateMetadata(mockPoolMetadata)
+
+    expect(result.type).to.equal('TransactionConfirmed')
+
+    const details = await pool.details()
+    expect(details.metadata!.pool.asset.class).to.equal('Private credit')
   })
 })
