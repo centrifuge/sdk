@@ -88,104 +88,132 @@ export class Vault extends Entity {
         this._root._protocolAddresses(this.chainId),
         this._restrictionManager(),
         this._isSyncDeposit(),
+        this.pool._escrow(),
       ]).pipe(
-        switchMap(([investmentCurrency, shareCurrency, addresses, restrictionManagerAddress, isSyncInvest]) =>
-          combineLatest([
-            this._root.balance(investmentCurrency.address, address, this.chainId),
-            this._root.balance(shareCurrency.address, address, this.chainId),
-            this._allowance(address),
-            defer(async () => {
-              const client = this._root.getClient(this.chainId)
-              const vault = getContract({ address: this.address, abi: ABI.AsyncVault, client })
-              const investmentManager = getContract({
-                address: addresses.asyncRequestManager,
-                abi: ABI.AsyncRequests,
-                client,
-              })
-              const share = getContract({
-                address: shareCurrency.address,
-                abi: ABI.Currency,
-                client,
-              })
+        switchMap(
+          ([investmentCurrency, shareCurrency, addresses, restrictionManagerAddress, isSyncInvest, escrowAddress]) =>
+            combineLatest([
+              this._root.balance(investmentCurrency.address, address, this.chainId),
+              this._root.balance(shareCurrency.address, address, this.chainId),
+              this._allowance(address),
+              defer(async () => {
+                const client = this._root.getClient(this.chainId)
+                const vault = getContract({ address: this.address, abi: ABI.AsyncVault, client })
+                const investmentManager = getContract({
+                  address: addresses.asyncRequestManager,
+                  abi: ABI.AsyncRequests,
+                  client,
+                })
+                const share = getContract({
+                  address: shareCurrency.address,
+                  abi: ABI.Currency,
+                  client,
+                })
+                const escrow = getContract({
+                  address: escrowAddress,
+                  abi: ABI.PoolEscrow,
+                  client,
+                })
 
-              const [isAllowedToInvest, maxDeposit, maxRedeem, investment, isAllowedToRedeem] = await Promise.all([
-                vault.read.isPermissioned!([address]),
-                vault.read.maxDeposit!([address]),
-                vault.read.maxRedeem!([address]),
-                investmentManager.read.investments!([this.address, address]),
-                share.read.checkTransferRestriction!([address, ESCROW_HOOK_ID, 0n]),
-              ])
+                const [
+                  isAllowedToInvest,
+                  maxDeposit,
+                  maxRedeem,
+                  investment,
+                  isAllowedToRedeem,
+                  [escrowTotal, escrowReserved],
+                ] = await Promise.all([
+                  vault.read.isPermissioned!([address]),
+                  vault.read.maxDeposit!([address]),
+                  vault.read.maxRedeem!([address]),
+                  investmentManager.read.investments!([this.address, address]),
+                  share.read.checkTransferRestriction!([address, ESCROW_HOOK_ID, 0n]),
+                  escrow.read.holding([this.shareClass.id.raw, this._asset, 0n]),
+                ])
 
-              const [
-                maxMint,
-                maxWithdraw,
-                ,
-                ,
-                pendingInvest,
-                pendingRedeem,
-                claimableCancelInvestCurrency,
-                claimableCancelRedeemShares,
-                hasPendingCancelInvestRequest,
-                hasPendingCancelRedeemRequest,
-              ] = investment
-              return {
-                isAllowedToInvest,
-                isAllowedToRedeem,
-                isSyncInvest,
-                maxInvest: new Balance(maxDeposit, investmentCurrency.decimals),
-                claimableInvestShares: new Balance(isSyncInvest ? 0n : maxMint, shareCurrency.decimals),
-                claimableInvestCurrencyEquivalent: new Balance(
-                  isSyncInvest ? 0n : maxDeposit,
-                  investmentCurrency.decimals
-                ),
-                claimableRedeemCurrency: new Balance(maxWithdraw, investmentCurrency.decimals),
-                claimableRedeemSharesEquivalent: new Balance(maxRedeem, shareCurrency.decimals),
-                pendingInvestCurrency: new Balance(pendingInvest, investmentCurrency.decimals),
-                pendingRedeemShares: new Balance(pendingRedeem, shareCurrency.decimals),
-                claimableCancelInvestCurrency: new Balance(claimableCancelInvestCurrency, investmentCurrency.decimals),
-                claimableCancelRedeemShares: new Balance(claimableCancelRedeemShares, shareCurrency.decimals),
-                hasPendingCancelInvestRequest,
-                hasPendingCancelRedeemRequest,
-                investmentCurrency,
-                shareCurrency,
-              }
-            }).pipe(
-              repeatOnEvents(
-                this._root,
-                {
-                  address: [this.address, restrictionManagerAddress],
-                  abi: [ABI.AsyncVault, ABI.RestrictionManager],
-                  eventName: [
-                    'UpdateMember',
-                    'CancelDepositClaim',
-                    'CancelDepositClaimable',
-                    'CancelDepositRequest',
-                    'CancelRedeemClaim',
-                    'CancelRedeemClaimable',
-                    'CancelRedeemRequest',
-                    'Deposit',
-                    'DepositClaimable',
-                    'DepositRequest',
-                    'RedeemClaimable',
-                    'RedeemRequest',
-                    'Withdraw',
-                  ],
-                  filter: (events) =>
-                    events.some(
-                      (event) =>
-                        event.args.receiver?.toLowerCase() === address ||
-                        event.args.controller?.toLowerCase() === address ||
-                        event.args.sender?.toLowerCase() === address ||
-                        event.args.owner?.toLowerCase() === address ||
-                        // UpdateMember event
-                        (event.args.user?.toLowerCase() === address &&
-                          event.args.token?.toLowerCase() === shareCurrency.address)
-                    ),
-                },
-                this.chainId
-              )
-            ),
-          ])
+                const [
+                  maxMint,
+                  maxWithdraw,
+                  ,
+                  ,
+                  pendingInvest,
+                  pendingRedeem,
+                  claimableCancelInvestCurrency,
+                  claimableCancelRedeemShares,
+                  hasPendingCancelInvestRequest,
+                  hasPendingCancelRedeemRequest,
+                ] = investment
+
+                let actualMaxWithdraw = maxWithdraw
+                let actualMaxRedeem = maxRedeem
+                if (maxWithdraw > escrowTotal - (escrowReserved - maxWithdraw)) {
+                  actualMaxWithdraw = 0n
+                  actualMaxRedeem = 0n
+                }
+
+                return {
+                  isAllowedToInvest,
+                  isAllowedToRedeem,
+                  isSyncInvest,
+                  maxInvest: new Balance(maxDeposit, investmentCurrency.decimals),
+                  claimableInvestShares: new Balance(isSyncInvest ? 0n : maxMint, shareCurrency.decimals),
+                  claimableInvestCurrencyEquivalent: new Balance(
+                    isSyncInvest ? 0n : maxDeposit,
+                    investmentCurrency.decimals
+                  ),
+                  claimableRedeemCurrency: new Balance(actualMaxWithdraw, investmentCurrency.decimals),
+                  claimableRedeemSharesEquivalent: new Balance(actualMaxRedeem, shareCurrency.decimals),
+                  pendingInvestCurrency: new Balance(pendingInvest, investmentCurrency.decimals),
+                  pendingRedeemShares: new Balance(pendingRedeem, shareCurrency.decimals),
+                  claimableCancelInvestCurrency: new Balance(
+                    claimableCancelInvestCurrency,
+                    investmentCurrency.decimals
+                  ),
+                  claimableCancelRedeemShares: new Balance(claimableCancelRedeemShares, shareCurrency.decimals),
+                  hasPendingCancelInvestRequest,
+                  hasPendingCancelRedeemRequest,
+                  investmentCurrency,
+                  shareCurrency,
+                }
+              }).pipe(
+                repeatOnEvents(
+                  this._root,
+                  {
+                    address: [this.address, restrictionManagerAddress, escrowAddress],
+                    abi: [ABI.AsyncVault, ABI.RestrictionManager, ABI.PoolEscrow],
+                    eventName: [
+                      'UpdateMember',
+                      'CancelDepositClaim',
+                      'CancelDepositClaimable',
+                      'CancelDepositRequest',
+                      'CancelRedeemClaim',
+                      'CancelRedeemClaimable',
+                      'CancelRedeemRequest',
+                      'Deposit',
+                      'DepositClaimable',
+                      'DepositRequest',
+                      'RedeemClaimable',
+                      'RedeemRequest',
+                      'Withdraw',
+                    ],
+                    filter: (events) =>
+                      events.some(
+                        (event) =>
+                          event.args.receiver?.toLowerCase() === address ||
+                          event.args.controller?.toLowerCase() === address ||
+                          event.args.sender?.toLowerCase() === address ||
+                          event.args.owner?.toLowerCase() === address ||
+                          // UpdateMember event
+                          (event.args.user?.toLowerCase() === address &&
+                            event.args.token?.toLowerCase() === shareCurrency.address) ||
+                          // PoolEscrow events
+                          (event.args.scId === this.shareClass.id.raw && event.args.asset.toLowerCase() === this._asset)
+                      ),
+                  },
+                  this.chainId
+                )
+              ),
+            ])
         ),
         map(([currencyBalance, shareBalance, allowance, investment]) => ({
           ...investment,

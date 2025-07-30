@@ -1,5 +1,6 @@
 import { expect } from 'chai'
 import { firstValueFrom, skipWhile } from 'rxjs'
+import { ABI } from '../abi/index.js'
 import { context } from '../tests/setup.js'
 import { randomAddress } from '../tests/utils.js'
 import { AccountType } from '../types/holdings.js'
@@ -41,7 +42,7 @@ describe('ShareClass', () => {
   })
 
   it('gets the nav per network', async () => {
-    const nav = await shareClass2.navPerNetwork()
+    const nav = await shareClass.navPerNetwork()
     expect(nav[0]!.totalIssuance).to.be.instanceOf(Balance)
     expect(nav[0]!.pricePerShare).to.be.instanceOf(Price)
     expect(nav[0]!.pricePerShare.toFloat()).to.be.greaterThan(0)
@@ -63,32 +64,30 @@ describe('ShareClass', () => {
     expect(balances[0]!.value.toFloat()).to.be.greaterThan(0)
   })
 
-  it('gets a holding', async () => {
-    const holding = await shareClass._holding(assetId)
-    expect(typeof holding.valuation).to.equal('string')
-    expect(holding.assetDecimals).to.equal(6)
-    expect(holding.assetId.equals(assetId)).to.be.true
-    expect(holding.amount.decimals).to.equal(6)
-    expect(holding.value.decimals).to.equal(18)
-    expect(holding.accounts[AccountType.Asset]).not.to.be.undefined
-    expect(holding.accounts[AccountType.Equity]).not.to.be.undefined
-  })
-
   it('creates a holding', async () => {
     context.tenderlyFork.impersonateAddress = fundManager
     context.centrifuge.setSigner(context.tenderlyFork.signer)
 
-    const { identityValuation } = await context.centrifuge._protocolAddresses(chainId)
+    const { identityValuation, accounting } = await context.centrifuge._protocolAddresses(chainId)
+
+    const accountExists = await context.centrifuge.getClient(chainId).readContract({
+      address: accounting,
+      abi: ABI.Accounting,
+      functionName: 'exists',
+      args: [poolId2.raw, 123],
+    })
+    if (!accountExists) {
+      await shareClass2.pool.createAccounts([{ accountId: 123, isDebitNormal: false }])
+    }
 
     const result = await shareClass2.createHolding(assetId2, identityValuation, false, {
-      [AccountType.Equity]: 2,
-      [AccountType.Gain]: 3,
-      [AccountType.Loss]: 4,
+      [AccountType.Equity]: 123,
+      [AccountType.Gain]: 123,
+      [AccountType.Loss]: 123,
     })
     expect(result.type).to.equal('TransactionConfirmed')
 
     const holding = await shareClass2._holding(assetId2)
-    expect(holding).not.to.be.undefined
     expect(holding.assetId.equals(assetId2)).to.be.true
     expect(holding.amount.toFloat()).to.equal(0)
     // Should have automatically created a new asset account

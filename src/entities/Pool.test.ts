@@ -1,5 +1,5 @@
 import { expect } from 'chai'
-import { firstValueFrom, skip, skipWhile } from 'rxjs'
+import { firstValueFrom, skipWhile } from 'rxjs'
 import { Centrifuge } from '../Centrifuge.js'
 import { NULL_ADDRESS } from '../constants.js'
 import { mockPoolMetadata } from '../tests/mocks/mockPoolMetadata.js'
@@ -21,7 +21,7 @@ const poolManager = '0x423420Ae467df6e90291fd0252c0A8a637C1e03f'
 
 describe('Pool', () => {
   let pool: Pool
-  beforeEach(() => {
+  before(() => {
     const { centrifuge } = context
     pool = new Pool(centrifuge, poolId.raw, chainId)
   })
@@ -71,13 +71,12 @@ describe('Pool', () => {
     context.tenderlyFork.impersonateAddress = poolManager
     centrifugeWithPin.setSigner(context.tenderlyFork.signer)
 
-    const [result, detailsAfter] = await Promise.all([
-      pool.updateMetadata(mockPoolMetadata),
-      firstValueFrom(pool.details().pipe(skip(1))),
-    ])
+    const result = await pool.updateMetadata(mockPoolMetadata)
 
     expect(result.type).to.equal('TransactionConfirmed')
-    expect(detailsAfter.metadata?.pool.asset.class).to.equal('Private credit')
+
+    const details = await pool.details()
+    expect(details.metadata!.pool.asset.class).to.equal('Private credit')
   })
 
   it('should return the currency of the pool', async () => {

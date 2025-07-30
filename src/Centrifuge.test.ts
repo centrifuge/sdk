@@ -524,6 +524,8 @@ describe('Centrifuge', () => {
         },
       })
 
+      await context.tenderlyFork.fundAccountEth(guardian, 10n ** 18n)
+
       context.tenderlyFork.impersonateAddress = guardian
       centrifugeWithPin.setSigner(context.tenderlyFork.signer)
 
