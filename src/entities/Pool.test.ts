@@ -1,15 +1,15 @@
 import { expect } from 'chai'
 import { firstValueFrom, skipWhile } from 'rxjs'
+import { getContract } from 'viem'
+import { ABI } from '../abi/index.js'
 import { Centrifuge } from '../Centrifuge.js'
 import { NULL_ADDRESS } from '../constants.js'
 import { mockPoolMetadata } from '../tests/mocks/mockPoolMetadata.js'
 import { context } from '../tests/setup.js'
 import { randomAddress } from '../tests/utils.js'
+import { PoolMetadataInput, ShareClassInput } from '../types/poolInput.js'
 import { AssetId, PoolId, ShareClassId } from '../utils/types.js'
 import { Pool } from './Pool.js'
-import { PoolMetadataInput, ShareClassInput } from '../types/poolInput.js'
-import { ABI } from '../abi/index.js'
-import { getContract } from 'viem'
 import { PoolNetwork } from './PoolNetwork.js'
 
 const chainId = 11155111
@@ -19,7 +19,7 @@ const scId = ShareClassId.from(poolId, 1)
 const assetId = AssetId.from(centId, 1)
 const poolManager = '0x423420Ae467df6e90291fd0252c0A8a637C1e03f'
 
-describe.only('Pool', () => {
+describe('Pool', () => {
   let pool: Pool
   before(() => {
     const { centrifuge } = context
@@ -67,6 +67,16 @@ describe.only('Pool', () => {
     expect(details.currency).to.exist
   })
 
+  it('gets pool managers', async () => {
+    const managers = await pool.poolManagers()
+    expect(managers.some((m) => m.address === poolManager.toLowerCase())).to.be.true
+  })
+
+  it('gets balance sheet managers', async () => {
+    const managers = await pool.balanceSheetManagers()
+    expect(managers).to.have.length.greaterThan(0)
+  })
+
   it('updates pool managers', async () => {
     context.tenderlyFork.impersonateAddress = poolManager
     context.centrifuge.setSigner(context.tenderlyFork.signer)
@@ -75,7 +85,33 @@ describe.only('Pool', () => {
     const result = await pool.updatePoolManagers([{ address: newManager, canManage: true }])
     expect(result.type).to.equal('TransactionConfirmed')
 
-    const isNewManager = await pool.isPoolManager(newManager)
+    const { hubRegistry } = await context.centrifuge._protocolAddresses(chainId)
+
+    const isNewManager = await context.centrifuge.getClient(chainId).readContract({
+      address: hubRegistry,
+      abi: ABI.HubRegistry,
+      functionName: 'manager',
+      args: [poolId.raw, newManager],
+    })
+    expect(isNewManager).to.be.true
+  })
+
+  it('updates balance sheet managers', async () => {
+    context.tenderlyFork.impersonateAddress = poolManager
+    context.centrifuge.setSigner(context.tenderlyFork.signer)
+
+    const newManager = randomAddress()
+    const result = await pool.updateBalanceSheetManagers([{ chainId, address: newManager, canManage: true }])
+    expect(result.type).to.equal('TransactionConfirmed')
+
+    const { balanceSheet } = await context.centrifuge._protocolAddresses(chainId)
+
+    const isNewManager = await context.centrifuge.getClient(chainId).readContract({
+      address: balanceSheet,
+      abi: ABI.BalanceSheet,
+      functionName: 'manager',
+      args: [poolId.raw, newManager],
+    })
     expect(isNewManager).to.be.true
   })
 
