@@ -18,7 +18,6 @@ describe('Permit utils', () => {
       expect(permit.r.startsWith('0x')).to.be.true
       expect(permit.s.startsWith('0x')).to.be.true
       expect(permit.v).to.be.oneOf([27, 28])
-      console.log('p', permit)
     }, chainId)
   })
 })
