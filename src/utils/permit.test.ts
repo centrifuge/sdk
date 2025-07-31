@@ -14,12 +14,11 @@ describe('Permit utils', () => {
     const centrifuge = new Centrifuge({ environment: 'testnet' })
     centrifuge.setSigner(account)
     await centrifuge._transact(async function* (ctx) {
-      yield* doSignMessage('signPermit', async () => {
-        const permit = await signPermit(ctx, someErc20, randomAddress(), 100n)
-        expect(permit.r.startsWith('0x')).to.be.true
-        expect(permit.s.startsWith('0x')).to.be.true
-        expect(permit.v).to.be.oneOf([27, 28])
-      })
+      const permit = yield* doSignMessage('signPermit', () => signPermit(ctx, someErc20, randomAddress(), 100n))
+      expect(permit.r.startsWith('0x')).to.be.true
+      expect(permit.s.startsWith('0x')).to.be.true
+      expect(permit.v).to.be.oneOf([27, 28])
+      console.log('p', permit)
     }, chainId)
   })
 })

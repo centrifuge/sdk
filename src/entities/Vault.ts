@@ -248,17 +248,17 @@ export class Vault extends Entity {
       if (amount.gt(investmentCurrencyBalance)) throw new Error('Insufficient balance')
       if (!amount.gt(0n)) throw new Error('Order amount must be greater than 0')
 
+      const spender = isSyncDeposit ? vaultRouter : self.address
       let permit: Permit | null = null
       if (needsApproval) {
         // For async deposits, the vault is the spender, for sync deposits, the vault router is the spender
-        const spender = isSyncDeposit ? vaultRouter : self.address
         if (supportsPermit) {
           try {
             permit = yield* doSignMessage('Sign Permit', () =>
               signPermit(ctx, investmentCurrency.address, spender, amount.toBigInt())
             )
-          } catch {
-            console.warn('Permit signing failed, falling back to approval transaction')
+          } catch (e) {
+            console.warn('Permit signing failed, falling back to approval transaction', e)
           }
         }
         if (!permit) {
@@ -301,12 +301,12 @@ export class Vault extends Entity {
             functionName: 'permit',
             args: [
               investmentCurrency.address,
-              vaultRouter,
+              spender,
               amount.toBigInt(),
               permit.deadline,
               permit.v,
-              permit.r as HexString,
-              permit.s as HexString,
+              permit.r,
+              permit.s,
             ],
           })
         yield* doTransaction('Invest', ctx.publicClient, () =>
