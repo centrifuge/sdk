@@ -3,6 +3,7 @@ import { encodeFunctionData, fromHex, toHex } from 'viem'
 import { ABI } from '../abi/index.js'
 import type { Centrifuge } from '../Centrifuge.js'
 import { HexString } from '../types/index.js'
+import { PoolMetadataInput, ShareClassInput } from '../types/poolInput.js'
 import { PoolMetadata } from '../types/poolMetadata.js'
 import { MessageType } from '../types/transaction.js'
 import { NATIONAL_CURRENCY_METADATA } from '../utils/currencies.js'
@@ -14,7 +15,6 @@ import { Entity } from './Entity.js'
 import { PoolNetwork } from './PoolNetwork.js'
 import { Reports } from './Reports/index.js'
 import { ShareClass } from './ShareClass.js'
-import { PoolMetadataInput, ShareClassInput } from '../types/poolInput.js'
 export class Pool extends Entity {
   id: PoolId
 
@@ -123,19 +123,56 @@ export class Pool extends Entity {
   }
 
   /**
+   * Get the managers on the Hub.
+   * These managers that can manage the pool, approve deposits, update prices, etc.
+   */
+  poolManagers() {
+    return this._query(null, () => {
+      return this._managers().pipe(
+        map((managers) => {
+          return managers
+            .filter((manager) => manager.isHubManager)
+            .map((manager) => {
+              return {
+                address: manager.address,
+              }
+            })
+        })
+      )
+    })
+  }
+
+  /**
+   * Get the managers on the Balance Sheet.
+   * These managers can transfer funds to and from the balance sheet.
+   */
+  balanceSheetManagers() {
+    return this._query(null, () => {
+      return this._managers().pipe(
+        map((managers) => {
+          return managers
+            .filter((manager) => manager.isBalancesheetManager)
+            .map((manager) => {
+              return {
+                address: manager.address,
+                chainId: manager.chainId,
+              }
+            })
+        })
+      )
+    })
+  }
+
+  /**
    * Check if an address is a manager of the pool.
    * @param address - The address to check
    */
   isPoolManager(address: HexString) {
-    return this._query(['isManager', address.toLowerCase()], () => {
-      return this._root._protocolAddresses(this.chainId).pipe(
-        switchMap(({ hubRegistry }) => {
-          return this._root.getClient(this.chainId).readContract({
-            address: hubRegistry,
-            abi: ABI.HubRegistry,
-            functionName: 'manager',
-            args: [this.id.raw, address],
-          })
+    const addr = address.toLowerCase()
+    return this._query(null, () => {
+      return this.poolManagers().pipe(
+        map((managers) => {
+          return managers.some((manager) => manager.address === addr)
         })
       )
     })
@@ -147,15 +184,11 @@ export class Pool extends Entity {
    * @param address - The address to check
    */
   isBalanceSheetManager(chainId: number, address: HexString) {
-    return this._query(['isBSManager', chainId, address.toLowerCase()], () => {
-      return this._root._protocolAddresses(chainId).pipe(
-        switchMap(({ balanceSheet }) => {
-          return this._root.getClient(chainId).readContract({
-            address: balanceSheet,
-            abi: ABI.BalanceSheet,
-            functionName: 'manager',
-            args: [this.id.raw, address],
-          })
+    const addr = address.toLowerCase()
+    return this._query(null, () => {
+      return this.balanceSheetManagers().pipe(
+        map((managers) => {
+          return managers.some((manager) => manager.chainId === chainId && manager.address === addr)
         })
       )
     })
@@ -672,6 +705,55 @@ export class Pool extends Entity {
           })
         }),
         map((address) => address.toLowerCase() as HexString)
+      )
+    )
+  }
+
+  /** @internal */
+  _managers() {
+    return this._query(null, () =>
+      combineLatest([
+        this._root._deployments(),
+        this._root._queryIndexer<{
+          poolManagers: {
+            items: {
+              isHubManager: boolean
+              isBalancesheetManager: boolean
+              address: HexString
+              centrifugeId: string
+              poolId: string
+            }[]
+          }
+        }>(
+          `query ($poolId: BigInt!) {
+            poolManagers(where: { poolId: $poolId }) {
+              items {
+                isHubManager
+                isBalancesheetManager
+                address
+                centrifugeId
+                poolId
+              }
+            }
+          }`,
+          {
+            poolId: this.id.toString(),
+          }
+        ),
+      ]).pipe(
+        map(([deployments, { poolManagers }]) => {
+          const chainsById = new Map(deployments.blockchains.items.map((chain) => [chain.centrifugeId, chain.id]))
+          return poolManagers.items.map((manager) => {
+            const chainId = chainsById.get(manager.centrifugeId)!
+            return {
+              address: manager.address.toLowerCase() as HexString,
+              isHubManager: manager.isHubManager,
+              isBalancesheetManager: manager.isBalancesheetManager,
+              centrifugeId: Number(manager.centrifugeId),
+              chainId: Number(chainId),
+            }
+          })
+        })
       )
     )
   }
