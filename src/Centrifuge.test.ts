@@ -2,6 +2,7 @@ import { expect } from 'chai'
 import { combineLatest, defer, firstValueFrom, interval, map, of, Subject, take, tap, toArray } from 'rxjs'
 import sinon from 'sinon'
 import { createClient, custom } from 'viem'
+import { ABI } from './abi/index.js'
 import { Centrifuge } from './Centrifuge.js'
 import { Pool } from './entities/Pool.js'
 import { context } from './tests/setup.js'
@@ -488,8 +489,21 @@ describe('Centrifuge', () => {
       expect(result.type).to.equal('TransactionConfirmed')
       expect((result as any).title).to.equal('Test')
 
-      const isNewManager = await pool.isPoolManager(newManager)
-      const isNewManager2 = await pool.isBalanceSheetManager(chainId, newManager2)
+      const { hubRegistry, balanceSheet } = await context.centrifuge._protocolAddresses(chainId)
+
+      const isNewManager = await context.centrifuge.getClient(chainId).readContract({
+        address: hubRegistry,
+        abi: ABI.HubRegistry,
+        functionName: 'manager',
+        args: [poolId.raw, newManager],
+      })
+
+      const isNewManager2 = await context.centrifuge.getClient(chainId).readContract({
+        address: balanceSheet,
+        abi: ABI.BalanceSheet,
+        functionName: 'manager',
+        args: [poolId.raw, newManager2],
+      })
       expect(isNewManager).to.be.true
       expect(isNewManager2).to.be.true
     })
