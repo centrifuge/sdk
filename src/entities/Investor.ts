@@ -2,7 +2,7 @@ import { combineLatest, map, switchMap } from 'rxjs'
 import { getAddress } from 'viem'
 import type { Centrifuge } from '../Centrifuge.js'
 import type { HexString } from '../types/index.js'
-import { PoolId, ShareClassId } from '../utils/types.js'
+import { AssetId, PoolId, ShareClassId } from '../utils/types.js'
 import { Entity } from './Entity.js'
 
 export class Investor extends Entity {
@@ -68,7 +68,7 @@ export class Investor extends Entity {
     )
   }
 
-  investment(poolId: PoolId, scId: ShareClassId, asset: HexString, chainId: number) {
+  investment(poolId: PoolId, scId: ShareClassId, asset: HexString | AssetId, chainId: number) {
     return this._query(null, () =>
       this._root.pool(poolId).pipe(
         switchMap((pool) => pool.vault(chainId, scId, asset)),
