@@ -21,7 +21,7 @@ const assetId = AssetId.from(centId, 1)
 
 const defaultAssetsAmount = Balance.fromFloat(100, 6)
 
-describe.only('Investor', () => {
+describe('Investor', () => {
   describe('portfolio', () => {
     it('should fetch its portfolio', async () => {
       const account = await context.centrifuge.investor(investor)

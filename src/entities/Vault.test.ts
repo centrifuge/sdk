@@ -220,6 +220,12 @@ describe('Vault - Async', () => {
     expect(emittedSigningStatus).to.equal(false)
   })
 
+  it('fetches the details of the vault', async () => {
+    const details = await vault.details()
+
+    expect(details.address).to.equal('0x686ee443625c1d8fd822d706b7b6553c6e644561')
+  })
+
   // TODO: Set up an account with an claimed invest order, but not whitelisted
   // it('throws when not allowed to redeem', async () => {
   //   context.tenderlyFork.impersonateAddress = investorD

@@ -8,6 +8,7 @@ import { Balance, Price } from '../utils/BigInt.js'
 import { AssetId, PoolId, ShareClassId } from '../utils/types.js'
 import { Pool } from './Pool.js'
 import { ShareClass } from './ShareClass.js'
+import { Vault } from './Vault.js'
 
 const chainId = 11155111
 const centId = 1
@@ -153,5 +154,137 @@ describe('ShareClass', () => {
     expect(pendingAmounts[0]!.pendingRedeem).to.be.instanceOf(Balance)
     expect(pendingAmounts[0]!.pendingIssuancesTotal).to.be.instanceOf(Balance)
     expect(pendingAmounts[0]!.pendingRevocationsTotal).to.be.instanceOf(Balance)
+  })
+
+  describe('approveDepositsAndIssueShares', () => {
+    let vault: Vault
+
+    before(async () => {
+      const { centrifuge } = context
+      const pool = new Pool(centrifuge, poolId.raw, chainId)
+      const shareClass = new ShareClass(centrifuge, pool, scId.raw)
+      vault = await pool.vault(chainId, shareClass.id, assetId)
+    })
+
+    it('should throw when issue price is 0', async () => {
+      context.tenderlyFork.impersonateAddress = fundManager
+      context.centrifuge.setSigner(context.tenderlyFork.signer)
+
+      const pendingAmounts = await vault.shareClass.pendingAmounts()
+      const pendingAmount = pendingAmounts.find((p) => p.assetId.equals(assetId))!
+
+      try {
+        await shareClass.approveDepositsAndIssueShares([
+          {
+            assetId,
+            approveAssetAmount: pendingAmount.pendingDeposit,
+            issuePricePerShare: Price.fromFloat(0),
+          },
+        ])
+      } catch (error: any) {
+        expect(error.message).to.include('Issue price per share must be greater than 0 for asset')
+      }
+    })
+
+    it('approves deposits and issues shares', async () => {
+      context.tenderlyFork.impersonateAddress = fundManager
+      context.centrifuge.setSigner(context.tenderlyFork.signer)
+
+      const pendingAmounts = await vault.shareClass.pendingAmounts()
+      const pendingAmount = pendingAmounts.find((p) => p.assetId.equals(assetId))!
+
+      const tx = await shareClass.approveDepositsAndIssueShares([
+        {
+          assetId,
+          approveAssetAmount: pendingAmount.pendingDeposit,
+          issuePricePerShare: Price.fromFloat(1),
+        },
+      ])
+
+      expect(tx.type).to.equal('TransactionConfirmed')
+    })
+
+    it('should throw when assets are not unique', async () => {
+      context.tenderlyFork.impersonateAddress = fundManager
+      context.centrifuge.setSigner(context.tenderlyFork.signer)
+
+      const pendingAmounts = await vault.shareClass.pendingAmounts()
+      const pendingAmount = pendingAmounts.find((p) => p.assetId.equals(assetId))!
+
+      try {
+        await shareClass.approveDepositsAndIssueShares([
+          {
+            assetId,
+            approveAssetAmount: pendingAmount.pendingDeposit,
+            issuePricePerShare: Price.fromFloat(1),
+          },
+          {
+            assetId,
+            approveAssetAmount: pendingAmount.pendingDeposit,
+            issuePricePerShare: Price.fromFloat(1),
+          },
+        ])
+      } catch (error: any) {
+        expect(error.message).to.include('Assets array contains multiple entries for the same asset ID')
+      }
+    })
+
+    it('should throw when approve amount exceeds pending amount', async () => {
+      context.tenderlyFork.impersonateAddress = fundManager
+      context.centrifuge.setSigner(context.tenderlyFork.signer)
+
+      const pendingAmounts = await vault.shareClass.pendingAmounts()
+      const pendingAmount = pendingAmounts.find((p) => p.assetId.equals(assetId))!
+
+      try {
+        await shareClass.approveDepositsAndIssueShares([
+          {
+            assetId,
+            approveAssetAmount: pendingAmount.pendingDeposit.add(new Balance(1, 6)),
+            issuePricePerShare: Price.fromFloat(1),
+          },
+        ])
+      } catch (error: any) {
+        expect(error.message).to.include('Approve amount exceeds pending amount for asset')
+      }
+    })
+
+    it('should throw when approve amount is zero', async () => {
+      context.tenderlyFork.impersonateAddress = fundManager
+      context.centrifuge.setSigner(context.tenderlyFork.signer)
+
+      try {
+        await shareClass.approveDepositsAndIssueShares([
+          {
+            assetId,
+            approveAssetAmount: new Balance(0, 6),
+            issuePricePerShare: Price.fromFloat(1),
+          },
+        ])
+      } catch (error: any) {
+        expect(error.message).to.include('Approve amount must be greater than 0 for asset')
+      }
+    })
+
+    // TODO
+    // it('should throw when issue epoch is greater than deposit epoch', async () => {
+    //   context.tenderlyFork.impersonateAddress = fundManager
+    //   context.centrifuge.setSigner(context.tenderlyFork.signer)
+
+    //   const pendingAmounts = await vault.shareClass.pendingAmounts()
+    //   const pendingAmount = pendingAmounts.find((p) => p.assetId.equals(assetId))!
+
+    //   try {
+    //     await shareClass.approveDepositsAndIssueShares([
+    //       {
+    //         assetId,
+    //         approveAssetAmount: pendingAmount.pendingDeposit,
+    //         issuePricePerShare: Price.fromFloat(1),
+    //       },
+    //     ])
+    //   } catch (error: any) {
+    //     expect(error.message).to.include('Nothing to issue')
+    //   }
+    // })
   })
 })
