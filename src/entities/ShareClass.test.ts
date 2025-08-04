@@ -290,7 +290,7 @@ describe('ShareClass', () => {
     })
   })
 
-  describe.only('approveRedeemsAndRevokeShares', () => {
+  describe('approveRedeemsAndRevokeShares', () => {
     let vault: Vault
     let pendingAmount: Awaited<ReturnType<typeof shareClass.pendingAmounts>>[number]
 
@@ -300,7 +300,6 @@ describe('ShareClass', () => {
       const sc = new ShareClass(centrifuge, pool, scId.raw)
       vault = await pool.vault(chainId, sc.id, assetId)
       const defaultSharesAmount = Balance.fromFloat(100, 18)
-      const redeemShares = Balance.fromFloat(40, 18)
 
       await mint(vault._asset, investor)
 
@@ -323,29 +322,20 @@ describe('ShareClass', () => {
       context.tenderlyFork.impersonateAddress = investor
       context.centrifuge.setSigner(context.tenderlyFork.signer)
 
-      let pendingAmounts = await vault.shareClass.pendingAmounts()
-
-      ;[, , , pendingAmounts, investment] = await Promise.all([
+      // Invest
+      ;[, investment] = await Promise.all([
         lastValueFrom(vault.increaseInvestOrder(defaultAssetsAmount).pipe(toArray())),
-        vault.increaseRedeemOrder(redeemShares),
-        firstValueFrom(
-          vault
-            .investment(investor)
-            .pipe(skipWhile((i) => !i.pendingRedeemShares.eq(investment.pendingRedeemShares.add(redeemShares))))
-        ),
-        firstValueFrom(
-          vault.shareClass
-            .pendingAmounts()
-            .pipe(skipWhile((p) => p.find((a) => a.assetId.equals(assetId))!.pendingRedeem.eq(0n)))
-        ),
         firstValueFrom(
           vault.investment(investor).pipe(skipWhile((i) => !i.pendingInvestCurrency.eq(defaultAssetsAmount.toBigInt())))
         ),
       ])
 
+      expect(investment.pendingInvestCurrency.toBigInt()).to.equal(defaultAssetsAmount.toBigInt())
+
       context.tenderlyFork.impersonateAddress = fundManager
       context.centrifuge.setSigner(context.tenderlyFork.signer)
 
+      let pendingAmounts = await vault.shareClass.pendingAmounts()
       pendingAmount = pendingAmounts.find((p) => p.assetId.equals(assetId))!
 
       // Approve deposits
@@ -371,6 +361,8 @@ describe('ShareClass', () => {
         vault.claim(),
         firstValueFrom(vault.investment(investor).pipe(skipWhile((i) => !i.claimableInvestShares.eq(0n)))),
       ])
+
+      const redeemShares = Balance.fromFloat(40, 18)
       ;[, investment, pendingAmounts] = await Promise.all([
         vault.increaseRedeemOrder(redeemShares),
         firstValueFrom(
@@ -389,41 +381,9 @@ describe('ShareClass', () => {
       pendingAmount = pendingAmounts.find((p) => p.assetId.equals(assetId))!
     })
 
-    // before(async () => {
-    //   const { centrifuge } = context
-    //   const pool = new Pool(centrifuge, poolId.raw, chainId)
-    //   const shareClass = new ShareClass(centrifuge, pool, scId.raw)
-    //   vault = await pool.vault(chainId, shareClass.id, assetId)
-
-    //   const redeemShares = Balance.fromFloat(40, 18)
-    //   context.tenderlyFork.impersonateAddress = fundManager
-    //   context.centrifuge.setSigner(context.tenderlyFork.signer)
-
-    //   const [, investment] = await Promise.all([
-    //     vault.shareClass.updateMember(investor, 1800000000, chainId),
-    //     firstValueFrom(vault.investment(investor).pipe(skip(1))),
-    //   ])
-
-    //   context.tenderlyFork.impersonateAddress = investor
-    //   context.centrifuge.setSigner(context.tenderlyFork.signer)
-    //   ;[, , pendingAmounts] = await Promise.all([
-    //     vault.increaseRedeemOrder(redeemShares),
-    //     firstValueFrom(
-    //       vault
-    //         .investment(investor)
-    //         .pipe(skipWhile((i) => !i.pendingRedeemShares.eq(investment.pendingRedeemShares.add(redeemShares))))
-    //     ),
-    //     firstValueFrom(
-    //       vault.shareClass
-    //         .pendingAmounts()
-    //         .pipe(skipWhile((p) => p.find((a) => a.assetId.equals(assetId))!.pendingRedeem.eq(0n)))
-    //     ),
-    //   ])
-    // })
-
-    it.only('should throw when issue price is 0', async () => {
+    it('should throw when revoke price per share is 0 or less', async () => {
       try {
-        await shareClass.approveRedeemsAndRevokeShares([
+        await vault.shareClass.approveRedeemsAndRevokeShares([
           {
             assetId,
             approveShareAmount: pendingAmount.pendingRedeem,
@@ -431,70 +391,68 @@ describe('ShareClass', () => {
           },
         ])
       } catch (error: any) {
-        expect(error.message).to.include('Share amount must be greater than 0 for asset')
+        expect(error.message).to.include('Revoke price per share must be greater than 0 for asset')
       }
     })
 
-    // it('approves redeems and revokes shares', async () => {
-    //   context.tenderlyFork.impersonateAddress = fundManager
-    //   context.centrifuge.setSigner(context.tenderlyFork.signer)
+    it('approves redeems and revokes shares', async () => {
+      const tx = await shareClass.approveRedeemsAndRevokeShares([
+        {
+          assetId,
+          approveShareAmount: pendingAmount.pendingRedeem,
+          revokePricePerShare: Price.fromFloat(1),
+        },
+      ])
 
-    //   const pendingAmount = pendingAmounts.find((p) => p.assetId.equals(assetId))!
+      expect(tx.type).to.equal('TransactionConfirmed')
+    })
 
-    //   const tx = await shareClass.approveRedeemsAndRevokeShares([
-    //     {
-    //       assetId,
-    //       approveShareAmount: pendingAmount.pendingRedeem,
-    //       revokePricePerShare: Price.fromFloat(1),
-    //     },
-    //   ])
+    it('should throw when assets are not unique', async () => {
+      try {
+        await shareClass.approveRedeemsAndRevokeShares([
+          {
+            assetId,
+            approveShareAmount: pendingAmount.pendingRedeem,
+            revokePricePerShare: Price.fromFloat(1),
+          },
+          {
+            assetId,
+            approveShareAmount: pendingAmount.pendingRedeem,
+            revokePricePerShare: Price.fromFloat(1),
+          },
+        ])
+      } catch (error: any) {
+        expect(error.message).to.include('Assets array contains multiple entries for the same asset ID')
+      }
+    })
 
-    //   expect(tx.type).to.equal('TransactionConfirmed')
-    // })
+    it('should throw when share amounts exceeds pending redeem', async () => {
+      try {
+        await shareClass.approveRedeemsAndRevokeShares([
+          {
+            assetId,
+            approveShareAmount: pendingAmount.pendingRedeem.add(new Balance(1, 6)),
+            revokePricePerShare: Price.fromFloat(1),
+          },
+        ])
+      } catch (error: any) {
+        expect(error.message).to.include('Share amount exceeds pending redeem for asset')
+      }
+    })
 
-    // it('should throw when share amounts exceeds pending redeem', async () => {
-    //   context.tenderlyFork.impersonateAddress = fundManager
-    //   context.centrifuge.setSigner(context.tenderlyFork.signer)
-    //   const pendingAmount = pendingAmounts.find((p) => p.assetId.equals(assetId))!
-
-    //   try {
-    //     await shareClass.approveRedeemsAndRevokeShares([
-    //       {
-    //         assetId,
-    //         approveShareAmount: pendingAmount.pendingRedeem.add(new Balance(1, 6)),
-    //         revokePricePerShare: Price.fromFloat(1),
-    //       },
-    //     ])
-    //   } catch (error: any) {
-    //     expect(error.message).to.include('Share amount exceeds pending redeem for asset')
-    //   }
-    // })
-
-    //     it('should throw when assets are not unique', async () => {
-    //   context.tenderlyFork.impersonateAddress = fundManager
-    //   context.centrifuge.setSigner(context.tenderlyFork.signer)
-
-    //   const pendingAmounts = await vault.shareClass.pendingAmounts()
-    //   const pendingAmount = pendingAmounts.find((p) => p.assetId.equals(assetId))!
-    //   console.log
-
-    //   try {
-    //     await shareClass.approveRedeemsAndRevokeShares([
-    //     {
-    //       assetId,
-    //       approveShareAmount: pendingAmount.pendingRedeem,
-    //       revokePricePerShare: Price.fromFloat(1),
-    //     },
-    //     {
-    //       assetId,
-    //       approveShareAmount: pendingAmount.pendingRedeem,
-    //       revokePricePerShare: Price.fromFloat(1),
-    //     },
-    //     ])
-    //   } catch (error: any) {
-    //     expect(error.message).to.include('Assets array contains multiple entries for the same asset ID')
-    //   }
-    // })
+    it('should throw when share amount is zero or less', async () => {
+      try {
+        await shareClass.approveRedeemsAndRevokeShares([
+          {
+            assetId,
+            approveShareAmount: new Balance(0, 6),
+            revokePricePerShare: Price.fromFloat(1),
+          },
+        ])
+      } catch (error: any) {
+        expect(error.message).to.include('Share amount must be greater than 0 for asset')
+      }
+    })
   })
 
   describe('claimDeposit', () => {
