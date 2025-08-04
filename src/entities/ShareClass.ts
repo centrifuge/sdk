@@ -1,4 +1,4 @@
-import { catchError, combineLatest, defer, EMPTY, expand, filter, map, of, switchMap } from 'rxjs'
+import { catchError, combineLatest, defer, EMPTY, expand, filter, firstValueFrom, map, of, switchMap } from 'rxjs'
 import { encodeFunctionData, encodePacked, getContract } from 'viem'
 import { ABI } from '../abi/index.js'
 import type { Centrifuge } from '../Centrifuge.js'
@@ -15,6 +15,8 @@ import { Entity } from './Entity.js'
 import type { Pool } from './Pool.js'
 import { PoolNetwork } from './PoolNetwork.js'
 import { Vault } from './Vault.js'
+
+const MAX_CLAIM = 20 // Maximum number of orders to claim in a single transaction
 
 /**
  * Query and interact with a share class, which allows querying total issuance, NAV per share,
@@ -252,55 +254,6 @@ export class ShareClass extends Entity {
             })
           )
         })
-      )
-    )
-  }
-
-  investorOrder(assetId: AssetId, investor: HexString) {
-    return this._query(['maxClaims', assetId.toString(), investor.toLowerCase()], () =>
-      this._root._protocolAddresses(this.pool.chainId).pipe(
-        switchMap(({ shareClassManager }) =>
-          defer(async () => {
-            const contract = getContract({
-              address: shareClassManager,
-              abi: ABI.ShareClassManager,
-              client: this._root.getClient(this.pool.chainId),
-            })
-
-            const [maxDepositClaims, maxRedeemClaims] = await Promise.all([
-              contract.read.maxDepositClaims([this.id.raw, addressToBytes32(investor), assetId.raw]),
-              contract.read.maxRedeemClaims([this.id.raw, addressToBytes32(investor), assetId.raw]),
-            ])
-            return {
-              maxDepositClaims,
-              maxRedeemClaims,
-            }
-          }).pipe(
-            repeatOnEvents(
-              this._root,
-              {
-                address: shareClassManager,
-                abi: ABI.ShareClassManager,
-                eventName: [
-                  'UpdateDepositRequest',
-                  'UpdateRedeemRequest',
-                  'ClaimDeposit',
-                  'ClaimRedeem',
-                  'ApproveDeposits',
-                  'ApproveRedeems',
-                ],
-                filter: (events) => {
-                  return events.some(
-                    (event) =>
-                      event.args.scId === this.id.raw &&
-                      (event.args.depositAssetId === assetId.raw || event.args.payoutAssetId === assetId.raw)
-                  )
-                },
-              },
-              this.pool.chainId
-            )
-          )
-        )
       )
     )
   }
@@ -564,13 +517,31 @@ export class ShareClass extends Entity {
   approveDepositsAndIssueShares(
     assets: { assetId: AssetId; approveAssetAmount?: Balance; issuePricePerShare?: Price | Price[] }[]
   ) {
-    // TODO: Also claim orders
     const self = this
     return this._transact(async function* (ctx) {
-      const [{ hub }, pendingAmounts] = await Promise.all([
+      const [{ hub }, pendingAmounts, orders] = await Promise.all([
         self._root._protocolAddresses(self.pool.chainId),
         self.pendingAmounts(),
+        firstValueFrom(
+          self
+            ._investorOrders()
+            .pipe(
+              switchMap((orders) =>
+                combineLatest(
+                  orders.outstandingInvests.map((order) => self._investorOrder(order.assetId, order.investor))
+                )
+              )
+            )
+        ),
       ])
+
+      const ordersByAssetId: Record<string, typeof orders> = {}
+      orders.forEach((order) => {
+        if (order.pendingDeposit === 0n) return
+        const id = order.assetId.toString()
+        if (!ordersByAssetId[id]) ordersByAssetId[id] = []
+        ordersByAssetId[id].push(order)
+      })
 
       const uniqueAssets = new Set(assets.map((a) => a.assetId.toString()))
       if (uniqueAssets.size !== assets.length) {
@@ -638,6 +609,27 @@ export class ShareClass extends Entity {
               })
             )
             addMessage(asset.assetId.centrifugeId, MessageType.RequestCallback)
+
+            // When issuing shares, also notify a number investor orders
+            const assetOrders = ordersByAssetId[asset.assetId.toString()]
+            assetOrders?.slice(0, MAX_CLAIM).forEach((order) => {
+              if (order.pendingDeposit > 0n) {
+                batch.push(
+                  encodeFunctionData({
+                    abi: ABI.Hub,
+                    functionName: 'notifyDeposit',
+                    args: [
+                      self.pool.id.raw,
+                      self.id.raw,
+                      asset.assetId.raw,
+                      addressToBytes32(order.investor),
+                      order.maxDepositClaims + 1, // +1 to ensure the order that's being issued is included
+                    ],
+                  })
+                )
+                addMessage(asset.assetId.centrifugeId, MessageType.RequestCallback)
+              }
+            })
           }
         }
       }
@@ -662,13 +654,31 @@ export class ShareClass extends Entity {
   approveRedeemsAndRevokeShares(
     assets: { assetId: AssetId; approveShareAmount?: Balance; revokePricePerShare?: Price | Price[] }[]
   ) {
-    // TODO: Also claim orders
     const self = this
     return this._transact(async function* (ctx) {
-      const [{ hub }, pendingAmounts] = await Promise.all([
+      const [{ hub }, pendingAmounts, orders] = await Promise.all([
         self._root._protocolAddresses(self.pool.chainId),
         self.pendingAmounts(),
+        firstValueFrom(
+          self
+            ._investorOrders()
+            .pipe(
+              switchMap((orders) =>
+                combineLatest(
+                  orders.outstandingRedeems.map((order) => self._investorOrder(order.assetId, order.investor))
+                )
+              )
+            )
+        ),
       ])
+
+      const ordersByAssetId: Record<string, typeof orders> = {}
+      orders.forEach((order) => {
+        if (order.pendingRedeem === 0n) return
+        const id = order.assetId.toString()
+        if (!ordersByAssetId[id]) ordersByAssetId[id] = []
+        ordersByAssetId[id].push(order)
+      })
 
       const uniqueAssets = new Set(assets.map((a) => a.assetId.toString()))
       if (uniqueAssets.size !== assets.length) {
@@ -735,6 +745,27 @@ export class ShareClass extends Entity {
               })
             )
             addMessage(asset.assetId.centrifugeId, MessageType.RequestCallback)
+
+            // When revoking shares, also notify a number investor orders
+            const assetOrders = ordersByAssetId[asset.assetId.toString()]
+            assetOrders?.slice(0, MAX_CLAIM).forEach((order) => {
+              if (order.pendingRedeem > 0n) {
+                batch.push(
+                  encodeFunctionData({
+                    abi: ABI.Hub,
+                    functionName: 'notifyRedeem',
+                    args: [
+                      self.pool.id.raw,
+                      self.id.raw,
+                      asset.assetId.raw,
+                      addressToBytes32(order.investor),
+                      order.maxRedeemClaims + 1, // +1 to ensure the order that's being issued is included
+                    ],
+                  })
+                )
+                addMessage(asset.assetId.centrifugeId, MessageType.RequestCallback)
+              }
+            })
           }
         }
       }
@@ -758,7 +789,7 @@ export class ShareClass extends Entity {
     return this._transact(async function* (ctx) {
       const [{ hub }, investorOrder] = await Promise.all([
         self._root._protocolAddresses(self.pool.chainId),
-        self.investorOrder(assetId, investor),
+        self._investorOrder(assetId, investor),
       ])
       yield* wrapTransaction('Claim deposit', ctx, {
         contract: hub,
@@ -787,7 +818,7 @@ export class ShareClass extends Entity {
     return this._transact(async function* (ctx) {
       const [{ hub }, investorOrder] = await Promise.all([
         self._root._protocolAddresses(self.pool.chainId),
-        self.investorOrder(assetId, investor),
+        self._investorOrder(assetId, investor),
       ])
       yield* wrapTransaction('Claim redeem', ctx, {
         contract: hub,
@@ -1040,6 +1071,118 @@ export class ShareClass extends Entity {
                 },
               },
               chainId
+            )
+          )
+        )
+      )
+    )
+  }
+
+  /** @internal */
+  _investorOrders() {
+    return this._root._queryIndexer(
+      `query ($scId: String!) {
+        outstandingInvests(where: {tokenId: $scId}) {
+          items {
+            investor: account
+            assetId
+            queuedAmount
+            depositAmount
+            pendingAmount
+          }
+        }
+        outstandingRedeems(where: {tokenId: $scId}) {
+          items {
+            assetId
+            investor: account
+            queuedAmount
+            depositAmount
+            pendingAmount
+          }
+        }
+        }`,
+      { scId: this.id.raw },
+      (data: {
+        outstandingInvests: {
+          items: {
+            assetId: string
+            investor: HexString
+            queuedAmount: string
+            depositAmount: string
+            pendingAmount: string
+          }[]
+        }
+        outstandingRedeems: {
+          items: {
+            assetId: string
+            investor: HexString
+            queuedAmount: string
+            depositAmount: string
+            pendingAmount: string
+          }[]
+        }
+      }) => ({
+        outstandingInvests: data.outstandingInvests.items.map((item) => ({
+          ...item,
+          assetId: new AssetId(item.assetId),
+        })),
+        outstandingRedeems: data.outstandingRedeems.items.map((item) => ({
+          ...item,
+          assetId: new AssetId(item.assetId),
+        })),
+      })
+    )
+  }
+
+  /** @internal */
+  _investorOrder(assetId: AssetId, investor: HexString) {
+    return this._query(['investorOrder', assetId.toString(), investor.toLowerCase()], () =>
+      this._root._protocolAddresses(this.pool.chainId).pipe(
+        switchMap(({ shareClassManager }) =>
+          defer(async () => {
+            const contract = getContract({
+              address: shareClassManager,
+              abi: ABI.ShareClassManager,
+              client: this._root.getClient(this.pool.chainId),
+            })
+
+            const [maxDepositClaims, maxRedeemClaims, [pendingDeposit], [pendingRedeem]] = await Promise.all([
+              contract.read.maxDepositClaims([this.id.raw, addressToBytes32(investor), assetId.raw]),
+              contract.read.maxRedeemClaims([this.id.raw, addressToBytes32(investor), assetId.raw]),
+              contract.read.depositRequest([this.id.raw, assetId.raw, addressToBytes32(investor)]),
+              contract.read.redeemRequest([this.id.raw, assetId.raw, addressToBytes32(investor)]),
+            ])
+            return {
+              assetId,
+              investor,
+              maxDepositClaims,
+              maxRedeemClaims,
+              pendingDeposit,
+              pendingRedeem,
+            }
+          }).pipe(
+            repeatOnEvents(
+              this._root,
+              {
+                address: shareClassManager,
+                abi: ABI.ShareClassManager,
+                eventName: [
+                  'UpdateDepositRequest',
+                  'UpdateRedeemRequest',
+                  'ClaimDeposit',
+                  'ClaimRedeem',
+                  'ApproveDeposits',
+                  'ApproveRedeems',
+                ],
+                filter: (events) => {
+                  return events.some(
+                    (event) =>
+                      event.args.scId === this.id.raw &&
+                      (event.args.depositAssetId === assetId.raw || event.args.payoutAssetId === assetId.raw)
+                  )
+                },
+              },
+              this.pool.chainId
             )
           )
         )
