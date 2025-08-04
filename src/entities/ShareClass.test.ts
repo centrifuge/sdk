@@ -1,5 +1,5 @@
 import { expect } from 'chai'
-import { firstValueFrom, skipWhile } from 'rxjs'
+import { firstValueFrom, lastValueFrom, skip, skipWhile, toArray } from 'rxjs'
 import { ABI } from '../abi/index.js'
 import { context } from '../tests/setup.js'
 import { randomAddress } from '../tests/utils.js'
@@ -9,6 +9,8 @@ import { AssetId, PoolId, ShareClassId } from '../utils/types.js'
 import { Pool } from './Pool.js'
 import { ShareClass } from './ShareClass.js'
 import { Vault } from './Vault.js'
+import { doTransaction } from '../utils/transaction.js'
+import { parseAbi } from 'viem'
 
 const chainId = 11155111
 const centId = 1
@@ -20,6 +22,11 @@ const assetId = AssetId.from(centId, 1)
 const assetId2 = AssetId.from(centId, 2)
 
 const fundManager = '0x423420Ae467df6e90291fd0252c0A8a637C1e03f'
+const protocolAdmin = '0x423420Ae467df6e90291fd0252c0A8a637C1e03f'
+
+const investor = '0x5b66af49742157E360A2897e3F480d192305B2b5'
+
+const defaultAssetsAmount = Balance.fromFloat(100, 6)
 
 describe('ShareClass', () => {
   let shareClass: ShareClass
@@ -266,25 +273,365 @@ describe('ShareClass', () => {
       }
     })
 
-    // TODO
-    // it('should throw when issue epoch is greater than deposit epoch', async () => {
+    it('should throw when issue epoch is greater than deposit epoch', async () => {
+      context.tenderlyFork.impersonateAddress = fundManager
+      context.centrifuge.setSigner(context.tenderlyFork.signer)
+
+      try {
+        await shareClass.approveDepositsAndIssueShares([
+          {
+            assetId,
+            issuePricePerShare: Price.fromFloat(1),
+          },
+        ])
+      } catch (error: any) {
+        expect(error.message).to.include('Nothing to issue')
+      }
+    })
+  })
+
+  describe.only('approveRedeemsAndRevokeShares', () => {
+    let vault: Vault
+    let pendingAmount: Awaited<ReturnType<typeof shareClass.pendingAmounts>>[number]
+
+    before(async () => {
+      const { centrifuge } = context
+      const pool = new Pool(centrifuge, poolId.raw, chainId)
+      const sc = new ShareClass(centrifuge, pool, scId.raw)
+      vault = await pool.vault(chainId, sc.id, assetId)
+      const defaultSharesAmount = Balance.fromFloat(100, 18)
+      const redeemShares = Balance.fromFloat(40, 18)
+
+      await mint(vault._asset, investor)
+
+      let investment = await vault.investment(investor)
+
+      context.tenderlyFork.impersonateAddress = fundManager
+      context.centrifuge.setSigner(context.tenderlyFork.signer)
+
+      await vault.shareClass.setMaxAssetPriceAge(assetId, 9999999999999)
+
+      // Make sure price is up-to-date
+      await vault.shareClass.notifyAssetPrice(assetId)
+
+      // Add member, to be able to redeem
+      ;[, investment] = await Promise.all([
+        vault.shareClass.updateMember(investor, 1800000000, chainId),
+        firstValueFrom(vault.investment(investor).pipe(skip(1))),
+      ])
+
+      context.tenderlyFork.impersonateAddress = investor
+      context.centrifuge.setSigner(context.tenderlyFork.signer)
+
+      let pendingAmounts = await vault.shareClass.pendingAmounts()
+
+      ;[, , , pendingAmounts, investment] = await Promise.all([
+        lastValueFrom(vault.increaseInvestOrder(defaultAssetsAmount).pipe(toArray())),
+        vault.increaseRedeemOrder(redeemShares),
+        firstValueFrom(
+          vault
+            .investment(investor)
+            .pipe(skipWhile((i) => !i.pendingRedeemShares.eq(investment.pendingRedeemShares.add(redeemShares))))
+        ),
+        firstValueFrom(
+          vault.shareClass
+            .pendingAmounts()
+            .pipe(skipWhile((p) => p.find((a) => a.assetId.equals(assetId))!.pendingRedeem.eq(0n)))
+        ),
+        firstValueFrom(
+          vault.investment(investor).pipe(skipWhile((i) => !i.pendingInvestCurrency.eq(defaultAssetsAmount.toBigInt())))
+        ),
+      ])
+
+      context.tenderlyFork.impersonateAddress = fundManager
+      context.centrifuge.setSigner(context.tenderlyFork.signer)
+
+      pendingAmount = pendingAmounts.find((p) => p.assetId.equals(assetId))!
+
+      // Approve deposits
+      await vault.shareClass.approveDepositsAndIssueShares([
+        {
+          assetId,
+          approveAssetAmount: pendingAmount.pendingDeposit,
+          issuePricePerShare: Price.fromFloat(1),
+        },
+      ])
+      ;[, investment] = await Promise.all([
+        vault.shareClass.claimDeposit(assetId, investor),
+        firstValueFrom(
+          vault.investment(investor).pipe(skipWhile((i) => !i.claimableInvestShares.eq(defaultSharesAmount.toBigInt())))
+        ),
+      ])
+
+      context.tenderlyFork.impersonateAddress = investor
+      context.centrifuge.setSigner(context.tenderlyFork.signer)
+
+      // Claim shares
+      ;[, investment] = await Promise.all([
+        vault.claim(),
+        firstValueFrom(vault.investment(investor).pipe(skipWhile((i) => !i.claimableInvestShares.eq(0n)))),
+      ])
+      ;[, investment, pendingAmounts] = await Promise.all([
+        vault.increaseRedeemOrder(redeemShares),
+        firstValueFrom(
+          vault.investment(investor).pipe(skipWhile((i) => !i.pendingRedeemShares.eq(redeemShares.toBigInt())))
+        ),
+        firstValueFrom(
+          vault.shareClass
+            .pendingAmounts()
+            .pipe(skipWhile((p) => p.find((a) => a.assetId.equals(assetId))!.pendingRedeem.eq(0n)))
+        ),
+      ])
+
+      context.tenderlyFork.impersonateAddress = fundManager
+      context.centrifuge.setSigner(context.tenderlyFork.signer)
+
+      pendingAmount = pendingAmounts.find((p) => p.assetId.equals(assetId))!
+    })
+
+    // before(async () => {
+    //   const { centrifuge } = context
+    //   const pool = new Pool(centrifuge, poolId.raw, chainId)
+    //   const shareClass = new ShareClass(centrifuge, pool, scId.raw)
+    //   vault = await pool.vault(chainId, shareClass.id, assetId)
+
+    //   const redeemShares = Balance.fromFloat(40, 18)
+    //   context.tenderlyFork.impersonateAddress = fundManager
+    //   context.centrifuge.setSigner(context.tenderlyFork.signer)
+
+    //   const [, investment] = await Promise.all([
+    //     vault.shareClass.updateMember(investor, 1800000000, chainId),
+    //     firstValueFrom(vault.investment(investor).pipe(skip(1))),
+    //   ])
+
+    //   context.tenderlyFork.impersonateAddress = investor
+    //   context.centrifuge.setSigner(context.tenderlyFork.signer)
+    //   ;[, , pendingAmounts] = await Promise.all([
+    //     vault.increaseRedeemOrder(redeemShares),
+    //     firstValueFrom(
+    //       vault
+    //         .investment(investor)
+    //         .pipe(skipWhile((i) => !i.pendingRedeemShares.eq(investment.pendingRedeemShares.add(redeemShares))))
+    //     ),
+    //     firstValueFrom(
+    //       vault.shareClass
+    //         .pendingAmounts()
+    //         .pipe(skipWhile((p) => p.find((a) => a.assetId.equals(assetId))!.pendingRedeem.eq(0n)))
+    //     ),
+    //   ])
+    // })
+
+    it.only('should throw when issue price is 0', async () => {
+      try {
+        await shareClass.approveRedeemsAndRevokeShares([
+          {
+            assetId,
+            approveShareAmount: pendingAmount.pendingRedeem,
+            revokePricePerShare: Price.fromFloat(0),
+          },
+        ])
+      } catch (error: any) {
+        expect(error.message).to.include('Share amount must be greater than 0 for asset')
+      }
+    })
+
+    // it('approves redeems and revokes shares', async () => {
+    //   context.tenderlyFork.impersonateAddress = fundManager
+    //   context.centrifuge.setSigner(context.tenderlyFork.signer)
+
+    //   const pendingAmount = pendingAmounts.find((p) => p.assetId.equals(assetId))!
+
+    //   const tx = await shareClass.approveRedeemsAndRevokeShares([
+    //     {
+    //       assetId,
+    //       approveShareAmount: pendingAmount.pendingRedeem,
+    //       revokePricePerShare: Price.fromFloat(1),
+    //     },
+    //   ])
+
+    //   expect(tx.type).to.equal('TransactionConfirmed')
+    // })
+
+    // it('should throw when share amounts exceeds pending redeem', async () => {
+    //   context.tenderlyFork.impersonateAddress = fundManager
+    //   context.centrifuge.setSigner(context.tenderlyFork.signer)
+    //   const pendingAmount = pendingAmounts.find((p) => p.assetId.equals(assetId))!
+
+    //   try {
+    //     await shareClass.approveRedeemsAndRevokeShares([
+    //       {
+    //         assetId,
+    //         approveShareAmount: pendingAmount.pendingRedeem.add(new Balance(1, 6)),
+    //         revokePricePerShare: Price.fromFloat(1),
+    //       },
+    //     ])
+    //   } catch (error: any) {
+    //     expect(error.message).to.include('Share amount exceeds pending redeem for asset')
+    //   }
+    // })
+
+    //     it('should throw when assets are not unique', async () => {
     //   context.tenderlyFork.impersonateAddress = fundManager
     //   context.centrifuge.setSigner(context.tenderlyFork.signer)
 
     //   const pendingAmounts = await vault.shareClass.pendingAmounts()
     //   const pendingAmount = pendingAmounts.find((p) => p.assetId.equals(assetId))!
+    //   console.log
 
     //   try {
-    //     await shareClass.approveDepositsAndIssueShares([
-    //       {
-    //         assetId,
-    //         approveAssetAmount: pendingAmount.pendingDeposit,
-    //         issuePricePerShare: Price.fromFloat(1),
-    //       },
+    //     await shareClass.approveRedeemsAndRevokeShares([
+    //     {
+    //       assetId,
+    //       approveShareAmount: pendingAmount.pendingRedeem,
+    //       revokePricePerShare: Price.fromFloat(1),
+    //     },
+    //     {
+    //       assetId,
+    //       approveShareAmount: pendingAmount.pendingRedeem,
+    //       revokePricePerShare: Price.fromFloat(1),
+    //     },
     //     ])
     //   } catch (error: any) {
-    //     expect(error.message).to.include('Nothing to issue')
+    //     expect(error.message).to.include('Assets array contains multiple entries for the same asset ID')
     //   }
     // })
   })
+
+  describe('claimDeposit', () => {
+    it('should be able to claim a deposit', async () => {
+      context.tenderlyFork.impersonateAddress = fundManager
+      context.centrifuge.setSigner(context.tenderlyFork.signer)
+
+      const result = await shareClass.claimDeposit(assetId, investor)
+
+      expect(result.type).to.equal('TransactionConfirmed')
+    })
+  })
+
+  describe('claimRedeem', () => {
+    it('should be able to claim a redemption', async () => {
+      const { centrifuge } = context
+      const pool = new Pool(centrifuge, poolId.raw, chainId)
+      const sc = new ShareClass(centrifuge, pool, scId.raw)
+      const vault = await pool.vault(chainId, sc.id, assetId)
+      const defaultSharesAmount = Balance.fromFloat(100, 18)
+
+      await mint(vault._asset, investor)
+
+      let investment = await vault.investment(investor)
+
+      context.tenderlyFork.impersonateAddress = fundManager
+      context.centrifuge.setSigner(context.tenderlyFork.signer)
+
+      await vault.shareClass.setMaxAssetPriceAge(assetId, 9999999999999)
+
+      // Make sure price is up-to-date
+      await vault.shareClass.notifyAssetPrice(assetId)
+
+      // Add member, to be able to redeem
+      ;[, investment] = await Promise.all([
+        vault.shareClass.updateMember(investor, 1800000000, chainId),
+        firstValueFrom(vault.investment(investor).pipe(skip(1))),
+      ])
+
+      context.tenderlyFork.impersonateAddress = investor
+      context.centrifuge.setSigner(context.tenderlyFork.signer)
+
+      // Invest
+      ;[, investment] = await Promise.all([
+        lastValueFrom(vault.increaseInvestOrder(defaultAssetsAmount).pipe(toArray())),
+        firstValueFrom(
+          vault.investment(investor).pipe(skipWhile((i) => !i.pendingInvestCurrency.eq(defaultAssetsAmount.toBigInt())))
+        ),
+      ])
+
+      expect(investment.pendingInvestCurrency.toBigInt()).to.equal(defaultAssetsAmount.toBigInt())
+
+      context.tenderlyFork.impersonateAddress = fundManager
+      context.centrifuge.setSigner(context.tenderlyFork.signer)
+
+      let pendingAmounts = await vault.shareClass.pendingAmounts()
+      let pendingAmount = pendingAmounts.find((p) => p.assetId.equals(assetId))!
+
+      // Approve deposits
+      await vault.shareClass.approveDepositsAndIssueShares([
+        {
+          assetId,
+          approveAssetAmount: pendingAmount.pendingDeposit,
+          issuePricePerShare: Price.fromFloat(1),
+        },
+      ])
+      ;[, investment] = await Promise.all([
+        vault.shareClass.claimDeposit(assetId, investor),
+        firstValueFrom(
+          vault.investment(investor).pipe(skipWhile((i) => !i.claimableInvestShares.eq(defaultSharesAmount.toBigInt())))
+        ),
+      ])
+
+      context.tenderlyFork.impersonateAddress = investor
+      context.centrifuge.setSigner(context.tenderlyFork.signer)
+
+      // Claim shares
+      ;[, investment] = await Promise.all([
+        vault.claim(),
+        firstValueFrom(vault.investment(investor).pipe(skipWhile((i) => !i.claimableInvestShares.eq(0n)))),
+      ])
+
+      const redeemShares = Balance.fromFloat(40, 18)
+      ;[, investment, pendingAmounts] = await Promise.all([
+        vault.increaseRedeemOrder(redeemShares),
+        firstValueFrom(
+          vault.investment(investor).pipe(skipWhile((i) => !i.pendingRedeemShares.eq(redeemShares.toBigInt())))
+        ),
+        firstValueFrom(
+          vault.shareClass
+            .pendingAmounts()
+            .pipe(skipWhile((p) => p.find((a) => a.assetId.equals(assetId))!.pendingRedeem.eq(0n)))
+        ),
+      ])
+
+      context.tenderlyFork.impersonateAddress = fundManager
+      context.centrifuge.setSigner(context.tenderlyFork.signer)
+
+      pendingAmount = pendingAmounts.find((p) => p.assetId.equals(assetId))!
+
+      // Approve redeems
+      await Promise.all([
+        vault.shareClass.approveRedeemsAndRevokeShares([
+          {
+            assetId,
+            approveShareAmount: pendingAmount.pendingRedeem,
+            revokePricePerShare: Price.fromFloat(1),
+          },
+        ]),
+        // claimRedeem() relies on the investOrder being up-to-date, so waiting here for it to be updated
+        // TODO: Fix this somehow
+        firstValueFrom(
+          vault.shareClass.investorOrder(assetId, investor).pipe(skipWhile((o) => o.maxRedeemClaims === 0))
+        ),
+      ])
+      const [result] = await Promise.all([
+        vault.shareClass.claimRedeem(assetId, investor),
+        firstValueFrom(vault.investment(investor).pipe(skipWhile((i) => i.claimableRedeemCurrency.eq(0n)))),
+      ])
+
+      expect(result.type).to.equal('TransactionConfirmed')
+    })
+  })
 })
+
+async function mint(asset: string, address: string) {
+  context.tenderlyFork.impersonateAddress = protocolAdmin
+  context.centrifuge.setSigner(context.tenderlyFork.signer)
+
+  await context.centrifuge._transact(async function* (ctx) {
+    yield* doTransaction('Mint', ctx.publicClient, async () => {
+      return ctx.walletClient.writeContract({
+        address: asset as any,
+        abi: parseAbi(['function mint(address, uint256)']),
+        functionName: 'mint',
+        args: [address as any, defaultAssetsAmount.toBigInt()],
+      })
+    })
+  }, chainId)
+}
