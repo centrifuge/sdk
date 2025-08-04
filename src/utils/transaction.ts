@@ -91,10 +91,10 @@ export async function* doTransaction(
   return result
 }
 
-export async function* doSignMessage(
+export async function* doSignMessage<T = any>(
   title: string,
-  transactionCallback: () => Promise<any>
-): AsyncGenerator<OperationStatus, any> {
+  transactionCallback: () => Promise<T>
+): AsyncGenerator<OperationStatus, T> {
   const id = Math.random().toString(36).substring(2)
   yield { id, type: 'SigningMessage', title }
   const message = await transactionCallback()
