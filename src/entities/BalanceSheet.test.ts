@@ -26,30 +26,50 @@ describe('BalanceSheet', () => {
     balanceSheet = new BalanceSheet(centrifuge, poolNetwork, shareClass)
   })
 
-  it('gets the balances', async () => {
-    const balances = await balanceSheet.balances()
-    expect(balances).to.have.length.greaterThan(0)
-    expect(balances[0]!.amount).to.be.instanceOf(Balance)
+  describe('balances', () => {
+    it('gets the balances', async () => {
+      const balances = await balanceSheet.balances()
+      expect(balances).to.have.length.greaterThan(0)
+      expect(balances[0]!.amount).to.be.instanceOf(Balance)
+    })
   })
 
-  it('withdraws and deposits funds', async () => {
-    context.tenderlyFork.impersonateAddress = poolManager
-    context.centrifuge.setSigner(context.tenderlyFork.signer)
+  describe('deposit and withdraw', () => {
+    it('throws an error during deposit if signing address is not a BalanceSheetManager', async () => {
+      try {
+        await balanceSheet.deposit(assetId, Balance.fromFloat(1, 6))
+      } catch (error: any) {
+        expect(error.message).to.include('Signing address is not a BalanceSheetManager')
+      }
+    })
 
-    const amount = Balance.fromFloat(1, 18)
+    it('throws an error during withdraw if signing address is not a BalanceSheetManager', async () => {
+      try {
+        await balanceSheet.withdraw(assetId, '0x', Balance.fromFloat(1, 6))
+      } catch (error: any) {
+        expect(error.message).to.include('Signing address is not a BalanceSheetManager')
+      }
+    })
 
-    await balanceSheet.shareClass.setMaxAssetPriceAge(assetId, 9999999999999)
-    await balanceSheet.shareClass.notifyAssetPrice(assetId)
+    it('withdraws and deposits funds', async () => {
+      context.tenderlyFork.impersonateAddress = poolManager
+      context.centrifuge.setSigner(context.tenderlyFork.signer)
 
-    await balanceSheet.pool.updateBalanceSheetManagers([{ chainId, address: poolManager, canManage: true }])
+      const amount = Balance.fromFloat(1, 18)
 
-    await balanceSheet.withdraw(assetId, poolManager, amount)
+      await balanceSheet.shareClass.setMaxAssetPriceAge(assetId, 9999999999999)
+      await balanceSheet.shareClass.notifyAssetPrice(assetId)
 
-    const result = await firstValueFrom(balanceSheet.deposit(assetId, amount).pipe(toArray()))
+      await balanceSheet.pool.updateBalanceSheetManagers([{ chainId, address: poolManager, canManage: true }])
 
-    expect(result[2]!.type).to.equal('TransactionConfirmed')
-    expect((result[2] as any).title).to.equal('Approve')
-    expect(result[5]!.type).to.equal('TransactionConfirmed')
-    expect((result[5] as any).title).to.equal('Deposit')
+      await balanceSheet.withdraw(assetId, poolManager, amount)
+
+      const result = await firstValueFrom(balanceSheet.deposit(assetId, amount).pipe(toArray()))
+
+      expect(result[2]!.type).to.equal('TransactionConfirmed')
+      expect((result[2] as any).title).to.equal('Approve')
+      expect(result[5]!.type).to.equal('TransactionConfirmed')
+      expect((result[5] as any).title).to.equal('Deposit')
+    })
   })
 })
