@@ -16,8 +16,6 @@ import type { Pool } from './Pool.js'
 import { PoolNetwork } from './PoolNetwork.js'
 import { Vault } from './Vault.js'
 
-const MAX_CLAIM = 20 // Maximum number of orders to claim in a single transaction
-
 /**
  * Query and interact with a share class, which allows querying total issuance, NAV per share,
  * and allows interactions related to asynchronous deposits and redemptions.
@@ -519,8 +517,9 @@ export class ShareClass extends Entity {
   ) {
     const self = this
     return this._transact(async function* (ctx) {
-      const [{ hub }, pendingAmounts, orders] = await Promise.all([
+      const [{ hub }, id, pendingAmounts, orders, maxBatchGasLimit] = await Promise.all([
         self._root._protocolAddresses(self.pool.chainId),
+        self._root.id(self.pool.chainId),
         self.pendingAmounts(),
         firstValueFrom(
           self
@@ -533,7 +532,11 @@ export class ShareClass extends Entity {
               )
             )
         ),
+        self._root._maxBatchGasLimit(self.pool.chainId),
       ])
+      const gasLimitPerAsset = maxBatchGasLimit / BigInt(assets.filter((a) => a.issuePricePerShare).length)
+      const estimatePerMessage = 615_000n
+      const estimatePerMessageIfLocal = 315_000n
 
       const ordersByAssetId: Record<string, typeof orders> = {}
       orders.forEach((order) => {
@@ -556,6 +559,8 @@ export class ShareClass extends Entity {
       }
 
       for (const asset of assets) {
+        const gasPerMessage = asset.assetId.centrifugeId === id ? estimatePerMessageIfLocal : estimatePerMessage
+        let gasLeft = gasLimitPerAsset
         const pending = pendingAmounts.find((e) => e.assetId.equals(asset.assetId))
         if (!pending) {
           throw new Error(`No pending amount found for asset "${asset.assetId.toString()}"`)
@@ -584,6 +589,7 @@ export class ShareClass extends Entity {
             })
           )
           addMessage(asset.assetId.centrifugeId, MessageType.RequestCallback)
+          gasLeft -= gasPerMessage
           nowDepositEpoch++
         }
 
@@ -591,7 +597,8 @@ export class ShareClass extends Entity {
         if (asset.issuePricePerShare) {
           if (nowIssueEpoch >= nowDepositEpoch) throw new Error('Nothing to issue')
 
-          for (let i = 0; i < nowDepositEpoch - nowIssueEpoch; i++) {
+          let i
+          for (i = 0; i < nowDepositEpoch - nowIssueEpoch; i++) {
             const price = Array.isArray(asset.issuePricePerShare)
               ? asset.issuePricePerShare[i]
               : asset.issuePricePerShare
@@ -609,10 +616,13 @@ export class ShareClass extends Entity {
               })
             )
             addMessage(asset.assetId.centrifugeId, MessageType.RequestCallback)
-
-            // When issuing shares, also notify a number investor orders
+            gasLeft -= gasPerMessage
+          }
+          // If we've issued shares, also notify a number of invest orders
+          if (i) {
+            const claims = gasLeft > 0n ? Number(gasLeft / gasPerMessage) : 0
             const assetOrders = ordersByAssetId[asset.assetId.toString()]
-            assetOrders?.slice(0, MAX_CLAIM).forEach((order) => {
+            assetOrders?.slice(0, claims).forEach((order) => {
               if (order.pendingDeposit > 0n) {
                 batch.push(
                   encodeFunctionData({
@@ -623,7 +633,7 @@ export class ShareClass extends Entity {
                       self.id.raw,
                       asset.assetId.raw,
                       addressToBytes32(order.investor),
-                      order.maxDepositClaims + 1, // +1 to ensure the order that's being issued is included
+                      order.maxDepositClaims + i, // +i to ensure the additional epochs that are being issued are included
                     ],
                   })
                 )
@@ -656,8 +666,9 @@ export class ShareClass extends Entity {
   ) {
     const self = this
     return this._transact(async function* (ctx) {
-      const [{ hub }, pendingAmounts, orders] = await Promise.all([
+      const [{ hub }, id, pendingAmounts, orders, maxBatchGasLimit] = await Promise.all([
         self._root._protocolAddresses(self.pool.chainId),
+        self._root.id(self.pool.chainId),
         self.pendingAmounts(),
         firstValueFrom(
           self
@@ -670,7 +681,11 @@ export class ShareClass extends Entity {
               )
             )
         ),
+        self._root._maxBatchGasLimit(self.pool.chainId),
       ])
+      const gasLimitPerAsset = maxBatchGasLimit / BigInt(assets.filter((a) => a.revokePricePerShare).length)
+      const estimatePerMessage = 615_000n
+      const estimatePerMessageIfLocal = 315_000n
 
       const ordersByAssetId: Record<string, typeof orders> = {}
       orders.forEach((order) => {
@@ -693,6 +708,8 @@ export class ShareClass extends Entity {
       }
 
       for (const asset of assets) {
+        const gasPerMessage = asset.assetId.centrifugeId === id ? estimatePerMessageIfLocal : estimatePerMessage
+        let gasLeft = gasLimitPerAsset
         const pending = pendingAmounts.find((e) => e.assetId.equals(asset.assetId))
         if (!pending) {
           throw new Error(`No pending amount found for asset "${asset.assetId.toString()}"`)
@@ -727,7 +744,8 @@ export class ShareClass extends Entity {
         if (asset.revokePricePerShare) {
           if (nowRevokeEpoch >= nowRedeemEpoch) throw new Error('Nothing to revoke')
 
-          for (let i = 0; i < nowRedeemEpoch - nowRevokeEpoch; i++) {
+          let i
+          for (i = 0; i < nowRedeemEpoch - nowRevokeEpoch; i++) {
             const price = Array.isArray(asset.revokePricePerShare)
               ? asset.revokePricePerShare[i]
               : asset.revokePricePerShare
@@ -745,10 +763,14 @@ export class ShareClass extends Entity {
               })
             )
             addMessage(asset.assetId.centrifugeId, MessageType.RequestCallback)
+            gasLeft -= gasPerMessage
+          }
 
-            // When revoking shares, also notify a number investor orders
+          // If we've revoked shares, also notify a number of redeem orders
+          if (i) {
+            const claims = gasLeft > 0n ? Number(gasLeft / gasPerMessage) : 0
             const assetOrders = ordersByAssetId[asset.assetId.toString()]
-            assetOrders?.slice(0, MAX_CLAIM).forEach((order) => {
+            assetOrders?.slice(0, claims).forEach((order) => {
               if (order.pendingRedeem > 0n) {
                 batch.push(
                   encodeFunctionData({
@@ -895,7 +917,7 @@ export class ShareClass extends Entity {
         throw new Error('No data to update members')
       }
 
-      yield* wrapTransaction('Approve and issue', ctx, {
+      yield* wrapTransaction('Update investor(s)', ctx, {
         contract: hub,
         data: batch,
         messages,
@@ -1057,7 +1079,7 @@ export class ShareClass extends Entity {
               this._root,
               {
                 address: [addresses.balanceSheet, addresses.spoke],
-                abi: [ABI.ShareClassManager, ABI.Spoke],
+                abi: [ABI.BalanceSheet, ABI.Spoke],
                 eventName: ['NoteDeposit', 'Deposit', 'Withdraw', 'UpdateAssetPrice'],
                 filter: (events) => {
                   return events.some(
