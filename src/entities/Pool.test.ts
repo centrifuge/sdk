@@ -1,5 +1,5 @@
 import { expect } from 'chai'
-import { firstValueFrom, skipWhile } from 'rxjs'
+import { combineLatest, firstValueFrom, lastValueFrom, map, skipWhile } from 'rxjs'
 import { getContract } from 'viem'
 import { ABI } from '../abi/index.js'
 import { Centrifuge } from '../Centrifuge.js'
@@ -94,6 +94,23 @@ describe('Pool', () => {
       args: [poolId.raw, newManager],
     })
     expect(isNewManager).to.be.true
+  })
+
+  it('updates oneself at the end of the batch', async () => {
+    context.tenderlyFork.impersonateAddress = poolManager
+    context.centrifuge.setSigner(context.tenderlyFork.signer)
+
+    const newManager = randomAddress()
+
+    const result = await lastValueFrom(
+      pool.updatePoolManagers([
+        // If we removed ourself in the first position, we would not be able to update other manager
+        { address: poolManager, canManage: false },
+        { address: newManager, canManage: true },
+      ])
+    )
+
+    expect(result.type).to.equal('TransactionConfirmed')
   })
 
   it('updates balance sheet managers', async () => {

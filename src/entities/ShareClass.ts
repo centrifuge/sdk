@@ -594,6 +594,7 @@ export class ShareClass extends Entity {
         }
 
         const nowIssueEpoch = pending.issueEpoch
+
         if (asset.issuePricePerShare) {
           if (nowIssueEpoch >= nowDepositEpoch) throw new Error('Nothing to issue')
 
