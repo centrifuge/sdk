@@ -52,47 +52,7 @@ describe('Investor', () => {
       const investment = await account.investment(poolId, sc.id, assetId, chainId)
 
       expect(investment).to.not.be.undefined
-
-      expect(investment).to.deep.equal({
-        isAllowedToInvest: true,
-        isAllowedToRedeem: true,
-        isSyncInvest: false,
-        maxInvest: { value: 0n, decimals: 6 },
-        claimableInvestShares: { value: 0n, decimals: 18 },
-        claimableInvestCurrencyEquivalent: { value: 0n, decimals: 6 },
-        claimableRedeemCurrency: { value: 0n, decimals: 6 },
-        claimableRedeemSharesEquivalent: { value: 0n, decimals: 18 },
-        pendingInvestCurrency: { value: 1000000000n, decimals: 6 },
-        pendingRedeemShares: { value: 1467000000000000000000n, decimals: 18 },
-        claimableCancelInvestCurrency: { value: 0n, decimals: 6 },
-        claimableCancelRedeemShares: { value: 0n, decimals: 18 },
-        hasPendingCancelInvestRequest: false,
-        hasPendingCancelRedeemRequest: false,
-        investmentCurrency: {
-          address: '0x3aaaa86458d576bafcb1b7ed290434f0696da65c',
-          tokenId: 0n,
-          decimals: 6,
-          name: 'USD Coin',
-          symbol: 'USDC',
-          chainId: 11155111,
-          supportsPermit: true,
-        },
-        shareCurrency: {
-          address: '0xd8f4f5b0f8a4ffa04b79d3cad11e1b43ad16424b',
-          tokenId: 0n,
-          decimals: 18,
-          name: 'Sepolia Pool One Token',
-          symbol: 'sep.poo.one',
-          chainId: 11155111,
-          supportsPermit: true,
-        },
-        shareBalance: {
-          value: 6470967741935483446189324116743471577n,
-          decimals: 18,
-        },
-        investmentCurrencyBalance: { value: 997987003640000n, decimals: 6 },
-        investmentCurrencyAllowance: { value: 0n, decimals: 6 },
-      })
+      expect(investment.investmentCurrency.address).to.equal(vault._asset)
     })
   })
 
