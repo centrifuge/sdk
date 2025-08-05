@@ -1116,7 +1116,7 @@ export class Centrifuge {
                 address: gasService,
                 abi: ABI.GasService,
                 functionName: 'messageGasLimit',
-                args: [0, toHex(type)],
+                args: [0, toHex(type, { size: 1 })],
               })
             ),
           ]).pipe(

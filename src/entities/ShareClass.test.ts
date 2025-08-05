@@ -1,16 +1,16 @@
 import { expect } from 'chai'
 import { firstValueFrom, lastValueFrom, skip, skipWhile, toArray } from 'rxjs'
+import { parseAbi } from 'viem'
 import { ABI } from '../abi/index.js'
 import { context } from '../tests/setup.js'
 import { randomAddress } from '../tests/utils.js'
 import { AccountType } from '../types/holdings.js'
 import { Balance, Price } from '../utils/BigInt.js'
+import { doTransaction } from '../utils/transaction.js'
 import { AssetId, PoolId, ShareClassId } from '../utils/types.js'
 import { Pool } from './Pool.js'
 import { ShareClass } from './ShareClass.js'
 import { Vault } from './Vault.js'
-import { doTransaction } from '../utils/transaction.js'
-import { parseAbi } from 'viem'
 
 const chainId = 11155111
 const centId = 1
@@ -512,15 +512,14 @@ describe('ShareClass', () => {
       let pendingAmount = pendingAmounts.find((p) => p.assetId.equals(assetId))!
 
       // Approve deposits
-      await vault.shareClass.approveDepositsAndIssueShares([
-        {
-          assetId,
-          approveAssetAmount: pendingAmount.pendingDeposit,
-          issuePricePerShare: Price.fromFloat(1),
-        },
-      ])
       ;[, investment] = await Promise.all([
-        vault.shareClass.claimDeposit(assetId, investor),
+        vault.shareClass.approveDepositsAndIssueShares([
+          {
+            assetId,
+            approveAssetAmount: pendingAmount.pendingDeposit,
+            issuePricePerShare: Price.fromFloat(1),
+          },
+        ]),
         firstValueFrom(
           vault.investment(investor).pipe(skipWhile((i) => !i.claimableInvestShares.eq(defaultSharesAmount.toBigInt())))
         ),
@@ -554,7 +553,7 @@ describe('ShareClass', () => {
       pendingAmount = pendingAmounts.find((p) => p.assetId.equals(assetId))!
 
       // Approve redeems
-      await Promise.all([
+      const [result] = await Promise.all([
         vault.shareClass.approveRedeemsAndRevokeShares([
           {
             assetId,
@@ -562,14 +561,6 @@ describe('ShareClass', () => {
             revokePricePerShare: Price.fromFloat(1),
           },
         ]),
-        // claimRedeem() relies on the investOrder being up-to-date, so waiting here for it to be updated
-        // TODO: Fix this somehow
-        firstValueFrom(
-          vault.shareClass.investorOrder(assetId, investor).pipe(skipWhile((o) => o.maxRedeemClaims === 0))
-        ),
-      ])
-      const [result] = await Promise.all([
-        vault.shareClass.claimRedeem(assetId, investor),
         firstValueFrom(vault.investment(investor).pipe(skipWhile((i) => i.claimableRedeemCurrency.eq(0n)))),
       ])
 

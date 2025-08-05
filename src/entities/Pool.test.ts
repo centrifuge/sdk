@@ -1,5 +1,5 @@
 import { expect } from 'chai'
-import { combineLatest, firstValueFrom, lastValueFrom, map, skipWhile } from 'rxjs'
+import { firstValueFrom, lastValueFrom, skipWhile } from 'rxjs'
 import { getContract } from 'viem'
 import { ABI } from '../abi/index.js'
 import { Centrifuge } from '../Centrifuge.js'
@@ -102,11 +102,20 @@ describe('Pool', () => {
 
     const newManager = randomAddress()
 
+    await context.tenderlyFork.fundAccountEth(newManager, 10n ** 18n)
+
+    await pool.updatePoolManagers([{ address: newManager, canManage: true }])
+
+    const newManager2 = randomAddress()
+
+    context.tenderlyFork.impersonateAddress = newManager
+    context.centrifuge.setSigner(context.tenderlyFork.signer)
+
     const result = await lastValueFrom(
       pool.updatePoolManagers([
         // If we removed ourself in the first position, we would not be able to update other manager
-        { address: poolManager, canManage: false },
-        { address: newManager, canManage: true },
+        { address: newManager, canManage: false },
+        { address: newManager2, canManage: true },
       ])
     )
 
