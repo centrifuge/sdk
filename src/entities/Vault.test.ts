@@ -1,8 +1,10 @@
 import { expect } from 'chai'
-import { firstValueFrom, lastValueFrom, skip, skipWhile, tap, toArray } from 'rxjs'
+import { firstValueFrom, lastValueFrom, of, skip, skipWhile, tap, toArray } from 'rxjs'
+import sinon from 'sinon'
 import { parseAbi } from 'viem'
 import { context } from '../tests/setup.js'
 import { Balance, Price } from '../utils/BigInt.js'
+import { makeThenable } from '../utils/rx.js'
 import { doTransaction } from '../utils/transaction.js'
 import { AssetId, PoolId, ShareClassId } from '../utils/types.js'
 import { Pool } from './Pool.js'
@@ -67,6 +69,31 @@ describe('Vault', () => {
     })
 
     it('completes the invest/redeem flow', async () => {
+      const mock = sinon.stub(vault.shareClass, '_investorOrders')
+      mock.returns(
+        makeThenable(
+          of({
+            outstandingInvests: [
+              {
+                assetId,
+                investor: investorA,
+                queuedAmount: '',
+                depositAmount: '',
+                pendingAmount: '',
+              },
+            ],
+            outstandingRedeems: [
+              {
+                assetId,
+                investor: investorA,
+                queuedAmount: '',
+                depositAmount: '',
+                pendingAmount: '',
+              },
+            ],
+          })
+        )
+      )
       await mint(vault._asset, investorA)
 
       let investment = await vault.investment(investorA)
@@ -121,16 +148,15 @@ describe('Vault', () => {
       let pendingAmounts = await vault.shareClass.pendingAmounts()
       let pendingAmount = pendingAmounts.find((p) => p.assetId.equals(assetId))!
 
-      // Approve deposits
-      await vault.shareClass.approveDepositsAndIssueShares([
-        {
-          assetId,
-          approveAssetAmount: pendingAmount.pendingDeposit,
-          issuePricePerShare: Price.fromFloat(1),
-        },
-      ])
+      // Approve deposits, notifyDeposit should be called automatically
       ;[, investment] = await Promise.all([
-        vault.shareClass.claimDeposit(assetId, investorA),
+        vault.shareClass.approveDepositsAndIssueShares([
+          {
+            assetId,
+            approveAssetAmount: pendingAmount.pendingDeposit,
+            issuePricePerShare: Price.fromFloat(1),
+          },
+        ]),
         firstValueFrom(
           vault
             .investment(investorA)
@@ -172,8 +198,8 @@ describe('Vault', () => {
 
       pendingAmount = pendingAmounts.find((p) => p.assetId.equals(assetId))!
 
-      // Approve redeems
-      await Promise.all([
+      // Approve redeems, notifyRedeem should be called automatically
+      ;[, investment] = await Promise.all([
         vault.shareClass.approveRedeemsAndRevokeShares([
           {
             assetId,
@@ -181,14 +207,6 @@ describe('Vault', () => {
             revokePricePerShare: Price.fromFloat(1),
           },
         ]),
-        // claimRedeem() relies on the investOrder being up-to-date, so waiting here for it to be updated
-        // TODO: Fix this somehow
-        firstValueFrom(
-          vault.shareClass.investorOrder(assetId, investorA).pipe(skipWhile((o) => o.maxRedeemClaims === 0))
-        ),
-      ])
-      ;[, investment] = await Promise.all([
-        vault.shareClass.claimRedeem(assetId, investorA),
         firstValueFrom(vault.investment(investorA).pipe(skipWhile((i) => i.claimableRedeemCurrency.eq(0n)))),
       ])
 
@@ -203,6 +221,8 @@ describe('Vault', () => {
 
       expect(result.type).to.equal('TransactionConfirmed')
       expect(investment.shareBalance.toBigInt()).to.equal(Balance.fromFloat(60, 18).toBigInt())
+
+      mock.restore()
     })
 
     it("throws when placing an invest order larger than the users's balance", async () => {
