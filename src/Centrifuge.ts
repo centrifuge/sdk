@@ -1135,21 +1135,21 @@ export class Centrifuge {
   }
 
   /** @internal */
-  _maxBatchGasLimit(fromChain: number) {
-    return this._query(['maxBatchGasLimit', fromChain], () =>
-      this._protocolAddresses(fromChain).pipe(
+  _maxBatchGasLimit(chainId: number) {
+    return this._query(['maxBatchGasLimit', chainId], () =>
+      this._protocolAddresses(chainId).pipe(
         switchMap(async ({ gasService }) => {
           try {
             // `batchGasLimit` was renamed to `maxBatchGasLimit`, support both for backwards compatibility,
             // until all chains are updated
-            return await this.getClient(fromChain).readContract({
+            return await this.getClient(chainId).readContract({
               address: gasService,
               abi: ABI.GasService,
               functionName: 'maxBatchGasLimit',
               args: [0],
             })
           } catch {
-            return await this.getClient(fromChain).readContract({
+            return await this.getClient(chainId).readContract({
               address: gasService,
               abi: ABI.GasService,
               functionName: 'batchGasLimit',
