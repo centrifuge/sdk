@@ -585,6 +585,30 @@ export class Pool extends Entity {
     return this._transact(async function* (ctx) {
       const { hub } = await self._root._protocolAddresses(self.chainId)
 
+      const existingManagers = await self.poolManagers()
+      const leftManagers = new Map<string, boolean>()
+
+      existingManagers.forEach((manager) => {
+        leftManagers.set(manager.address.toLowerCase(), true)
+      })
+
+      updates.forEach(({ address, canManage }) => {
+        const addr = address.toLowerCase()
+        const managerExists = leftManagers.get(addr)
+
+        if (!managerExists && canManage) {
+          leftManagers.set(addr, true)
+        }
+
+        if (managerExists && !canManage) {
+          leftManagers.delete(addr)
+        }
+      })
+
+      if (leftManagers.size === 0) {
+        throw new Error('Cannot remove all pool managers')
+      }
+
       // Ensure that updating the signer's address is always last in the batch,
       // to prevent removing the signer from the list of managers, before having added others,
       // which would cause the other updates to fail.
