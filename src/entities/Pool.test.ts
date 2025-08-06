@@ -1,5 +1,5 @@
 import { expect } from 'chai'
-import { combineLatest, firstValueFrom, lastValueFrom, map, skipWhile } from 'rxjs'
+import { firstValueFrom, lastValueFrom, skipWhile } from 'rxjs'
 import { getContract } from 'viem'
 import { ABI } from '../abi/index.js'
 import { Centrifuge } from '../Centrifuge.js'
@@ -111,6 +111,25 @@ describe('Pool', () => {
     )
 
     expect(result.type).to.equal('TransactionConfirmed')
+  })
+
+  it('throws when trying to remove last manager', async () => {
+    context.tenderlyFork.impersonateAddress = poolManager
+    context.centrifuge.setSigner(context.tenderlyFork.signer)
+
+    const newManager = randomAddress()
+
+    try {
+      await lastValueFrom(
+        pool.updatePoolManagers([
+          // If we removed ourself in the first position, we would not be able to update other manager
+          { address: poolManager, canManage: false },
+          { address: newManager, canManage: false },
+        ])
+      )
+    } catch (error: any) {
+      expect(error.message).to.include('Cannot remove all pool managers')
+    }
   })
 
   it('updates balance sheet managers', async () => {
