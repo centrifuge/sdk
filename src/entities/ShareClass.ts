@@ -571,6 +571,7 @@ export class ShareClass extends Entity {
         ),
         self._root._maxBatchGasLimit(self.pool.chainId),
       ])
+      const assetsWithApprove = assets.filter((a) => a.approveAssetAmount).length
       const assetsWithIssue = assets.filter((a) => a.issuePricePerShare).length
       const gasLimitPerAsset = assetsWithIssue ? maxBatchGasLimit / BigInt(assetsWithIssue) : 0n
       const estimatePerMessage = 700_000n
@@ -686,8 +687,14 @@ export class ShareClass extends Entity {
       if (batch.length === 0) {
         throw new Error('No approve or issue actions provided')
       }
+      let title = 'Approve and issue'
+      if (assetsWithApprove === 0) {
+        title = 'Issue'
+      } else if (assetsWithIssue === 0) {
+        title = 'Approve'
+      }
 
-      yield* wrapTransaction('Approve and issue', ctx, {
+      yield* wrapTransaction(title, ctx, {
         contract: hub,
         data: batch,
         messages,
@@ -722,6 +729,7 @@ export class ShareClass extends Entity {
         ),
         self._root._maxBatchGasLimit(self.pool.chainId),
       ])
+      const assetsWithApprove = assets.filter((a) => a.approveShareAmount).length
       const assetsWithRevoke = assets.filter((a) => a.revokePricePerShare).length
       const gasLimitPerAsset = assetsWithRevoke ? maxBatchGasLimit / BigInt(assetsWithRevoke) : 0n
       const estimatePerMessage = 700_000n
@@ -834,7 +842,15 @@ export class ShareClass extends Entity {
       if (batch.length === 0) {
         throw new Error('No approve or revoke actions provided')
       }
-      yield* wrapTransaction('Approve and revoke', ctx, {
+
+      let title = 'Approve and revoke'
+      if (assetsWithApprove === 0) {
+        title = 'Revoke'
+      } else if (assetsWithRevoke === 0) {
+        title = 'Approve'
+      }
+
+      yield* wrapTransaction(title, ctx, {
         contract: hub,
         data: batch,
         messages,
