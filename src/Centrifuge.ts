@@ -1120,13 +1120,14 @@ export class Centrifuge {
               })
             ),
           ]).pipe(
-            switchMap(([toCentId, ...gasLimits]) => {
-              return this.getClient(fromChain).readContract({
+            switchMap(async ([toCentId, ...gasLimits]) => {
+              const estimate = await this.getClient(fromChain).readContract({
                 address: multiAdapter,
                 abi: ABI.MultiAdapter,
                 functionName: 'estimate',
                 args: [toCentId, '0x0', gasLimits.reduce((acc, val) => acc + val, 0n)],
               })
+              return (estimate * 3n) / 2n // Add 50% buffer to the estimate
             })
           )
         })
