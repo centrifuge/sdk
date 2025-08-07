@@ -567,6 +567,39 @@ describe('ShareClass', () => {
       expect(result.type).to.equal('TransactionConfirmed')
     })
   })
+
+  describe('updateSharePrice', () => {
+    let shareClass: ShareClass
+    let pool: Pool
+
+    before(() => {
+      const { centrifuge } = context
+      pool = new Pool(centrifuge, poolId.raw, chainId)
+      shareClass = new ShareClass(centrifuge, pool, scId.raw)
+    })
+
+    it('should update share price', async () => {
+      context.tenderlyFork.impersonateAddress = fundManager
+      context.centrifuge.setSigner(context.tenderlyFork.signer)
+
+      const newPrice = Price.fromFloat(1.5)
+
+      const tx = await shareClass.updateSharePrice(newPrice)
+
+      expect(tx.type).to.equal('TransactionConfirmed')
+
+      const protocolAddress = await context.centrifuge._protocolAddresses(chainId)
+
+      const result = await context.centrifuge.getClient(chainId).readContract({
+        address: protocolAddress.spoke,
+        abi: ABI.Spoke,
+        functionName: 'pricePoolPerShare',
+        args: [pool.id.raw, shareClass.id.raw, false],
+      })
+
+      expect(result).equal(newPrice.toBigInt())
+    })
+  })
 })
 
 async function mint(asset: string, address: string) {

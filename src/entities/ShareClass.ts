@@ -417,14 +417,50 @@ export class ShareClass extends Entity {
   updateSharePrice(pricePerShare: Price) {
     const self = this
     return this._transact(async function* (ctx) {
-      const { hub } = await self._root._protocolAddresses(self.pool.chainId)
-      yield* wrapTransaction('Update share price', ctx, {
-        contract: hub,
-        data: encodeFunctionData({
+      const [{ hub }, activeNetworks] = await Promise.all([
+        self._root._protocolAddresses(self.pool.chainId),
+        self.pool.activeNetworks(),
+      ])
+      const batch: HexString[] = []
+      const messages: Record<number, MessageType[]> = {}
+      function addMessage(centId: number, message: MessageType) {
+        if (!messages[centId]) messages[centId] = []
+        messages[centId].push(message)
+      }
+
+      batch.push(
+        encodeFunctionData({
           abi: ABI.Hub,
           functionName: 'updateSharePrice',
           args: [self.pool.id.raw, self.id.raw, pricePerShare.toBigInt()],
-        }),
+        })
+      )
+
+      await Promise.all(
+        activeNetworks.map(async (activeNetwork) => {
+          const networkDetails = await activeNetwork.details()
+          const id = await self._root.id(activeNetwork.chainId)
+
+          const isShareClassInNetwork = networkDetails.activeShareClasses.find((shareClass) =>
+            shareClass.id.equals(self.id)
+          )
+
+          if (isShareClassInNetwork) {
+            batch.push(
+              encodeFunctionData({
+                abi: ABI.Hub,
+                functionName: 'notifySharePrice',
+                args: [self.pool.id.raw, self.id.raw, id],
+              })
+            )
+            addMessage(id, MessageType.NotifyPricePoolPerShare)
+          }
+        })
+      )
+
+      yield* wrapTransaction('Update share price', ctx, {
+        contract: hub,
+        data: batch,
       })
     }, this.pool.chainId)
   }
