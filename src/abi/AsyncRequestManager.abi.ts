@@ -16,7 +16,7 @@ export default [
   'function fulfillDepositRequest(uint64 poolId, bytes16 scId, address user, uint128 assetId, uint128 fulfilledAssets, uint128 fulfilledShares, uint128 cancelledAssets)',
   'function fulfillRedeemRequest(uint64 poolId, bytes16 scId, address user, uint128 assetId, uint128 fulfilledAssets, uint128 fulfilledShares, uint128 cancelledShares)',
   'function globalEscrow() view returns (address)',
-  'function investments(address vault, address investor) view returns (uint128 maxMint, uint128 maxWithdraw, uint256 depositPrice, uint256 redeemPrice, uint128 pendingDepositRequest, uint128 pendingRedeemRequest, uint128 claimableCancelDepositRequest, uint128 claimableCancelRedeemRequest, bool pendingCancelDepositRequest, bool pendingCancelRedeemRequest)',
+  'function investments(address vault, address investor) view returns (uint128 maxMint, uint128 maxWithdraw, uint128 depositPrice, uint128 redeemPrice, uint128 pendingDepositRequest, uint128 pendingRedeemRequest, uint128 claimableCancelDepositRequest, uint128 claimableCancelRedeemRequest, bool pendingCancelDepositRequest, bool pendingCancelRedeemRequest)',
   'function issuedShares(uint64 poolId, bytes16 scId, uint128 shareAmount, uint128 pricePoolPerShare)',
   'function maxDeposit(address vault_, address user) view returns (uint256 assets)',
   'function maxMint(address vault_, address user) view returns (uint256 shares)',
