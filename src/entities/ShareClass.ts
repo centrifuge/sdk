@@ -461,6 +461,7 @@ export class ShareClass extends Entity {
       yield* wrapTransaction('Update share price', ctx, {
         contract: hub,
         data: batch,
+        messages,
       })
     }, this.pool.chainId)
   }
