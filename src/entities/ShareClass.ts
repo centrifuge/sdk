@@ -458,10 +458,6 @@ export class ShareClass extends Entity {
         })
       )
 
-      if (batch.length === 0) {
-        throw new Error('No approve or issue actions provided')
-      }
-
       yield* wrapTransaction('Update share price', ctx, {
         contract: hub,
         data: batch,
