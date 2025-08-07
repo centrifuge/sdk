@@ -571,7 +571,7 @@ export class ShareClass extends Entity {
         self._root._maxBatchGasLimit(self.pool.chainId),
       ])
       const assetsWithIssue = assets.filter((a) => a.issuePricePerShare).length
-      const gasLimitPerAsset = assetsWithIssue ? maxBatchGasLimit / BigInt(assetsWithIssue) : 0
+      const gasLimitPerAsset = assetsWithIssue ? maxBatchGasLimit / BigInt(assetsWithIssue) : 0n
       const estimatePerMessage = 700_000n
       const estimatePerMessageIfLocal = 360_000n
 
@@ -721,9 +721,10 @@ export class ShareClass extends Entity {
         ),
         self._root._maxBatchGasLimit(self.pool.chainId),
       ])
-      const gasLimitPerAsset = maxBatchGasLimit / BigInt(assets.filter((a) => a.revokePricePerShare).length)
-      const estimatePerMessage = 615_000n
-      const estimatePerMessageIfLocal = 315_000n
+      const assetsWithRevoke = assets.filter((a) => a.revokePricePerShare).length
+      const gasLimitPerAsset = assetsWithRevoke ? maxBatchGasLimit / BigInt(assetsWithRevoke) : 0n
+      const estimatePerMessage = 700_000n
+      const estimatePerMessageIfLocal = 360_000n
 
       const ordersByAssetId: Record<string, typeof orders> = {}
       orders.forEach((order) => {
