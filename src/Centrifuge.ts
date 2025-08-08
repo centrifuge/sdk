@@ -134,7 +134,17 @@ export class Centrifuge {
           chain.id,
           createPublicClient<any, Chain>({
             chain,
-            transport: Array.isArray(rpcUrl) ? fallback(rpcUrl.map((url) => http(url))) : http(rpcUrl),
+            transport: Array.isArray(rpcUrl)
+              ? fallback(
+                  rpcUrl.map((url) => http(url)),
+                  {
+                    rank: {
+                      interval: 30_000,
+                      sampleCount: 5,
+                    },
+                  }
+                )
+              : http(rpcUrl),
             batch: { multicall: true },
             pollingInterval: this.#config.pollingInterval,
             cacheTime: 100,
@@ -1011,12 +1021,7 @@ export class Centrifuge {
       (ctx) =>
         combineLatest(transactions.map((tx) => tx.pipe(first()))).pipe(
           switchMap(async function* (batches_) {
-            const batches = batches_ as any as {
-              data: HexString[]
-              contract: HexString
-              value?: bigint
-              messages?: Record<number, MessageType[]>
-            }[]
+            const batches = batches_ as any as BatchTransactionData[]
             if (!batches.every((b) => b.data && b.contract)) {
               throw new Error('Not all transactions can be batched')
             }
