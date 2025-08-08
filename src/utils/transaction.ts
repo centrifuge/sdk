@@ -1,6 +1,6 @@
 import { LocalAccount, parseAbi, type PublicClient, type TransactionReceipt } from 'viem'
 import type { HexString } from '../types/index.js'
-import type { MessageType, OperationStatus, Signer, TransactionContext } from '../types/transaction.js'
+import type { MessageTypeWithSubType, OperationStatus, Signer, TransactionContext } from '../types/transaction.js'
 
 class TransactionError extends Error {
   override name = 'TransactionError'
@@ -13,7 +13,7 @@ export type BatchTransactionData = {
   contract: HexString
   data: HexString[]
   value?: bigint
-  messages?: Record<number, MessageType[]>
+  messages?: Record<number, MessageTypeWithSubType[]>
 }
 
 export async function* wrapTransaction(
@@ -31,7 +31,7 @@ export async function* wrapTransaction(
     // Messages to estimate gas for, that will be sent as a result of the transaction, separated by Centrifuge ID.
     // Used to estimate the payment for the transaction.
     // It is assumed that the messages belong to a single pool.
-    messages?: Record<number /* Centrifuge ID */, MessageType[]>
+    messages?: Record<number /* Centrifuge ID */, MessageTypeWithSubType[]>
   }
 ): AsyncGenerator<OperationStatus | BatchTransactionData> {
   const data = Array.isArray(data_) ? data_ : [data_]
