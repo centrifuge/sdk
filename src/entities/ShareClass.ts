@@ -267,7 +267,7 @@ export class ShareClass extends Entity {
       combineLatest([this._share(chainId), this._restrictionManager(chainId)]).pipe(
         switchMap(([share, restrictionManager]) =>
           defer(async () => {
-            const res = await this._root.getClient(this.pool.chainId).readContract({
+            const res = await this._root.getClient(chainId).readContract({
               address: restrictionManager,
               abi: ABI.RestrictionManager,
               functionName: 'isMember',
