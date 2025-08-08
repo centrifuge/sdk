@@ -291,7 +291,8 @@ export class ShareClass extends Entity {
               },
               chainId
             ),
-            catchError(() => {
+            catchError((e) => {
+              console.warn('Error checking member status', e)
               // Freeze-only hook doesn't have isMember function
               return of({
                 isMember: false,
