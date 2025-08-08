@@ -18,9 +18,6 @@ import {
 } from 'rxjs'
 import { fromFetch } from 'rxjs/fetch'
 import {
-  type Abi,
-  type Account,
-  type Chain,
   createPublicClient,
   createWalletClient,
   custom,
@@ -31,6 +28,9 @@ import {
   parseAbi,
   parseEventLogs,
   toHex,
+  type Abi,
+  type Account,
+  type Chain,
   type WalletClient,
   type WatchEventOnLogsParameter,
 } from 'viem'
@@ -52,7 +52,9 @@ import { PoolMetadataInput } from './types/poolInput.js'
 import { PoolMetadata } from './types/poolMetadata.js'
 import type { CentrifugeQueryOptions, Query } from './types/query.js'
 import {
+  emptyMessage,
   MessageType,
+  MessageTypeWithSubType,
   type OperationStatus,
   type Signer,
   type Transaction,
@@ -1038,7 +1040,7 @@ export class Centrifuge {
                 }
                 return acc
               },
-              {} as Record<number, MessageType[]>
+              {} as Record<number, MessageTypeWithSubType[]>
             )
             const contracts = [...new Set(batches.map((b) => b.contract))]
             if (contracts.length !== 1) {
@@ -1109,21 +1111,29 @@ export class Centrifuge {
    * that results from a transaction
    * @internal
    */
-  _estimate(fromChain: number, to: { chainId: number } | { centId: number }, messageType: MessageType | MessageType[]) {
-    return this._query(['estimate', fromChain, to], () =>
+
+  _estimate(
+    fromChain: number,
+    to: { chainId: number } | { centId: number },
+    messageType: MessageTypeWithSubType | MessageTypeWithSubType[]
+  ) {
+    return this._query(['estimate', fromChain, to, messageType], () =>
       this._protocolAddresses(fromChain).pipe(
         switchMap(({ multiAdapter, gasService }) => {
           const types = Array.isArray(messageType) ? messageType : [messageType]
           return combineLatest([
             'chainId' in to ? this.id(to.chainId) : of(to.centId),
-            ...types.map((type) =>
-              this.getClient(fromChain).readContract({
+            ...types.map((typeAndMaybeSubtype) => {
+              const type = typeof typeAndMaybeSubtype === 'number' ? typeAndMaybeSubtype : typeAndMaybeSubtype.type
+              const subtype = typeof typeAndMaybeSubtype === 'number' ? undefined : typeAndMaybeSubtype.subtype
+              const data = emptyMessage(type, subtype)
+              return this.getClient(fromChain).readContract({
                 address: gasService,
                 abi: ABI.GasService,
                 functionName: 'messageGasLimit',
-                args: [0, toHex(type, { size: 1 })],
+                args: [0, data],
               })
-            ),
+            }),
           ]).pipe(
             switchMap(async ([toCentId, ...gasLimits]) => {
               const estimate = await this.getClient(fromChain).readContract({

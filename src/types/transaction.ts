@@ -1,4 +1,13 @@
-import type { Account, Chain, LocalAccount, PublicClient, TransactionReceipt, WalletClient } from 'viem'
+import {
+  encodePacked,
+  toHex,
+  type Account,
+  type Chain,
+  type LocalAccount,
+  type PublicClient,
+  type TransactionReceipt,
+  type WalletClient,
+} from 'viem'
 import type { Centrifuge } from '../Centrifuge.js'
 import type { HexString } from './index.js'
 import type { Query } from './query.js'
@@ -109,4 +118,24 @@ export enum MessageType {
   Request,
   RequestCallback,
   SetRequestManager,
+}
+
+export enum VaultUpdateKind {
+  DeployAndLink,
+  Link,
+  Unlink,
+}
+
+export type MessageTypeWithSubType = MessageType | { type: MessageType; subtype: VaultUpdateKind }
+
+export function emptyMessage(type: MessageType, subtype?: VaultUpdateKind): HexString {
+  switch (type) {
+    case MessageType.UpdateVault:
+      return encodePacked(
+        ['uint8', 'uint64', 'bytes16', 'uint128', 'bytes32', 'uint8'],
+        [type, 0n, toHex(0, { size: 16 }), 0n, toHex(0, { size: 32 }), subtype ?? VaultUpdateKind.DeployAndLink]
+      )
+    default:
+      return toHex(type, { size: 1 })
+  }
 }

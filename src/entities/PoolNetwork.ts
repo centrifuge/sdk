@@ -4,7 +4,7 @@ import { ABI } from '../abi/index.js'
 import type { Centrifuge } from '../Centrifuge.js'
 import { NULL_ADDRESS } from '../constants.js'
 import { HexString } from '../types/index.js'
-import { MessageType } from '../types/transaction.js'
+import { MessageType, MessageTypeWithSubType, VaultUpdateKind } from '../types/transaction.js'
 import { addressToBytes32 } from '../utils/index.js'
 import { repeatOnEvents } from '../utils/rx.js'
 import { wrapTransaction } from '../utils/transaction.js'
@@ -184,7 +184,7 @@ export class PoolNetwork extends Entity {
       ])
 
       const batch: HexString[] = []
-      const messageTypes: MessageType[] = []
+      const messageTypes: MessageTypeWithSubType[] = []
 
       // Set vault managers as balance sheet managers if not already set
       // Always set async manager, as it's used by both async and sync deposit vaults
@@ -265,12 +265,15 @@ export class PoolNetwork extends Entity {
               vault.shareClassId.raw,
               vault.assetId.raw,
               addressToBytes32(vault.kind === 'syncDeposit' ? syncDepositVaultFactory : asyncVaultFactory),
-              0, // VaultUpdateKind.DeployAndLink
+              VaultUpdateKind.DeployAndLink,
               0n, // gas limit
             ],
           })
         )
-        messageTypes.push(MessageType.SetRequestManager, MessageType.NotifyPricePoolPerAsset, MessageType.UpdateVault)
+        messageTypes.push(MessageType.SetRequestManager, MessageType.NotifyPricePoolPerAsset, {
+          type: MessageType.UpdateVault,
+          subtype: VaultUpdateKind.DeployAndLink,
+        })
       }
 
       if (batch.length === 0) {
@@ -303,7 +306,7 @@ export class PoolNetwork extends Entity {
       ])
 
       const batch: HexString[] = []
-      const messageTypes: MessageType[] = []
+      const messageTypes: MessageTypeWithSubType[] = []
 
       for (const vault of vaults) {
         const shareClass = details.activeShareClasses.find((sc) => sc.id.equals(vault.shareClassId))
@@ -323,12 +326,12 @@ export class PoolNetwork extends Entity {
               vault.shareClassId.raw,
               vault.assetId.raw,
               addressToBytes32(existingVault.address),
-              2, // VaultUpdateKind.Unlink
+              VaultUpdateKind.Unlink,
               0n, // gas limit
             ],
           })
         )
-        messageTypes.push(MessageType.UpdateVault)
+        messageTypes.push({ type: MessageType.UpdateVault, subtype: VaultUpdateKind.Unlink }) //
       }
 
       yield* wrapTransaction('Disable vault(s)', ctx, {
