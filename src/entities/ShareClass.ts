@@ -1368,14 +1368,112 @@ export class ShareClass extends Entity {
   }
 
   /** @internal */
+  _epochInvestOrders() {
+    return this._query(null, () =>
+      this._root._queryIndexer(
+        `query ($scId: String!) {
+          epochInvestOrders(where: {tokenId: $scId, issuedAt: null, approvedAt_not: null}) {
+            items {
+              approvedAt
+              assetId
+              index
+            }
+          }
+        }`,
+        { scId: this.id.raw },
+        (data: {
+          epochInvestOrders: {
+            items: {
+              approvedAt: Date
+              assetId: AssetId
+              index: number
+            }[]
+          }
+        }) => {
+          const ordersMap = new Map<string, { approvedAt: Date; assetId: AssetId; index: number }[]>()
+
+          // Set the map with results and then sort the results by index
+          data.epochInvestOrders.items.forEach((item) => {
+            const key = item.assetId.toString()
+            if (!ordersMap.has(key)) {
+              ordersMap.set(key, [])
+            }
+            ordersMap.get(key)?.push({
+              approvedAt: item.approvedAt,
+              assetId: item.assetId,
+              index: item.index,
+            })
+          })
+
+          // Sort each array in the map by index
+          ordersMap.forEach((orders) => {
+            orders.sort((a, b) => a.index - b.index)
+          })
+
+          return ordersMap
+        }
+      )
+    )
+  }
+
+  /** @internal */
+  _epochRedeemOrders() {
+    return this._query(null, () =>
+      this._root._queryIndexer(
+        `query ($scId: String!) {
+          epochRedeemOrders(where: {tokenId: $scId, issuedAt: null, approvedAt_not: null}) {
+            items {
+              approvedAt
+              assetId
+              index
+            }
+          }
+        }`,
+        { scId: this.id.raw },
+        (data: {
+          epochRedeemOrders: {
+            items: {
+              approvedAt: Date
+              assetId: AssetId
+              index: number
+            }[]
+          }
+        }) => {
+          const ordersMap = new Map<string, { approvedAt: Date; assetId: AssetId; index: number }[]>()
+
+          data.epochRedeemOrders.items.forEach((item) => {
+            const key = item.assetId.toString()
+            if (!ordersMap.has(key)) {
+              ordersMap.set(key, [])
+            }
+            ordersMap.get(key)?.push({
+              approvedAt: item.approvedAt,
+              assetId: item.assetId,
+              index: item.index,
+            })
+          })
+
+          ordersMap.forEach((orders) => {
+            orders.sort((a, b) => a.index - b.index)
+          })
+
+          return ordersMap
+        }
+      )
+    )
+  }
+
+  /** @internal */
   _epoch(assetId: AssetId) {
     return this._query(['epoch', assetId.toString()], () =>
       combineLatest([
         this._root._protocolAddresses(this.pool.chainId),
         this.pool.currency(),
         this._root._assetDecimals(assetId, this.pool.chainId),
+        this._epochInvestOrders(),
+        this._epochRedeemOrders(),
       ]).pipe(
-        switchMap(([{ shareClassManager }, poolCurrency, assetDecimals]) =>
+        switchMap(([{ shareClassManager }, poolCurrency, assetDecimals, epochInvestOrders, epochRedeemOrders]) =>
           defer(async () => {
             const scm = getContract({
               address: shareClassManager,
@@ -1409,6 +1507,9 @@ export class ShareClass extends Entity {
 
             const approvedDeposit = depositEpochAmounts.reduce((acc, amount) => acc + amount[1], 0n)
             const approvedRedeem = redeemEpochAmount.reduce((acc, amount) => acc + amount[1], 0n)
+
+            // TODO: Evaluate if data returned is correct and sorted and use it
+            console.log({ epochRedeemOrders, epochInvestOrders })
 
             return {
               depositEpoch,

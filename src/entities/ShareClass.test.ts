@@ -161,6 +161,9 @@ describe('ShareClass', () => {
     expect(pendingAmounts[0]!.pendingRedeem).to.be.instanceOf(Balance)
     expect(pendingAmounts[0]!.pendingIssuancesTotal).to.be.instanceOf(Balance)
     expect(pendingAmounts[0]!.pendingRevocationsTotal).to.be.instanceOf(Balance)
+
+    // TODO:
+    // expect approvedAt values
   })
 
   describe('approveDepositsAndIssueShares', () => {
