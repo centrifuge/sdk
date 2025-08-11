@@ -98,6 +98,77 @@ describe('PoolNetwork', () => {
     const vaultDetails = await vault.details()
 
     expect(vaultDetails.isSyncInvest).to.be.true
+
+    const addresses = await context.centrifuge._protocolAddresses(chainId)
+
+    const maxReserve = await context.centrifuge.getClient(chainId).readContract({
+      address: addresses.syncManager,
+      abi: ABI.SyncRequests,
+      functionName: 'maxReserve',
+      args: [poolId.raw, scId.raw, asset.address, 0n],
+    })
+
+    expect(maxReserve).to.equal(340282366920938463463374607431768211455n)
+  })
+
+  it('does not update maxReserve in async vaults', async () => {
+    const { hub, freezeOnlyHook, vaultRouter } = await context.centrifuge._protocolAddresses(chainId)
+
+    context.tenderlyFork.impersonateAddress = poolManager
+    context.centrifuge.setSigner(context.tenderlyFork.signer)
+
+    await context.centrifuge._transact(async function* (ctx) {
+      yield* doTransaction('Add share class', ctx.publicClient, async () => {
+        return ctx.walletClient.writeContract({
+          address: hub,
+          abi: ABI.Hub,
+          functionName: 'addShareClass',
+          args: [poolId.raw, 'Test Share Class', 'TSC', '0x123'.padEnd(66, '0') as any],
+        })
+      })
+    }, chainId)
+
+    const scId = ShareClassId.from(poolId, 2)
+    const assetId = AssetId.from(1, 1)
+
+    const result = await poolNetwork.deploy(
+      [{ id: scId, hook: freezeOnlyHook }],
+      [{ shareClassId: scId, assetId, kind: 'async' }]
+    )
+    expect(result.type).to.equal('TransactionConfirmed')
+
+    const details = await poolNetwork.details()
+
+    const asset = await context.centrifuge.assetCurrency(assetId)
+    const vaultAddr = await context.centrifuge.getClient(chainId).readContract({
+      address: vaultRouter,
+      abi: ABI.VaultRouter,
+      functionName: 'getVault',
+      args: [poolId.raw, scId.raw, asset.address],
+    })
+    const vault = new Vault(
+      context.centrifuge,
+      new PoolNetwork(context.centrifuge, new Pool(context.centrifuge, poolId.raw, chainId), chainId),
+      details.activeShareClasses[1]!.shareClass,
+      asset.address,
+      vaultAddr,
+      AssetId.from(1, 1)
+    )
+
+    const vaultDetails = await vault.details()
+
+    expect(vaultDetails.isSyncInvest).to.be.false
+
+    const addresses = await context.centrifuge._protocolAddresses(chainId)
+
+    const maxReserve = await context.centrifuge.getClient(chainId).readContract({
+      address: addresses.syncManager,
+      abi: ABI.SyncRequests,
+      functionName: 'maxReserve',
+      args: [poolId.raw, scId.raw, asset.address, 0n],
+    })
+
+    expect(maxReserve).to.equal(0n)
   })
 
   it('disables vaults', async () => {

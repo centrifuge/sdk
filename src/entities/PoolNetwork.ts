@@ -243,6 +243,26 @@ export class PoolNetwork extends Entity {
           throw new Error(`Share class "${vault.shareClassId.raw}" is not enabled in pool "${self.pool.id.raw}"`)
         }
 
+        if (vault.kind === 'syncDeposit') {
+          batch.push(
+            encodeFunctionData({
+              abi: ABI.Hub,
+              functionName: 'updateContract',
+              args: [
+                self.pool.id.raw,
+                vault.shareClassId.raw,
+                id,
+                addressToBytes32(syncManager),
+                encodePacked(
+                  ['uint8', 'uint128', 'uint128'],
+                  [/* UpdateContractType.SyncDepositMaxReserve */ 2, vault.assetId.raw, maxUint128]
+                ),
+                0n,
+              ],
+            })
+          )
+        }
+
         batch.push(
           // TODO: When we have fully sync vaults, we have to check if a vault for this share class and asset already exists
           // and if so, we shouldn't set the request manager again.
@@ -267,21 +287,6 @@ export class PoolNetwork extends Entity {
               addressToBytes32(vault.kind === 'syncDeposit' ? syncDepositVaultFactory : asyncVaultFactory),
               VaultUpdateKind.DeployAndLink,
               0n, // gas limit
-            ],
-          }),
-          encodeFunctionData({
-            abi: ABI.Hub,
-            functionName: 'updateContract',
-            args: [
-              self.pool.id.raw,
-              vault.shareClassId.raw,
-              id,
-              addressToBytes32(syncManager),
-              encodePacked(
-                ['uint8', 'uint128', 'uint128'],
-                [/* UpdateContractType.SyncDepositMaxReserve */ 2, vault.assetId.raw, maxUint128]
-              ),
-              0n,
             ],
           })
         )
