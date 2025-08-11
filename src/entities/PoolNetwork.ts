@@ -82,12 +82,13 @@ export class PoolNetwork extends Entity {
    * Get the deployed Vaults for a given share class. There may exist one Vault for each allowed investment currency.
    * Vaults are used to submit/claim investments and redemptions.
    * @param scId - The share class ID
+   * @param includeUnlinked - Whether to include unlinked vaults
    */
-  vaults(scId: ShareClassId) {
+  vaults(scId: ShareClassId, includeUnlinked = false) {
     return this._query(null, () =>
       this._root.pool(this.pool.id).pipe(
         switchMap((pool) => pool.shareClass(scId)),
-        switchMap((shareClass) => shareClass.vaults(this.chainId))
+        switchMap((shareClass) => shareClass.vaults(this.chainId, includeUnlinked))
       )
     )
   }
@@ -289,14 +290,14 @@ export class PoolNetwork extends Entity {
   }
 
   /**
-   * Disable vaults.
-   * @param vaults - An array of vaults to disable
+   * Unlink vaults.
+   * @param vaults - An array of vaults to unlink
    */
-  disableVaults(vaults: { shareClassId: ShareClassId; assetId: AssetId }[]) {
+  unlinkVaults(vaults: { shareClassId: ShareClassId; assetId: AssetId }[]) {
     const self = this
     return this._transact(async function* (ctx) {
       if (vaults.length === 0) {
-        throw new Error('No vaults to disable')
+        throw new Error('No vaults to unlink')
       }
 
       const [{ hub }, id, details] = await Promise.all([
@@ -334,7 +335,7 @@ export class PoolNetwork extends Entity {
         messageTypes.push({ type: MessageType.UpdateVault, subtype: VaultUpdateKind.Unlink }) //
       }
 
-      yield* wrapTransaction('Disable vault(s)', ctx, {
+      yield* wrapTransaction(`Unlink vault${batch.length > 1 ? 's' : ''}`, ctx, {
         data: batch,
         contract: hub,
         messages: { [id]: messageTypes },
