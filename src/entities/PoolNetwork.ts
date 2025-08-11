@@ -82,12 +82,13 @@ export class PoolNetwork extends Entity {
    * Get the deployed Vaults for a given share class. There may exist one Vault for each allowed investment currency.
    * Vaults are used to submit/claim investments and redemptions.
    * @param scId - The share class ID
+   * @param includeDisabled - Whether to include disabled (unlinked) vaults
    */
-  vaults(scId: ShareClassId) {
+  vaults(scId: ShareClassId, includeDisabled = false) {
     return this._query(null, () =>
       this._root.pool(this.pool.id).pipe(
         switchMap((pool) => pool.shareClass(scId)),
-        switchMap((shareClass) => shareClass.vaults(this.chainId))
+        switchMap((shareClass) => shareClass.vaults(this.chainId, includeDisabled))
       )
     )
   }

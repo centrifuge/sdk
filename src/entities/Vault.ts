@@ -59,18 +59,51 @@ export class Vault extends Entity {
    */
   details() {
     return this._query(null, () =>
-      combineLatest([this._isSyncDeposit(), this._investmentCurrency(), this._shareCurrency()]).pipe(
-        map(([isSyncInvest, investmentCurrency, shareCurrency]) => ({
+      combineLatest([this.isEnabled(), this._isSyncDeposit(), this._investmentCurrency(), this._shareCurrency()]).pipe(
+        map(([isEnabled, isSyncInvest, investmentCurrency, shareCurrency]) => ({
           pool: this.pool,
           shareClass: this.shareClass,
           network: this.network,
           address: this.address,
           asset: this._asset,
+          isEnabled,
           isSyncInvest,
           isSyncRedeem: false,
           investmentCurrency,
           shareCurrency,
         }))
+      )
+    )
+  }
+
+  /**
+   * @returns Whether the vault is enabled (linked), and can be used for investments.
+   */
+  isEnabled() {
+    return this._query(['enabled'], () =>
+      this._root._protocolAddresses(this.chainId).pipe(
+        switchMap(({ spoke }) =>
+          defer(async () => {
+            const details = await this._root.getClient(this.chainId).readContract({
+              address: spoke,
+              abi: ABI.Spoke,
+              functionName: 'vaultDetails',
+              args: [this.address],
+            })
+            return details.isLinked
+          }).pipe(
+            repeatOnEvents(
+              this._root,
+              {
+                address: spoke,
+                abi: ABI.Spoke,
+                eventName: ['LinkVault', 'UnlinkVault'],
+                filter: (events) => events.some((event) => event.args.vault.toLowerCase() === this.address),
+              },
+              this.chainId
+            )
+          )
+        )
       )
     )
   }

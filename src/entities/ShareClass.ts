@@ -136,13 +136,18 @@ export class ShareClass extends Entity {
   /**
    * Query the vaults of the share class.
    * @param chainId The optional chain ID to query the vaults on.
-   * @returns All vaults of the share class, or filtered by the given chain.
+   * @param includeDisabled Whether to include disabled (unlinked) vaults.
+   * @returns Vaults of the share class.
    */
-  vaults(chainId?: number) {
+  vaults(chainId?: number, includeDisabled = false) {
     return this._query(null, () =>
       this._allVaults().pipe(
         map((allVaults) => {
-          const vaults = allVaults.filter((vault) => vault.chainId === chainId || !chainId)
+          const vaults = allVaults.filter((vault) => {
+            if (chainId && vault.chainId !== chainId) return false
+            if (!includeDisabled && vault.status === 'Unlinked') return false
+            return true
+          })
           return vaults.map(
             (vault) =>
               new Vault(
@@ -235,6 +240,7 @@ export class ShareClass extends Entity {
   pendingAmounts() {
     return this._query(null, () =>
       this._allVaults().pipe(
+        map((vaults) => vaults.filter((vault) => vault.status === 'Linked')),
         switchMap((vaults) => {
           if (vaults.length === 0) {
             return of([])
@@ -1281,6 +1287,7 @@ export class ShareClass extends Entity {
               address: id
               poolId
               assetAddress
+              status
               blockchain {
                 id
               }
@@ -1296,6 +1303,7 @@ export class ShareClass extends Entity {
             assetAddress: HexString
             blockchain: { id: string }
             asset: { id: string }
+            status: 'Linked' | 'Unlinked'
           }[]
         }
       }) =>
