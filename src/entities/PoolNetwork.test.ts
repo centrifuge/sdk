@@ -98,6 +98,17 @@ describe('PoolNetwork', () => {
     const vaultDetails = await vault.details()
 
     expect(vaultDetails.isSyncInvest).to.be.true
+
+    const addresses = await context.centrifuge._protocolAddresses(chainId)
+
+    const maxReserve = await context.centrifuge.getClient(chainId).readContract({
+      address: addresses.syncManager,
+      abi: ABI.SyncRequests,
+      functionName: 'maxReserve',
+      args: [poolId.raw, scId.raw, asset.address, 0n],
+    })
+
+    expect(maxReserve).to.equal(340282366920938463463374607431768211455n)
   })
 
   it('disables vaults', async () => {

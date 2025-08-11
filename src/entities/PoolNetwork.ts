@@ -1,5 +1,5 @@
 import { combineLatest, defer, map, of, switchMap } from 'rxjs'
-import { encodeFunctionData, getContract } from 'viem'
+import { encodeFunctionData, encodePacked, getContract, maxUint128 } from 'viem'
 import { ABI } from '../abi/index.js'
 import type { Centrifuge } from '../Centrifuge.js'
 import { NULL_ADDRESS } from '../constants.js'
@@ -242,6 +242,26 @@ export class PoolNetwork extends Entity {
       for (const vault of vaults) {
         if (!enabledShareClasses.has(vault.shareClassId.raw)) {
           throw new Error(`Share class "${vault.shareClassId.raw}" is not enabled in pool "${self.pool.id.raw}"`)
+        }
+
+        if (vault.kind === 'syncDeposit') {
+          batch.push(
+            encodeFunctionData({
+              abi: ABI.Hub,
+              functionName: 'updateContract',
+              args: [
+                self.pool.id.raw,
+                vault.shareClassId.raw,
+                id,
+                addressToBytes32(syncManager),
+                encodePacked(
+                  ['uint8', 'uint128', 'uint128'],
+                  [/* UpdateContractType.SyncDepositMaxReserve */ 2, vault.assetId.raw, maxUint128]
+                ),
+                0n,
+              ],
+            })
+          )
         }
 
         batch.push(
