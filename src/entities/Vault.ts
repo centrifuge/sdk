@@ -59,14 +59,14 @@ export class Vault extends Entity {
    */
   details() {
     return this._query(null, () =>
-      combineLatest([this.isEnabled(), this._isSyncDeposit(), this._investmentCurrency(), this._shareCurrency()]).pipe(
-        map(([isEnabled, isSyncInvest, investmentCurrency, shareCurrency]) => ({
+      combineLatest([this.isLinked(), this._isSyncDeposit(), this._investmentCurrency(), this._shareCurrency()]).pipe(
+        map(([isLinked, isSyncInvest, investmentCurrency, shareCurrency]) => ({
           pool: this.pool,
           shareClass: this.shareClass,
           network: this.network,
           address: this.address,
           asset: this._asset,
-          isEnabled,
+          isLinked,
           isSyncInvest,
           isSyncRedeem: false,
           investmentCurrency,
@@ -77,10 +77,10 @@ export class Vault extends Entity {
   }
 
   /**
-   * @returns Whether the vault is enabled (linked), and can be used for investments.
+   * @returns Whether the vault is linked and can be used for investments.
    */
-  isEnabled() {
-    return this._query(['enabled'], () =>
+  isLinked() {
+    return this._query(['linked'], () =>
       this._root._protocolAddresses(this.chainId).pipe(
         switchMap(({ spoke }) =>
           defer(async () => {

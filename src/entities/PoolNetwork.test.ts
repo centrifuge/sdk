@@ -122,7 +122,7 @@ describe('PoolNetwork', () => {
       activeShareClasses: [{ id: scId, vaults: [{ assetId, address: vaultAddr }] }],
     })
 
-    const result = await poolNetwork.disableVaults([{ shareClassId: scId, assetId }])
+    const result = await poolNetwork.unlinkVaults([{ shareClassId: scId, assetId }])
     expect(result.type).to.equal('TransactionConfirmed')
 
     const vaultAddr2 = await context.centrifuge.getClient(chainId).readContract({

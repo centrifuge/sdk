@@ -136,16 +136,16 @@ export class ShareClass extends Entity {
   /**
    * Query the vaults of the share class.
    * @param chainId The optional chain ID to query the vaults on.
-   * @param includeDisabled Whether to include disabled (unlinked) vaults.
+   * @param includeUnlinked Whether to include unlinked vaults.
    * @returns Vaults of the share class.
    */
-  vaults(chainId?: number, includeDisabled = false) {
+  vaults(chainId?: number, includeUnlinked = false) {
     return this._query(null, () =>
       this._allVaults().pipe(
         map((allVaults) => {
           const vaults = allVaults.filter((vault) => {
             if (chainId && vault.chainId !== chainId) return false
-            if (!includeDisabled && vault.status === 'Unlinked') return false
+            if (!includeUnlinked && vault.status === 'Unlinked') return false
             return true
           })
           return vaults.map(
@@ -980,7 +980,7 @@ export class ShareClass extends Entity {
         throw new Error('No data to update members')
       }
 
-      yield* wrapTransaction('Update investor(s)', ctx, {
+      yield* wrapTransaction(`Update member${batch.length > 1 ? 's' : ''}`, ctx, {
         contract: hub,
         data: batch,
         messages,

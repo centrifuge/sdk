@@ -249,7 +249,7 @@ describe('Vault', () => {
       const details = await vault.details()
 
       expect(details.address).to.equal('0x686ee443625c1d8fd822d706b7b6553c6e644561')
-      expect(details.isEnabled).to.equal(true)
+      expect(details.isLinked).to.equal(true)
     })
 
     // TODO: Set up an account with an claimed invest order, but not whitelisted
