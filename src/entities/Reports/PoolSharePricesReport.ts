@@ -10,7 +10,7 @@ import { PoolReports } from './PoolReports.js'
 import { DataReportFilter } from './types.js'
 import { applyGrouping } from './utils.js'
 
-export type SharePriceReport = {
+export type SharePricesReport = {
   timestamp: string
   shareClasses: Record<
     HexString,
@@ -21,7 +21,7 @@ export type SharePriceReport = {
   >
 }[]
 
-export type SharePriceReportFilter = DataReportFilter & {
+export type SharePricesReportFilter = DataReportFilter & {
   shareClassId?: ShareClassId
 }
 
@@ -46,7 +46,7 @@ export class PoolSharePricesReport extends Entity {
     this.pool = poolReports.pool
   }
 
-  report(filter: SharePriceReportFilter = {}) {
+  report(filter: SharePricesReportFilter = {}) {
     return this._query(null, () =>
       combineLatest([this.pool._shareClassIds(), this.pool.currency()]).pipe(
         switchMap(([shareClassIds, poolCurrency]) =>
@@ -89,10 +89,10 @@ export class PoolSharePricesReport extends Entity {
   /** @internal */
   _process(
     data: SharePriceData,
-    filter: Pick<SharePriceReportFilter, 'groupBy'>,
+    filter: Pick<SharePricesReportFilter, 'groupBy'>,
     poolCurrency: { decimals: number }
-  ): SharePriceReport {
-    const sharePricesByDate: Record<string, SharePriceReport[number]['shareClasses']> = {}
+  ): SharePricesReport {
+    const sharePricesByDate: Record<string, SharePricesReport[number]['shareClasses']> = {}
 
     data.tokenInstanceSnapshots.items.forEach((item) => {
       const date = new Date(Number(item.timestamp)).toISOString().slice(0, 10)
