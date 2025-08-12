@@ -20,6 +20,7 @@ import SyncRequestsAbi from './SyncRequestManager.abi.js'
 import ValuationAbi from './Valuation.abi.js'
 import VaultRouterAbi from './VaultRouter.abi.js'
 import OnOffRampManagerAbi from './OnOffRampManager.abi.js'
+import OnOffRampManagerFactoryAbi from './OnOffRampManagerFactory.abi.js'
 
 export const ABI = {
   Hub: parseAbi(HubAbi),
@@ -43,4 +44,5 @@ export const ABI = {
   PoolEscrow: parseAbi(PoolEscrowAbi),
   PoolEscrowFactory: parseAbi(PoolEscrowFactoryAbi),
   OnOffRampManager: parseAbi(OnOffRampManagerAbi),
+  OnOffRampManagerFactory: parseAbi(OnOffRampManagerFactoryAbi),
 }
