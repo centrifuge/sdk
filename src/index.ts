@@ -10,33 +10,6 @@ export type { IssuerDetail, PoolMetadataInput, PoolReport, ShareClassInput } fro
 export * from './types/poolMetadata.js'
 export type { Query } from './types/query.js'
 export type {
-  AssetListReport,
-  AssetListReportBase,
-  AssetListReportFilter,
-  AssetListReportPrivateCredit,
-  AssetListReportPublicCredit,
-  AssetTransactionReport,
-  AssetTransactionReportFilter,
-  BalanceSheetReport,
-  CashflowReport,
-  CashflowReportBase,
-  CashflowReportPrivateCredit,
-  CashflowReportPublicCredit,
-  FeeTransactionReport,
-  FeeTransactionReportFilter,
-  InvestorListReport,
-  InvestorListReportFilter,
-  InvestorTransactionsReport,
-  InvestorTransactionsReportFilter,
-  ProfitAndLossReport,
-  ProfitAndLossReportBase,
-  ProfitAndLossReportPrivateCredit,
-  ProfitAndLossReportPublicCredit,
-  ReportFilter,
-  TokenPriceReport,
-  TokenPriceReportFilter,
-} from './types/reports.js'
-export type {
   EIP1193ProviderLike,
   OperationConfirmedStatus,
   OperationPendingStatus,
