@@ -2,40 +2,13 @@ import { Centrifuge } from './Centrifuge.js'
 export * from './entities/Investor.js'
 export * from './entities/Pool.js'
 export * from './entities/PoolNetwork.js'
-export * from './entities/Reports/index.js'
+export * from './entities/Reports/PoolReports.js'
 export * from './entities/ShareClass.js'
 export * from './entities/Vault.js'
 export type { Client, Config, CurrencyDetails, HexString } from './types/index.js'
 export type { IssuerDetail, PoolMetadataInput, PoolReport, ShareClassInput } from './types/poolInput.js'
 export * from './types/poolMetadata.js'
 export type { Query } from './types/query.js'
-export type {
-  AssetListReport,
-  AssetListReportBase,
-  AssetListReportFilter,
-  AssetListReportPrivateCredit,
-  AssetListReportPublicCredit,
-  AssetTransactionReport,
-  AssetTransactionReportFilter,
-  BalanceSheetReport,
-  CashflowReport,
-  CashflowReportBase,
-  CashflowReportPrivateCredit,
-  CashflowReportPublicCredit,
-  FeeTransactionReport,
-  FeeTransactionReportFilter,
-  InvestorListReport,
-  InvestorListReportFilter,
-  InvestorTransactionsReport,
-  InvestorTransactionsReportFilter,
-  ProfitAndLossReport,
-  ProfitAndLossReportBase,
-  ProfitAndLossReportPrivateCredit,
-  ProfitAndLossReportPublicCredit,
-  ReportFilter,
-  TokenPriceReport,
-  TokenPriceReportFilter,
-} from './types/reports.js'
 export type {
   EIP1193ProviderLike,
   OperationConfirmedStatus,

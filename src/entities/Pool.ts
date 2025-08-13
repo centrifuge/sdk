@@ -13,7 +13,7 @@ import { wrapTransaction } from '../utils/transaction.js'
 import { AssetId, PoolId, ShareClassId } from '../utils/types.js'
 import { Entity } from './Entity.js'
 import { PoolNetwork } from './PoolNetwork.js'
-import { Reports } from './Reports/index.js'
+import { PoolReports } from './Reports/PoolReports.js'
 import { ShareClass } from './ShareClass.js'
 export class Pool extends Entity {
   id: PoolId
@@ -29,7 +29,7 @@ export class Pool extends Entity {
   }
 
   get reports() {
-    return new Reports(this._root, this)
+    return new PoolReports(this._root, this)
   }
 
   /**
