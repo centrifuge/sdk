@@ -42,6 +42,7 @@ export function applyGrouping<
         ) as T[keyof T]
       }
     }
+
     return base
   })
 }
