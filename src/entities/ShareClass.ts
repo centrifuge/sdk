@@ -1536,7 +1536,9 @@ export class ShareClass extends Entity {
             const approvedDeposit = depositEpochAmounts.reduce((acc, amount) => acc + amount[1], 0n)
             const approvedRedeem = redeemEpochAmount.reduce((acc, amount) => acc + amount[1], 0n)
 
-            // TODO: Evaluate if data returned is correct and sorted and use it
+            // TODO: Check if what is returned here is correct
+            // Data should be already mapped by assetId and sorted by index, which should make it easy to pull
+            // inside the depositEpochAmounts.map and redeemEpochAmount.map
             console.log({ epochRedeemOrders, epochInvestOrders })
 
             return {
