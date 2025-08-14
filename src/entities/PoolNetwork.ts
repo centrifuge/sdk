@@ -367,6 +367,7 @@ export class PoolNetwork extends Entity {
     return this._query(null, () =>
       combineLatest([
         this._root._queryIndexer(
+          // TODO: Replace this with actual query to the indexer once it is available
           `query ($scId: String!) {
             onOffRampManagers(where: { shareClassId: $scId }) {
               items {
@@ -395,9 +396,11 @@ export class PoolNetwork extends Entity {
             balanceSheetManagers,
           })
 
+          // TODO: Implement the logic below
           // find the deployed manager in balance sheet managers
           // if not found, throw
           // if found instantiate OnOffRampManager class
+          // return the class instead of '0x' address
 
           return '0x'
         })

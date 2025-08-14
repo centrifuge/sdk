@@ -101,6 +101,7 @@ describe('OnOffRampManager', () => {
       console.log({ result })
 
       // TODO: assert once the data is available, with balance greater than 0
+      // Currently it returns only one balance with 0 value, which gets filtered out
 
       // balance: Balance { value: 0n, decimals: 6 },
       // currency: {
@@ -115,7 +116,7 @@ describe('OnOffRampManager', () => {
     })
   })
 
-  describe.only('deposit and withdraw', () => {
+  describe('deposit and withdraw', () => {
     it('should deposit', async () => {
       const assetAddress = '0x3aaaa86458d576bafcb1b7ed290434f0696da65c'
       const allowance = new Balance(100n, 6)
@@ -187,6 +188,7 @@ describe('OnOffRampManager', () => {
         args: [receiver],
       })
 
+      // TODO: Assert that the receiver balance is equal to the amount withdrawn
       console.log({ receiverBalanceAfter })
     })
   })
