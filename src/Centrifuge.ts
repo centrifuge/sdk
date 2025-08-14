@@ -734,19 +734,27 @@ export class Centrifuge {
    * @internal
    */
   _queryIndexer<Result>(query: string, variables?: Record<string, any>): Query<Result>
+  _queryIndexer<Result>(
+    query: string,
+    variables?: Record<string, any>,
+    postProcess?: undefined,
+    pollInterval?: number
+  ): Query<Result>
   _queryIndexer<Result, Return>(
     query: string,
     variables: Record<string, any>,
-    postProcess: (data: Result) => Return
+    postProcess: (data: Result) => Return,
+    pollInterval?: number
   ): Query<Return>
   _queryIndexer<Result, Return = Result>(
     query: string,
     variables?: Record<string, any>,
-    postProcess?: (data: Result) => Return
+    postProcess?: (data: Result) => Return,
+    pollInterval = 120_000
   ) {
     return this._query([query, variables], () =>
-      // If subscribed, refetch every 2 minutes
-      timer(0, 120_000).pipe(
+      // If subscribed, refetch every `pollInterval` milliseconds
+      timer(0, pollInterval).pipe(
         switchMap(() => this._getIndexerObservable(query, variables).pipe(map(postProcess ?? identity)))
       )
     )
