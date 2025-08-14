@@ -363,6 +363,48 @@ export class PoolNetwork extends Entity {
     }, this.pool.chainId)
   }
 
+  onOfframpManager(scId: ShareClassId) {
+    return this._query(null, () =>
+      combineLatest([
+        this._root._queryIndexer(
+          `query ($scId: String!) {
+            onOffRampManagers(where: { shareClassId: $scId }) {
+              items {
+                id
+                onRampAddress
+              }
+            }
+          }`,
+          {
+            scId,
+          },
+          (data: {
+            onOffRampManagers: {
+              items: {
+                id: string
+                onRampAddress: HexString
+              }[]
+            }
+          }) => data.onOffRampManagers.items
+        ),
+        this.pool.balanceSheetManagers(),
+      ]).pipe(
+        switchMap(([deployedOnOffRampManager, balanceSheetManagers]) => {
+          console.log({
+            deployedOnOffRampManager,
+            balanceSheetManagers,
+          })
+
+          // find the deployed manager in balance sheet managers
+          // if not found, throw
+          // if found instantiate OnOffRampManager class
+
+          return '0x'
+        })
+      )
+    )
+  }
+
   /**
    * Get the contract address of the share token.
    * @internal
