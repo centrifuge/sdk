@@ -18,9 +18,6 @@ import {
 } from 'rxjs'
 import { fromFetch } from 'rxjs/fetch'
 import {
-  type Abi,
-  type Account,
-  type Chain,
   createPublicClient,
   createWalletClient,
   custom,
@@ -31,6 +28,9 @@ import {
   parseAbi,
   parseEventLogs,
   toHex,
+  type Abi,
+  type Account,
+  type Chain,
   type WalletClient,
   type WatchEventOnLogsParameter,
 } from 'viem'
@@ -52,7 +52,9 @@ import { PoolMetadataInput } from './types/poolInput.js'
 import { PoolMetadata } from './types/poolMetadata.js'
 import type { CentrifugeQueryOptions, Query } from './types/query.js'
 import {
+  emptyMessage,
   MessageType,
+  MessageTypeWithSubType,
   type OperationStatus,
   type Signer,
   type Transaction,
@@ -134,7 +136,17 @@ export class Centrifuge {
           chain.id,
           createPublicClient<any, Chain>({
             chain,
-            transport: Array.isArray(rpcUrl) ? fallback(rpcUrl.map((url) => http(url))) : http(rpcUrl),
+            transport: Array.isArray(rpcUrl)
+              ? fallback(
+                  rpcUrl.map((url) => http(url)),
+                  {
+                    rank: {
+                      interval: 30_000,
+                      sampleCount: 5,
+                    },
+                  }
+                )
+              : http(rpcUrl),
             batch: { multicall: true },
             pollingInterval: this.#config.pollingInterval,
             cacheTime: 100,
@@ -722,19 +734,27 @@ export class Centrifuge {
    * @internal
    */
   _queryIndexer<Result>(query: string, variables?: Record<string, any>): Query<Result>
+  _queryIndexer<Result>(
+    query: string,
+    variables?: Record<string, any>,
+    postProcess?: undefined,
+    pollInterval?: number
+  ): Query<Result>
   _queryIndexer<Result, Return>(
     query: string,
     variables: Record<string, any>,
-    postProcess: (data: Result) => Return
+    postProcess: (data: Result) => Return,
+    pollInterval?: number
   ): Query<Return>
   _queryIndexer<Result, Return = Result>(
     query: string,
     variables?: Record<string, any>,
-    postProcess?: (data: Result) => Return
+    postProcess?: (data: Result) => Return,
+    pollInterval = 120_000
   ) {
     return this._query([query, variables], () =>
-      // If subscribed, refetch every 2 minutes
-      timer(0, 120_000).pipe(
+      // If subscribed, refetch every `pollInterval` milliseconds
+      timer(0, pollInterval).pipe(
         switchMap(() => this._getIndexerObservable(query, variables).pipe(map(postProcess ?? identity)))
       )
     )
@@ -1011,12 +1031,7 @@ export class Centrifuge {
       (ctx) =>
         combineLatest(transactions.map((tx) => tx.pipe(first()))).pipe(
           switchMap(async function* (batches_) {
-            const batches = batches_ as any as {
-              data: HexString[]
-              contract: HexString
-              value?: bigint
-              messages?: Record<number, MessageType[]>
-            }[]
+            const batches = batches_ as any as BatchTransactionData[]
             if (!batches.every((b) => b.data && b.contract)) {
               throw new Error('Not all transactions can be batched')
             }
@@ -1033,7 +1048,7 @@ export class Centrifuge {
                 }
                 return acc
               },
-              {} as Record<number, MessageType[]>
+              {} as Record<number, MessageTypeWithSubType[]>
             )
             const contracts = [...new Set(batches.map((b) => b.contract))]
             if (contracts.length !== 1) {
@@ -1104,29 +1119,38 @@ export class Centrifuge {
    * that results from a transaction
    * @internal
    */
-  _estimate(fromChain: number, to: { chainId: number } | { centId: number }, messageType: MessageType | MessageType[]) {
-    return this._query(['estimate', fromChain, to], () =>
+
+  _estimate(
+    fromChain: number,
+    to: { chainId: number } | { centId: number },
+    messageType: MessageTypeWithSubType | MessageTypeWithSubType[]
+  ) {
+    return this._query(['estimate', fromChain, to, messageType], () =>
       this._protocolAddresses(fromChain).pipe(
         switchMap(({ multiAdapter, gasService }) => {
           const types = Array.isArray(messageType) ? messageType : [messageType]
           return combineLatest([
             'chainId' in to ? this.id(to.chainId) : of(to.centId),
-            ...types.map((type) =>
-              this.getClient(fromChain).readContract({
+            ...types.map((typeAndMaybeSubtype) => {
+              const type = typeof typeAndMaybeSubtype === 'number' ? typeAndMaybeSubtype : typeAndMaybeSubtype.type
+              const subtype = typeof typeAndMaybeSubtype === 'number' ? undefined : typeAndMaybeSubtype.subtype
+              const data = emptyMessage(type, subtype)
+              return this.getClient(fromChain).readContract({
                 address: gasService,
                 abi: ABI.GasService,
                 functionName: 'messageGasLimit',
-                args: [0, toHex(type, { size: 1 })],
+                args: [0, data],
               })
-            ),
+            }),
           ]).pipe(
-            switchMap(([toCentId, ...gasLimits]) => {
-              return this.getClient(fromChain).readContract({
+            switchMap(async ([toCentId, ...gasLimits]) => {
+              const estimate = await this.getClient(fromChain).readContract({
                 address: multiAdapter,
                 abi: ABI.MultiAdapter,
                 functionName: 'estimate',
                 args: [toCentId, '0x0', gasLimits.reduce((acc, val) => acc + val, 0n)],
               })
+              return (estimate * 3n) / 2n // Add 50% buffer to the estimate
             })
           )
         })

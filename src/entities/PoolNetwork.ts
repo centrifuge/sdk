@@ -1,10 +1,10 @@
 import { combineLatest, defer, map, of, switchMap } from 'rxjs'
-import { encodeFunctionData, getContract } from 'viem'
+import { encodeFunctionData, encodePacked, getContract, maxUint128 } from 'viem'
 import { ABI } from '../abi/index.js'
 import type { Centrifuge } from '../Centrifuge.js'
 import { NULL_ADDRESS } from '../constants.js'
 import { HexString } from '../types/index.js'
-import { MessageType } from '../types/transaction.js'
+import { MessageType, MessageTypeWithSubType, VaultUpdateKind } from '../types/transaction.js'
 import { addressToBytes32 } from '../utils/index.js'
 import { repeatOnEvents } from '../utils/rx.js'
 import { wrapTransaction } from '../utils/transaction.js'
@@ -82,12 +82,13 @@ export class PoolNetwork extends Entity {
    * Get the deployed Vaults for a given share class. There may exist one Vault for each allowed investment currency.
    * Vaults are used to submit/claim investments and redemptions.
    * @param scId - The share class ID
+   * @param includeUnlinked - Whether to include unlinked vaults
    */
-  vaults(scId: ShareClassId) {
+  vaults(scId: ShareClassId, includeUnlinked = false) {
     return this._query(null, () =>
       this._root.pool(this.pool.id).pipe(
         switchMap((pool) => pool.shareClass(scId)),
-        switchMap((shareClass) => shareClass.vaults(this.chainId))
+        switchMap((shareClass) => shareClass.vaults(this.chainId, includeUnlinked))
       )
     )
   }
@@ -184,7 +185,7 @@ export class PoolNetwork extends Entity {
       ])
 
       const batch: HexString[] = []
-      const messageTypes: MessageType[] = []
+      const messageTypes: MessageTypeWithSubType[] = []
 
       // Set vault managers as balance sheet managers if not already set
       // Always set async manager, as it's used by both async and sync deposit vaults
@@ -243,6 +244,26 @@ export class PoolNetwork extends Entity {
           throw new Error(`Share class "${vault.shareClassId.raw}" is not enabled in pool "${self.pool.id.raw}"`)
         }
 
+        if (vault.kind === 'syncDeposit') {
+          batch.push(
+            encodeFunctionData({
+              abi: ABI.Hub,
+              functionName: 'updateContract',
+              args: [
+                self.pool.id.raw,
+                vault.shareClassId.raw,
+                id,
+                addressToBytes32(syncManager),
+                encodePacked(
+                  ['uint8', 'uint128', 'uint128'],
+                  [/* UpdateContractType.SyncDepositMaxReserve */ 2, vault.assetId.raw, maxUint128]
+                ),
+                0n,
+              ],
+            })
+          )
+        }
+
         batch.push(
           // TODO: When we have fully sync vaults, we have to check if a vault for this share class and asset already exists
           // and if so, we shouldn't set the request manager again.
@@ -265,12 +286,15 @@ export class PoolNetwork extends Entity {
               vault.shareClassId.raw,
               vault.assetId.raw,
               addressToBytes32(vault.kind === 'syncDeposit' ? syncDepositVaultFactory : asyncVaultFactory),
-              0, // VaultUpdateKind.DeployAndLink
+              VaultUpdateKind.DeployAndLink,
               0n, // gas limit
             ],
           })
         )
-        messageTypes.push(MessageType.SetRequestManager, MessageType.NotifyPricePoolPerAsset, MessageType.UpdateVault)
+        messageTypes.push(MessageType.SetRequestManager, MessageType.NotifyPricePoolPerAsset, {
+          type: MessageType.UpdateVault,
+          subtype: VaultUpdateKind.DeployAndLink,
+        })
       }
 
       if (batch.length === 0) {
@@ -286,14 +310,14 @@ export class PoolNetwork extends Entity {
   }
 
   /**
-   * Disable vaults.
-   * @param vaults - An array of vaults to disable
+   * Unlink vaults.
+   * @param vaults - An array of vaults to unlink
    */
-  disableVaults(vaults: { shareClassId: ShareClassId; assetId: AssetId }[]) {
+  unlinkVaults(vaults: { shareClassId: ShareClassId; assetId: AssetId }[]) {
     const self = this
     return this._transact(async function* (ctx) {
       if (vaults.length === 0) {
-        throw new Error('No vaults to disable')
+        throw new Error('No vaults to unlink')
       }
 
       const [{ hub }, id, details] = await Promise.all([
@@ -303,7 +327,7 @@ export class PoolNetwork extends Entity {
       ])
 
       const batch: HexString[] = []
-      const messageTypes: MessageType[] = []
+      const messageTypes: MessageTypeWithSubType[] = []
 
       for (const vault of vaults) {
         const shareClass = details.activeShareClasses.find((sc) => sc.id.equals(vault.shareClassId))
@@ -323,15 +347,15 @@ export class PoolNetwork extends Entity {
               vault.shareClassId.raw,
               vault.assetId.raw,
               addressToBytes32(existingVault.address),
-              2, // VaultUpdateKind.Unlink
+              VaultUpdateKind.Unlink,
               0n, // gas limit
             ],
           })
         )
-        messageTypes.push(MessageType.UpdateVault)
+        messageTypes.push({ type: MessageType.UpdateVault, subtype: VaultUpdateKind.Unlink }) //
       }
 
-      yield* wrapTransaction('Disable vault(s)', ctx, {
+      yield* wrapTransaction(`Unlink vault${batch.length > 1 ? 's' : ''}`, ctx, {
         data: batch,
         contract: hub,
         messages: { [id]: messageTypes },

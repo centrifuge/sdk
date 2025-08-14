@@ -59,13 +59,14 @@ export class Vault extends Entity {
    */
   details() {
     return this._query(null, () =>
-      combineLatest([this._isSyncDeposit(), this._investmentCurrency(), this._shareCurrency()]).pipe(
-        map(([isSyncInvest, investmentCurrency, shareCurrency]) => ({
+      combineLatest([this.isLinked(), this._isSyncDeposit(), this._investmentCurrency(), this._shareCurrency()]).pipe(
+        map(([isLinked, isSyncInvest, investmentCurrency, shareCurrency]) => ({
           pool: this.pool,
           shareClass: this.shareClass,
           network: this.network,
           address: this.address,
           asset: this._asset,
+          isLinked,
           isSyncInvest,
           isSyncRedeem: false,
           investmentCurrency,
@@ -76,12 +77,44 @@ export class Vault extends Entity {
   }
 
   /**
+   * @returns Whether the vault is linked and can be used for investments.
+   */
+  isLinked() {
+    return this._query(['linked'], () =>
+      this._root._protocolAddresses(this.chainId).pipe(
+        switchMap(({ spoke }) =>
+          defer(async () => {
+            const details = await this._root.getClient(this.chainId).readContract({
+              address: spoke,
+              abi: ABI.Spoke,
+              functionName: 'vaultDetails',
+              args: [this.address],
+            })
+            return details.isLinked
+          }).pipe(
+            repeatOnEvents(
+              this._root,
+              {
+                address: spoke,
+                abi: ABI.Spoke,
+                eventName: ['LinkVault', 'UnlinkVault'],
+                filter: (events) => events.some((event) => event.args.vault.toLowerCase() === this.address),
+              },
+              this.chainId
+            )
+          )
+        )
+      )
+    )
+  }
+
+  /**
    * Get the details of the investment of an investor in the vault and any pending investments or redemptions.
    * @param investor - The address of the investor
    */
   investment(investor: HexString) {
-    const address = investor.toLowerCase() as HexString
-    return this._query(['investment', address], () =>
+    const investorAddress = investor.toLowerCase() as HexString
+    return this._query(['investment', investorAddress], () =>
       combineLatest([
         this._investmentCurrency(),
         this._shareCurrency(),
@@ -93,9 +126,9 @@ export class Vault extends Entity {
         switchMap(
           ([investmentCurrency, shareCurrency, addresses, restrictionManagerAddress, isSyncInvest, escrowAddress]) =>
             combineLatest([
-              this._root.balance(investmentCurrency.address, address, this.chainId),
-              this._root.balance(shareCurrency.address, address, this.chainId),
-              this._allowance(address),
+              this._root.balance(investmentCurrency.address, investorAddress, this.chainId),
+              this._root.balance(shareCurrency.address, investorAddress, this.chainId),
+              this._allowance(investorAddress),
               defer(async () => {
                 const client = this._root.getClient(this.chainId)
                 const vault = getContract({ address: this.address, abi: ABI.AsyncVault, client })
@@ -123,11 +156,11 @@ export class Vault extends Entity {
                   isAllowedToRedeem,
                   [escrowTotal, escrowReserved],
                 ] = await Promise.all([
-                  vault.read.isPermissioned!([address]),
-                  vault.read.maxDeposit!([address]),
-                  vault.read.maxRedeem!([address]),
-                  investmentManager.read.investments!([this.address, address]),
-                  share.read.checkTransferRestriction!([address, ESCROW_HOOK_ID, 0n]),
+                  vault.read.isPermissioned!([investorAddress]),
+                  vault.read.maxDeposit!([investorAddress]),
+                  vault.read.maxRedeem!([investorAddress]),
+                  investmentManager.read.investments!([this.address, investorAddress]),
+                  share.read.checkTransferRestriction!([investorAddress, ESCROW_HOOK_ID, 0n]),
                   escrow.read.holding([this.shareClass.id.raw, this._asset, 0n]),
                 ])
 
@@ -199,12 +232,12 @@ export class Vault extends Entity {
                     filter: (events) =>
                       events.some(
                         (event) =>
-                          event.args.receiver?.toLowerCase() === address ||
-                          event.args.controller?.toLowerCase() === address ||
-                          event.args.sender?.toLowerCase() === address ||
-                          event.args.owner?.toLowerCase() === address ||
+                          event.args.receiver?.toLowerCase() === investorAddress ||
+                          event.args.controller?.toLowerCase() === investorAddress ||
+                          event.args.sender?.toLowerCase() === investorAddress ||
+                          event.args.owner?.toLowerCase() === investorAddress ||
                           // UpdateMember event
-                          (event.args.user?.toLowerCase() === address &&
+                          (event.args.user?.toLowerCase() === investorAddress &&
                             event.args.token?.toLowerCase() === shareCurrency.address) ||
                           // PoolEscrow events
                           (event.args.scId === this.shareClass.id.raw && event.args.asset.toLowerCase() === this._asset)
@@ -502,10 +535,14 @@ export class Vault extends Entity {
    */
   _allowance(owner: HexString) {
     return this._query(null, () =>
-      combineLatest([this._investmentCurrency(), this._root._protocolAddresses(this.chainId)]).pipe(
-        switchMap(([currency, { vaultRouter }]) =>
+      combineLatest([
+        this._investmentCurrency(),
+        this._root._protocolAddresses(this.chainId),
+        this._isSyncDeposit(),
+      ]).pipe(
+        switchMap(([currency, { vaultRouter }, isSyncDeposit]) =>
           this._root
-            ._allowance(owner, vaultRouter, this.chainId, currency.address)
+            ._allowance(owner, isSyncDeposit ? vaultRouter : this.address, this.chainId, currency.address)
             .pipe(map((allowance) => new Balance(allowance, currency.decimals)))
         )
       )

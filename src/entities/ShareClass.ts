@@ -136,13 +136,18 @@ export class ShareClass extends Entity {
   /**
    * Query the vaults of the share class.
    * @param chainId The optional chain ID to query the vaults on.
-   * @returns All vaults of the share class, or filtered by the given chain.
+   * @param includeUnlinked Whether to include unlinked vaults.
+   * @returns Vaults of the share class.
    */
-  vaults(chainId?: number) {
+  vaults(chainId?: number, includeUnlinked = false) {
     return this._query(null, () =>
       this._allVaults().pipe(
         map((allVaults) => {
-          const vaults = allVaults.filter((vault) => vault.chainId === chainId || !chainId)
+          const vaults = allVaults.filter((vault) => {
+            if (chainId && vault.chainId !== chainId) return false
+            if (!includeUnlinked && vault.status === 'Unlinked') return false
+            return true
+          })
           return vaults.map(
             (vault) =>
               new Vault(
@@ -235,6 +240,7 @@ export class ShareClass extends Entity {
   pendingAmounts() {
     return this._query(null, () =>
       this._allVaults().pipe(
+        map((vaults) => vaults.filter((vault) => vault.status === 'Linked')),
         switchMap((vaults) => {
           if (vaults.length === 0) {
             return of([])
@@ -267,7 +273,7 @@ export class ShareClass extends Entity {
       combineLatest([this._share(chainId), this._restrictionManager(chainId)]).pipe(
         switchMap(([share, restrictionManager]) =>
           defer(async () => {
-            const res = await this._root.getClient(this.pool.chainId).readContract({
+            const res = await this._root.getClient(chainId).readContract({
               address: restrictionManager,
               abi: ABI.RestrictionManager,
               functionName: 'isMember',
@@ -291,7 +297,8 @@ export class ShareClass extends Entity {
               },
               chainId
             ),
-            catchError(() => {
+            catchError((e) => {
+              console.warn('Error checking member status', e)
               // Freeze-only hook doesn't have isMember function
               return of({
                 isMember: false,
@@ -461,6 +468,7 @@ export class ShareClass extends Entity {
       yield* wrapTransaction('Update share price', ctx, {
         contract: hub,
         data: batch,
+        messages,
       })
     }, this.pool.chainId)
   }
@@ -570,9 +578,11 @@ export class ShareClass extends Entity {
         ),
         self._root._maxBatchGasLimit(self.pool.chainId),
       ])
-      const gasLimitPerAsset = maxBatchGasLimit / BigInt(assets.filter((a) => a.issuePricePerShare).length)
-      const estimatePerMessage = 615_000n
-      const estimatePerMessageIfLocal = 315_000n
+      const assetsWithApprove = assets.filter((a) => a.approveAssetAmount).length
+      const assetsWithIssue = assets.filter((a) => a.issuePricePerShare).length
+      const gasLimitPerAsset = assetsWithIssue ? maxBatchGasLimit / BigInt(assetsWithIssue) : 0n
+      const estimatePerMessage = 700_000n
+      const estimatePerMessageIfLocal = 360_000n
 
       const ordersByAssetId: Record<string, typeof orders> = {}
       orders.forEach((order) => {
@@ -684,8 +694,14 @@ export class ShareClass extends Entity {
       if (batch.length === 0) {
         throw new Error('No approve or issue actions provided')
       }
+      let title = 'Approve and issue'
+      if (assetsWithApprove === 0) {
+        title = 'Issue'
+      } else if (assetsWithIssue === 0) {
+        title = 'Approve'
+      }
 
-      yield* wrapTransaction('Approve and issue', ctx, {
+      yield* wrapTransaction(title, ctx, {
         contract: hub,
         data: batch,
         messages,
@@ -720,9 +736,11 @@ export class ShareClass extends Entity {
         ),
         self._root._maxBatchGasLimit(self.pool.chainId),
       ])
-      const gasLimitPerAsset = maxBatchGasLimit / BigInt(assets.filter((a) => a.revokePricePerShare).length)
-      const estimatePerMessage = 615_000n
-      const estimatePerMessageIfLocal = 315_000n
+      const assetsWithApprove = assets.filter((a) => a.approveShareAmount).length
+      const assetsWithRevoke = assets.filter((a) => a.revokePricePerShare).length
+      const gasLimitPerAsset = assetsWithRevoke ? maxBatchGasLimit / BigInt(assetsWithRevoke) : 0n
+      const estimatePerMessage = 700_000n
+      const estimatePerMessageIfLocal = 360_000n
 
       const ordersByAssetId: Record<string, typeof orders> = {}
       orders.forEach((order) => {
@@ -831,7 +849,15 @@ export class ShareClass extends Entity {
       if (batch.length === 0) {
         throw new Error('No approve or revoke actions provided')
       }
-      yield* wrapTransaction('Approve and revoke', ctx, {
+
+      let title = 'Approve and revoke'
+      if (assetsWithApprove === 0) {
+        title = 'Revoke'
+      } else if (assetsWithRevoke === 0) {
+        title = 'Approve'
+      }
+
+      yield* wrapTransaction(title, ctx, {
         contract: hub,
         data: batch,
         messages,
@@ -954,7 +980,7 @@ export class ShareClass extends Entity {
         throw new Error('No data to update members')
       }
 
-      yield* wrapTransaction('Update investor(s)', ctx, {
+      yield* wrapTransaction(`Update member${batch.length > 1 ? 's' : ''}`, ctx, {
         contract: hub,
         data: batch,
         messages,
@@ -1261,6 +1287,7 @@ export class ShareClass extends Entity {
               address: id
               poolId
               assetAddress
+              status
               blockchain {
                 id
               }
@@ -1276,6 +1303,7 @@ export class ShareClass extends Entity {
             assetAddress: HexString
             blockchain: { id: string }
             asset: { id: string }
+            status: 'Linked' | 'Unlinked'
           }[]
         }
       }) =>
