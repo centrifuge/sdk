@@ -1,3 +1,4 @@
+import { HexString } from './index.js'
 import { PoolMetadata } from './poolMetadata.js'
 
 export type FileType = { uri: string; mime: string }
@@ -17,7 +18,7 @@ export type ShareClassInput = {
   apyPercentage?: number | null
   apy?: 'target' | '7day' | '30day' | '90day' | 'ytd' | 'sinceInception' | 'automatic' | null
   salt?: string
-  defaultAccounts?: PoolMetadata['shareClasses'][number]['defaultAccounts']
+  defaultAccounts?: PoolMetadata['shareClasses'][HexString]['defaultAccounts']
 }
 
 export type IssuerDetail = {
