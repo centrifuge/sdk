@@ -6,7 +6,7 @@ export default [
   'function approve(address, uint) external returns (bool)',
   'function transfer(address, uint) external returns (bool)',
   'function balanceOf(address) view returns (uint)',
-  'function allowance(address, address) view returns (uint)',
+  'function allowance(address owner, address spender) view returns (uint)',
   'function decimals() view returns (uint8)',
   'function name() view returns (string)',
   'function symbol() view returns (string)',
