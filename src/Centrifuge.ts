@@ -485,12 +485,12 @@ export class Centrifuge {
               assetRegistrations(where: { centrifugeId: $hubCentId, decimals_gt: 0 }) {
                 items {
                   assetId
-                  decimals
                   asset {
                     centrifugeId
                     address
                     name
                     symbol
+                  decimals
                   }
                 }
               }
@@ -500,8 +500,13 @@ export class Centrifuge {
               assetRegistrations: {
                 items: {
                   assetId: string
-                  decimals: number
-                  asset: { centrifugeId: string; address: HexString; name: string; symbol: string } | null
+                  asset: {
+                    centrifugeId: string
+                    address: HexString
+                    name: string
+                    symbol: string
+                    decimals: number
+                  } | null
                 }[]
               }
             }) => {
@@ -513,7 +518,7 @@ export class Centrifuge {
                     address: assetReg.asset!.address,
                     name: assetReg.asset!.name,
                     symbol: assetReg.asset!.symbol,
-                    decimals: assetReg.decimals,
+                    decimals: assetReg.asset!.decimals,
                   }
                 })
             }
