@@ -490,7 +490,7 @@ export class Centrifuge {
                     address
                     name
                     symbol
-                  decimals
+                    decimals
                   }
                 }
               }
