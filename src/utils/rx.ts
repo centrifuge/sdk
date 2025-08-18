@@ -2,6 +2,7 @@ import type { MonoTypeOperatorFunction, Observable, Subscriber, Subscription } f
 import { filter, firstValueFrom, lastValueFrom, repeat, ReplaySubject, share, Subject, timer } from 'rxjs'
 import type { Abi, Log } from 'viem'
 import type { Centrifuge } from '../Centrifuge.js'
+import { HexString } from '../types/index.js'
 import type { Query } from '../types/query.js'
 
 export function shareReplayWithDelayedReset<T>(config?: {
@@ -22,8 +23,7 @@ export function shareReplayWithDelayedReset<T>(config?: {
 export function repeatOnEvents<T>(
   centrifuge: Centrifuge,
   opts: {
-    address?: string | string[]
-    abi: Abi | Abi[]
+    address: HexString | HexString[]
     eventName: string | string[]
     filter?: (events: (Log<bigint, number, false, undefined, true, Abi, string> & { args: any })[]) => boolean
   },
@@ -31,7 +31,7 @@ export function repeatOnEvents<T>(
 ): MonoTypeOperatorFunction<T> {
   return repeat({
     delay: () =>
-      centrifuge._filteredEvents(opts.address || [], opts.abi, opts.eventName, chainId).pipe(
+      centrifuge._filteredEvents(opts.address, opts.eventName, chainId).pipe(
         filter((events) => {
           return opts.filter ? opts.filter(events) : true
         })

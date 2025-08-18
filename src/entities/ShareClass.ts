@@ -288,7 +288,6 @@ export class ShareClass extends Entity {
               this._root,
               {
                 address: restrictionManager,
-                abi: ABI.RestrictionManager,
                 eventName: 'UpdateMember',
                 filter: (events) =>
                   events.some(
@@ -1090,7 +1089,6 @@ export class ShareClass extends Entity {
               this._root,
               {
                 address: holdingsAddr,
-                abi: ABI.Holdings,
                 eventName: ['Increase', 'Decrease', 'Update', 'UpdateValuation'],
                 filter: (events) => {
                   return events.some((event) => {
@@ -1142,7 +1140,6 @@ export class ShareClass extends Entity {
               this._root,
               {
                 address: [addresses.balanceSheet, addresses.spoke],
-                abi: [ABI.BalanceSheet, ABI.Spoke],
                 eventName: ['NoteDeposit', 'Deposit', 'Withdraw', 'UpdateAssetPrice'],
                 filter: (events) => {
                   return events.some(
@@ -1250,7 +1247,6 @@ export class ShareClass extends Entity {
               this._root,
               {
                 address: shareClassManager,
-                abi: ABI.ShareClassManager,
                 eventName: [
                   'UpdateDepositRequest',
                   'UpdateRedeemRequest',
@@ -1336,7 +1332,6 @@ export class ShareClass extends Entity {
               this._root,
               {
                 address: shareClassManager,
-                abi: ABI.ShareClassManager,
                 eventName: 'UpdateMetadata',
                 filter: (events) => {
                   return events.some((event) => {
@@ -1373,7 +1368,6 @@ export class ShareClass extends Entity {
               this._root,
               {
                 address: shareClassManager,
-                abi: ABI.ShareClassManager,
                 eventName: [
                   'RevokeShares',
                   'IssueShares',
@@ -1463,7 +1457,6 @@ export class ShareClass extends Entity {
               this._root,
               {
                 address: shareClassManager,
-                abi: ABI.ShareClassManager,
                 eventName: [
                   'ApproveDeposits',
                   'ApproveRedeems',

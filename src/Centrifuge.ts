@@ -26,9 +26,7 @@ import {
   getContract,
   http,
   parseAbi,
-  parseEventLogs,
   toHex,
-  type Abi,
   type Account,
   type Chain,
   type WalletClient,
@@ -65,7 +63,13 @@ import { randomUint } from './utils/index.js'
 import { createPinning, getUrlFromHash } from './utils/ipfs.js'
 import { hashKey } from './utils/query.js'
 import { makeThenable, repeatOnEvents, shareReplayWithDelayedReset } from './utils/rx.js'
-import { BatchTransactionData, doTransaction, isLocalAccount, wrapTransaction } from './utils/transaction.js'
+import {
+  BatchTransactionData,
+  doTransaction,
+  isLocalAccount,
+  parseEventLogs,
+  wrapTransaction,
+} from './utils/transaction.js'
 import { AssetId, PoolId, ShareClassId } from './utils/types.js'
 
 const PINNING_API_DEMO = 'https://europe-central2-peak-vista-185616.cloudfunctions.net/pinning-api-demo'
@@ -455,7 +459,6 @@ export class Centrifuge {
               this,
               {
                 address: currency,
-                abi: ABI.Currency,
                 eventName: 'Transfer',
                 filter: (events) => {
                   return events.some((event) => {
@@ -644,7 +647,6 @@ export class Centrifuge {
             this,
             {
               address: asset,
-              abi: [ABI.Currency, ABI.ERC6909],
               eventName: ['Approval', 'Transfer'],
               filter: (events) => {
                 return events.some((event) => {
@@ -691,19 +693,15 @@ export class Centrifuge {
    * Returns an observable of events on a given chain, filtered by name(s) and address(es).
    * @internal
    */
-  _filteredEvents(address: string | string[], abi: Abi | Abi[], eventName: string | string[], chainId: number) {
-    const addresses = (Array.isArray(address) ? address : [address]).map((a) => a.toLowerCase())
-    const eventNames = Array.isArray(eventName) ? eventName : [eventName]
+  _filteredEvents(address: HexString | HexString[], eventName: string | string[], chainId: number) {
     return this._events(chainId).pipe(
       map((logs) => {
         const parsed = parseEventLogs({
-          abi: abi.flat(),
-          eventName: eventNames,
+          address,
+          eventName,
           logs,
         })
-        const filtered = parsed.filter((log) => (addresses.length ? addresses.includes(log.address) : true))
-
-        return filtered as ((typeof filtered)[0] & { args: any })[]
+        return parsed as ((typeof parsed)[number] & { args: any })[]
       }),
       filter((logs) => logs.length > 0)
     )
@@ -813,7 +811,6 @@ export class Centrifuge {
    *       this,
    *       {
    *         address: tUSD,
-   *         abi: ABI.Currency,
    *         eventName: 'Transfer',
    *       },
    *       chainId

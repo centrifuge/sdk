@@ -135,7 +135,6 @@ export class PoolNetwork extends Entity {
               this._root,
               {
                 address: spoke,
-                abi: ABI.Spoke,
                 eventName: 'AddPool',
                 filter: (events) => {
                   return events.some((event) => {
@@ -391,7 +390,6 @@ export class PoolNetwork extends Entity {
               this._root,
               {
                 address: spoke,
-                abi: ABI.Spoke,
                 eventName: 'AddShareClass',
                 filter: (events) => {
                   return events.some((event) => event.args.poolId === this.pool.id.raw && event.args.scId === scId.raw)
