@@ -592,6 +592,44 @@ export class Centrifuge {
     }, originChainId)
   }
 
+  repayMessage(fromChain: number, to: { chainId: number } | { centId: number }, batch: HexString, value: bigint) {
+    const self = this
+    return this._transact(async function* ({ walletClient, publicClient }) {
+      const [addresses, id] = await Promise.all([
+        self._protocolAddresses(fromChain),
+        'chainId' in to ? self.id(to.chainId) : to.centId,
+        ,
+      ])
+      yield* doTransaction('Repay', publicClient, () =>
+        walletClient.writeContract({
+          address: addresses.gateway,
+          abi: ABI.Gateway,
+          functionName: 'repay',
+          args: [id, batch],
+          value,
+        })
+      )
+    }, fromChain)
+  }
+
+  retryMessage(fromChain: number, to: { chainId: number } | { centId: number }, batch: HexString) {
+    const self = this
+    return this._transact(async function* ({ walletClient, publicClient }) {
+      const [addresses, id] = await Promise.all([
+        self._protocolAddresses(fromChain),
+        'chainId' in to ? self.id(to.chainId) : to.centId,
+      ])
+      yield* doTransaction('Retry', publicClient, () =>
+        walletClient.writeContract({
+          address: addresses.gateway,
+          abi: ABI.Gateway,
+          functionName: 'retry',
+          args: [id, batch],
+        })
+      )
+    }, fromChain)
+  }
+
   /**
    * Get the decimals of asset on the Hub side
    * @internal
@@ -1119,12 +1157,13 @@ export class Centrifuge {
   _estimate(
     fromChain: number,
     to: { chainId: number } | { centId: number },
-    messageType: MessageTypeWithSubType | MessageTypeWithSubType[]
+    messageTypeOrData: MessageTypeWithSubType | MessageTypeWithSubType[] | HexString
   ) {
-    return this._query(['estimate', fromChain, to, messageType], () =>
+    return this._query(['estimate', fromChain, to, messageTypeOrData], () =>
       this._protocolAddresses(fromChain).pipe(
         switchMap(({ multiAdapter, gasService }) => {
-          const types = Array.isArray(messageType) ? messageType : [messageType]
+          const isData = typeof messageTypeOrData === 'string'
+          const types = isData ? [] : Array.isArray(messageTypeOrData) ? messageTypeOrData : [messageTypeOrData]
           return combineLatest([
             'chainId' in to ? this.id(to.chainId) : of(to.centId),
             ...types.map((typeAndMaybeSubtype) => {
@@ -1144,7 +1183,9 @@ export class Centrifuge {
                 address: multiAdapter,
                 abi: ABI.MultiAdapter,
                 functionName: 'estimate',
-                args: [toCentId, '0x0', gasLimits.reduce((acc, val) => acc + val, 0n)],
+                args: isData
+                  ? [toCentId, messageTypeOrData, 0n]
+                  : [toCentId, '0x0', gasLimits.reduce((acc, val) => acc + val, 0n)],
               })
               return (estimate * 3n) / 2n // Add 50% buffer to the estimate
             })
