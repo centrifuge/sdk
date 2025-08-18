@@ -54,6 +54,11 @@ export class MerkleProofManager extends Entity {
       ])
       const { metadata, shareClasses } = poolDetails
 
+      async function getEncodedAddresses(policy: MerkleProofPolicy) {
+        const abi = parseAbiItem(policy.abi)
+        // abi.inputs
+      }
+
       let rootHash
       if (policies.length === 0) {
         rootHash = toHex(0, { size: 32 })
@@ -140,6 +145,7 @@ export class MerkleProofManager extends Entity {
         const { policy, inputs, value } = call
 
         const abi = parseAbiItem(policy.abi)
+        console.log('abi', abi)
         const args: (string | number | bigint)[] = [...policy.addresses] as any
         inputs.forEach((value, i) => {
           const argIndex = policy.strategistInputs[i]!

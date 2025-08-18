@@ -153,7 +153,7 @@ describe('MerkleProofManager', () => {
         of({
           merkleProofManager: {
             [chainId]: {
-              [strategist.toLowerCase()]: mockPolicies,
+              [strategist.toLowerCase()]: { policies: mockPolicies },
             },
           },
         } as any)
