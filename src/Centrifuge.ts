@@ -696,12 +696,11 @@ export class Centrifuge {
   _filteredEvents(address: HexString | HexString[], eventName: string | string[], chainId: number) {
     return this._events(chainId).pipe(
       map((logs) => {
-        const parsed = parseEventLogs({
+        return parseEventLogs({
           address,
           eventName,
           logs,
         })
-        return parsed as ((typeof parsed)[number] & { args: any })[]
       }),
       filter((logs) => logs.length > 0)
     )
