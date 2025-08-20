@@ -486,7 +486,7 @@ export class Centrifuge {
         switchMap(([spokeCentId, hubCentId]) =>
           this._queryIndexer(
             `query ($hubCentId: String!) {
-              assetRegistrations(where: { centrifugeId: $hubCentId, decimals_gt: 0 }) {
+              assetRegistrations(where: { centrifugeId: $hubCentId }) {
                 items {
                   assetId
                   asset {
