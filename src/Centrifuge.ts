@@ -26,9 +26,7 @@ import {
   getContract,
   http,
   parseAbi,
-  parseEventLogs,
   toHex,
-  type Abi,
   type Account,
   type Chain,
   type WalletClient,
@@ -65,7 +63,13 @@ import { randomUint } from './utils/index.js'
 import { createPinning, getUrlFromHash } from './utils/ipfs.js'
 import { hashKey } from './utils/query.js'
 import { makeThenable, repeatOnEvents, shareReplayWithDelayedReset } from './utils/rx.js'
-import { BatchTransactionData, doTransaction, isLocalAccount, wrapTransaction } from './utils/transaction.js'
+import {
+  BatchTransactionData,
+  doTransaction,
+  isLocalAccount,
+  parseEventLogs,
+  wrapTransaction,
+} from './utils/transaction.js'
 import { AssetId, PoolId, ShareClassId } from './utils/types.js'
 
 const PINNING_API_DEMO = 'https://europe-central2-peak-vista-185616.cloudfunctions.net/pinning-api-demo'
@@ -455,7 +459,6 @@ export class Centrifuge {
               this,
               {
                 address: currency,
-                abi: ABI.Currency,
                 eventName: 'Transfer',
                 filter: (events) => {
                   return events.some((event) => {
@@ -592,6 +595,44 @@ export class Centrifuge {
     }, originChainId)
   }
 
+  repayMessage(fromChain: number, to: { chainId: number } | { centId: number }, batch: HexString, value: bigint) {
+    const self = this
+    return this._transact(async function* ({ walletClient, publicClient }) {
+      const [addresses, id] = await Promise.all([
+        self._protocolAddresses(fromChain),
+        'chainId' in to ? self.id(to.chainId) : to.centId,
+        ,
+      ])
+      yield* doTransaction('Repay', publicClient, () =>
+        walletClient.writeContract({
+          address: addresses.gateway,
+          abi: ABI.Gateway,
+          functionName: 'repay',
+          args: [id, batch],
+          value,
+        })
+      )
+    }, fromChain)
+  }
+
+  retryMessage(fromChain: number, to: { chainId: number } | { centId: number }, batch: HexString) {
+    const self = this
+    return this._transact(async function* ({ walletClient, publicClient }) {
+      const [addresses, id] = await Promise.all([
+        self._protocolAddresses(fromChain),
+        'chainId' in to ? self.id(to.chainId) : to.centId,
+      ])
+      yield* doTransaction('Retry', publicClient, () =>
+        walletClient.writeContract({
+          address: addresses.gateway,
+          abi: ABI.Gateway,
+          functionName: 'retry',
+          args: [id, batch],
+        })
+      )
+    }, fromChain)
+  }
+
   /**
    * Get the decimals of asset on the Hub side
    * @internal
@@ -647,7 +688,6 @@ export class Centrifuge {
             this,
             {
               address: asset,
-              abi: [ABI.Currency, ABI.ERC6909],
               eventName: ['Approval', 'Transfer'],
               filter: (events) => {
                 return events.some((event) => {
@@ -694,19 +734,14 @@ export class Centrifuge {
    * Returns an observable of events on a given chain, filtered by name(s) and address(es).
    * @internal
    */
-  _filteredEvents(address: string | string[], abi: Abi | Abi[], eventName: string | string[], chainId: number) {
-    const addresses = (Array.isArray(address) ? address : [address]).map((a) => a.toLowerCase())
-    const eventNames = Array.isArray(eventName) ? eventName : [eventName]
+  _filteredEvents(address: HexString | HexString[], eventName: string | string[], chainId: number) {
     return this._events(chainId).pipe(
       map((logs) => {
-        const parsed = parseEventLogs({
-          abi: abi.flat(),
-          eventName: eventNames,
+        return parseEventLogs({
+          address,
+          eventName,
           logs,
         })
-        const filtered = parsed.filter((log) => (addresses.length ? addresses.includes(log.address) : true))
-
-        return filtered as ((typeof filtered)[0] & { args: any })[]
       }),
       filter((logs) => logs.length > 0)
     )
@@ -816,7 +851,6 @@ export class Centrifuge {
    *       this,
    *       {
    *         address: tUSD,
-   *         abi: ABI.Currency,
    *         eventName: 'Transfer',
    *       },
    *       chainId
@@ -1126,12 +1160,13 @@ export class Centrifuge {
   _estimate(
     fromChain: number,
     to: { chainId: number } | { centId: number },
-    messageType: MessageTypeWithSubType | MessageTypeWithSubType[]
+    messageTypeOrData: MessageTypeWithSubType | MessageTypeWithSubType[] | HexString
   ) {
-    return this._query(['estimate', fromChain, to, messageType], () =>
+    return this._query(['estimate', fromChain, to, messageTypeOrData], () =>
       this._protocolAddresses(fromChain).pipe(
         switchMap(({ multiAdapter, gasService }) => {
-          const types = Array.isArray(messageType) ? messageType : [messageType]
+          const isData = typeof messageTypeOrData === 'string'
+          const types = isData ? [] : Array.isArray(messageTypeOrData) ? messageTypeOrData : [messageTypeOrData]
           return combineLatest([
             'chainId' in to ? this.id(to.chainId) : of(to.centId),
             ...types.map((typeAndMaybeSubtype) => {
@@ -1151,7 +1186,9 @@ export class Centrifuge {
                 address: multiAdapter,
                 abi: ABI.MultiAdapter,
                 functionName: 'estimate',
-                args: [toCentId, '0x0', gasLimits.reduce((acc, val) => acc + val, 0n)],
+                args: isData
+                  ? [toCentId, messageTypeOrData, 0n]
+                  : [toCentId, '0x0', gasLimits.reduce((acc, val) => acc + val, 0n)],
               })
               return (estimate * 3n) / 2n // Add 50% buffer to the estimate
             })
