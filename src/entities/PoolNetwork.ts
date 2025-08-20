@@ -11,6 +11,7 @@ import { wrapTransaction } from '../utils/transaction.js'
 import { AssetId, ShareClassId } from '../utils/types.js'
 import { BalanceSheet } from './BalanceSheet.js'
 import { Entity } from './Entity.js'
+import { MerkleProofManager } from './MerkleProofManager.js'
 import type { Pool } from './Pool.js'
 import { ShareClass } from './ShareClass.js'
 
@@ -148,6 +149,13 @@ export class PoolNetwork extends Entity {
         })
       )
     )
+  }
+
+  merkleProofManager() {
+    return this._query(['merkleProofManager'], () => {
+      // TODO: Get Merkle Proof Manager address from indexer
+      return of(new MerkleProofManager(this._root, this, '0x0'))
+    })
   }
 
   /**
