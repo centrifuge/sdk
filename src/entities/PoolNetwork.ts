@@ -154,7 +154,7 @@ export class PoolNetwork extends Entity {
 
   merkleProofManager() {
     return this._query(['merkleProofManager'], () => {
-      // TODO: Get address from indexer
+      // TODO: Get Merkle Proof Manager address from indexer
       return of(new MerkleProofManager(this._root, this, '0x0'))
     })
   }
