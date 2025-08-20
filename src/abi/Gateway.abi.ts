@@ -29,7 +29,7 @@ export default [
   // 'function subsidizePool(uint64 poolId) payable',
   // 'function subsidy(uint64) view returns (uint96 value, address refund)',
   // 'function transactionRefund() view returns (address)',
-  // 'function underpaid(uint16 centrifugeId, bytes32 batchHash) view returns (uint128 counter, uint128 gasLimit)',
+  'function underpaid(uint16 centrifugeId, bytes32 batchHash) view returns (uint128 counter, uint128 gasLimit)',
   // 'function wards(address) view returns (uint256)',
   // 'event Deny(address indexed user)',
   // 'event ExecuteMessage(uint16 indexed centrifugeId, bytes message)',
