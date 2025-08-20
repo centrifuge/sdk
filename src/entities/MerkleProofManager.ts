@@ -1,10 +1,11 @@
 import type { SimpleMerkleTree } from '@openzeppelin/merkle-tree'
 import { map } from 'rxjs'
-import { encodeFunctionData, encodePacked, keccak256, parseAbiItem, toFunctionSelector, toHex } from 'viem'
+import { AbiFunction, encodeFunctionData, encodePacked, keccak256, parseAbiItem, toFunctionSelector, toHex } from 'viem'
 import { ABI } from '../abi/index.js'
 import type { Centrifuge } from '../Centrifuge.js'
+import { NULL_ADDRESS } from '../constants.js'
 import type { HexString } from '../types/index.js'
-import { MerkleProofPolicy } from '../types/poolMetadata.js'
+import { MerkleProofPolicy, MerkleProofPolicyInput } from '../types/poolMetadata.js'
 import { MessageType } from '../types/transaction.js'
 import { Balance, BigIntWrapper, Price } from '../utils/BigInt.js'
 import { addressToBytes32 } from '../utils/index.js'
@@ -43,7 +44,7 @@ export class MerkleProofManager extends Entity {
     )
   }
 
-  setPolicies(strategist: HexString, policies: MerkleProofPolicy[]) {
+  setPolicies(strategist: HexString, policyInputs: MerkleProofPolicyInput[]) {
     const self = this
     return this._transact(async function* (ctx) {
       const [{ hub }, id, poolDetails, { SimpleMerkleTree: SimpleMerkleTreeConstructor }] = await Promise.all([
@@ -53,11 +54,64 @@ export class MerkleProofManager extends Entity {
         import('@openzeppelin/merkle-tree'),
       ])
       const { metadata, shareClasses } = poolDetails
+      const client = self._root.getClient(self.chainId)
 
-      async function getEncodedAddresses(policy: MerkleProofPolicy) {
-        const abi = parseAbiItem(policy.abi)
-        // abi.inputs
+      // Get the encoded args from chain by calling the decoder contract.
+      async function getEncodedArgs(policy: MerkleProofPolicyInput) {
+        const abi = parseAbiItem(policy.abi) as AbiFunction
+        const args = policy.args.map((arg, i) => {
+          if (arg !== null) return arg
+          const { type } = abi.inputs[i] || {}
+          if (!type) {
+            throw new Error(`No type found for argument ${i} in abi item "${policy.abi}, args: ${policy.args}"`)
+          }
+          if (type === 'address') {
+            return NULL_ADDRESS
+          } else if (type.includes('int')) {
+            return 0
+          } else if (type === 'bytes') {
+            return '0x'
+          } else if (type === 'bool') {
+            return false
+          } else if (type === 'string') {
+            return ''
+          } else if (type.startsWith('bytes')) {
+            return toHex(0, { size: parseInt(type.slice(5)) })
+          } else if (type.includes('[')) {
+            return []
+          }
+          throw new Error(`Unsupported type "${type}" for abi item "${policy.abi}"`)
+        })
+
+        abi.outputs = [
+          {
+            name: 'addressesFound',
+            type: 'bytes',
+            internalType: 'bytes',
+          },
+        ]
+
+        const encoded = await client.readContract({
+          address: policy.decoder,
+          abi: [abi],
+          functionName: abi.name,
+          args,
+        })
+
+        return encoded as any as HexString
       }
+
+      const policies = await Promise.all(
+        policyInputs.map(async (input) => {
+          const argsEncoded = await getEncodedArgs(input)
+          return {
+            ...input,
+            assetId: input.assetId?.toString(),
+            valueNonZero: input.valueNonZero ?? false,
+            argsEncoded,
+          } satisfies MerkleProofPolicy
+        })
+      )
 
       let rootHash
       if (policies.length === 0) {
@@ -74,7 +128,7 @@ export class MerkleProofManager extends Entity {
           ...metadata?.merkleProofManager,
           [self.chainId]: {
             ...metadata?.merkleProofManager?.[self.chainId],
-            [strategist.toLowerCase()]: { policies },
+            [strategist.toLowerCase()]: { policies: policies satisfies MerkleProofPolicy[] },
           },
         },
       }
@@ -145,10 +199,10 @@ export class MerkleProofManager extends Entity {
         const { policy, inputs, value } = call
 
         const abi = parseAbiItem(policy.abi)
-        console.log('abi', abi)
-        const args: (string | number | bigint)[] = [...policy.addresses] as any
+        const args: (string | number | bigint)[] = [...policy.args] as any
+        const inputIndeces = args.map((arg, i) => (arg === null ? i : -1)).filter((i) => i >= 0)
         inputs.forEach((value, i) => {
-          const argIndex = policy.strategistInputs[i]!
+          const argIndex = inputIndeces[i]!
           args[argIndex] = value instanceof BigIntWrapper ? value.toBigInt() : value
         })
 
@@ -184,7 +238,7 @@ export function toHashedPolicyLeaf(policy: MerkleProofPolicy): HexString {
   return keccak256(
     encodePacked(
       ['address', 'address', 'bool', 'bytes4', 'bytes'],
-      [policy.decoder, policy.target, policy.valueNonZero, toFunctionSelector(policy.abi), policy.addressesEncoded]
+      [policy.decoder, policy.target, policy.valueNonZero, toFunctionSelector(policy.abi), policy.argsEncoded]
     )
   )
 }
