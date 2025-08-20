@@ -25,6 +25,7 @@ import {
   fallback,
   getContract,
   http,
+  keccak256,
   parseAbi,
   toHex,
   type Account,
@@ -595,21 +596,38 @@ export class Centrifuge {
     }, originChainId)
   }
 
-  repayMessage(fromChain: number, to: { chainId: number } | { centId: number }, batch: HexString, value: bigint) {
+  repayMessage(fromChain: number, to: { chainId: number } | { centId: number }, batch: HexString, extraPayment = 0n) {
     const self = this
     return this._transact(async function* ({ walletClient, publicClient }) {
-      const [addresses, id] = await Promise.all([
+      const [addresses, toCentId] = await Promise.all([
         self._protocolAddresses(fromChain),
         'chainId' in to ? self.id(to.chainId) : to.centId,
-        ,
       ])
+      const client = self.getClient(fromChain)
+      const batchHash = keccak256(batch)
+      const [counter, gasLimit] = await client.readContract({
+        address: addresses.gateway,
+        abi: ABI.Gateway,
+        functionName: 'underpaid',
+        args: [toCentId, batchHash],
+      })
+      if (counter === 0n) {
+        throw new Error(`Batch is not underpaid and can't be repaid. Batch hash: "${batchHash}"`)
+      }
+      const estimate = await client.readContract({
+        address: addresses.multiAdapter,
+        abi: ABI.MultiAdapter,
+        functionName: 'estimate',
+        args: [toCentId, batch, gasLimit],
+      })
+
       yield* doTransaction('Repay', publicClient, () =>
         walletClient.writeContract({
           address: addresses.gateway,
           abi: ABI.Gateway,
           functionName: 'repay',
-          args: [id, batch],
-          value,
+          args: [toCentId, batch],
+          value: estimate + extraPayment,
         })
       )
     }, fromChain)
@@ -1160,13 +1178,12 @@ export class Centrifuge {
   _estimate(
     fromChain: number,
     to: { chainId: number } | { centId: number },
-    messageTypeOrData: MessageTypeWithSubType | MessageTypeWithSubType[] | HexString
+    messageType: MessageTypeWithSubType | MessageTypeWithSubType[]
   ) {
-    return this._query(['estimate', fromChain, to, messageTypeOrData], () =>
+    return this._query(['estimate', fromChain, to, messageType], () =>
       this._protocolAddresses(fromChain).pipe(
         switchMap(({ multiAdapter, gasService }) => {
-          const isData = typeof messageTypeOrData === 'string'
-          const types = isData ? [] : Array.isArray(messageTypeOrData) ? messageTypeOrData : [messageTypeOrData]
+          const types = Array.isArray(messageType) ? messageType : [messageType]
           return combineLatest([
             'chainId' in to ? this.id(to.chainId) : of(to.centId),
             ...types.map((typeAndMaybeSubtype) => {
@@ -1186,9 +1203,7 @@ export class Centrifuge {
                 address: multiAdapter,
                 abi: ABI.MultiAdapter,
                 functionName: 'estimate',
-                args: isData
-                  ? [toCentId, messageTypeOrData, 0n]
-                  : [toCentId, '0x0', gasLimits.reduce((acc, val) => acc + val, 0n)],
+                args: [toCentId, '0x0', gasLimits.reduce((acc, val) => acc + val, 0n)],
               })
               return (estimate * 3n) / 2n // Add 50% buffer to the estimate
             })
