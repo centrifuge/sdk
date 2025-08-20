@@ -485,12 +485,12 @@ export class Centrifuge {
               assetRegistrations(where: { centrifugeId: $hubCentId, decimals_gt: 0 }) {
                 items {
                   assetId
-                  name
-                  symbol
-                  decimals
                   asset {
                     centrifugeId
                     address
+                    name
+                    symbol
+                    decimals
                   }
                 }
               }
@@ -499,11 +499,14 @@ export class Centrifuge {
             (data: {
               assetRegistrations: {
                 items: {
-                  name: string
-                  symbol: string
                   assetId: string
-                  decimals: number
-                  asset: { centrifugeId: string; address: HexString } | null
+                  asset: {
+                    centrifugeId: string
+                    address: HexString
+                    name: string
+                    symbol: string
+                    decimals: number
+                  } | null
                 }[]
               }
             }) => {
@@ -513,9 +516,9 @@ export class Centrifuge {
                   return {
                     id: new AssetId(assetReg.assetId),
                     address: assetReg.asset!.address,
-                    name: assetReg.name,
-                    symbol: assetReg.symbol,
-                    decimals: assetReg.decimals,
+                    name: assetReg.asset!.name,
+                    symbol: assetReg.asset!.symbol,
+                    decimals: assetReg.asset!.decimals,
                   }
                 })
             }
