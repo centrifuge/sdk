@@ -596,7 +596,10 @@ export class Centrifuge {
     }, originChainId)
   }
 
-  repayMessage(fromChain: number, to: { chainId: number } | { centId: number }, batch: HexString, extraPayment = 0n) {
+  /**
+   * Repay an underpaid batch of messages on the Gateway
+   */
+  repayBatch(fromChain: number, to: { chainId: number } | { centId: number }, batch: HexString, extraPayment = 0n) {
     const self = this
     return this._transact(async function* ({ walletClient, publicClient }) {
       const [addresses, toCentId] = await Promise.all([
@@ -633,7 +636,10 @@ export class Centrifuge {
     }, fromChain)
   }
 
-  retryMessage(fromChain: number, to: { chainId: number } | { centId: number }, batch: HexString) {
+  /**
+   * Retry a failed batch of messages on the Gateway
+   */
+  retryBatch(fromChain: number, to: { chainId: number } | { centId: number }, batch: HexString) {
     const self = this
     return this._transact(async function* ({ walletClient, publicClient }) {
       const [addresses, id] = await Promise.all([
@@ -1174,7 +1180,6 @@ export class Centrifuge {
    * that results from a transaction
    * @internal
    */
-
   _estimate(
     fromChain: number,
     to: { chainId: number } | { centId: number },
