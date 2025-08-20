@@ -12,6 +12,7 @@ import { AssetId, ShareClassId } from '../utils/types.js'
 import { BalanceSheet } from './BalanceSheet.js'
 import { Entity } from './Entity.js'
 import { MerkleProofManager } from './MerkleProofManager.js'
+import { OnOffRampManager } from './OnOffRampManager.js'
 import type { Pool } from './Pool.js'
 import { ShareClass } from './ShareClass.js'
 
@@ -156,6 +157,51 @@ export class PoolNetwork extends Entity {
       // TODO: Get Merkle Proof Manager address from indexer
       return of(new MerkleProofManager(this._root, this, '0x0'))
     })
+  }
+
+  onOfframpManager(scId: ShareClassId) {
+    return this._query(null, () =>
+      combineLatest([
+        this._root._queryIndexer(
+          // TODO: Replace this with actual query to the indexer once it is available
+          `query ($scId: String!) {
+            onOffRampManager(where: { shareClassId: $scId }) {
+              items {
+                id
+                onRampAddress
+              }
+            }
+          }`,
+          {
+            scId,
+          },
+          (data: {
+            onOffRampManagers: {
+              items: {
+                id: string
+                onRampAddress: HexString
+              }[]
+            }
+          }) => data.onOffRampManagers.items
+        ),
+        this.pool.balanceSheetManagers(),
+      ]).pipe(
+        map(([deployedOnOffRampManager, balanceSheetManagers]) => {
+          console.log({
+            deployedOnOffRampManager,
+            balanceSheetManagers,
+          })
+
+          // TODO: Implement the logic below
+          // find the deployed manager in balance sheet managers
+          // if not found, throw
+          // if found instantiate OnOffRampManager class
+          // return the class instead of '0x' address
+
+          return new OnOffRampManager(this._root, this, new ShareClass(this._root, this.pool, scId.raw), '0x')
+        })
+      )
+    )
   }
 
   /**
@@ -368,51 +414,6 @@ export class PoolNetwork extends Entity {
         messages: { [id]: messageTypes },
       })
     }, this.pool.chainId)
-  }
-
-  onOfframpManager(scId: ShareClassId) {
-    return this._query(null, () =>
-      combineLatest([
-        this._root._queryIndexer(
-          // TODO: Replace this with actual query to the indexer once it is available
-          `query ($scId: String!) {
-            onOffRampManagers(where: { shareClassId: $scId }) {
-              items {
-                id
-                onRampAddress
-              }
-            }
-          }`,
-          {
-            scId,
-          },
-          (data: {
-            onOffRampManagers: {
-              items: {
-                id: string
-                onRampAddress: HexString
-              }[]
-            }
-          }) => data.onOffRampManagers.items
-        ),
-        this.pool.balanceSheetManagers(),
-      ]).pipe(
-        switchMap(([deployedOnOffRampManager, balanceSheetManagers]) => {
-          console.log({
-            deployedOnOffRampManager,
-            balanceSheetManagers,
-          })
-
-          // TODO: Implement the logic below
-          // find the deployed manager in balance sheet managers
-          // if not found, throw
-          // if found instantiate OnOffRampManager class
-          // return the class instead of '0x' address
-
-          return '0x'
-        })
-      )
-    )
   }
 
   /**
