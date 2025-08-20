@@ -25,10 +25,9 @@ import {
   fallback,
   getContract,
   http,
+  keccak256,
   parseAbi,
-  parseEventLogs,
   toHex,
-  type Abi,
   type Account,
   type Chain,
   type WalletClient,
@@ -65,7 +64,13 @@ import { randomUint } from './utils/index.js'
 import { createPinning, getUrlFromHash } from './utils/ipfs.js'
 import { hashKey } from './utils/query.js'
 import { makeThenable, repeatOnEvents, shareReplayWithDelayedReset } from './utils/rx.js'
-import { BatchTransactionData, doTransaction, isLocalAccount, wrapTransaction } from './utils/transaction.js'
+import {
+  BatchTransactionData,
+  doTransaction,
+  isLocalAccount,
+  parseEventLogs,
+  wrapTransaction,
+} from './utils/transaction.js'
 import { AssetId, PoolId, ShareClassId } from './utils/types.js'
 
 const PINNING_API_DEMO = 'https://europe-central2-peak-vista-185616.cloudfunctions.net/pinning-api-demo'
@@ -455,7 +460,6 @@ export class Centrifuge {
               this,
               {
                 address: currency,
-                abi: ABI.Currency,
                 eventName: 'Transfer',
                 filter: (events) => {
                   return events.some((event) => {
@@ -485,12 +489,12 @@ export class Centrifuge {
               assetRegistrations(where: { centrifugeId: $hubCentId, decimals_gt: 0 }) {
                 items {
                   assetId
-                  name
-                  symbol
-                  decimals
                   asset {
                     centrifugeId
                     address
+                    name
+                    symbol
+                    decimals
                   }
                 }
               }
@@ -499,11 +503,14 @@ export class Centrifuge {
             (data: {
               assetRegistrations: {
                 items: {
-                  name: string
-                  symbol: string
                   assetId: string
-                  decimals: number
-                  asset: { centrifugeId: string; address: HexString } | null
+                  asset: {
+                    centrifugeId: string
+                    address: HexString
+                    name: string
+                    symbol: string
+                    decimals: number
+                  } | null
                 }[]
               }
             }) => {
@@ -513,9 +520,9 @@ export class Centrifuge {
                   return {
                     id: new AssetId(assetReg.assetId),
                     address: assetReg.asset!.address,
-                    name: assetReg.name,
-                    symbol: assetReg.symbol,
-                    decimals: assetReg.decimals,
+                    name: assetReg.asset!.name,
+                    symbol: assetReg.asset!.symbol,
+                    decimals: assetReg.asset!.decimals,
                   }
                 })
             }
@@ -590,6 +597,67 @@ export class Centrifuge {
   }
 
   /**
+   * Repay an underpaid batch of messages on the Gateway
+   */
+  repayBatch(fromChain: number, to: { chainId: number } | { centId: number }, batch: HexString, extraPayment = 0n) {
+    const self = this
+    return this._transact(async function* ({ walletClient, publicClient }) {
+      const [addresses, toCentId] = await Promise.all([
+        self._protocolAddresses(fromChain),
+        'chainId' in to ? self.id(to.chainId) : to.centId,
+      ])
+      const client = self.getClient(fromChain)
+      const batchHash = keccak256(batch)
+      const [counter, gasLimit] = await client.readContract({
+        address: addresses.gateway,
+        abi: ABI.Gateway,
+        functionName: 'underpaid',
+        args: [toCentId, batchHash],
+      })
+      if (counter === 0n) {
+        throw new Error(`Batch is not underpaid and can't be repaid. Batch hash: "${batchHash}"`)
+      }
+      const estimate = await client.readContract({
+        address: addresses.multiAdapter,
+        abi: ABI.MultiAdapter,
+        functionName: 'estimate',
+        args: [toCentId, batch, gasLimit],
+      })
+
+      yield* doTransaction('Repay', publicClient, () =>
+        walletClient.writeContract({
+          address: addresses.gateway,
+          abi: ABI.Gateway,
+          functionName: 'repay',
+          args: [toCentId, batch],
+          value: estimate + extraPayment,
+        })
+      )
+    }, fromChain)
+  }
+
+  /**
+   * Retry a failed batch of messages on the Gateway
+   */
+  retryBatch(fromChain: number, to: { chainId: number } | { centId: number }, batch: HexString) {
+    const self = this
+    return this._transact(async function* ({ walletClient, publicClient }) {
+      const [addresses, id] = await Promise.all([
+        self._protocolAddresses(fromChain),
+        'chainId' in to ? self.id(to.chainId) : to.centId,
+      ])
+      yield* doTransaction('Retry', publicClient, () =>
+        walletClient.writeContract({
+          address: addresses.gateway,
+          abi: ABI.Gateway,
+          functionName: 'retry',
+          args: [id, batch],
+        })
+      )
+    }, fromChain)
+  }
+
+  /**
    * Get the decimals of asset on the Hub side
    * @internal
    */
@@ -644,7 +712,6 @@ export class Centrifuge {
             this,
             {
               address: asset,
-              abi: [ABI.Currency, ABI.ERC6909],
               eventName: ['Approval', 'Transfer'],
               filter: (events) => {
                 return events.some((event) => {
@@ -691,19 +758,14 @@ export class Centrifuge {
    * Returns an observable of events on a given chain, filtered by name(s) and address(es).
    * @internal
    */
-  _filteredEvents(address: string | string[], abi: Abi | Abi[], eventName: string | string[], chainId: number) {
-    const addresses = (Array.isArray(address) ? address : [address]).map((a) => a.toLowerCase())
-    const eventNames = Array.isArray(eventName) ? eventName : [eventName]
+  _filteredEvents(address: HexString | HexString[], eventName: string | string[], chainId: number) {
     return this._events(chainId).pipe(
       map((logs) => {
-        const parsed = parseEventLogs({
-          abi: abi.flat(),
-          eventName: eventNames,
+        return parseEventLogs({
+          address,
+          eventName,
           logs,
         })
-        const filtered = parsed.filter((log) => (addresses.length ? addresses.includes(log.address) : true))
-
-        return filtered as ((typeof filtered)[0] & { args: any })[]
       }),
       filter((logs) => logs.length > 0)
     )
@@ -813,7 +875,6 @@ export class Centrifuge {
    *       this,
    *       {
    *         address: tUSD,
-   *         abi: ABI.Currency,
    *         eventName: 'Transfer',
    *       },
    *       chainId
@@ -1119,7 +1180,6 @@ export class Centrifuge {
    * that results from a transaction
    * @internal
    */
-
   _estimate(
     fromChain: number,
     to: { chainId: number } | { centId: number },

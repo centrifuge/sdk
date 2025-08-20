@@ -1,6 +1,6 @@
 {
   "name": "@centrifuge/sdk",
-  "version": "0.0.0-alpha.51",
+  "version": "0.0.0-alpha.53",
   "description": "",
   "homepage": "https://github.com/centrifuge/sdk/tree/main#readme",
   "author": "",
@@ -40,6 +40,7 @@
     "format": "prettier --write '**/*.{ts,js,mjs,json,md,yml}'"
   },
   "dependencies": {
+    "@openzeppelin/merkle-tree": "^1.0.8",
     "decimal.js-light": "^2.5.1",
     "isomorphic-ws": "^5.0.0",
     "rxjs": "^7.8.1"

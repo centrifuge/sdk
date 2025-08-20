@@ -1,4 +1,16 @@
-import { LocalAccount, parseAbi, type PublicClient, type TransactionReceipt } from 'viem'
+import {
+  AbiEvent,
+  decodeEventLog,
+  LocalAccount,
+  Log,
+  parseAbi,
+  RpcLog,
+  toEventSelector,
+  type Abi,
+  type PublicClient,
+  type TransactionReceipt,
+} from 'viem'
+import { ABI } from '../abi/index.js'
 import type { HexString } from '../types/index.js'
 import type { MessageTypeWithSubType, OperationStatus, Signer, TransactionContext } from '../types/transaction.js'
 
@@ -104,4 +116,58 @@ export async function* doSignMessage<T = any>(
 
 export function isLocalAccount(signer: Signer): signer is LocalAccount {
   return 'type' in signer && signer.type === 'local'
+}
+
+// Cached ABI events by their selector
+let abiCache: Map<string, AbiEvent> | undefined
+function getAbiCache() {
+  if (abiCache) return abiCache
+  abiCache = new Map()
+  Object.values(ABI)
+    .flat()
+    .forEach((abiItem) => {
+      if (abiItem.type === 'event') {
+        abiCache!.set(toEventSelector(abiItem), abiItem)
+      }
+    })
+  return abiCache
+}
+
+function getAbiEvent(selector: HexString): AbiEvent | undefined {
+  const cache = getAbiCache()
+  return cache.get(selector)
+}
+
+// Match a block's event logs to all available ABIs' events.
+export function parseEventLogs(parameters: {
+  logs: (Log | RpcLog)[]
+  eventName: string | string[]
+  address: HexString | HexString[]
+}): Log<bigint, number, false, undefined, true, Abi, string>[] {
+  const { logs, eventName: eventName_, address: address_ } = parameters
+  const eventName = new Set(Array.isArray(eventName_) ? eventName_ : [eventName_])
+  const address = new Set((Array.isArray(address_) ? address_ : [address_]).map((a) => a.toLowerCase()))
+
+  return logs
+    .map((log) => {
+      try {
+        const abiItem = getAbiEvent(log.topics[0]!)
+        if (!abiItem) return null as never
+
+        // Check that the event is one we care about
+        if (!eventName.has(abiItem.name)) return null
+        if (!address.has(log.address)) return null
+
+        const event = decodeEventLog({
+          ...log,
+          abi: [abiItem],
+          strict: true,
+        })
+
+        return { ...event, ...log }
+      } catch {
+        return null as never
+      }
+    })
+    .filter(Boolean) as any
 }

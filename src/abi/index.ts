@@ -6,9 +6,11 @@ import BalanceSheetAbi from './BalanceSheet.abi.js'
 import CurrencyAbi from './Currency.abi.js'
 import ERC6909Abi from './ERC6909.abi.js'
 import GasServiceAbi from './GasService.abi.js'
+import GatewayAbi from './Gateway.abi.js'
 import HoldingsAbi from './Holdings.abi.js'
 import HubAbi from './Hub.abi.js'
 import HubRegistryAbi from './HubRegistry.abi.js'
+import MerkleProofManagerAbi from './MerkleProofManager.abi.js'
 import MessageDispatcherAbi from './MessageDispatcher.abi.js'
 import MultiAdapterAbi from './MultiAdapter.abi.js'
 import PoolEscrowAbi from './PoolEscrow.abi.js'
@@ -30,8 +32,10 @@ export const ABI = {
   Currency: parseAbi(CurrencyAbi),
   ERC6909: parseAbi(ERC6909Abi),
   RestrictionManager: parseAbi(RestrictionManagerAbi),
+  MerkleProofManager: parseAbi(MerkleProofManagerAbi),
   AsyncVault: parseAbi(AsyncVaultAbit),
   Spoke: parseAbi(SpokeAbi),
+  Gateway: parseAbi(GatewayAbi),
   VaultRouter: parseAbi(VaultRouterAbi),
   Accounting: parseAbi(AccountingAbi),
   Holdings: parseAbi(HoldingsAbi),
