@@ -95,6 +95,27 @@ export class ShareClass extends Entity {
     )
   }
 
+  deploymentPerNetwork() {
+    return this._query(null, () =>
+      this.pool.activeNetworks().pipe(
+        switchMap((networks) =>
+          combineLatest(
+            networks.map((network) =>
+              combineLatest([this._share(network.chainId), this._restrictionManager(network.chainId), of(network)])
+            )
+          )
+        ),
+        map((data) =>
+          data.map(([share, restrictionManager, network]) => ({
+            chainId: network.chainId,
+            shareTokenAddress: share,
+            restrictionManagerAddress: restrictionManager,
+          }))
+        )
+      )
+    )
+  }
+
   navPerNetwork() {
     return this._query(null, () =>
       this.pool.currency().pipe(
