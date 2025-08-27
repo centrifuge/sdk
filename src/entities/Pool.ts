@@ -395,10 +395,6 @@ export class Pool extends Entity {
       updatedShareClasses.forEach((sc) => {
         const id = sc.id.toString()
 
-        if (!formattedMetadata.shareClasses[id]) {
-          throw new Error(`Share class ${id} not found in pool metadata`)
-        }
-
         formattedMetadata.shareClasses[id] = {
           ...formattedMetadata.shareClasses[id],
           minInitialInvestment: sc.minInvestment,
