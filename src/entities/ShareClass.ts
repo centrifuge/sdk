@@ -101,16 +101,22 @@ export class ShareClass extends Entity {
         switchMap((networks) =>
           combineLatest(
             networks.map((network) =>
-              combineLatest([this._share(network.chainId), this._restrictionManager(network.chainId), of(network)])
+              combineLatest([
+                this._share(network.chainId).pipe(catchError(() => of(null))),
+                this._restrictionManager(network.chainId).pipe(catchError(() => of(null))),
+                of(network),
+              ])
             )
           )
         ),
         map((data) =>
-          data.map(([share, restrictionManager, network]) => ({
-            chainId: network.chainId,
-            shareTokenAddress: share,
-            restrictionManagerAddress: restrictionManager,
-          }))
+          data
+            .filter(([, restrictionManager]) => restrictionManager != null)
+            .map(([share, restrictionManager, network]) => ({
+              chainId: network.chainId,
+              shareTokenAddress: share!,
+              restrictionManagerAddress: restrictionManager!,
+            }))
         )
       )
     )
@@ -1533,7 +1539,7 @@ export class ShareClass extends Entity {
       this._share(chainId).pipe(
         switchMap((share) =>
           defer(async () => {
-            const address = await this._root.getClient(this.pool.chainId).readContract({
+            const address = await this._root.getClient(chainId).readContract({
               address: share,
               abi: ABI.Currency,
               functionName: 'hook',
