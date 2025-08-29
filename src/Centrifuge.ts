@@ -638,9 +638,9 @@ export class Centrifuge {
   }
 
   /**
-   * Retry a failed batch of messages on the Gateway
+   * Retry a failed message on the Gateway
    */
-  retryBatch(fromChain: number, to: { chainId: number } | { centId: number }, batch: HexString) {
+  retryMessage(fromChain: number, to: { chainId: number } | { centId: number }, message: HexString) {
     const self = this
     return this._transact(async function* ({ walletClient, publicClient }) {
       const [addresses, id] = await Promise.all([
@@ -652,7 +652,7 @@ export class Centrifuge {
           address: addresses.gateway,
           abi: ABI.Gateway,
           functionName: 'retry',
-          args: [id, batch],
+          args: [id, message],
         })
       )
     }, fromChain)
