@@ -95,6 +95,33 @@ export class ShareClass extends Entity {
     )
   }
 
+  deploymentPerNetwork() {
+    return this._query(null, () =>
+      this.pool.activeNetworks().pipe(
+        switchMap((networks) =>
+          combineLatest(
+            networks.map((network) =>
+              combineLatest([
+                this._share(network.chainId).pipe(catchError(() => of(null))),
+                this._restrictionManager(network.chainId).pipe(catchError(() => of(null))),
+                of(network),
+              ])
+            )
+          )
+        ),
+        map((data) =>
+          data
+            .filter(([, restrictionManager]) => restrictionManager != null)
+            .map(([share, restrictionManager, network]) => ({
+              chainId: network.chainId,
+              shareTokenAddress: share!,
+              restrictionManagerAddress: restrictionManager!,
+            }))
+        )
+      )
+    )
+  }
+
   navPerNetwork() {
     return this._query(null, () =>
       this.pool.currency().pipe(
@@ -288,7 +315,6 @@ export class ShareClass extends Entity {
               this._root,
               {
                 address: restrictionManager,
-                abi: ABI.RestrictionManager,
                 eventName: 'UpdateMember',
                 filter: (events) =>
                   events.some(
@@ -1090,7 +1116,6 @@ export class ShareClass extends Entity {
               this._root,
               {
                 address: holdingsAddr,
-                abi: ABI.Holdings,
                 eventName: ['Increase', 'Decrease', 'Update', 'UpdateValuation'],
                 filter: (events) => {
                   return events.some((event) => {
@@ -1142,7 +1167,6 @@ export class ShareClass extends Entity {
               this._root,
               {
                 address: [addresses.balanceSheet, addresses.spoke],
-                abi: [ABI.BalanceSheet, ABI.Spoke],
                 eventName: ['NoteDeposit', 'Deposit', 'Withdraw', 'UpdateAssetPrice'],
                 filter: (events) => {
                   return events.some(
@@ -1250,7 +1274,6 @@ export class ShareClass extends Entity {
               this._root,
               {
                 address: shareClassManager,
-                abi: ABI.ShareClassManager,
                 eventName: [
                   'UpdateDepositRequest',
                   'UpdateRedeemRequest',
@@ -1336,7 +1359,6 @@ export class ShareClass extends Entity {
               this._root,
               {
                 address: shareClassManager,
-                abi: ABI.ShareClassManager,
                 eventName: 'UpdateMetadata',
                 filter: (events) => {
                   return events.some((event) => {
@@ -1373,7 +1395,6 @@ export class ShareClass extends Entity {
               this._root,
               {
                 address: shareClassManager,
-                abi: ABI.ShareClassManager,
                 eventName: [
                   'RevokeShares',
                   'IssueShares',
@@ -1566,7 +1587,6 @@ export class ShareClass extends Entity {
               this._root,
               {
                 address: shareClassManager,
-                abi: ABI.ShareClassManager,
                 eventName: [
                   'ApproveDeposits',
                   'ApproveRedeems',
@@ -1622,7 +1642,7 @@ export class ShareClass extends Entity {
       this._share(chainId).pipe(
         switchMap((share) =>
           defer(async () => {
-            const address = await this._root.getClient(this.pool.chainId).readContract({
+            const address = await this._root.getClient(chainId).readContract({
               address: share,
               abi: ABI.Currency,
               functionName: 'hook',

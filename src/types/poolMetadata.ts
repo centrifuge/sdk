@@ -1,4 +1,27 @@
+import { HexString } from './index.js'
+
 export type FileType = { uri: string; mime: string }
+
+export type MerkleProofPolicy = {
+  assetId?: string
+  decoder: HexString
+  target: HexString
+  targetName?: string
+  /** e.g. 'function requestDeposit(uint256 assets, address controller, address owner) returns (uint256)' */
+  abi: string
+  valueNonZero: boolean
+  /** Fixed arguments in their right position, null for strategist inputs. Example for ERC7540.requestDeposit: [null, controller, owner] */
+  args: (HexString | string | null)[]
+  /** To avoid reading the decoder whenever we want to build the merkle tree */
+  argsEncoded: HexString
+}
+
+export type MerkleProofPolicyInput = Pick<
+  MerkleProofPolicy,
+  'assetId' | 'target' | 'decoder' | 'targetName' | 'abi' | 'args'
+> & {
+  valueNonZero?: boolean
+}
 
 export type PoolMetadata = {
   version?: number
@@ -54,7 +77,7 @@ export type PoolMetadata = {
     }[]
   }
   shareClasses: Record<
-    string,
+    HexString,
     {
       icon?: FileType | null
       minInitialInvestment?: number | null
@@ -69,6 +92,16 @@ export type PoolMetadata = {
         liability?: number
       }
     }
+  >
+  // chainId => strategist => policies
+  merkleProofManager?: Record<
+    string,
+    Record<
+      HexString,
+      {
+        policies: MerkleProofPolicy[]
+      }
+    >
   >
   loanTemplates?: {
     id: string

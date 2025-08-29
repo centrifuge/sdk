@@ -77,7 +77,6 @@ export class Pool extends Entity {
               this._root,
               {
                 address: hubRegistry,
-                abi: ABI.HubRegistry,
                 eventName: 'SetMetadata',
                 filter: (events) => {
                   return events.some((event) => {
@@ -396,10 +395,6 @@ export class Pool extends Entity {
       updatedShareClasses.forEach((sc) => {
         const id = sc.id.toString()
 
-        if (!formattedMetadata.shareClasses[id]) {
-          throw new Error(`Share class ${id} not found in pool metadata`)
-        }
-
         formattedMetadata.shareClasses[id] = {
           ...formattedMetadata.shareClasses[id],
           minInitialInvestment: sc.minInvestment,
@@ -702,7 +697,6 @@ export class Pool extends Entity {
               this._root,
               {
                 address: shareClassManager,
-                abi: ABI.ShareClassManager,
                 eventName: 'AddShareClass',
                 filter: (events) => {
                   return events.some((event) => event.args.poolId === this.id.raw)

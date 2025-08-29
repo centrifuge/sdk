@@ -11,6 +11,7 @@ import { wrapTransaction } from '../utils/transaction.js'
 import { AssetId, ShareClassId } from '../utils/types.js'
 import { BalanceSheet } from './BalanceSheet.js'
 import { Entity } from './Entity.js'
+import { MerkleProofManager } from './MerkleProofManager.js'
 import type { Pool } from './Pool.js'
 import { ShareClass } from './ShareClass.js'
 
@@ -135,7 +136,6 @@ export class PoolNetwork extends Entity {
               this._root,
               {
                 address: spoke,
-                abi: ABI.Spoke,
                 eventName: 'AddPool',
                 filter: (events) => {
                   return events.some((event) => {
@@ -149,6 +149,13 @@ export class PoolNetwork extends Entity {
         })
       )
     )
+  }
+
+  merkleProofManager() {
+    return this._query(['merkleProofManager'], () => {
+      // TODO: Get Merkle Proof Manager address from indexer
+      return of(new MerkleProofManager(this._root, this, '0x0'))
+    })
   }
 
   /**
@@ -391,7 +398,6 @@ export class PoolNetwork extends Entity {
               this._root,
               {
                 address: spoke,
-                abi: ABI.Spoke,
                 eventName: 'AddShareClass',
                 filter: (events) => {
                   return events.some((event) => event.args.poolId === this.pool.id.raw && event.args.scId === scId.raw)

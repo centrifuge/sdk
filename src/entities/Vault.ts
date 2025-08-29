@@ -96,7 +96,6 @@ export class Vault extends Entity {
               this._root,
               {
                 address: spoke,
-                abi: ABI.Spoke,
                 eventName: ['LinkVault', 'UnlinkVault'],
                 filter: (events) => events.some((event) => event.args.vault.toLowerCase() === this.address),
               },
@@ -213,7 +212,6 @@ export class Vault extends Entity {
                   this._root,
                   {
                     address: [this.address, restrictionManagerAddress, escrowAddress],
-                    abi: [ABI.AsyncVault, ABI.RestrictionManager, ABI.PoolEscrow],
                     eventName: [
                       'UpdateMember',
                       'CancelDepositClaim',
