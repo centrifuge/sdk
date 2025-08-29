@@ -59,5 +59,12 @@ export type PoolMetadataInput = {
     taxInfoRequired?: boolean
     externalOnboardingUrl?: string
   }
+  underlying?: {
+    poolId?: number
+  }
+  holdings?: {
+    headers: string[]
+    data: Record<string, unknown>[]
+  }
   listed?: boolean
 }
