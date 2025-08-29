@@ -153,8 +153,7 @@ describe('OnOffRampManager', () => {
       const assetAddress = '0x3aaaa86458d576bafcb1b7ed290434f0696da65c'
       const allowance = new Balance(100n, 6)
       const amount = new Balance(56n, 6)
-
-      await pool.updateBalanceSheetManagers([{ chainId, address: onOffRampManager.onrampAddress, canManage: true }])
+      const relayer = randomAddress()
 
       await context.centrifuge._transact(async function* (ctx) {
         yield* doTransaction('Add share class', ctx.publicClient, async () => {
@@ -167,6 +166,15 @@ describe('OnOffRampManager', () => {
         })
       }, chainId)
 
+      await context.tenderlyFork.fundAccountEth(relayer, 10n ** 18n)
+
+      await pool.updateBalanceSheetManagers([{ chainId, address: onOffRampManager.onrampAddress, canManage: true }])
+      await onOffRampManager.setReceiver(assetId, receiver)
+      await onOffRampManager.setRelayer(relayer)
+
+      context.tenderlyFork.impersonateAddress = relayer
+      context.centrifuge.setSigner(context.tenderlyFork.signer)
+
       const receiverBalanceBefore = await context.centrifuge.getClient(chainId).readContract({
         address: assetAddress,
         abi: ABI.Currency,
@@ -176,7 +184,6 @@ describe('OnOffRampManager', () => {
 
       expect(receiverBalanceBefore).to.equal(0n)
 
-      // TODO: Tenderly is saying that there is no contract code for withdraw?
       const result = await onOffRampManager.withdraw(assetAddress, amount, receiver)
 
       expect(result.type).to.equal('TransactionConfirmed')
@@ -188,8 +195,7 @@ describe('OnOffRampManager', () => {
         args: [receiver],
       })
 
-      // TODO: Assert that the receiver balance is equal to the amount withdrawn
-      console.log({ receiverBalanceAfter })
+      expect(receiverBalanceAfter).to.equal(56n)
     })
   })
 })
