@@ -484,9 +484,22 @@ export class Centrifuge {
     return this._query(null, () =>
       combineLatest([this.id(spokeChainId), this.id(hubChainId)]).pipe(
         switchMap(([spokeCentId, hubCentId]) =>
-          this._queryIndexer(
+          this._queryIndexer<{
+            assetRegistrations: {
+              items: {
+                assetId: string
+                asset: {
+                  centrifugeId: string
+                  address: HexString
+                  name: string
+                  symbol: string
+                  decimals: number
+                } | null
+              }[]
+            }
+          }>(
             `query ($hubCentId: String!) {
-              assetRegistrations(where: { centrifugeId: $hubCentId, decimals_gt: 0 }) {
+              assetRegistrations(where: { centrifugeId: $hubCentId }, limit: 1000) {
                 items {
                   assetId
                   asset {
@@ -499,21 +512,9 @@ export class Centrifuge {
                 }
               }
             }`,
-            { hubCentId: String(hubCentId) },
-            (data: {
-              assetRegistrations: {
-                items: {
-                  assetId: string
-                  asset: {
-                    centrifugeId: string
-                    address: HexString
-                    name: string
-                    symbol: string
-                    decimals: number
-                  } | null
-                }[]
-              }
-            }) => {
+            { hubCentId: String(hubCentId) }
+          ).pipe(
+            map((data) => {
               return data.assetRegistrations.items
                 .filter((assetReg) => assetReg.asset && Number(assetReg.asset.centrifugeId) === spokeCentId)
                 .map((assetReg) => {
@@ -525,7 +526,7 @@ export class Centrifuge {
                     decimals: assetReg.asset!.decimals,
                   }
                 })
-            }
+            })
           )
         )
       )
