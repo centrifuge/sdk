@@ -1459,6 +1459,69 @@ export class ShareClass extends Entity {
             const approvedDeposit = depositEpochAmounts.reduce((acc, amount) => acc + amount[1], 0n)
             const approvedRedeem = redeemEpochAmount.reduce((acc, amount) => acc + amount[1], 0n)
 
+            const DEPOSIT_APPROVALS_Q = `
+            query ($poolId: BigInt!, $tokenId: String!, $assetId: BigInt!) {
+              epochOutstandingInvests(
+                where: { poolId: $poolId, tokenId: $tokenId, assetId: $assetId }
+                limit: 1000
+              ) { items { updatedAt } }
+            }`
+
+            const REDEEM_APPROVALS_Q = `
+            query ($poolId: BigInt!, $tokenId: String!, $assetId: BigInt!) {
+              epochOutstandingRedeems(
+                where: { poolId: $poolId, tokenId: $tokenId, assetId: $assetId }
+                limit: 1000
+              ) { items { updatedAt } }
+            }`
+
+            type ApprovalRow = { id: string; updatedAt: string | null }
+
+            const depositCount = Math.max(0, depositEpoch - issueEpoch)
+            const redeemCount = Math.max(0, redeemEpoch - revokeEpoch)
+
+            const [depositRows, redeemRows] = await Promise.all([
+              firstValueFrom(
+                this._root._queryIndexer(
+                  DEPOSIT_APPROVALS_Q,
+                  {
+                    poolId: this.pool.id.toString(),
+                    tokenId: this.id.toString(),
+                    assetId: assetId.toString(),
+                  },
+                  (data: { epochOutstandingInvests: { items: ApprovalRow[] } }) =>
+                    data.epochOutstandingInvests.items ?? []
+                )
+              ),
+              firstValueFrom(
+                this._root._queryIndexer(
+                  REDEEM_APPROVALS_Q,
+                  {
+                    poolId: this.pool.id.toString(),
+                    tokenId: this.id.toString(),
+                    assetId: assetId.toString(),
+                  },
+                  (data: { epochOutstandingRedeems: { items: ApprovalRow[] } }) =>
+                    data.epochOutstandingRedeems.items ?? []
+                )
+              ),
+            ])
+
+            const alignApprovals = (rows: ApprovalRow[], startEpoch: number, count: number): Record<number, Date> => {
+              if (count === 0) return {}
+              const slice = rows.slice(-count)
+              const out: Record<number, Date> = {}
+              for (let i = 0; i < count; i++) {
+                const e = startEpoch + i
+                const ts = slice[i]?.updatedAt
+                if (ts) out[e] = new Date(ts)
+              }
+              return out
+            }
+
+            const depositApprovalMap = alignApprovals(depositRows, issueEpoch, depositCount)
+            const redeemApprovalMap = alignApprovals(redeemRows, revokeEpoch, redeemCount)
+
             return {
               depositEpoch,
               redeemEpoch,
@@ -1469,13 +1532,13 @@ export class ShareClass extends Entity {
               pendingIssuancesTotal: new Balance(approvedDeposit, assetDecimals),
               pendingIssuances: depositEpochAmounts.map(([, amount], i) => ({
                 amount: new Balance(amount, assetDecimals),
-                approvedAt: new Date('2025'), // TODO: Get from indexer
+                approvedAt: depositApprovalMap[issueEpoch + i],
                 epoch: issueEpoch + i,
               })),
               pendingRevocationsTotal: new Balance(approvedRedeem, poolCurrency.decimals),
               pendingRevocations: redeemEpochAmount.map(([, amount], i) => ({
                 amount: new Balance(amount, poolCurrency.decimals),
-                approvedAt: new Date('2025'), // TODO: Get from indexer
+                approvedAt: redeemApprovalMap[revokeEpoch + i],
                 epoch: revokeEpoch + i,
               })),
             }
@@ -1494,11 +1557,7 @@ export class ShareClass extends Entity {
                   'UpdateDepositRequest',
                   'UpdateRedeemRequest',
                 ],
-                filter: (events) => {
-                  return events.some((event) => {
-                    return event.args.scId === this.id.raw
-                  })
-                },
+                filter: (events) => events.some((e) => e.args.scId === this.id.raw),
               },
               this.pool.chainId
             )
