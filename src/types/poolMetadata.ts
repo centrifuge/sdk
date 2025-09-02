@@ -32,6 +32,9 @@ export type PoolMetadata = {
       class: 'Public credit' | 'Private credit'
       subClass: string
     }
+    underlying?: {
+      poolId?: number
+    }
     investorType: string
     poolStructure: string
     poolFees?: {
@@ -113,5 +116,9 @@ export type PoolMetadata = {
     externalOnboardingUrl?: string
     shareClasses: { [scId: string]: { agreement: FileType | undefined; openForOnboarding: boolean } }
     taxInfoRequired?: boolean
+  }
+  holdings?: {
+    headers: string[]
+    data: Record<string, unknown>[]
   }
 }

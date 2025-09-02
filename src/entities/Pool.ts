@@ -390,6 +390,12 @@ export class Pool extends Entity {
           reports: metadataInput.report ? [metadataInput.report] : poolMetadata.pool.reports,
         },
         shareClasses: { ...poolMetadata.shareClasses, ...newShareClassesById },
+        holdings: {
+          headers: Array.from(
+            new Set([...(poolMetadata.holdings?.headers ?? []), ...(metadataInput.holdings?.headers ?? [])])
+          ),
+          data: metadataInput.holdings?.data ?? poolMetadata.holdings?.data ?? [],
+        },
       }
 
       updatedShareClasses.forEach((sc) => {
