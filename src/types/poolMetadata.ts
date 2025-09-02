@@ -119,14 +119,6 @@ export type PoolMetadata = {
   }
   holdings?: {
     headers: string[]
-    data: {
-      CUSIP?: string
-      ISIN?: string
-      'Market Value (Position CCY)'?: number
-      'Trade Date Quantity'?: number
-      'Maturity Date'?: string
-      '% of Portfolio'?: number
-      [key: string]: unknown
-    }[]
+    data: Record<string, unknown>[]
   }
 }
