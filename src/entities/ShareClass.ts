@@ -1441,7 +1441,6 @@ export class ShareClass extends Entity {
         }) => {
           const ordersMap = new Map<string, { approvedAt: Date; assetId: AssetId; index: number }[]>()
 
-          // Set the map with results and then sort the results by index
           data.epochInvestOrders.items.forEach((item) => {
             const key = item.assetId.toString()
             if (!ordersMap.has(key)) {
@@ -1454,7 +1453,6 @@ export class ShareClass extends Entity {
             })
           })
 
-          // Sort each array in the map by index
           ordersMap.forEach((orders) => {
             orders.sort((a, b) => a.index - b.index)
           })
@@ -1470,7 +1468,7 @@ export class ShareClass extends Entity {
     return this._query(null, () =>
       this._root._queryIndexer(
         `query ($scId: String!) {
-          epochRedeemOrders(where: {tokenId: $scId, issuedAt: null, approvedAt_not: null}) {
+          epochRedeemOrders(where: {tokenId: $scId, revokedAt: null, approvedAt_not: null}) {
             items {
               approvedAt
               assetId
@@ -1557,11 +1555,6 @@ export class ShareClass extends Entity {
             const approvedDeposit = depositEpochAmounts.reduce((acc, amount) => acc + amount[1], 0n)
             const approvedRedeem = redeemEpochAmount.reduce((acc, amount) => acc + amount[1], 0n)
 
-            // TODO: Check if what is returned here is correct
-            // Data should be already mapped by assetId and sorted by index, which should make it easy to pull
-            // inside the depositEpochAmounts.map and redeemEpochAmount.map
-            console.log({ epochRedeemOrders, epochInvestOrders })
-
             return {
               depositEpoch,
               redeemEpoch,
@@ -1572,13 +1565,13 @@ export class ShareClass extends Entity {
               pendingIssuancesTotal: new Balance(approvedDeposit, assetDecimals),
               pendingIssuances: depositEpochAmounts.map(([, amount], i) => ({
                 amount: new Balance(amount, assetDecimals),
-                approvedAt: new Date('2025'), // TODO: Get from indexer
+                approvedAt: epochInvestOrders.get(assetId.toString())?.[i]?.approvedAt,
                 epoch: issueEpoch + i,
               })),
               pendingRevocationsTotal: new Balance(approvedRedeem, poolCurrency.decimals),
               pendingRevocations: redeemEpochAmount.map(([, amount], i) => ({
                 amount: new Balance(amount, poolCurrency.decimals),
-                approvedAt: new Date('2025'), // TODO: Get from indexer
+                approvedAt: epochRedeemOrders.get(assetId.toString())?.[i]?.approvedAt,
                 epoch: revokeEpoch + i,
               })),
             }

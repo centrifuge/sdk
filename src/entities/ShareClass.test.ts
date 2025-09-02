@@ -163,7 +163,7 @@ describe('ShareClass', () => {
     expect(pendingAmounts[0]!.pendingRevocationsTotal).to.be.instanceOf(Balance)
 
     // TODO:
-    // expect approvedAt values
+    // expect approvedAt values once they are available, right now we pendingIssuances and pendingRevocations return as empty list
   })
 
   describe('approveDepositsAndIssueShares', () => {
