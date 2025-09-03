@@ -1417,14 +1417,104 @@ export class ShareClass extends Entity {
   }
 
   /** @internal */
+  _epochInvestOrders() {
+    return this._query(null, () =>
+      this._root._queryIndexer(
+        `query ($scId: String!) {
+          epochInvestOrders(where: {tokenId: $scId, issuedAt: null, approvedAt_not: null}, limit: 1000) {
+            items {
+              approvedAt
+              assetId
+              index
+            }
+          }
+        }`,
+        { scId: this.id.raw },
+        (data: {
+          epochInvestOrders: {
+            items: {
+              approvedAt: Date
+              assetId: AssetId
+              index: number
+            }[]
+          }
+        }) => {
+          const ordersMap = new Map<string, { approvedAt: Date; assetId: AssetId; index: number }[]>()
+
+          data.epochInvestOrders.items.forEach((item) => {
+            const key = item.assetId.toString()
+            if (!ordersMap.has(key)) {
+              ordersMap.set(key, [])
+            }
+
+            ordersMap.get(key)![item.index] = {
+              approvedAt: item.approvedAt,
+              assetId: item.assetId,
+              index: item.index,
+            }
+          })
+
+          return ordersMap
+        }
+      )
+    )
+  }
+
+  /** @internal */
+  _epochRedeemOrders() {
+    return this._query(null, () =>
+      this._root._queryIndexer(
+        `query ($scId: String!) {
+          epochRedeemOrders(where: {tokenId: $scId, revokedAt: null, approvedAt_not: null}, limit: 1000) {
+            items {
+              approvedAt
+              assetId
+              index
+            }
+          }
+        }`,
+        { scId: this.id.raw },
+        (data: {
+          epochRedeemOrders: {
+            items: {
+              approvedAt: Date
+              assetId: AssetId
+              index: number
+            }[]
+          }
+        }) => {
+          const ordersMap = new Map<string, { approvedAt: Date; assetId: AssetId; index: number }[]>()
+
+          data.epochRedeemOrders.items.forEach((item) => {
+            const key = item.assetId.toString()
+            if (!ordersMap.has(key)) {
+              ordersMap.set(key, [])
+            }
+
+            ordersMap.get(key)![item.index] = {
+              approvedAt: item.approvedAt,
+              assetId: item.assetId,
+              index: item.index,
+            }
+          })
+
+          return ordersMap
+        }
+      )
+    )
+  }
+
+  /** @internal */
   _epoch(assetId: AssetId) {
     return this._query(['epoch', assetId.toString()], () =>
       combineLatest([
         this._root._protocolAddresses(this.pool.chainId),
         this.pool.currency(),
         this._root._assetDecimals(assetId, this.pool.chainId),
+        this._epochInvestOrders(),
+        this._epochRedeemOrders(),
       ]).pipe(
-        switchMap(([{ shareClassManager }, poolCurrency, assetDecimals]) =>
+        switchMap(([{ shareClassManager }, poolCurrency, assetDecimals, epochInvestOrders, epochRedeemOrders]) =>
           defer(async () => {
             const scm = getContract({
               address: shareClassManager,
@@ -1469,13 +1559,13 @@ export class ShareClass extends Entity {
               pendingIssuancesTotal: new Balance(approvedDeposit, assetDecimals),
               pendingIssuances: depositEpochAmounts.map(([, amount], i) => ({
                 amount: new Balance(amount, assetDecimals),
-                approvedAt: new Date('2025'), // TODO: Get from indexer
+                approvedAt: epochInvestOrders.get(assetId.toString())?.[issueEpoch + i]?.approvedAt,
                 epoch: issueEpoch + i,
               })),
               pendingRevocationsTotal: new Balance(approvedRedeem, poolCurrency.decimals),
               pendingRevocations: redeemEpochAmount.map(([, amount], i) => ({
                 amount: new Balance(amount, poolCurrency.decimals),
-                approvedAt: new Date('2025'), // TODO: Get from indexer
+                approvedAt: epochRedeemOrders.get(assetId.toString())?.[revokeEpoch + i]?.approvedAt,
                 epoch: revokeEpoch + i,
               })),
             }
