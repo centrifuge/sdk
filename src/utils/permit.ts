@@ -65,7 +65,7 @@ export async function signERC2612Permit(
     owner,
     spender,
     value: value ? BigInt(value) : maxUint256,
-    nonce: nonce ?? (await getNonce(ctx.publicClient, domainData.verifyingContract, owner)),
+    nonce: nonce ?? (await getNonce(ctx.publicClient, domainData.verifyingContract as HexString, owner)),
     deadline: deadline ? BigInt(deadline) : maxUint256,
   }
 

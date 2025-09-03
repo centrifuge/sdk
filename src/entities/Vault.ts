@@ -296,7 +296,7 @@ export class Vault extends Entity {
         }
         if (!permit) {
           // Doesn't support permits or permit signing failed, go for a regular approval instead
-          yield* doTransaction('Approve', ctx.publicClient, () =>
+          yield* doTransaction('Approve', ctx, () =>
             ctx.walletClient.writeContract({
               address: investmentCurrency.address,
               abi: ABI.Currency,
@@ -308,7 +308,7 @@ export class Vault extends Entity {
       }
 
       if (isSyncDeposit) {
-        yield* doTransaction('Invest', ctx.publicClient, () =>
+        yield* doTransaction('Invest', ctx, () =>
           ctx.walletClient.writeContract({
             address: vaultRouter,
             abi: ABI.VaultRouter,
@@ -342,7 +342,7 @@ export class Vault extends Entity {
               permit.s,
             ],
           })
-        yield* doTransaction('Invest', ctx.publicClient, () =>
+        yield* doTransaction('Invest', ctx, () =>
           ctx.walletClient.writeContract({
             address: vaultRouter,
             abi: ABI.VaultRouter,
@@ -360,17 +360,17 @@ export class Vault extends Entity {
    */
   cancelInvestOrder() {
     const self = this
-    return this._transact(async function* ({ walletClient, signingAddress, publicClient }) {
+    return this._transact(async function* (ctx) {
       const [estimate, investment, { vaultRouter }] = await Promise.all([
         self._root._estimate(self.chainId, { centId: self.pool.id.centrifugeId }, MessageType.Request),
-        self.investment(signingAddress),
+        self.investment(ctx.signingAddress),
         self._root._protocolAddresses(self.chainId),
       ])
 
       if (investment.pendingInvestCurrency.isZero()) throw new Error('No order to cancel')
 
-      yield* doTransaction('Cancel invest order', publicClient, () =>
-        walletClient.writeContract({
+      yield* doTransaction('Cancel invest order', ctx, () =>
+        ctx.walletClient.writeContract({
           address: vaultRouter,
           abi: ABI.VaultRouter,
           functionName: 'cancelDepositRequest',
@@ -387,10 +387,10 @@ export class Vault extends Entity {
    */
   increaseRedeemOrder(sharesAmount: Balance) {
     const self = this
-    return this._transact(async function* ({ walletClient, signingAddress, publicClient }) {
+    return this._transact(async function* (ctx) {
       const [estimate, investment, { vaultRouter }] = await Promise.all([
         self._root._estimate(self.chainId, { centId: self.pool.id.centrifugeId }, MessageType.Request),
-        self.investment(signingAddress),
+        self.investment(ctx.signingAddress),
         self._root._protocolAddresses(self.chainId),
       ])
 
@@ -399,12 +399,12 @@ export class Vault extends Entity {
       if (sharesAmount.gt(investment.shareBalance)) throw new Error('Insufficient balance')
       if (!sharesAmount.gt(0n)) throw new Error('Order amount must be greater than 0')
 
-      yield* doTransaction('Redeem', publicClient, () =>
-        walletClient.writeContract({
+      yield* doTransaction('Redeem', ctx, () =>
+        ctx.walletClient.writeContract({
           address: vaultRouter,
           abi: ABI.VaultRouter,
           functionName: 'requestRedeem',
-          args: [self.address, sharesAmount.toBigInt(), signingAddress, signingAddress],
+          args: [self.address, sharesAmount.toBigInt(), ctx.signingAddress, ctx.signingAddress],
           value: estimate,
         })
       )
@@ -416,17 +416,17 @@ export class Vault extends Entity {
    */
   cancelRedeemOrder() {
     const self = this
-    return this._transact(async function* ({ walletClient, signingAddress, publicClient }) {
+    return this._transact(async function* (ctx) {
       const [estimate, investment, { vaultRouter }] = await Promise.all([
         self._root._estimate(self.chainId, { centId: self.pool.id.centrifugeId }, MessageType.Request),
-        self.investment(signingAddress),
+        self.investment(ctx.signingAddress),
         self._root._protocolAddresses(self.chainId),
       ])
 
       if (investment.pendingRedeemShares.isZero()) throw new Error('No order to cancel')
 
-      yield* doTransaction('Cancel redeem order', publicClient, () =>
-        walletClient.writeContract({
+      yield* doTransaction('Cancel redeem order', ctx, () =>
+        ctx.walletClient.writeContract({
           address: vaultRouter,
           abi: ABI.VaultRouter,
           functionName: 'cancelRedeemRequest',
@@ -445,13 +445,13 @@ export class Vault extends Entity {
    */
   claim(receiver?: HexString, controller?: HexString) {
     const self = this
-    return this._transact(async function* ({ walletClient, signingAddress, publicClient }) {
+    return this._transact(async function* (ctx) {
       const [investment, { vaultRouter }] = await Promise.all([
-        self.investment(signingAddress),
+        self.investment(ctx.signingAddress),
         self._root._protocolAddresses(self.chainId),
       ])
-      const receiverAddress = receiver || signingAddress
-      const controllerAddress = controller || signingAddress
+      const receiverAddress = receiver || ctx.signingAddress
+      const controllerAddress = controller || ctx.signingAddress
       const functionName = investment.claimableCancelInvestCurrency.gt(0n)
         ? 'claimCancelDepositRequest'
         : investment.claimableCancelRedeemShares.gt(0n)
@@ -464,8 +464,8 @@ export class Vault extends Entity {
 
       if (!functionName) throw new Error('No claimable funds')
 
-      yield* doTransaction('Claim', publicClient, () =>
-        walletClient.writeContract({
+      yield* doTransaction('Claim', ctx, () =>
+        ctx.walletClient.writeContract({
           address: vaultRouter,
           abi: ABI.VaultRouter,
           functionName,

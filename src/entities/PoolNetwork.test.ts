@@ -55,7 +55,7 @@ describe('PoolNetwork', () => {
     context.centrifuge.setSigner(context.tenderlyFork.signer)
 
     await context.centrifuge._transact(async function* (ctx) {
-      yield* doTransaction('Add share class', ctx.publicClient, async () => {
+      yield* doTransaction('Add share class', ctx, async () => {
         return ctx.walletClient.writeContract({
           address: hub,
           abi: ABI.Hub,
@@ -91,7 +91,7 @@ describe('PoolNetwork', () => {
       new PoolNetwork(context.centrifuge, new Pool(context.centrifuge, poolId.raw, chainId), chainId),
       details.activeShareClasses[1]!.shareClass,
       asset.address,
-      vaultAddr,
+      vaultAddr as any,
       AssetId.from(1, 1)
     )
 

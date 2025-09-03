@@ -366,8 +366,8 @@ describe('Centrifuge', () => {
       })
       cent.setSigner(mockProvider({ accounts: [] }))
 
-      const tx = cent._transact(async function* () {
-        yield* doTransaction('Test', publicClient, async () => '0x1')
+      const tx = cent._transact(async function* (ctx) {
+        yield* doTransaction('Test', { ...ctx, publicClient }, async () => '0x1')
       }, chainId)
       let error
       try {
@@ -386,8 +386,8 @@ describe('Centrifuge', () => {
       const spy = sinon.spy(signer, 'request')
       cent.setSigner(signer)
 
-      const tx = cent._transact(async function* () {
-        yield* doTransaction('Test', publicClient, async () => '0x1')
+      const tx = cent._transact(async function* (ctx) {
+        yield* doTransaction('Test', { ...ctx, publicClient }, async () => '0x1')
       }, chainId)
 
       const statuses: any = await firstValueFrom(tx.pipe(take(2), toArray()))
@@ -405,8 +405,8 @@ describe('Centrifuge', () => {
       })
       cent.setSigner(mockProvider())
 
-      const tx = cent._transact(async function* () {
-        yield* doTransaction('Test', publicClient, async () => '0x1')
+      const tx = cent._transact(async function* (ctx) {
+        yield* doTransaction('Test', { ...ctx, publicClient }, async () => '0x1')
       }, chainId)
 
       const status: any = await firstValueFrom(tx)
@@ -422,7 +422,7 @@ describe('Centrifuge', () => {
       const publicClient: any = createClient({ transport: custom(mockProvider()) }).extend(() => ({
         waitForTransactionReceipt: async () => ({}),
       }))
-      const tx = cent._transact(() => doTransaction('Test', publicClient, async () => '0x1'), chainId)
+      const tx = cent._transact((ctx) => doTransaction('Test', { ...ctx, publicClient }, async () => '0x1'), chainId)
       const statuses = await firstValueFrom(tx.pipe(toArray()))
       expect(statuses).to.eql([
         { id: (statuses[0] as any).id, type: 'SigningTransaction', title: 'Test' },
@@ -442,9 +442,9 @@ describe('Centrifuge', () => {
         environment: 'testnet',
       })
       cent.setSigner(mockProvider())
-      const tx = cent._transact(async function* () {
+      const tx = cent._transact(async function* (ctx) {
         yield* doSignMessage('Sign Permit', async () => '0x1')
-        yield* doTransaction('Test', publicClient, async () => '0x2')
+        yield* doTransaction('Test', { ...ctx, publicClient }, async () => '0x2')
       }, chainId)
       const statuses = await firstValueFrom(tx.pipe(toArray()))
       expect(statuses).to.eql([

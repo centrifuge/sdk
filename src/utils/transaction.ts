@@ -6,13 +6,51 @@ import {
   parseAbi,
   RpcLog,
   toEventSelector,
+  withRetry,
   type Abi,
-  type PublicClient,
   type TransactionReceipt,
 } from 'viem'
+import { arbitrum, arbitrumSepolia, avalanche, base, baseSepolia, mainnet, sepolia } from 'viem/chains'
 import { ABI } from '../abi/index.js'
 import type { HexString } from '../types/index.js'
-import type { MessageTypeWithSubType, OperationStatus, Signer, TransactionContext } from '../types/transaction.js'
+import type {
+  MessageTypeWithSubType,
+  OperationStatus,
+  SafeMultisigTransactionResponse,
+  Signer,
+  TransactionContext,
+} from '../types/transaction.js'
+
+const SAFE_PROXY_BYTECODE =
+  '0x608060405273ffffffffffffffffffffffffffffffffffffffff600054167fa619486e0000000000000000000000000000000000000000000000000000000060003514156050578060005260206000f35b3660008037600080366000845af43d6000803e60008114156070573d6000fd5b3d6000f3fea2646970667358221220d1429297349653a4918076d650332de1a1068c5f3e07c5c82360c277770b955264736f6c63430007060033'
+
+function safeApiNetworkName(chainId: number) {
+  const name = {
+    [mainnet.id]: 'mainnet',
+    [base.id]: 'base',
+    [arbitrum.id]: 'arbitrum',
+    [sepolia.id]: 'sepolia',
+    [baseSepolia.id]: 'base-sepolia',
+    [arbitrumSepolia.id]: 'arbitrum-sepolia',
+    [avalanche.id]: 'avalanche',
+  }[chainId]
+
+  if (name) return name
+  throw new Error(`Safe API does not support chainId "${chainId}"`)
+}
+
+async function getSafeTransaction(hash: HexString, chainId: number) {
+  const networkName = safeApiNetworkName(chainId)
+  const endpoint = `https://safe-transaction-${networkName}.safe.global`
+  const url = `${endpoint}/api/v1/multisig-transactions/${hash}`
+
+  const response = await fetch(url)
+  if (!response.ok) {
+    throw new Error(`Error fetching Safe transaction: ${response.statusText}`)
+  }
+  const data = await response.json()
+  return data as SafeMultisigTransactionResponse
+}
 
 class TransactionError extends Error {
   override name = 'TransactionError'
@@ -64,7 +102,7 @@ export async function* wrapTransaction(
       : []
     const estimate = messagesEstimates.reduce((acc, val) => acc + val, 0n)
     const value = (value_ ?? 0n) + estimate
-    const result = yield* doTransaction(title, ctx.publicClient, async () => {
+    const result = yield* doTransaction(title, ctx, async () => {
       if (data.length === 1) {
         return ctx.walletClient.sendTransaction({
           to: contract,
@@ -86,18 +124,59 @@ export async function* wrapTransaction(
 
 export async function* doTransaction(
   title: string,
-  publicClient: PublicClient,
+  ctx: TransactionContext,
   transactionCallback: () => Promise<HexString>
 ): AsyncGenerator<OperationStatus> {
   const id = Math.random().toString(36).substring(2)
   yield { id, type: 'SigningTransaction', title }
   const hash = await transactionCallback()
   yield { id, type: 'TransactionPending', title, hash }
-  const receipt = await publicClient.waitForTransactionReceipt({ hash })
-  if (receipt.status === 'reverted') {
-    console.error('Transaction reverted', receipt)
-    throw new TransactionError(receipt)
+  try {
+    const receipt = await ctx.publicClient.waitForTransactionReceipt({ hash })
+    if (receipt.status === 'reverted') {
+      console.error('Transaction reverted', receipt)
+      throw new TransactionError(receipt)
+    }
+    const result = { id, type: 'TransactionConfirmed', title, hash, receipt } as const
+    yield result
+    return result
+  } catch (e) {
+    const code = await ctx.publicClient.getCode({ address: ctx.signingAddress })
+    if (code === SAFE_PROXY_BYTECODE) {
+      yield* waitForSafeTransaction(id, title, hash, ctx)
+    }
+    throw e
   }
+}
+
+// TODO: maybe yield Safe Transaction updates as well
+async function* waitForSafeTransaction(
+  id: string,
+  title: string,
+  hash: HexString,
+  ctx: TransactionContext
+): AsyncGenerator<OperationStatus> {
+  // First check if tx is actually a safe tx
+  let safeTx = await withRetry(() => getSafeTransaction(hash, ctx.chainId), {
+    retryCount: 5,
+    delay: 5000,
+  })
+
+  if (safeTx.isExecuted) return safeTx
+
+  safeTx = await withRetry(
+    async () => {
+      const status = await getSafeTransaction(hash, ctx.chainId)
+      if (status.isExecuted) return status
+      throw new Error(`Timeout waiting for safe transaction to be executed. Transaction hash: ${hash}`)
+    },
+    {
+      retryCount: 360,
+      delay: 10000,
+    }
+  )
+
+  const receipt = await ctx.publicClient.waitForTransactionReceipt({ hash: safeTx.transactionHash as HexString })
   const result = { id, type: 'TransactionConfirmed', title, hash, receipt } as const
   yield result
   return result

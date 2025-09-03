@@ -47,7 +47,7 @@ async function mint(asset: string, address: string) {
   context.centrifuge.setSigner(context.tenderlyFork.signer)
 
   await context.centrifuge._transact(async function* (ctx) {
-    yield* doTransaction('Mint', ctx.publicClient, async () => {
+    yield* doTransaction('Mint', ctx, async () => {
       return ctx.walletClient.writeContract({
         address: asset as any,
         abi: parseAbi(['function mint(address, uint256)']),
