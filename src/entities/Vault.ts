@@ -263,15 +263,17 @@ export class Vault extends Entity {
   increaseInvestOrder(amount: Balance) {
     const self = this
     return this._transact(async function* (ctx) {
-      const [estimate, investment, { vaultRouter }, isSyncDeposit] = await Promise.all([
+      const [estimate, investment, { vaultRouter }, isSyncDeposit, signingAddressCode] = await Promise.all([
         self._root._estimate(self.chainId, { centId: self.pool.id.centrifugeId }, MessageType.Request),
         self.investment(ctx.signingAddress),
         self._root._protocolAddresses(self.chainId),
         self._isSyncDeposit(),
+        ctx.publicClient.getCode({ address: ctx.signingAddress }),
       ])
+
       const { investmentCurrency, investmentCurrencyBalance, investmentCurrencyAllowance, isAllowedToInvest } =
         investment
-      const supportsPermit = investmentCurrency.supportsPermit
+      const supportsPermit = investmentCurrency.supportsPermit && signingAddressCode === undefined
       const needsApproval = investmentCurrencyAllowance.lt(amount)
 
       if (!isAllowedToInvest) throw new Error('Not allowed to invest')
