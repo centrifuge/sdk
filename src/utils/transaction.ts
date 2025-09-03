@@ -104,17 +104,17 @@ export async function* doTransaction(
 
   const code = await ctx.publicClient.getCode({ address: ctx.signingAddress })
   if (code === SAFE_PROXY_BYTECODE) {
-    yield* waitForSafeTransaction(id, title, hash, ctx)
-  } else {
-    const receipt = await ctx.publicClient.waitForTransactionReceipt({ hash })
-    if (receipt.status === 'reverted') {
-      console.error('Transaction reverted', receipt)
-      throw new TransactionError(receipt)
-    }
-    const result = { id, type: 'TransactionConfirmed', title, hash, receipt } as const
-    yield result
-    return result
+    return yield* waitForSafeTransaction(id, title, hash, ctx)
   }
+
+  const receipt = await ctx.publicClient.waitForTransactionReceipt({ hash })
+  if (receipt.status === 'reverted') {
+    console.error('Transaction reverted', receipt)
+    throw new TransactionError(receipt)
+  }
+  const result = { id, type: 'TransactionConfirmed', title, hash, receipt } as const
+  yield result
+  return result
 }
 
 // TODO: maybe yield Safe Transaction updates as well
