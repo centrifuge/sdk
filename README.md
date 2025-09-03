@@ -4,12 +4,8 @@ The Centrifuge SDK is a JavaScript client for interacting with the [Centrifuge](
 
 ## Installation
 
-Centrifuge SDK uses [Viem](https://viem.sh/) under the hood. It's necessary to install it alongside the SDK.
-
 ```bash
-npm install --save @centrifuge/sdk viem
-# or
-yarn install @centrifuge/sdk viem
+yarn install
 ```
 
 ## Init and config
