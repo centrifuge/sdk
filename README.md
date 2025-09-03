@@ -5,7 +5,7 @@ The Centrifuge SDK is a JavaScript client for interacting with the [Centrifuge](
 ## Installation
 
 ```bash
-yarn install
+npm install --save @centrifuge/sdk
 ```
 
 ## Init and config
