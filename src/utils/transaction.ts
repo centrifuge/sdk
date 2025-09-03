@@ -131,7 +131,11 @@ export async function* doTransaction(
   yield { id, type: 'SigningTransaction', title }
   const hash = await transactionCallback()
   yield { id, type: 'TransactionPending', title, hash }
-  try {
+
+  const code = await ctx.publicClient.getCode({ address: ctx.signingAddress })
+  if (code === SAFE_PROXY_BYTECODE) {
+    yield* waitForSafeTransaction(id, title, hash, ctx)
+  } else {
     const receipt = await ctx.publicClient.waitForTransactionReceipt({ hash })
     if (receipt.status === 'reverted') {
       console.error('Transaction reverted', receipt)
@@ -140,12 +144,6 @@ export async function* doTransaction(
     const result = { id, type: 'TransactionConfirmed', title, hash, receipt } as const
     yield result
     return result
-  } catch (e) {
-    const code = await ctx.publicClient.getCode({ address: ctx.signingAddress })
-    if (code === SAFE_PROXY_BYTECODE) {
-      yield* waitForSafeTransaction(id, title, hash, ctx)
-    }
-    throw e
   }
 }
 
