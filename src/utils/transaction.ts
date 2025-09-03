@@ -12,6 +12,7 @@ import {
 } from 'viem'
 import { arbitrum, arbitrumSepolia, avalanche, base, baseSepolia, mainnet, sepolia } from 'viem/chains'
 import { ABI } from '../abi/index.js'
+import { SAFE_PROXY_BYTECODE } from '../constants.js'
 import type { HexString } from '../types/index.js'
 import type {
   MessageTypeWithSubType,
@@ -20,37 +21,6 @@ import type {
   Signer,
   TransactionContext,
 } from '../types/transaction.js'
-
-const SAFE_PROXY_BYTECODE =
-  '0x608060405273ffffffffffffffffffffffffffffffffffffffff600054167fa619486e0000000000000000000000000000000000000000000000000000000060003514156050578060005260206000f35b3660008037600080366000845af43d6000803e60008114156070573d6000fd5b3d6000f3fea2646970667358221220d1429297349653a4918076d650332de1a1068c5f3e07c5c82360c277770b955264736f6c63430007060033'
-
-function safeApiNetworkName(chainId: number) {
-  const name = {
-    [mainnet.id]: 'mainnet',
-    [base.id]: 'base',
-    [arbitrum.id]: 'arbitrum',
-    [sepolia.id]: 'sepolia',
-    [baseSepolia.id]: 'base-sepolia',
-    [arbitrumSepolia.id]: 'arbitrum-sepolia',
-    [avalanche.id]: 'avalanche',
-  }[chainId]
-
-  if (name) return name
-  throw new Error(`Safe API does not support chainId "${chainId}"`)
-}
-
-async function getSafeTransaction(hash: HexString, chainId: number) {
-  const networkName = safeApiNetworkName(chainId)
-  const endpoint = `https://safe-transaction-${networkName}.safe.global`
-  const url = `${endpoint}/api/v1/multisig-transactions/${hash}`
-
-  const response = await fetch(url)
-  if (!response.ok) {
-    throw new Error(`Error fetching Safe transaction: ${response.statusText}`)
-  }
-  const data = await response.json()
-  return data as SafeMultisigTransactionResponse
-}
 
 class TransactionError extends Error {
   override name = 'TransactionError'
@@ -247,4 +217,32 @@ export function parseEventLogs(parameters: {
       }
     })
     .filter(Boolean) as any
+}
+
+function safeApiNetworkName(chainId: number) {
+  const name = {
+    [mainnet.id]: 'mainnet',
+    [base.id]: 'base',
+    [arbitrum.id]: 'arbitrum',
+    [sepolia.id]: 'sepolia',
+    [baseSepolia.id]: 'base-sepolia',
+    [arbitrumSepolia.id]: 'arbitrum-sepolia',
+    [avalanche.id]: 'avalanche',
+  }[chainId]
+
+  if (name) return name
+  throw new Error(`Safe API does not support chainId "${chainId}"`)
+}
+
+async function getSafeTransaction(hash: HexString, chainId: number) {
+  const networkName = safeApiNetworkName(chainId)
+  const endpoint = `https://safe-transaction-${networkName}.safe.global`
+  const url = `${endpoint}/api/v1/multisig-transactions/${hash}`
+
+  const response = await fetch(url)
+  if (!response.ok) {
+    throw new Error(`Error fetching Safe transaction: ${response.statusText}`)
+  }
+  const data = await response.json()
+  return data as SafeMultisigTransactionResponse
 }
