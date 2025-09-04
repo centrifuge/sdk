@@ -64,6 +64,14 @@ describe('Investor', () => {
       expect(isMember).to.be.false
     })
   })
+
+  describe('Transactions', () => {
+    it('should return transactions for an investor', async () => {
+      const account = await context.centrifuge.investor(randomAddress())
+      const transactions = await account.transactions(investor)
+      expect(transactions).to.exist
+    })
+  })
 })
 
 async function mint(asset: string, address: string) {

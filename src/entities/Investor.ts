@@ -76,6 +76,9 @@ export class Investor extends Entity {
     )
   }
 
+  /**
+   * Retrieve if an account is a member of a share class.
+   */
   isMember(scId: ShareClassId, chainId: number) {
     return this._query(null, () =>
       this._root.pool(scId.poolId).pipe(
@@ -83,6 +86,49 @@ export class Investor extends Entity {
         switchMap((shareClass) => shareClass.member(this.address, chainId)),
         map(({ isMember }) => isMember)
       )
+    )
+  }
+
+  /**
+   * Retrieve transactions given an address.
+   */
+  transactions(address: HexString) {
+    return this._query(null, () =>
+      this._root
+        ._queryIndexer<{
+          investorTransactions: {
+            items: {
+              account: HexString
+              createdAt: string
+              type: string
+              txHash: HexString
+              currencyAmount: bigint
+            }[]
+          }
+        }>(
+          `query ($address: String!) {
+            investorTransactions(where: { account: $address } limit: 1000) {
+              items {
+               account
+               createdAt
+               type
+               txHash
+               currencyAmount
+              }
+            }
+          }`,
+          { address: address.toLowerCase() }
+        )
+        .pipe(
+          map(({ investorTransactions }) =>
+            investorTransactions.items.map((item) => ({
+              type: item.type,
+              txHash: item.txHash,
+              currencyAmount: item.currencyAmount,
+              createdAt: item.createdAt,
+            }))
+          )
+        )
     )
   }
 }
