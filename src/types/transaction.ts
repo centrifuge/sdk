@@ -12,6 +12,49 @@ import type { Centrifuge } from '../Centrifuge.js'
 import type { HexString } from './index.js'
 import type { Query } from './query.js'
 
+export type SafeMultisigTransactionResponse = {
+  readonly safe: string
+  readonly to: string
+  readonly value: string
+  readonly data?: string
+  readonly operation: number
+  readonly gasToken: string
+  readonly safeTxGas: string
+  readonly baseGas: string
+  readonly gasPrice: string
+  readonly refundReceiver?: string
+  readonly nonce: string
+  readonly executionDate: string | null
+  readonly submissionDate: string
+  readonly modified: string
+  readonly blockNumber: number | null
+  readonly transactionHash: string | null
+  readonly safeTxHash: string
+  readonly executor: string | null
+  readonly proposer: string | null
+  readonly proposedByDelegate: string | null
+  readonly isExecuted: boolean
+  readonly isSuccessful: boolean | null
+  readonly ethGasPrice: string | null
+  readonly maxFeePerGas: string | null
+  readonly maxPriorityFeePerGas: string | null
+  readonly gasUsed: number | null
+  readonly fee: string | null
+  readonly origin: string
+  readonly dataDecoded?: any
+  readonly confirmationsRequired: number
+  readonly confirmations?: {
+    readonly owner: string
+    readonly submissionDate: string
+    readonly transactionHash?: string
+    readonly confirmationType?: string
+    readonly signature: string
+    readonly signatureType: 'CONTRACT_SIGNATURE' | 'EOA' | 'APPROVED_HASH' | 'ETH_SIGN'
+  }[]
+  readonly trusted: boolean
+  readonly signatures: string | null
+}
+
 export type OperationStatusType =
   | 'SwitchingChain'
   | 'SigningTransaction'

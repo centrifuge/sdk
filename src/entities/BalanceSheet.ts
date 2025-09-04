@@ -56,12 +56,12 @@ export class BalanceSheet extends Entity {
         ctx.signingAddress,
         balanceSheet,
         self.chainId,
-        assetAddress,
+        assetAddress as HexString,
         tokenId
       )
 
       if (allowance < amount.toBigInt()) {
-        yield* doTransaction('Approve', ctx.publicClient, () => {
+        yield* doTransaction('Approve', ctx, () => {
           if (tokenId) {
             return ctx.walletClient.writeContract({
               address: assetAddress,
@@ -79,7 +79,7 @@ export class BalanceSheet extends Entity {
         })
       }
 
-      yield* doTransaction('Deposit', ctx.publicClient, () => {
+      yield* doTransaction('Deposit', ctx, () => {
         return ctx.walletClient.writeContract({
           address: balanceSheet,
           abi: ABI.BalanceSheet,
