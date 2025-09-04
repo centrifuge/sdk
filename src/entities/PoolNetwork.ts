@@ -12,6 +12,7 @@ import { AssetId, ShareClassId } from '../utils/types.js'
 import { BalanceSheet } from './BalanceSheet.js'
 import { Entity } from './Entity.js'
 import { MerkleProofManager } from './MerkleProofManager.js'
+import { OnOffRampManager } from './OnOffRampManager.js'
 import type { Pool } from './Pool.js'
 import { ShareClass } from './ShareClass.js'
 
@@ -152,10 +153,92 @@ export class PoolNetwork extends Entity {
   }
 
   merkleProofManager() {
-    return this._query(['merkleProofManager'], () => {
-      // TODO: Get Merkle Proof Manager address from indexer
-      return of(new MerkleProofManager(this._root, this, '0x0'))
-    })
+    return this._query(['merkleProofManager'], () =>
+      this._root.id(this.chainId).pipe(
+        switchMap((centrifugeId) =>
+          this._root._queryIndexer(
+            `query ($poolId: BigInt!, $centrifugeId: String!) {
+              merkleProofManagers(where: {poolId: $poolId, centrifugeId: $centrifugeId}) {
+                items {
+                  address
+                }
+              }
+            }`,
+            { poolId: this.pool.id.toString(), centrifugeId: centrifugeId.toString() },
+            (data: {
+              merkleProofManagers: {
+                items: {
+                  address: HexString
+                }[]
+              }
+            }) => {
+              const manager = data.merkleProofManagers.items[0]
+
+              if (!manager) {
+                throw new Error('MerkleProofManager not found')
+              }
+
+              return of(new MerkleProofManager(this._root, this, manager.address))
+            }
+          )
+        )
+      )
+    )
+  }
+
+  onOfframpManager(scId: ShareClassId) {
+    return this._query(null, () =>
+      combineLatest([
+        this._root.id(this.chainId).pipe(
+          switchMap((centrifugeId) =>
+            this._root._queryIndexer(
+              `query ($scId: String!, $centrifugeId: String!) {
+                onOffRampManagers(where: {tokenId: $scId, centrifugeId: $centrifugeId}) {
+                  items {
+                    address
+                  }
+                }
+              }`,
+              {
+                scId: scId.toString(),
+                centrifugeId: centrifugeId.toString(),
+              },
+              (data: {
+                onOffRampManagers: {
+                  items: {
+                    address: HexString
+                  }[]
+                }
+              }) => data.onOffRampManagers.items
+            )
+          )
+        ),
+        this.pool.balanceSheetManagers(),
+      ]).pipe(
+        map(([deployedOnOffRampManager, balanceSheetManagers]) => {
+          const onoffRampManager = deployedOnOffRampManager[0]
+
+          if (!onoffRampManager) {
+            throw new Error('OnOffRampManager not found')
+          }
+
+          const verifiedManager = balanceSheetManagers.find(
+            (manager) => manager.address.toLowerCase() === onoffRampManager.address.toLowerCase()
+          )
+
+          if (!verifiedManager) {
+            throw new Error('OnOffRampManager not found in balance sheet managers')
+          }
+
+          return new OnOffRampManager(
+            this._root,
+            this,
+            new ShareClass(this._root, this.pool, scId.raw),
+            verifiedManager.address
+          )
+        })
+      )
+    )
   }
 
   /**

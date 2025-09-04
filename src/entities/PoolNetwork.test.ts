@@ -8,6 +8,7 @@ import { AssetId, PoolId, ShareClassId } from '../utils/types.js'
 import { Pool } from './Pool.js'
 import { PoolNetwork } from './PoolNetwork.js'
 import { Vault } from './Vault.js'
+import { MerkleProofManager } from './MerkleProofManager.js'
 
 const poolId = PoolId.from(1, 1)
 const scId = ShareClassId.from(poolId, 1)
@@ -141,5 +142,66 @@ describe('PoolNetwork', () => {
       args: [poolId.raw, scId.raw, asset.address],
     })
     expect(vaultAddr2).to.equal(NULL_ADDRESS)
+  })
+
+  describe('merkleProofManager', () => {
+    it('should return merkleProofManager', async () => {
+      const result = await poolNetwork.merkleProofManager()
+
+      expect(result).to.be.instanceOf(MerkleProofManager)
+    })
+
+    it('should throw when it does not find merkleProofManager', async () => {
+      const poolId = PoolId.from(1, 10)
+      const { centrifuge } = context
+      const pool = new Pool(centrifuge, poolId.raw, 11155111)
+      const poolNetwork = new PoolNetwork(centrifuge, pool, 11155111)
+      try {
+        await poolNetwork.merkleProofManager()
+      } catch (error: any) {
+        expect(error.message).to.equal('MerkleProofManager not found')
+      }
+    })
+  })
+
+  describe('onOfframpManager', () => {
+    it.skip('returns onOfframpManager', async () => {
+      context.tenderlyFork.impersonateAddress = poolManager
+      context.centrifuge.setSigner(context.tenderlyFork.signer)
+
+      await context.tenderlyFork.fundAccountEth(poolManager, 10n ** 18n)
+      await poolNetwork.pool.updateBalanceSheetManagers([
+        { chainId, address: '0x8c0E6DC2461c6190A3e5703B714942cacfCb3C14', canManage: true },
+      ])
+
+      // TODO: Needs data in indexer for manager to be balance sheet manager
+      await poolNetwork.onOfframpManager(ShareClassId.from(poolId, 1))
+
+      // expect(result).to.be.instanceOf(OnOffRampManager)
+    })
+
+    it('should throw when it does not find onOfframpManager', async () => {
+      try {
+        await poolNetwork.onOfframpManager(ShareClassId.from(poolId, 10))
+      } catch (error: any) {
+        expect(error.message).to.equal('OnOffRampManager not found')
+      }
+    })
+
+    it('should throw when onOfframpManager is not balance sheet manager', async () => {
+      context.tenderlyFork.impersonateAddress = poolManager
+      context.centrifuge.setSigner(context.tenderlyFork.signer)
+
+      await context.tenderlyFork.fundAccountEth(poolManager, 10n ** 18n)
+      await poolNetwork.pool.updateBalanceSheetManagers([
+        { chainId, address: '0x8c0E6DC2461c6190A3e5703B714942cacfCb3C14', canManage: true },
+      ])
+
+      try {
+        await poolNetwork.onOfframpManager(ShareClassId.from(poolId, 1))
+      } catch (error: any) {
+        expect(error.message).to.equal('OnOffRampManager not found in balance sheet managers')
+      }
+    })
   })
 })
