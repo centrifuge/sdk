@@ -1,14 +1,14 @@
 import { expect } from 'chai'
+import { ABI } from '../abi/index.js'
+import { context } from '../tests/setup.js'
+import { randomAddress } from '../tests/utils.js'
+import { Balance } from '../utils/BigInt.js'
+import { doTransaction } from '../utils/transaction.js'
 import { AssetId, PoolId, ShareClassId } from '../utils/types.js'
 import { OnOffRampManager } from './OnOffRampManager.js'
 import { Pool } from './Pool.js'
-import { context } from '../tests/setup.js'
 import { PoolNetwork } from './PoolNetwork.js'
 import { ShareClass } from './ShareClass.js'
-import { randomAddress } from '../tests/utils.js'
-import { ABI } from '../abi/index.js'
-import { Balance } from '../utils/BigInt.js'
-import { doTransaction } from '../utils/transaction.js'
 
 const chainId = 11155111
 const centId = 1
@@ -141,7 +141,7 @@ describe('OnOffRampManager', () => {
       await pool.updateBalanceSheetManagers([{ chainId, address: onOffRampManager.onrampAddress, canManage: true }])
 
       await context.centrifuge._transact(async function* (ctx) {
-        yield* doTransaction('Approve transfer', ctx.publicClient, async () => {
+        yield* doTransaction('Approve transfer', ctx, async () => {
           return ctx.walletClient.writeContract({
             address: assetAddress,
             abi: ABI.Currency,
@@ -172,7 +172,7 @@ describe('OnOffRampManager', () => {
       const relayer = randomAddress()
 
       await context.centrifuge._transact(async function* (ctx) {
-        yield* doTransaction('Approve transfer', ctx.publicClient, async () => {
+        yield* doTransaction('Approve transfer', ctx, async () => {
           return ctx.walletClient.writeContract({
             address: assetAddress,
             abi: ABI.Currency,
