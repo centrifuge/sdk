@@ -256,9 +256,9 @@ export class OnOffRampManager extends Entity {
 
   deposit(assetAddress: HexString, amount: Balance, receiverAddress: HexString) {
     const self = this
-    return this._transact(async function* ({ walletClient, publicClient }) {
-      yield* doTransaction('Deposit', publicClient, () =>
-        walletClient.writeContract({
+    return this._transact(async function* (ctx) {
+      yield* doTransaction('Deposit', ctx, () =>
+        ctx.walletClient.writeContract({
           address: self.onrampAddress,
           abi: ABI.OnOffRampManager,
           functionName: 'deposit',
@@ -270,9 +270,9 @@ export class OnOffRampManager extends Entity {
 
   withdraw(assetAddress: HexString, amount: Balance, receiverAddress: HexString) {
     const self = this
-    return this._transact(async function* ({ walletClient, publicClient }) {
-      yield* doTransaction('Withdraw', publicClient, () =>
-        walletClient.writeContract({
+    return this._transact(async function* (ctx) {
+      yield* doTransaction('Withdraw', ctx, () =>
+        ctx.walletClient.writeContract({
           address: self.onrampAddress,
           abi: ABI.OnOffRampManager,
           functionName: 'withdraw',
