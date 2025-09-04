@@ -1014,6 +1014,13 @@ export class ShareClass extends Entity {
     }, this.pool.chainId)
   }
 
+  /**
+   * Retrieve members of the share class.
+   */
+  members() {
+    return this._query(null, () => this._tokenInstancePositions())
+  }
+
   /** @internal */
   _balances() {
     return this._root._queryIndexer(
@@ -1663,6 +1670,67 @@ export class ShareClass extends Entity {
         }),
         filter(({ id }) => !!id),
         map(({ id }) => id!)
+      )
+    )
+  }
+
+  /** @internal */
+  _tokenInstancePositions() {
+    return this._query(null, () =>
+      combineLatest([
+        this._root._deployments(),
+        this.pool.currency(),
+        this.vaults(),
+        this._root._queryIndexer<{
+          tokenInstancePositions: {
+            items: {
+              accountAddress: HexString
+              centrifugeId: string
+              balance: bigint
+              isFrozen: boolean
+            }[]
+          }
+        }>(
+          `query ($scId: String!) {
+          tokenInstancePositions(where: { tokenId: $scId }) {
+            items {
+              accountAddress
+              centrifugeId
+              balance
+              isFrozen
+            }
+          }
+        }`,
+          { scId: this.id.raw }
+        ),
+      ]).pipe(
+        switchMap(([deployments, poolCurrency, vaults, { tokenInstancePositions }]) => {
+          const chainsById = new Map(deployments.blockchains.items.map((chain) => [chain.centrifugeId, chain.id]))
+
+          return combineLatest(
+            tokenInstancePositions.items.map((position) => {
+              const chainId = Number(chainsById.get(position.centrifugeId)!)
+              const vault = vaults.find((v) => v.chainId === chainId)
+
+              return combineLatest({
+                member: this.member(position.accountAddress, chainId),
+                investment: vault?.investment(position.accountAddress) ?? of(null),
+              }).pipe(
+                map(({ member, investment }) => ({
+                  address: position.accountAddress,
+                  holdings: new Balance(position.balance, poolCurrency.decimals),
+                  isFrozen: position.isFrozen,
+                  chainId,
+                  isWhitelisted: Boolean(member.isMember),
+                  investments: {
+                    pendingInvestCurrency: investment?.pendingInvestCurrency,
+                    pendingRedeemShares: investment?.pendingRedeemShares,
+                  },
+                }))
+              )
+            })
+          )
+        })
       )
     )
   }

@@ -152,6 +152,18 @@ describe('ShareClass', () => {
     ])
   })
 
+  it('gets members', async () => {
+    const members = await shareClass.members()
+    expect(members.length).to.be.greaterThan(0)
+    expect(members[0]!.address.toLowerCase()).to.be.a('string')
+    expect(members[0]!.isFrozen).to.be.false
+    expect(members[0]!.chainId).to.equal(chainId)
+    expect(members[0]!.holdings.decimals).to.equal(18)
+    expect(members[0]!.isWhitelisted).to.be.a('boolean')
+    expect(members[0]!.investments.pendingInvestCurrency).to.be.instanceOf(Balance)
+    expect(members[0]!.investments.pendingRedeemShares).to.be.instanceOf(Balance)
+  })
+
   it('gets pending amounts', async () => {
     const pendingAmounts = await shareClass.pendingAmounts()
     expect(pendingAmounts.length).to.be.greaterThan(0)
