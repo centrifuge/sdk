@@ -652,7 +652,7 @@ export class Centrifuge {
           args: [fromCentId, message],
         })
       )
-    }, fromChain)
+    }, toChain)
   }
 
   /**
