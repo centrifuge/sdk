@@ -153,33 +153,53 @@ export class PoolNetwork extends Entity {
   }
 
   merkleProofManager() {
-    return this._query(['merkleProofManager'], () => {
-      // TODO: Get Merkle Proof Manager address from indexer
-      return of(new MerkleProofManager(this._root, this, '0x0'))
-    })
+    return this._query(['merkleProofManager'], () =>
+      this._root._queryIndexer(
+        `query ($poolId: BigInt!) {
+          merkleProofManagers(where: {poolId: $poolId}) {
+            items {
+              address
+            }
+          }
+        }`,
+        { poolId: this.pool.id.toString() },
+        (data: {
+          merkleProofManagers: {
+            items: {
+              address: HexString
+            }[]
+          }
+        }) => {
+          const manager = data.merkleProofManagers.items[0]
+
+          if (!manager) {
+            throw new Error('MerkleProofManager not found')
+          }
+
+          return of(new MerkleProofManager(this._root, this, manager.address))
+        }
+      )
+    )
   }
 
   onOfframpManager(scId: ShareClassId) {
     return this._query(null, () =>
       combineLatest([
         this._root._queryIndexer(
-          // TODO: Replace this with actual query to the indexer once it is available
           `query ($scId: String!) {
-            onOffRampManager(where: { shareClassId: $scId }) {
+            onOffRampManagers(where: {tokenId: $scId}) {
               items {
-                id
-                onRampAddress
+                address
               }
             }
           }`,
           {
-            scId,
+            scId: scId.toString(),
           },
           (data: {
             onOffRampManagers: {
               items: {
-                id: string
-                onRampAddress: HexString
+                address: HexString
               }[]
             }
           }) => data.onOffRampManagers.items
@@ -187,18 +207,24 @@ export class PoolNetwork extends Entity {
         this.pool.balanceSheetManagers(),
       ]).pipe(
         map(([deployedOnOffRampManager, balanceSheetManagers]) => {
-          console.log({
-            deployedOnOffRampManager,
-            balanceSheetManagers,
-          })
+          const onoffRampManager = deployedOnOffRampManager[0]
 
-          // TODO: Implement the logic below
-          // find the deployed manager in balance sheet managers
-          // if not found, throw
-          // if found instantiate OnOffRampManager class
-          // return the class instead of '0x' address
+          if (!onoffRampManager) {
+            throw new Error('OnOffRampManager not found')
+          }
 
-          return new OnOffRampManager(this._root, this, new ShareClass(this._root, this.pool, scId.raw), '0x')
+          const verifiedManager = balanceSheetManagers.find((manager) => manager.address === onoffRampManager.address)
+
+          if (!verifiedManager) {
+            throw new Error('OnOffRampManager not found in balance sheet managers')
+          }
+
+          return new OnOffRampManager(
+            this._root,
+            this,
+            new ShareClass(this._root, this.pool, scId.raw),
+            verifiedManager.address
+          )
         })
       )
     )

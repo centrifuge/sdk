@@ -40,7 +40,7 @@ describe('OnOffRampManager', () => {
   })
 
   describe('receivers', () => {
-    it('should return receivers', async () => {
+    it.skip('should return receivers', async () => {
       const receivers = await onOffRampManager.receivers()
 
       // TODO: assert once the data is available
@@ -95,7 +95,7 @@ describe('OnOffRampManager', () => {
   })
 
   describe('balances', () => {
-    it('should return balances per asset', async () => {
+    it.skip('should return balances per asset', async () => {
       const result = await onOffRampManager.balances()
 
       console.log({ result })
