@@ -154,30 +154,34 @@ export class PoolNetwork extends Entity {
 
   merkleProofManager() {
     return this._query(['merkleProofManager'], () =>
-      this._root._queryIndexer(
-        `query ($poolId: BigInt!) {
-          merkleProofManagers(where: {poolId: $poolId}) {
-            items {
-              address
+      this._root.id(this.chainId).pipe(
+        switchMap((centrifugeId) =>
+          this._root._queryIndexer(
+            `query ($poolId: BigInt!, $centrifugeId: String!) {
+              merkleProofManagers(where: {poolId: $poolId, centrifugeId: $centrifugeId}) {
+                items {
+                  address
+                }
+              }
+            }`,
+            { poolId: this.pool.id.toString(), centrifugeId: centrifugeId.toString() },
+            (data: {
+              merkleProofManagers: {
+                items: {
+                  address: HexString
+                }[]
+              }
+            }) => {
+              const manager = data.merkleProofManagers.items[0]
+
+              if (!manager) {
+                throw new Error('MerkleProofManager not found')
+              }
+
+              return of(new MerkleProofManager(this._root, this, manager.address))
             }
-          }
-        }`,
-        { poolId: this.pool.id.toString() },
-        (data: {
-          merkleProofManagers: {
-            items: {
-              address: HexString
-            }[]
-          }
-        }) => {
-          const manager = data.merkleProofManagers.items[0]
-
-          if (!manager) {
-            throw new Error('MerkleProofManager not found')
-          }
-
-          return of(new MerkleProofManager(this._root, this, manager.address))
-        }
+          )
+        )
       )
     )
   }
@@ -185,24 +189,29 @@ export class PoolNetwork extends Entity {
   onOfframpManager(scId: ShareClassId) {
     return this._query(null, () =>
       combineLatest([
-        this._root._queryIndexer(
-          `query ($scId: String!) {
-            onOffRampManagers(where: {tokenId: $scId}) {
-              items {
-                address
-              }
-            }
-          }`,
-          {
-            scId: scId.toString(),
-          },
-          (data: {
-            onOffRampManagers: {
-              items: {
-                address: HexString
-              }[]
-            }
-          }) => data.onOffRampManagers.items
+        this._root.id(this.chainId).pipe(
+          switchMap((centrifugeId) =>
+            this._root._queryIndexer(
+              `query ($scId: String!, $centrifugeId: String!) {
+                onOffRampManagers(where: {tokenId: $scId, centrifugeId: $centrifugeId}) {
+                  items {
+                    address
+                  }
+                }
+              }`,
+              {
+                scId: scId.toString(),
+                centrifugeId: centrifugeId.toString(),
+              },
+              (data: {
+                onOffRampManagers: {
+                  items: {
+                    address: HexString
+                  }[]
+                }
+              }) => data.onOffRampManagers.items
+            )
+          )
         ),
         this.pool.balanceSheetManagers(),
       ]).pipe(
@@ -213,7 +222,9 @@ export class PoolNetwork extends Entity {
             throw new Error('OnOffRampManager not found')
           }
 
-          const verifiedManager = balanceSheetManagers.find((manager) => manager.address === onoffRampManager.address)
+          const verifiedManager = balanceSheetManagers.find(
+            (manager) => manager.address.toLowerCase() === onoffRampManager.address.toLowerCase()
+          )
 
           if (!verifiedManager) {
             throw new Error('OnOffRampManager not found in balance sheet managers')

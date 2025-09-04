@@ -53,6 +53,15 @@ describe('OnOffRampManager', () => {
       const result = await onOffRampManager.setReceiver(assetId, address)
 
       expect(result.type).to.equal('TransactionConfirmed')
+
+      const setReceiver = await context.centrifuge.getClient(chainId).readContract({
+        address: rampManager,
+        abi: ABI.OnOffRampManager,
+        functionName: 'offramp',
+        args: ['0x3aaaa86458d576bafcb1b7ed290434f0696da65c', address],
+      })
+
+      expect(setReceiver).to.be.true
     })
   })
 
@@ -70,6 +79,15 @@ describe('OnOffRampManager', () => {
       const result = await onOffRampManager.setRelayer(address)
 
       expect(result.type).to.equal('TransactionConfirmed')
+
+      const setRelayer = await context.centrifuge.getClient(chainId).readContract({
+        address: rampManager,
+        abi: ABI.OnOffRampManager,
+        functionName: 'onramp',
+        args: ['0x3aaaa86458d576bafcb1b7ed290434f0696da65c'],
+      })
+
+      expect(setRelayer).to.be.true
     })
   })
 
@@ -81,9 +99,7 @@ describe('OnOffRampManager', () => {
 
       expect(result[0]!).to.deep.equal({
         assetAddress: '0x3aaaa86458d576bafcb1b7ed290434f0696da65c',
-        centrifugeId: '1',
-        poolId: '281474976710657',
-        tokenId: '0x00010000000000010000000000000001',
+        assetId: new AssetId('0x3aaaa86458d576bafcb1b7ed290434f0696da65c'),
       })
     })
 
@@ -125,7 +141,7 @@ describe('OnOffRampManager', () => {
       await pool.updateBalanceSheetManagers([{ chainId, address: onOffRampManager.onrampAddress, canManage: true }])
 
       await context.centrifuge._transact(async function* (ctx) {
-        yield* doTransaction('Add share class', ctx.publicClient, async () => {
+        yield* doTransaction('Approve transfer', ctx.publicClient, async () => {
           return ctx.walletClient.writeContract({
             address: assetAddress,
             abi: ABI.Currency,
@@ -156,7 +172,7 @@ describe('OnOffRampManager', () => {
       const relayer = randomAddress()
 
       await context.centrifuge._transact(async function* (ctx) {
-        yield* doTransaction('Add share class', ctx.publicClient, async () => {
+        yield* doTransaction('Approve transfer', ctx.publicClient, async () => {
           return ctx.walletClient.writeContract({
             address: assetAddress,
             abi: ABI.Currency,

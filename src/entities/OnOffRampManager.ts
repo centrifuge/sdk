@@ -26,88 +26,112 @@ export class OnOffRampManager extends Entity {
 
   receivers() {
     return this._query(null, () =>
-      this._root._queryIndexer(
-        `{
-          offRampAddresss {
-            items {
-              assetAddress
-              centrifugeId
-              poolId
-              receiverAddress
-              tokenId
-              asset {
-                id
+      this._root.id(this.network.chainId).pipe(
+        switchMap((centrifugeId) =>
+          this._root._queryIndexer(
+            `query ($scId: String!, $centrifugeId: String!) {
+              offRampAddresss(where: { centrifugeId: $centrifugeId, tokenId: $scId }) {
+                items {
+                  assetAddress
+                  receiverAddress
+                  asset {
+                    id
+                  }
+                }
               }
-            }
-          }
-        }`,
-        {},
-        (data: {
-          offRampAddresss: {
-            items: {
-              assetAddress: HexString
-              centrifugeId: number
-              poolId: number
-              receiverAddress: HexString
-              tokenId: string
-              asset: {
-                id: string
+            }`,
+            {
+              scId: this.shareClass.id.toString(),
+              centrifugeId: centrifugeId.toString(),
+            },
+            (data: {
+              offRampAddresss: {
+                items: {
+                  assetAddress: HexString
+                  receiverAddress: HexString
+                  asset: {
+                    id: string
+                  }
+                }[]
               }
-            }[]
-          }
-        }) => data.offRampAddresss.items.map((item) => item)
+            }) =>
+              data.offRampAddresss.items.map((item) => ({
+                assetAddress: item.assetAddress,
+                receiverAddress: item.receiverAddress,
+                assetId: new AssetId(item.asset.id),
+              }))
+          )
+        )
       )
     )
   }
 
   relayers() {
     return this._query(null, () =>
-      this._root._queryIndexer(
-        `{
-          offrampRelayers {
-            items {
-              address
-              isEnabled
-            }
-          }
-        }`,
-        {},
-        (data: {
-          offrampRelayers: {
-            items: {
-              address: HexString
-              isEnabled: boolean
-            }[]
-          }
-        }) => data.offrampRelayers.items.map((item) => item)
+      this._root.id(this.network.chainId).pipe(
+        switchMap((centrifugeId) =>
+          this._root._queryIndexer(
+            `query ($scId: String!, $centrifugeId: String!) {
+              offrampRelayers(where: { centrifugeId: $centrifugeId, tokenId: $scId }) {
+                items {
+                  address
+                  isEnabled
+                }
+              }
+            }`,
+            {
+              scId: this.shareClass.id.toString(),
+              centrifugeId: centrifugeId.toString(),
+            },
+            (data: {
+              offrampRelayers: {
+                items: {
+                  address: HexString
+                  isEnabled: boolean
+                }[]
+              }
+            }) => data.offrampRelayers.items.map((item) => item)
+          )
+        )
       )
     )
   }
 
   assets() {
     return this._query(null, () =>
-      this._root._queryIndexer(
-        `{
-          onRampAssets {
-            items {
-              assetAddress
-              centrifugeId
-              poolId
-              tokenId
-            }
-          }
-        }`,
-        {},
-        (data: {
-          onRampAssets: {
-            items: {
-              assetAddress: HexString
-              centrifugeId: number
-              poolId: number
-              tokenId: string
-            }[]
-          }
-        }) => data.onRampAssets.items.map((item) => item)
+      this._root.id(this.network.chainId).pipe(
+        switchMap((centrifugeId) =>
+          this._root._queryIndexer(
+            `query ($scId: String!, $centrifugeId: String!) {
+              onRampAssets(where: { centrifugeId: $centrifugeId, tokenId: $scId }) {
+                items {
+                  assetAddress
+                  asset {
+                    id
+                  }
+                }
+              }
+            }`,
+            {
+              scId: this.shareClass.id.toString(),
+              centrifugeId: centrifugeId.toString(),
+            },
+            (data: {
+              onRampAssets: {
+                items: {
+                  assetAddress: HexString
+                  asset: {
+                    id: string
+                  }
+                }[]
+              }
+            }) =>
+              data.onRampAssets.items.map((item) => ({
+                assetAddress: item.assetAddress,
+                assetId: new AssetId(item.asset.id),
+              }))
+          )
+        )
       )
     )
   }
