@@ -1015,10 +1015,10 @@ export class ShareClass extends Entity {
   }
 
   /**
-   * Retrieve members of the share class.
+   * Retrieve holders of the share class.
    */
-  members() {
-    return this._query(null, () => this._tokenInstancePositions())
+  holders() {
+    return this._tokenInstancePositions()
   }
 
   /** @internal */
@@ -1680,7 +1680,7 @@ export class ShareClass extends Entity {
       combineLatest([
         this._root._deployments(),
         this.pool.currency(),
-        this.vaults(),
+        this._investorOrders(),
         this._root._queryIndexer<{
           tokenInstancePositions: {
             items: {
@@ -1692,7 +1692,7 @@ export class ShareClass extends Entity {
           }
         }>(
           `query ($scId: String!) {
-          tokenInstancePositions(where: { tokenId: $scId }) {
+          tokenInstancePositions(where: { tokenId: $scId }, limit: 1000) {
             items {
               accountAddress
               centrifugeId
@@ -1704,32 +1704,26 @@ export class ShareClass extends Entity {
           { scId: this.id.raw }
         ),
       ]).pipe(
-        switchMap(([deployments, poolCurrency, vaults, { tokenInstancePositions }]) => {
+        map(([deployments, poolCurrency, { outstandingInvests, outstandingRedeems }, { tokenInstancePositions }]) => {
           const chainsById = new Map(deployments.blockchains.items.map((chain) => [chain.centrifugeId, chain.id]))
 
-          return combineLatest(
-            tokenInstancePositions.items.map((position) => {
-              const chainId = Number(chainsById.get(position.centrifugeId)!)
-              const vault = vaults.find((v) => v.chainId === chainId)
-
-              return combineLatest({
-                member: this.member(position.accountAddress, chainId),
-                investment: vault?.investment(position.accountAddress) ?? of(null),
-              }).pipe(
-                map(({ member, investment }) => ({
-                  address: position.accountAddress,
-                  holdings: new Balance(position.balance, poolCurrency.decimals),
-                  isFrozen: position.isFrozen,
-                  chainId,
-                  isWhitelisted: Boolean(member.isMember),
-                  investments: {
-                    pendingInvestCurrency: investment?.pendingInvestCurrency,
-                    pendingRedeemShares: investment?.pendingRedeemShares,
-                  },
-                }))
-              )
-            })
-          )
+          return tokenInstancePositions.items.map((position) => {
+            const chainId = Number(chainsById.get(position.centrifugeId)!)
+            const outstandingInvest = outstandingInvests.find((order) => order.investor === position.accountAddress)
+            const outstandingRedeem = outstandingRedeems.find((order) => order.investor === position.accountAddress)
+            return {
+              address: position.accountAddress,
+              holdings: new Balance(position.balance, poolCurrency.decimals),
+              isFrozen: position.isFrozen,
+              chainId,
+              outstandingInvest: outstandingInvest
+                ? new Balance(outstandingInvest.pendingAmount, poolCurrency.decimals)
+                : new Balance(0n, poolCurrency.decimals),
+              outstandingRedeem: outstandingRedeem
+                ? new Balance(outstandingRedeem.pendingAmount, poolCurrency.decimals)
+                : new Balance(0n, poolCurrency.decimals),
+            }
+          })
         })
       )
     )
