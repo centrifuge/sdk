@@ -22,6 +22,7 @@ const someErc20 = '0x3aaaa86458d576BafCB1B7eD290434F0696dA65c'
 
 const publicClient: any = createClient({ transport: custom(mockProvider()) }).extend(() => ({
   waitForTransactionReceipt: async () => ({}),
+  getCode: async () => undefined,
 }))
 
 describe('Centrifuge', () => {
@@ -421,6 +422,7 @@ describe('Centrifuge', () => {
       cent.setSigner(mockProvider())
       const publicClient: any = createClient({ transport: custom(mockProvider()) }).extend(() => ({
         waitForTransactionReceipt: async () => ({}),
+        getCode: async () => undefined,
       }))
       const tx = cent._transact((ctx) => doTransaction('Test', { ...ctx, publicClient }, async () => '0x1'), chainId)
       const statuses = await firstValueFrom(tx.pipe(toArray()))
