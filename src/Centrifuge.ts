@@ -169,14 +169,14 @@ export class Centrifuge {
    */
   createPool(metadataInput: PoolMetadataInput, currencyCode = 840, chainId: number, counter?: number | bigint) {
     const self = this
-    return this._transact(async function* ({ walletClient, signingAddress, publicClient }) {
+    return this._transact(async function* (ctx) {
       const [addresses, id] = await Promise.all([self._protocolAddresses(chainId), self.id(chainId)])
       const poolId = PoolId.from(id, counter ?? randomUint(48))
 
       const createPoolData = encodeFunctionData({
         abi: ABI.Hub,
         functionName: 'createPool',
-        args: [poolId.raw, signingAddress, BigInt(currencyCode)],
+        args: [poolId.raw, ctx.signingAddress, BigInt(currencyCode)],
       })
 
       const scIds = Array.from({ length: metadataInput.shareClasses.length }, (_, i) =>
@@ -294,8 +294,8 @@ export class Centrifuge {
         })
       )
 
-      yield* doTransaction('Create pool', publicClient, () => {
-        return walletClient.writeContract({
+      yield* doTransaction('Create pool', ctx, () => {
+        return ctx.walletClient.writeContract({
           address: addresses.hub,
           abi: ABI.Hub,
           functionName: 'multicall',
@@ -422,7 +422,7 @@ export class Centrifuge {
             functionName: 'idToAsset',
             args: [assetId.raw],
           })
-          return this.currency(assetAddress, chainId, tokenId)
+          return this.currency(assetAddress as HexString, chainId, tokenId)
         })
       )
     )
@@ -579,14 +579,14 @@ export class Centrifuge {
     tokenId: number | bigint = 0
   ) {
     const self = this
-    return this._transact(async function* ({ walletClient, publicClient }) {
+    return this._transact(async function* (ctx) {
       const [addresses, id, estimate] = await Promise.all([
         self._protocolAddresses(originChainId),
         self.id(registerOnChainId),
         self._estimate(originChainId, { chainId: registerOnChainId }, MessageType.RegisterAsset),
       ])
-      yield* doTransaction('Register asset', publicClient, () =>
-        walletClient.writeContract({
+      yield* doTransaction('Register asset', ctx, () =>
+        ctx.walletClient.writeContract({
           address: addresses.spoke,
           abi: ABI.Spoke,
           functionName: 'registerAsset',
@@ -602,7 +602,7 @@ export class Centrifuge {
    */
   repayBatch(fromChain: number, to: { chainId: number } | { centId: number }, batch: HexString, extraPayment = 0n) {
     const self = this
-    return this._transact(async function* ({ walletClient, publicClient }) {
+    return this._transact(async function* (ctx) {
       const [addresses, toCentId] = await Promise.all([
         self._protocolAddresses(fromChain),
         'chainId' in to ? self.id(to.chainId) : to.centId,
@@ -625,8 +625,8 @@ export class Centrifuge {
         args: [toCentId, batch, gasLimit],
       })
 
-      yield* doTransaction('Repay', publicClient, () =>
-        walletClient.writeContract({
+      yield* doTransaction('Repay', ctx, () =>
+        ctx.walletClient.writeContract({
           address: addresses.gateway,
           abi: ABI.Gateway,
           functionName: 'repay',
@@ -638,21 +638,18 @@ export class Centrifuge {
   }
 
   /**
-   * Retry a failed batch of messages on the Gateway
+   * Retry a failed message on the destination chain
    */
-  retryBatch(fromChain: number, to: { chainId: number } | { centId: number }, batch: HexString) {
+  retryMessage(fromChain: number, toChain: number, message: HexString) {
     const self = this
-    return this._transact(async function* ({ walletClient, publicClient }) {
-      const [addresses, id] = await Promise.all([
-        self._protocolAddresses(fromChain),
-        'chainId' in to ? self.id(to.chainId) : to.centId,
-      ])
-      yield* doTransaction('Retry', publicClient, () =>
-        walletClient.writeContract({
+    return this._transact(async function* (ctx) {
+      const [addresses, fromCentId] = await Promise.all([self._protocolAddresses(toChain), self.id(fromChain)])
+      yield* doTransaction('Retry', ctx, () =>
+        ctx.walletClient.writeContract({
           address: addresses.gateway,
           abi: ABI.Gateway,
           functionName: 'retry',
-          args: [id, batch],
+          args: [fromCentId, message],
         })
       )
     }, fromChain)
@@ -1047,7 +1044,7 @@ export class Centrifuge {
 
       const transaction = transactionCallback({
         isBatching,
-        signingAddress: address,
+        signingAddress: address as HexString,
         chain,
         chainId,
         publicClient,

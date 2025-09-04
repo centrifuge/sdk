@@ -1,5 +1,4 @@
 import { combineLatest, map, switchMap } from 'rxjs'
-import { getAddress } from 'viem'
 import type { Centrifuge } from '../Centrifuge.js'
 import type { HexString } from '../types/index.js'
 import { AssetId, PoolId, ShareClassId } from '../utils/types.js'
@@ -10,9 +9,9 @@ export class Investor extends Entity {
 
   /** @internal */
   constructor(_root: Centrifuge, address: HexString) {
-    const addr = address.toLowerCase()
+    const addr = address.toLowerCase() as HexString
     super(_root, ['investor', addr])
-    this.address = getAddress(addr)
+    this.address = addr
   }
 
   portfolio(chainId?: number) {

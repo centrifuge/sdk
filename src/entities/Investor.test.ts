@@ -1,13 +1,13 @@
 import { expect } from 'chai'
-import { getAddress, parseAbi } from 'viem'
+import { parseAbi } from 'viem'
 import { context } from '../tests/setup.js'
+import { randomAddress } from '../tests/utils.js'
+import { Balance } from '../utils/BigInt.js'
+import { doTransaction } from '../utils/transaction.js'
 import { AssetId, PoolId, ShareClassId } from '../utils/types.js'
-import { Vault } from './Vault.js'
 import { Pool } from './Pool.js'
 import { ShareClass } from './ShareClass.js'
-import { doTransaction } from '../utils/transaction.js'
-import { Balance } from '../utils/BigInt.js'
-import { randomAddress } from '../tests/utils.js'
+import { Vault } from './Vault.js'
 
 const investor = '0x423420ae467df6e90291fd0252c0a8a637c1e03f'
 const protocolAdmin = '0x423420Ae467df6e90291fd0252c0A8a637C1e03f'
@@ -27,11 +27,6 @@ describe('Investor', () => {
       const account = await context.centrifuge.investor(investor)
       const portfolio = await account.portfolio()
       expect(portfolio).to.exist
-    })
-
-    it('should return its checksum address', async () => {
-      const account = await context.centrifuge.investor(investor)
-      expect(account.address).to.equal(getAddress(investor))
     })
   })
 
@@ -76,7 +71,7 @@ async function mint(asset: string, address: string) {
   context.centrifuge.setSigner(context.tenderlyFork.signer)
 
   await context.centrifuge._transact(async function* (ctx) {
-    yield* doTransaction('Mint', ctx.publicClient, async () => {
+    yield* doTransaction('Mint', ctx, async () => {
       return ctx.walletClient.writeContract({
         address: asset as any,
         abi: parseAbi(['function mint(address, uint256)']),
