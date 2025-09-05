@@ -160,7 +160,7 @@ describe('ShareClass', () => {
       address: h.address.toLowerCase(),
       isFrozen: h.isFrozen,
       chainId: h.chainId,
-      holdings: { decimals: h.holdings.decimals },
+      holdings: h.holdings instanceof Balance,
       outstandingInvestIsBalance: h.outstandingInvest instanceof Balance,
       outstandingRedeemIsBalance: h.outstandingRedeem instanceof Balance,
     }))
@@ -169,7 +169,7 @@ describe('ShareClass', () => {
       address: h.address.toLowerCase(),
       isFrozen: false,
       chainId,
-      holdings: { decimals: 18 },
+      holdings: true,
       outstandingInvestIsBalance: true,
       outstandingRedeemIsBalance: true,
     }))
