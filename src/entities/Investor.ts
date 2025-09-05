@@ -3,6 +3,7 @@ import type { Centrifuge } from '../Centrifuge.js'
 import type { HexString } from '../types/index.js'
 import { AssetId, PoolId, ShareClassId } from '../utils/types.js'
 import { Entity } from './Entity.js'
+import { Balance } from '../utils/BigInt.js'
 
 export class Investor extends Entity {
   address: HexString
@@ -92,17 +93,23 @@ export class Investor extends Entity {
   /**
    * Retrieve transactions given an address.
    */
-  transactions(address: HexString) {
+  transactions(address: HexString, poolId: PoolId) {
     return this._query(null, () =>
-      this._root
-        ._queryIndexer<{
+      combineLatest([
+        this._root.pool(poolId).pipe(switchMap((pool) => pool.currency())),
+        this._root._queryIndexer<{
           investorTransactions: {
             items: {
               account: HexString
               createdAt: string
               type: string
               txHash: HexString
+              // Todo: return with asset decimal once indexer is providing assetId
               currencyAmount: bigint
+              token: {
+                name: string
+              }
+              tokenAmount: bigint
             }[]
           }
         }>(
@@ -114,21 +121,26 @@ export class Investor extends Entity {
                type
                txHash
                currencyAmount
+               token {
+                 name
+               }
+               tokenAmount
               }
             }
           }`,
           { address: address.toLowerCase() }
+        ),
+      ]).pipe(
+        map(([currency, { investorTransactions }]) =>
+          investorTransactions.items.map((item) => ({
+            type: item.type,
+            txHash: item.txHash,
+            createdAt: item.createdAt,
+            token: item.token.name,
+            tokenAmount: new Balance(item.tokenAmount, currency.decimals),
+          }))
         )
-        .pipe(
-          map(({ investorTransactions }) =>
-            investorTransactions.items.map((item) => ({
-              type: item.type,
-              txHash: item.txHash,
-              currencyAmount: item.currencyAmount,
-              createdAt: item.createdAt,
-            }))
-          )
-        )
+      )
     )
   }
 }

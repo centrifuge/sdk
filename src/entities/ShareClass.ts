@@ -1690,6 +1690,12 @@ export class ShareClass extends Entity {
               isFrozen: boolean
             }[]
           }
+          assets: {
+            items: {
+              decimals: number
+              id: string
+            }[]
+          }
         }>(
           `query ($scId: String!) {
           tokenInstancePositions(where: { tokenId: $scId }, limit: 1000) {
@@ -1700,31 +1706,48 @@ export class ShareClass extends Entity {
               isFrozen
             }
           }
+
+          assets{
+            items {
+              decimals
+              id
+            }
+          }
         }`,
           { scId: this.id.raw }
         ),
       ]).pipe(
-        map(([deployments, poolCurrency, { outstandingInvests, outstandingRedeems }, { tokenInstancePositions }]) => {
-          const chainsById = new Map(deployments.blockchains.items.map((chain) => [chain.centrifugeId, chain.id]))
+        map(
+          ([
+            deployments,
+            poolCurrency,
+            { outstandingInvests, outstandingRedeems },
+            { tokenInstancePositions, assets },
+          ]) => {
+            const chainsById = new Map(deployments.blockchains.items.map((chain) => [chain.centrifugeId, chain.id]))
 
-          return tokenInstancePositions.items.map((position) => {
-            const chainId = Number(chainsById.get(position.centrifugeId)!)
-            const outstandingInvest = outstandingInvests.find((order) => order.investor === position.accountAddress)
-            const outstandingRedeem = outstandingRedeems.find((order) => order.investor === position.accountAddress)
-            return {
-              address: position.accountAddress,
-              holdings: new Balance(position.balance, poolCurrency.decimals),
-              isFrozen: position.isFrozen,
-              chainId,
-              outstandingInvest: outstandingInvest
-                ? new Balance(outstandingInvest.pendingAmount, poolCurrency.decimals)
-                : new Balance(0n, poolCurrency.decimals),
-              outstandingRedeem: outstandingRedeem
-                ? new Balance(outstandingRedeem.pendingAmount, poolCurrency.decimals)
-                : new Balance(0n, poolCurrency.decimals),
-            }
-          })
-        })
+            return tokenInstancePositions.items.map((position) => {
+              const chainId = Number(chainsById.get(position.centrifugeId)!)
+              const outstandingInvest = outstandingInvests.find((order) => order.investor === position.accountAddress)
+              const outstandingRedeem = outstandingRedeems.find((order) => order.investor === position.accountAddress)
+              const assetId = outstandingInvest?.assetId.toString()
+              const assetDecimals = assets.items.find((asset) => asset.id === assetId)?.decimals ?? 18
+              return {
+                address: position.accountAddress,
+                holdings: new Balance(position.balance, poolCurrency.decimals),
+                isFrozen: position.isFrozen,
+                chainId,
+                outstandingInvest: outstandingInvest
+                  ? new Balance(outstandingInvest.pendingAmount, assetDecimals).scale(poolCurrency.decimals)
+                  : new Balance(0n, poolCurrency.decimals),
+                amount: new Balance(outstandingInvest?.pendingAmount ?? 0n, assetDecimals),
+                outstandingRedeem: outstandingRedeem
+                  ? new Balance(outstandingRedeem.pendingAmount, poolCurrency.decimals)
+                  : new Balance(0n, poolCurrency.decimals),
+              }
+            })
+          }
+        )
       )
     )
   }
