@@ -98,8 +98,10 @@ export class ShareClass extends Entity {
   deploymentPerNetwork() {
     return this._query(null, () =>
       this.pool.activeNetworks().pipe(
-        switchMap((networks) =>
-          combineLatest(
+        switchMap((networks) => {
+          if (networks.length === 0) return of([])
+
+          return combineLatest(
             networks.map((network) =>
               combineLatest([
                 this._share(network.chainId).pipe(catchError(() => of(null))),
@@ -108,7 +110,7 @@ export class ShareClass extends Entity {
               ])
             )
           )
-        ),
+        }),
         map((data) =>
           data
             .filter(([, restrictionManager]) => restrictionManager != null)
@@ -202,6 +204,9 @@ export class ShareClass extends Entity {
             return of([])
           }
           const items = res.filter((item) => Number(item.asset.blockchain.id) === chainId || !chainId)
+
+          if (items.length === 0) return of([])
+
           return combineLatest([
             combineLatest(
               items.map((holding) => {
@@ -592,15 +597,15 @@ export class ShareClass extends Entity {
         self._root.id(self.pool.chainId),
         self.pendingAmounts(),
         firstValueFrom(
-          self
-            ._investorOrders()
-            .pipe(
-              switchMap((orders) =>
-                combineLatest(
-                  orders.outstandingInvests.map((order) => self._investorOrder(order.assetId, order.investor))
-                )
+          self._investorOrders().pipe(
+            switchMap((orders) => {
+              if (orders.outstandingInvests.length === 0) return of([])
+
+              return combineLatest(
+                orders.outstandingInvests.map((order) => self._investorOrder(order.assetId, order.investor))
               )
-            )
+            })
+          )
         ),
         self._root._maxBatchGasLimit(self.pool.chainId),
       ])
@@ -750,18 +755,19 @@ export class ShareClass extends Entity {
         self._root.id(self.pool.chainId),
         self.pendingAmounts(),
         firstValueFrom(
-          self
-            ._investorOrders()
-            .pipe(
-              switchMap((orders) =>
-                combineLatest(
-                  orders.outstandingRedeems.map((order) => self._investorOrder(order.assetId, order.investor))
-                )
+          self._investorOrders().pipe(
+            switchMap((orders) => {
+              if (orders.outstandingRedeems.length === 0) return of([])
+
+              return combineLatest(
+                orders.outstandingRedeems.map((order) => self._investorOrder(order.assetId, order.investor))
               )
-            )
+            })
+          )
         ),
         self._root._maxBatchGasLimit(self.pool.chainId),
       ])
+
       const assetsWithApprove = assets.filter((a) => a.approveShareAmount).length
       const assetsWithRevoke = assets.filter((a) => a.revokePricePerShare).length
       const gasLimitPerAsset = assetsWithRevoke ? maxBatchGasLimit / BigInt(assetsWithRevoke) : 0n
@@ -1261,6 +1267,7 @@ export class ShareClass extends Entity {
               contract.read.depositRequest([this.id.raw, assetId.raw, addressToBytes32(investor)]),
               contract.read.redeemRequest([this.id.raw, assetId.raw, addressToBytes32(investor)]),
             ])
+
             return {
               assetId,
               investor,

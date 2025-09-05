@@ -1086,38 +1086,38 @@ export class Centrifuge {
       this.#isBatching.add(tx)
     }
 
-    return this._transact(
-      (ctx) =>
-        combineLatest(transactions.map((tx) => tx.pipe(first()))).pipe(
-          switchMap(async function* (batches_) {
-            const batches = batches_ as any as BatchTransactionData[]
-            if (!batches.every((b) => b.data && b.contract)) {
-              throw new Error('Not all transactions can be batched')
-            }
-            const value = batches.reduce((acc, b) => acc + (b.value ?? 0n), 0n)
-            const data = batches.map((b) => b.data).flat()
-            const messages = batches.reduce(
-              (acc, b) => {
-                if (b.messages) {
-                  Object.entries(b.messages).forEach(([cid, types]) => {
-                    const chainId = Number(cid)
-                    if (!acc[chainId]) acc[chainId] = []
-                    acc[chainId].push(...types)
-                  })
-                }
-                return acc
-              },
-              {} as Record<number, MessageTypeWithSubType[]>
-            )
-            const contracts = [...new Set(batches.map((b) => b.contract))]
-            if (contracts.length !== 1) {
-              throw new Error(`Cannot batch transactions to different contracts: ${contracts.join(', ')}`)
-            }
-            yield* wrapTransaction(title, ctx, { data, value, contract: contracts[0] as HexString, messages })
-          })
-        ),
-      chainIds[0]!
-    )
+    return this._transact((ctx) => {
+      if (transactions.length === 0) return of([] as any)
+
+      return combineLatest(transactions.map((tx) => tx.pipe(first()))).pipe(
+        switchMap(async function* (batches_) {
+          const batches = batches_ as any as BatchTransactionData[]
+          if (!batches.every((b) => b.data && b.contract)) {
+            throw new Error('Not all transactions can be batched')
+          }
+          const value = batches.reduce((acc, b) => acc + (b.value ?? 0n), 0n)
+          const data = batches.map((b) => b.data).flat()
+          const messages = batches.reduce(
+            (acc, b) => {
+              if (b.messages) {
+                Object.entries(b.messages).forEach(([cid, types]) => {
+                  const chainId = Number(cid)
+                  if (!acc[chainId]) acc[chainId] = []
+                  acc[chainId].push(...types)
+                })
+              }
+              return acc
+            },
+            {} as Record<number, MessageTypeWithSubType[]>
+          )
+          const contracts = [...new Set(batches.map((b) => b.contract))]
+          if (contracts.length !== 1) {
+            throw new Error(`Cannot batch transactions to different contracts: ${contracts.join(', ')}`)
+          }
+          yield* wrapTransaction(title, ctx, { data, value, contract: contracts[0] as HexString, messages })
+        })
+      )
+    }, chainIds[0]!)
   }
 
   /** @internal */

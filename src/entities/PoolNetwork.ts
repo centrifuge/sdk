@@ -503,6 +503,8 @@ export class PoolNetwork extends Entity {
     return this._query(null, () =>
       this.pool._shareClassIds().pipe(
         switchMap((scIds) => {
+          if (scIds.length === 0) throw new Error('No share classes found')
+
           return combineLatest(scIds.map((scId) => this.vaults(scId))).pipe(
             map((vaultsShareClassArr) =>
               Object.fromEntries(vaultsShareClassArr.map((vaults, index) => [scIds[index]!.raw, vaults]))

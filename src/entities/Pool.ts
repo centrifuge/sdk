@@ -228,6 +228,8 @@ export class Pool extends Entity {
     return this._query(null, () => {
       return this.networks().pipe(
         switchMap((networks) => {
+          if (networks.length === 0) return of([])
+
           return combineLatest(
             networks.map((network) =>
               network.isActive().pipe(
