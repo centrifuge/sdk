@@ -152,7 +152,7 @@ describe('ShareClass', () => {
     ])
   })
 
-  it.only('gets holders', async () => {
+  it('gets holders', async () => {
     const holders = await shareClass.holders()
     expect(holders).to.have.length.greaterThan(0)
 
