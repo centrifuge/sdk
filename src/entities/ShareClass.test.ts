@@ -476,6 +476,9 @@ describe('ShareClass', () => {
       const sc = new ShareClass(centrifuge, pool, scId.raw)
       const vault = await pool.vault(chainId, sc.id, assetId)
       const defaultSharesAmount = Balance.fromFloat(100, 18)
+      const investor = randomAddress()
+
+      await context.tenderlyFork.fundAccountEth(investor, 10n ** 18n)
 
       await mint(vault._asset, investor)
 
@@ -514,19 +517,23 @@ describe('ShareClass', () => {
       let pendingAmounts = await vault.shareClass.pendingAmounts()
       let pendingAmount = pendingAmounts.find((p) => p.assetId.equals(assetId))!
 
+      await vault.shareClass.approveDepositsAndIssueShares([
+        {
+          assetId,
+          approveAssetAmount: pendingAmount.pendingDeposit,
+          issuePricePerShare: Price.fromFloat(1),
+        },
+      ])
+
       // Approve deposits
       ;[, investment] = await Promise.all([
-        vault.shareClass.approveDepositsAndIssueShares([
-          {
-            assetId,
-            approveAssetAmount: pendingAmount.pendingDeposit,
-            issuePricePerShare: Price.fromFloat(1),
-          },
-        ]),
+        shareClass.claimDeposit(assetId, investor),
         firstValueFrom(
           vault.investment(investor).pipe(skipWhile((i) => !i.claimableInvestShares.eq(defaultSharesAmount.toBigInt())))
         ),
       ])
+
+      await new Promise((r) => setTimeout(r, 2000))
 
       context.tenderlyFork.impersonateAddress = investor
       context.centrifuge.setSigner(context.tenderlyFork.signer)
@@ -555,15 +562,17 @@ describe('ShareClass', () => {
 
       pendingAmount = pendingAmounts.find((p) => p.assetId.equals(assetId))!
 
+      await vault.shareClass.approveRedeemsAndRevokeShares([
+        {
+          assetId,
+          approveShareAmount: pendingAmount.pendingRedeem,
+          revokePricePerShare: Price.fromFloat(1),
+        },
+      ])
+
       // Approve redeems
       const [result] = await Promise.all([
-        vault.shareClass.approveRedeemsAndRevokeShares([
-          {
-            assetId,
-            approveShareAmount: pendingAmount.pendingRedeem,
-            revokePricePerShare: Price.fromFloat(1),
-          },
-        ]),
+        shareClass.claimRedeem(assetId, investor),
         firstValueFrom(vault.investment(investor).pipe(skipWhile((i) => i.claimableRedeemCurrency.eq(0n)))),
       ])
 
