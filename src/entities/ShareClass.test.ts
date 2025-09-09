@@ -53,6 +53,7 @@ describe('ShareClass', () => {
     const nav = await shareClass.navPerNetwork()
     expect(nav[0]!.totalIssuance).to.be.instanceOf(Balance)
     expect(nav[0]!.pricePerShare).to.be.instanceOf(Price)
+    expect(nav[0]!.address).to.be.a('string')
     expect(nav[0]!.pricePerShare.toFloat()).to.be.greaterThan(0)
   })
 
@@ -150,6 +151,31 @@ describe('ShareClass', () => {
       { isMember: true, validUntil: new Date(1800000000 * 1000) },
       { isMember: true, validUntil: new Date(1800000000 * 1000) },
     ])
+  })
+
+  it('gets holders', async () => {
+    const holders = await shareClass.holders()
+    expect(holders).to.have.length.greaterThan(0)
+
+    const actual = holders.map((h) => ({
+      address: h.address.toLowerCase(),
+      isFrozen: h.isFrozen,
+      chainId: h.chainId,
+      holdings: h.holdings instanceof Balance,
+      outstandingInvestIsBalance: h.outstandingInvest instanceof Balance,
+      outstandingRedeemIsBalance: h.outstandingRedeem instanceof Balance,
+    }))
+
+    const expected = holders.map((h) => ({
+      address: h.address.toLowerCase(),
+      isFrozen: false,
+      chainId,
+      holdings: true,
+      outstandingInvestIsBalance: true,
+      outstandingRedeemIsBalance: true,
+    }))
+
+    expect(actual).to.deep.equal(expected)
   })
 
   it('gets pending amounts', async () => {

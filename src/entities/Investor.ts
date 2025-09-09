@@ -3,6 +3,7 @@ import type { Centrifuge } from '../Centrifuge.js'
 import type { HexString } from '../types/index.js'
 import { AssetId, PoolId, ShareClassId } from '../utils/types.js'
 import { Entity } from './Entity.js'
+import { Balance } from '../utils/BigInt.js'
 
 export class Investor extends Entity {
   address: HexString
@@ -79,12 +80,69 @@ export class Investor extends Entity {
     )
   }
 
+  /**
+   * Retrieve if an account is a member of a share class.
+   */
   isMember(scId: ShareClassId, chainId: number) {
     return this._query(null, () =>
       this._root.pool(scId.poolId).pipe(
         switchMap((pool) => pool.shareClass(scId)),
         switchMap((shareClass) => shareClass.member(this.address, chainId)),
         map(({ isMember }) => isMember)
+      )
+    )
+  }
+
+  /**
+   * Retrieve transactions given an address.
+   */
+  transactions(address: HexString, poolId: PoolId) {
+    return this._query(null, () =>
+      combineLatest([
+        this._root.pool(poolId).pipe(switchMap((pool) => pool.currency())),
+        this._root._queryIndexer<{
+          investorTransactions: {
+            items: {
+              account: HexString
+              createdAt: string
+              type: string
+              txHash: HexString
+              // Todo: return with asset decimal once indexer is providing assetId
+              currencyAmount: bigint
+              token: {
+                name: string
+              }
+              tokenAmount: bigint
+            }[]
+          }
+        }>(
+          `query ($address: String!) {
+            investorTransactions(where: { account: $address } limit: 1000) {
+              items {
+               account
+               createdAt
+               type
+               txHash
+               currencyAmount
+               token {
+                 name
+               }
+               tokenAmount
+              }
+            }
+          }`,
+          { address: address.toLowerCase() }
+        ),
+      ]).pipe(
+        map(([currency, { investorTransactions }]) =>
+          investorTransactions.items.map((item) => ({
+            type: item.type,
+            txHash: item.txHash,
+            createdAt: item.createdAt,
+            token: item.token.name,
+            tokenAmount: new Balance(item.tokenAmount, currency.decimals),
+          }))
+        )
       )
     )
   }
