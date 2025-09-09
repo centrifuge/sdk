@@ -36,28 +36,7 @@ jobs:
         run: yarn build
 
       - name: Publish to NPM
-        run: |
-          echo "Publishing to NPM with provenance..."
-          echo "Current npm version: $(npm --version)"
-          echo "Node version: $(node --version)"
-          echo "Repository: $GITHUB_REPOSITORY"
-          echo "Commit: $GITHUB_SHA"
-          echo "Workflow: $GITHUB_WORKFLOW"
-          echo "---"
-          
-          # Capture npm output to check for provenance information
-          npm_output=$(npm publish --provenance --access public 2>&1)
-          echo "$npm_output"
-          
-          echo "---"
-          echo "✅ Package published successfully"
-          
-          # Check if provenance-related information appears in the output
-          if echo "$npm_output" | grep -i "provenance\|attestation\|oidc\|slsa" > /dev/null; then
-            echo "🎉 Provenance-related output detected in npm publish!"
-          else
-            echo "⚠️  No provenance-related output detected in npm publish"
-          fi
+        run: npm publish --provenance --access public 2>&1
         # run: yarn npm publish --access public
         # Note: At this time, yarn is not a supported tool for publishing your packages with provenance.
         # https://docs.npmjs.com/generating-provenance-statements#using-third-party-package-publishing-tools
@@ -87,5 +66,5 @@ jobs:
           echo "---"
           echo "If provenance is working, you should see:"
           echo "1. Attestations in the registry metadata"
-          echo "2. A green 'Verified provenance' badge on npmjs.com"
+          echo "2. A green 'Verified provenance' badge on https://www.npmjs.com/package/@centrifuge/sdk?activeTab=versions"
           echo "3. Build environment and source commit information"
