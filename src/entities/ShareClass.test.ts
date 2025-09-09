@@ -53,6 +53,7 @@ describe('ShareClass', () => {
     const nav = await shareClass.navPerNetwork()
     expect(nav[0]!.totalIssuance).to.be.instanceOf(Balance)
     expect(nav[0]!.pricePerShare).to.be.instanceOf(Price)
+    expect(nav[0]!.address).to.be.a('string')
     expect(nav[0]!.pricePerShare.toFloat()).to.be.greaterThan(0)
   })
 

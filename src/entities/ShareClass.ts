@@ -132,6 +132,7 @@ export class ShareClass extends Entity {
                 items {
                   totalIssuance
                   tokenPrice
+                  address
                   blockchain {
                     id
                   }
@@ -145,6 +146,7 @@ export class ShareClass extends Entity {
                   totalIssuance: bigint
                   tokenPrice: bigint
                   blockchain: { id: string }
+                  address: HexString
                 }[]
               }
             }) =>
@@ -153,6 +155,7 @@ export class ShareClass extends Entity {
                 totalIssuance: new Balance(item.totalIssuance, poolCurrency.decimals),
                 pricePerShare: new Price(item.tokenPrice),
                 nav: new Balance(item.totalIssuance, poolCurrency.decimals).mul(new Price(item.tokenPrice)),
+                address: item.address,
               }))
           )
         )
