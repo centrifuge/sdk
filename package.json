@@ -1,6 +1,6 @@
 {
   "name": "@centrifuge/sdk",
-  "version": "0.0.0-alpha.66",
+  "version": "0.0.0-provenance-test.1",
   "description": "",
   "homepage": "https://github.com/centrifuge/sdk/tree/main#readme",
   "author": "",
@@ -24,7 +24,7 @@
   "engines": {
     "node": ">=18.18"
   },
-  "packageManager": "yarn@4.5.3",
+  "packageManager": "yarn@4.5.0",
   "scripts": {
     "dev": "tsc -w --importHelpers",
     "build": "tsc --importHelpers",
