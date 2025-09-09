@@ -95,8 +95,8 @@ jobs:
           echo "✅ Test package published successfully"
           
           # Verify attestations immediately after publish
-          PACKAGE_NAME="@centrifuge/sdk-provenance-test"
-          PACKAGE_VERSION="0.0.0-alpha.64"
+          PACKAGE_NAME="@centrifuge/sdk"
+          PACKAGE_VERSION="0.0.0-provenance-test.1"
           
           echo "--- Verifying attestations ---"
           echo "Checking package: $PACKAGE_NAME@$PACKAGE_VERSION"
