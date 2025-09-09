@@ -13,6 +13,7 @@ jobs:
   build-n-test:
     permissions:
       id-token: write
+      contents: read
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -42,6 +43,20 @@ jobs:
           echo "GitHub Actions environment: $GITHUB_ACTIONS"
           echo "Repository: $GITHUB_REPOSITORY"
           echo "Commit: $GITHUB_SHA"
+          echo "---"
+          echo "Checking OIDC token availability..."
+          if [ -n "$ACTIONS_ID_TOKEN_REQUEST_TOKEN" ] && [ -n "$ACTIONS_ID_TOKEN_REQUEST_URL" ]; then
+            echo "✅ OIDC token environment variables are set"
+            echo "ACTIONS_ID_TOKEN_REQUEST_TOKEN: ${ACTIONS_ID_TOKEN_REQUEST_TOKEN:0:20}..."
+            echo "ACTIONS_ID_TOKEN_REQUEST_URL: $ACTIONS_ID_TOKEN_REQUEST_URL"
+          else
+            echo "❌ OIDC token environment variables are missing"
+            echo "ACTIONS_ID_TOKEN_REQUEST_TOKEN: $ACTIONS_ID_TOKEN_REQUEST_TOKEN"
+            echo "ACTIONS_ID_TOKEN_REQUEST_URL: $ACTIONS_ID_TOKEN_REQUEST_URL"
+          fi
+          echo "---"
+          echo "Checking npm configuration..."
+          npm config list
           echo "---"
           
           # Capture npm output to check for provenance information
