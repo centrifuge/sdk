@@ -152,6 +152,31 @@ describe('ShareClass', () => {
     ])
   })
 
+  it('gets holders', async () => {
+    const holders = await shareClass.holders()
+    expect(holders).to.have.length.greaterThan(0)
+
+    const actual = holders.map((h) => ({
+      address: h.address.toLowerCase(),
+      isFrozen: h.isFrozen,
+      chainId: h.chainId,
+      holdings: h.holdings instanceof Balance,
+      outstandingInvestIsBalance: h.outstandingInvest instanceof Balance,
+      outstandingRedeemIsBalance: h.outstandingRedeem instanceof Balance,
+    }))
+
+    const expected = holders.map((h) => ({
+      address: h.address.toLowerCase(),
+      isFrozen: false,
+      chainId,
+      holdings: true,
+      outstandingInvestIsBalance: true,
+      outstandingRedeemIsBalance: true,
+    }))
+
+    expect(actual).to.deep.equal(expected)
+  })
+
   it('gets pending amounts', async () => {
     const pendingAmounts = await shareClass.pendingAmounts()
     expect(pendingAmounts.length).to.be.greaterThan(0)

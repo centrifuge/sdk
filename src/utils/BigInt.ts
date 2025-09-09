@@ -48,6 +48,14 @@ export class DecimalWrapper extends BigIntWrapper {
     return this.toDecimal().toNumber()
   }
 
+  scale(targetDecimals: number): Balance {
+    if (targetDecimals === this.decimals) {
+      return this as any
+    }
+
+    return Balance.fromFloat(this.toDecimal(), targetDecimals)
+  }
+
   /** @internal */
   _add<T>(value: bigint | (T extends DecimalWrapper ? T : never)): T {
     const val = typeof value === 'bigint' ? value : value.toBigInt()

@@ -1014,6 +1014,53 @@ export class ShareClass extends Entity {
     }, this.pool.chainId)
   }
 
+  /**
+   * Retrieve holders of the share class.
+   */
+  holders() {
+    return this._query(null, () =>
+      combineLatest([
+        this._root._deployments(),
+        this.pool.currency(),
+        this._investorOrders(),
+        this._tokenInstancePositions(),
+      ]).pipe(
+        map(
+          ([
+            deployments,
+            poolCurrency,
+            { outstandingInvests, outstandingRedeems },
+            { items: tokenInstancePositions, assets },
+          ]) => {
+            const chainsById = new Map(deployments.blockchains.items.map((chain) => [chain.centrifugeId, chain.id]))
+
+            return tokenInstancePositions.map((position) => {
+              const chainId = Number(chainsById.get(position.centrifugeId)!)
+              const outstandingInvest = outstandingInvests.find((order) => order.investor === position.accountAddress)
+              const outstandingRedeem = outstandingRedeems.find((order) => order.investor === position.accountAddress)
+              const assetId = outstandingInvest?.assetId.toString()
+              const assetDecimals =
+                assets.find((asset: { id: string; decimals: number }) => asset.id === assetId)?.decimals ?? 18
+              return {
+                address: position.accountAddress,
+                holdings: new Balance(position.balance, poolCurrency.decimals),
+                isFrozen: position.isFrozen,
+                chainId,
+                outstandingInvest: outstandingInvest
+                  ? new Balance(outstandingInvest.pendingAmount, assetDecimals).scale(poolCurrency.decimals)
+                  : new Balance(0n, poolCurrency.decimals),
+                amount: new Balance(outstandingInvest?.pendingAmount ?? 0n, assetDecimals),
+                outstandingRedeem: outstandingRedeem
+                  ? new Balance(outstandingRedeem.pendingAmount, poolCurrency.decimals)
+                  : new Balance(0n, poolCurrency.decimals),
+              }
+            })
+          }
+        )
+      )
+    )
+  }
+
   /** @internal */
   _balances() {
     return this._root._queryIndexer(
@@ -1664,6 +1711,56 @@ export class ShareClass extends Entity {
         filter(({ id }) => !!id),
         map(({ id }) => id!)
       )
+    )
+  }
+
+  /** @internal */
+  _tokenInstancePositions() {
+    return this._query(null, () =>
+      this._root
+        ._queryIndexer<{
+          tokenInstancePositions: {
+            items: {
+              accountAddress: HexString
+              centrifugeId: string
+              balance: bigint
+              isFrozen: boolean
+            }[]
+          }
+          assets: {
+            items: {
+              decimals: number
+              id: string
+            }[]
+          }
+        }>(
+          `query ($scId: String!) {
+          tokenInstancePositions(where: { tokenId: $scId }, limit: 1000) {
+            items {
+              accountAddress
+              centrifugeId
+              balance
+              isFrozen
+            }
+          }
+
+          assets{
+            items {
+              decimals
+              id
+            }
+          }
+        }`,
+          { scId: this.id.raw }
+        )
+        .pipe(
+          map((data) => {
+            return {
+              items: data.tokenInstancePositions.items,
+              assets: data.assets.items,
+            }
+          })
+        )
     )
   }
 }
