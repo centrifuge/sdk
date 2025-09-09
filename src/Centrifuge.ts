@@ -1087,7 +1087,7 @@ export class Centrifuge {
     }
 
     return this._transact((ctx) => {
-      if (transactions.length === 0) return of([] as any)
+      if (transactions.length === 0) throw new Error('No transactions to batch')
 
       return combineLatest(transactions.map((tx) => tx.pipe(first()))).pipe(
         switchMap(async function* (batches_) {

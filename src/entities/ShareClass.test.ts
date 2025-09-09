@@ -533,8 +533,6 @@ describe('ShareClass', () => {
         ),
       ])
 
-      await new Promise((r) => setTimeout(r, 2000))
-
       context.tenderlyFork.impersonateAddress = investor
       context.centrifuge.setSigner(context.tenderlyFork.signer)
 
