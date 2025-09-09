@@ -86,3 +86,32 @@ jobs:
           # flags: unittests
           name: sdk-coverage
           fail_ci_if_error: true
+
+      - name: Test actual publish with provenance
+        if: github.ref == 'refs/heads/security-n-provenance' && github.event_name == 'push'
+        run: |
+          echo "🚀 Publishing test package to verify provenance..."
+          npm publish --provenance --access public --tag alpha
+          echo "✅ Test package published successfully"
+          
+          # Verify attestations immediately after publish
+          PACKAGE_NAME="@centrifuge/sdk-provenance-test"
+          PACKAGE_VERSION="0.0.0-alpha.64"
+          
+          echo "--- Verifying attestations ---"
+          echo "Checking package: $PACKAGE_NAME@$PACKAGE_VERSION"
+          
+          # Wait a moment for registry to update
+          sleep 5
+          
+          echo "--- Registry attestations ---"
+          npm view $PACKAGE_NAME@$PACKAGE_VERSION dist.attestations --json || echo "No attestations found"
+          
+          echo "--- Registry signatures ---"
+          npm view $PACKAGE_NAME@$PACKAGE_VERSION dist.signatures --json || echo "No signatures found"
+          
+          echo "---"
+          echo "🎉 Check the package at: https://www.npmjs.com/package/$PACKAGE_NAME/v/$PACKAGE_VERSION"
+          echo "Look for the green 'Verified provenance' badge!"
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
