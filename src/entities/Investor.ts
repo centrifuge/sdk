@@ -1,4 +1,4 @@
-import { combineLatest, map, switchMap } from 'rxjs'
+import { combineLatest, map, of, switchMap } from 'rxjs'
 import type { Centrifuge } from '../Centrifuge.js'
 import type { HexString } from '../types/index.js'
 import { AssetId, PoolId, ShareClassId } from '../utils/types.js'
@@ -59,6 +59,9 @@ export class Investor extends Entity {
                 .filter((item) => !check(item.blockchain.id, item.assetAddress)),
               ...tokenInstances.items,
             ].filter((item) => !chainId || Number(item.blockchain.id) === chainId)
+
+            if (all.length === 0) return of([])
+
             return combineLatest(
               all.map((item) => this._root.balance(item.address, this.address, Number(item.blockchain.id)))
             )

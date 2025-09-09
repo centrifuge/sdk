@@ -32,7 +32,7 @@ function spawnFork() {
   console.log('Spawning fork...')
   fork = childProcess.spawn('anvil', [
     '--fork-url',
-    'https://eth-sepolia.g.alchemy.com/v2/KNR-1LZhNqWOxZS2AN8AFeaiESBV10qZ',
+    'https://eth-sepolia.api.onfinality.io/rpc?apikey=18704429-288d-4f55-bda8-8b60f4c53b96',
     '--auto-impersonate',
   ])
   fork.on('exit', (code) => {

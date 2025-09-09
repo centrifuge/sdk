@@ -24,7 +24,13 @@ jobs:
           PR_NUMBER=${{ github.event.pull_request.number }}
           # Make script executable
           chmod +x ./.github/ci-scripts/pr-label-check.sh
-          RELEASE_TYPE=$(./.github/ci-scripts/pr-label-check.sh $PR_NUMBER)
+          
+          # Capture both stdout and stderr from the script
+          if ! RELEASE_TYPE=$(./.github/ci-scripts/pr-label-check.sh $PR_NUMBER 2>&1); then
+            echo "::error::$RELEASE_TYPE"
+            exit 1
+          fi
+          
           echo "version=$RELEASE_TYPE" >> $GITHUB_OUTPUT
           echo "::notice::$RELEASE_TYPE label detected on PR #$PR_NUMBER"
           if [ "$RELEASE_TYPE" == "no-release" ]; then
@@ -91,7 +97,13 @@ jobs:
         run: |
           PR_NUMBER=$(gh pr list --state merged --json number --jq '.[0].number')
           chmod +x ./.github/ci-scripts/pr-label-check.sh
-          RELEASE_TYPE=$(./.github/ci-scripts/pr-label-check.sh $PR_NUMBER)
+          
+          # Capture both stdout and stderr from the script
+          if ! RELEASE_TYPE=$(./.github/ci-scripts/pr-label-check.sh $PR_NUMBER 2>&1); then
+            echo "::error::$RELEASE_TYPE"
+            exit 1
+          fi
+          
           echo "::notice::Last PR merged detected: #$PR_NUMBER) with release label: $RELEASE_TYPE"
 
           if [ "$RELEASE_TYPE" = "alpha" ] || [ "$RELEASE_TYPE" = "patch" ]; then

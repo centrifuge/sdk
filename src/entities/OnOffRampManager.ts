@@ -1,4 +1,4 @@
-import { combineLatest, map, switchMap } from 'rxjs'
+import { combineLatest, map, of, switchMap } from 'rxjs'
 import { encodeFunctionData, encodePacked, toHex } from 'viem'
 import { ABI } from '../abi/index.js'
 import { Centrifuge } from '../Centrifuge.js'
@@ -140,6 +140,8 @@ export class OnOffRampManager extends Entity {
     return this._query(null, () =>
       this.assets().pipe(
         switchMap((onRampAssets) => {
+          if (onRampAssets.length === 0) return of([])
+
           return combineLatest(
             onRampAssets.map((item) => this._root.balance(item.assetAddress, this.onrampAddress, this.network.chainId))
           )
