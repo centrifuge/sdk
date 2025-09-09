@@ -32,15 +32,6 @@ jobs:
 
       - name: Run Build
         run: yarn build
-
-      - name: Run tests
-        run: yarn test:coverage
-        env:
-          TENDERLY_ACCESS_KEY: ${{ secrets.TENDERLY_ACCESS_KEY }}
-          PROJECT_SLUG: ${{ secrets.PROJECT_SLUG }}
-          ACCOUNT_SLUG: ${{ secrets.ACCOUNT_SLUG }}
-          DEBUG: ${{ github.run_attempt > 1 }}
-
       - name: Test npm publish with provenance (dry-run)
         run: |
           npm install -g npm@latest
@@ -67,6 +58,13 @@ jobs:
           fi
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+      - name: Run tests
+        run: yarn test:coverage
+        env:
+          TENDERLY_ACCESS_KEY: ${{ secrets.TENDERLY_ACCESS_KEY }}
+          PROJECT_SLUG: ${{ secrets.PROJECT_SLUG }}
+          ACCOUNT_SLUG: ${{ secrets.ACCOUNT_SLUG }}
+          DEBUG: ${{ github.run_attempt > 1 }}
 
       - name: Upload test results
         if: success() || failure()
