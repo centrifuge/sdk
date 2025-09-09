@@ -41,6 +41,33 @@ jobs:
           ACCOUNT_SLUG: ${{ secrets.ACCOUNT_SLUG }}
           DEBUG: ${{ github.run_attempt > 1 }}
 
+      - name: Test npm publish with provenance (dry-run)
+        run: |
+          npm install -g npm@latest
+          echo "Testing npm publish with provenance..."
+          echo "Current npm version: $(npm --version)"
+          echo "Node version: $(node --version)"
+          echo "GitHub Actions environment: $GITHUB_ACTIONS"
+          echo "Repository: $GITHUB_REPOSITORY"
+          echo "Commit: $GITHUB_SHA"
+          echo "---"
+          
+          # Capture npm output to check for provenance information
+          npm_output=$(npm publish --provenance --access public --dry-run 2>&1)
+          echo "$npm_output"
+          
+          echo "---"
+          echo "✅ Dry-run completed successfully"
+          
+          # Check if provenance-related information appears in the output
+          if echo "$npm_output" | grep -i "provenance\|attestation\|oidc\|slsa" > /dev/null; then
+            echo "🎉 Provenance-related output detected in npm publish!"
+          else
+            echo "⚠️  No provenance-related output detected in npm publish"
+          fi
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
       - name: Upload test results
         if: success() || failure()
         uses: actions/upload-artifact@v4
