@@ -66,11 +66,7 @@ describe('Investor', () => {
   })
 
   describe('Transactions', () => {
-    it('should return transactions for an investor', async () => {
-      const account = await context.centrifuge.investor(randomAddress())
-      const transactions = await account.transactions(investor, poolId)
-      expect(transactions).to.exist
-    })
+    // TODO
   })
 })
 

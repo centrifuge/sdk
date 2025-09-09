@@ -1018,7 +1018,47 @@ export class ShareClass extends Entity {
    * Retrieve holders of the share class.
    */
   holders() {
-    return this._tokenInstancePositions()
+    return this._query(null, () =>
+      combineLatest([
+        this._root._deployments(),
+        this.pool.currency(),
+        this._investorOrders(),
+        this._tokenInstancePositions(),
+      ]).pipe(
+        map(
+          ([
+            deployments,
+            poolCurrency,
+            { outstandingInvests, outstandingRedeems },
+            { items: tokenInstancePositions, assets },
+          ]) => {
+            const chainsById = new Map(deployments.blockchains.items.map((chain) => [chain.centrifugeId, chain.id]))
+
+            return tokenInstancePositions.map((position) => {
+              const chainId = Number(chainsById.get(position.centrifugeId)!)
+              const outstandingInvest = outstandingInvests.find((order) => order.investor === position.accountAddress)
+              const outstandingRedeem = outstandingRedeems.find((order) => order.investor === position.accountAddress)
+              const assetId = outstandingInvest?.assetId.toString()
+              const assetDecimals =
+                assets.find((asset: { id: string; decimals: number }) => asset.id === assetId)?.decimals ?? 18
+              return {
+                address: position.accountAddress,
+                holdings: new Balance(position.balance, poolCurrency.decimals),
+                isFrozen: position.isFrozen,
+                chainId,
+                outstandingInvest: outstandingInvest
+                  ? new Balance(outstandingInvest.pendingAmount, assetDecimals).scale(poolCurrency.decimals)
+                  : new Balance(0n, poolCurrency.decimals),
+                amount: new Balance(outstandingInvest?.pendingAmount ?? 0n, assetDecimals),
+                outstandingRedeem: outstandingRedeem
+                  ? new Balance(outstandingRedeem.pendingAmount, poolCurrency.decimals)
+                  : new Balance(0n, poolCurrency.decimals),
+              }
+            })
+          }
+        )
+      )
+    )
   }
 
   /** @internal */
@@ -1677,11 +1717,8 @@ export class ShareClass extends Entity {
   /** @internal */
   _tokenInstancePositions() {
     return this._query(null, () =>
-      combineLatest([
-        this._root._deployments(),
-        this.pool.currency(),
-        this._investorOrders(),
-        this._root._queryIndexer<{
+      this._root
+        ._queryIndexer<{
           tokenInstancePositions: {
             items: {
               accountAddress: HexString
@@ -1715,40 +1752,15 @@ export class ShareClass extends Entity {
           }
         }`,
           { scId: this.id.raw }
-        ),
-      ]).pipe(
-        map(
-          ([
-            deployments,
-            poolCurrency,
-            { outstandingInvests, outstandingRedeems },
-            { tokenInstancePositions, assets },
-          ]) => {
-            const chainsById = new Map(deployments.blockchains.items.map((chain) => [chain.centrifugeId, chain.id]))
-
-            return tokenInstancePositions.items.map((position) => {
-              const chainId = Number(chainsById.get(position.centrifugeId)!)
-              const outstandingInvest = outstandingInvests.find((order) => order.investor === position.accountAddress)
-              const outstandingRedeem = outstandingRedeems.find((order) => order.investor === position.accountAddress)
-              const assetId = outstandingInvest?.assetId.toString()
-              const assetDecimals = assets.items.find((asset) => asset.id === assetId)?.decimals ?? 18
-              return {
-                address: position.accountAddress,
-                holdings: new Balance(position.balance, poolCurrency.decimals),
-                isFrozen: position.isFrozen,
-                chainId,
-                outstandingInvest: outstandingInvest
-                  ? new Balance(outstandingInvest.pendingAmount, assetDecimals).scale(poolCurrency.decimals)
-                  : new Balance(0n, poolCurrency.decimals),
-                amount: new Balance(outstandingInvest?.pendingAmount ?? 0n, assetDecimals),
-                outstandingRedeem: outstandingRedeem
-                  ? new Balance(outstandingRedeem.pendingAmount, poolCurrency.decimals)
-                  : new Balance(0n, poolCurrency.decimals),
-              }
-            })
-          }
         )
-      )
+        .pipe(
+          map((data) => {
+            return {
+              items: data.tokenInstancePositions.items,
+              assets: data.assets.items,
+            }
+          })
+        )
     )
   }
 }
