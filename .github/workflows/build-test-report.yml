@@ -32,6 +32,7 @@ jobs:
 
       - name: Run Build
         run: yarn build
+
       - name: Test npm publish with provenance (dry-run)
         run: |
           npm install -g npm@latest
@@ -44,20 +45,34 @@ jobs:
           echo "---"
           
           # Capture npm output to check for provenance information
-          npm_output=$(npm publish --provenance --access public --dry-run 2>&1)
-          echo "$npm_output"
-          
-          echo "---"
-          echo "✅ Dry-run completed successfully"
-          
-          # Check if provenance-related information appears in the output
-          if echo "$npm_output" | grep -i "provenance\|attestation\|oidc\|slsa" > /dev/null; then
-            echo "🎉 Provenance-related output detected in npm publish!"
+          echo "Running npm publish dry-run..."
+          if npm_output=$(npm publish --provenance --access public --dry-run 2>&1); then
+            echo "$npm_output"
+            echo "---"
+            echo "✅ Dry-run completed successfully"
+            
+            # Check if provenance-related information appears in the output
+            if echo "$npm_output" | grep -i "provenance\|attestation\|oidc\|slsa" > /dev/null; then
+              echo "🎉 Provenance-related output detected in npm publish!"
+            else
+              echo "⚠️  No provenance-related output detected in npm publish"
+            fi
           else
-            echo "⚠️  No provenance-related output detected in npm publish"
+            exit_code=$?
+            echo "❌ npm publish dry-run failed with exit code: $exit_code"
+            echo "Error output:"
+            echo "$npm_output"
+            echo "---"
+            echo "This might be due to:"
+            echo "1. Package already exists (expected for dry-run)"
+            echo "2. Authentication issues"
+            echo "3. Package.json validation errors"
+            echo "4. Provenance configuration issues"
+            exit $exit_code
           fi
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
       - name: Run tests
         run: yarn test:coverage
         env:
