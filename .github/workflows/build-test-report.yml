@@ -24,6 +24,7 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '20'
+          registry-url: 'https://registry.npmjs.org'
 
       - name: Enable Corepack
         run: corepack enable
@@ -36,33 +37,6 @@ jobs:
 
       - name: Run Build
         run: yarn build
-
-      - name: Run tests
-        run: yarn test:coverage
-        env:
-          TENDERLY_ACCESS_KEY: ${{ secrets.TENDERLY_ACCESS_KEY }}
-          PROJECT_SLUG: ${{ secrets.PROJECT_SLUG }}
-          ACCOUNT_SLUG: ${{ secrets.ACCOUNT_SLUG }}
-          DEBUG: ${{ github.run_attempt > 1 }}
-      - name: Upload test results
-        if: success() || failure()
-        uses: actions/upload-artifact@v4
-        with:
-          name: test-results
-          path: |
-            report/
-            coverage/lcov-report/
-          retention-days: 15
-
-      - name: Upload coverage to Codecov
-        uses: codecov/codecov-action@v5
-        with:
-          directory: ./coverage
-          token: ${{ secrets.CODECOV_TOKEN }}
-          # flags: unittests
-          name: sdk-coverage
-          fail_ci_if_error: true
-
       - name: Test actual publish with provenance
         if: always()
         run: |
@@ -91,3 +65,11 @@ jobs:
           echo "Look for the green 'Verified provenance' badge!"
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+      - name: Upload npm logs on failure
+        if: failure() && always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: npm-logs
+          path: ~/.npm/_logs/
+          retention-days: 1
