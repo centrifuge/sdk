@@ -46,7 +46,7 @@ jobs:
           
           # Capture npm output to check for provenance information
           echo "Running npm publish dry-run..."
-          if npm_output=$(npm publish --provenance --access public --dry-run 2>&1); then
+          if npm_output=$(npm publish --provenance --access public --tag alpha --dry-run 2>&1); then
             echo "$npm_output"
             echo "---"
             echo "✅ Dry-run completed successfully"
