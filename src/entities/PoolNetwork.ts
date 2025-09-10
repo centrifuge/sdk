@@ -7,7 +7,7 @@ import { HexString } from '../types/index.js'
 import { MessageType, MessageTypeWithSubType, VaultUpdateKind } from '../types/transaction.js'
 import { addressToBytes32 } from '../utils/index.js'
 import { repeatOnEvents } from '../utils/rx.js'
-import { wrapTransaction } from '../utils/transaction.js'
+import { doTransaction, wrapTransaction } from '../utils/transaction.js'
 import { AssetId, ShareClassId } from '../utils/types.js'
 import { BalanceSheet } from './BalanceSheet.js'
 import { Entity } from './Entity.js'
@@ -239,6 +239,22 @@ export class PoolNetwork extends Entity {
         })
       )
     )
+  }
+
+  async deployOnOfframpManager(scId: ShareClassId) {
+    const self = this
+    // Get address for onOfframpManagerFactory from indexer
+
+    return this._transact(async function* (ctx) {
+      yield* doTransaction('AddManager', ctx, () =>
+        ctx.walletClient.writeContract({
+          address: null,
+          abi: ABI.OnOffRampManagerFactory,
+          functionName: 'newManager',
+          args: [self.pool.id.raw, scId.raw],
+        })
+      )
+    }, self.chainId)
   }
 
   /**
