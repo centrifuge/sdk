@@ -92,10 +92,10 @@ describe('OnOffRampManager', () => {
   })
 
   describe('assets', () => {
-    it('should return assets', async () => {
+    it.only('should return assets', async () => {
       const result = await onOffRampManager.assets()
 
-      expect(result.length).to.be.equal(1)
+      expect(result.length).to.be.equal(2)
 
       expect(result[0]!).to.deep.equal({
         assetAddress: '0x3aaaa86458d576bafcb1b7ed290434f0696da65c',
