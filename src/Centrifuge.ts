@@ -429,7 +429,7 @@ export class Centrifuge {
   }
 
   investor(address: HexString) {
-    return this._query(['investor', address], () => of(new Investor(this, address)))
+    return this._query(['investor', address.toLowerCase()], () => of(new Investor(this, address)))
   }
 
   /**

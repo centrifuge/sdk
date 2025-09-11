@@ -168,7 +168,7 @@ export class Pool extends Entity {
    */
   isPoolManager(address: HexString) {
     const addr = address.toLowerCase()
-    return this._query(['isPoolManager', address], () => {
+    return this._query(['isPoolManager', addr], () => {
       return this.poolManagers().pipe(
         map((managers) => {
           return managers.some((manager) => manager.address === addr)
@@ -184,7 +184,7 @@ export class Pool extends Entity {
    */
   isBalanceSheetManager(chainId: number, address: HexString) {
     const addr = address.toLowerCase()
-    return this._query(['isBalanceSheetManager', chainId, address], () => {
+    return this._query(['isBalanceSheetManager', chainId, addr], () => {
       return this.balanceSheetManagers().pipe(
         map((managers) => {
           return managers.some((manager) => manager.chainId === chainId && manager.address === addr)
@@ -248,7 +248,7 @@ export class Pool extends Entity {
   }
 
   vault(chainId: number, scId: ShareClassId, asset: HexString | AssetId) {
-    return this._query(['vault', chainId, scId.toString(), asset.toString()], () =>
+    return this._query(['vault', chainId, scId.toString(), asset.toString().toLowerCase()], () =>
       this.network(chainId).pipe(switchMap((network) => network.vault(scId, asset)))
     )
   }

@@ -37,7 +37,7 @@ export class MerkleProofManager extends Entity {
   }
 
   policies(strategist: HexString) {
-    return this._query(['policies', strategist], () =>
+    return this._query(['policies', strategist.toLowerCase()], () =>
       this.pool
         .metadata()
         .pipe(map((metadata) => metadata?.merkleProofManager?.[this.chainId]?.[strategist.toLowerCase() as any] ?? []))

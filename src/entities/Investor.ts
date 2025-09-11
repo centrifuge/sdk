@@ -72,11 +72,13 @@ export class Investor extends Entity {
   }
 
   investment(poolId: PoolId, scId: ShareClassId, asset: HexString | AssetId, chainId: number) {
-    return this._query(['investment', poolId.toString(), scId.toString(), asset.toString(), chainId], () =>
-      this._root.pool(poolId).pipe(
-        switchMap((pool) => pool.vault(chainId, scId, asset)),
-        switchMap((vault) => vault.investment(this.address))
-      )
+    return this._query(
+      ['investment', poolId.toString(), scId.toString(), asset.toString().toLowerCase(), chainId],
+      () =>
+        this._root.pool(poolId).pipe(
+          switchMap((pool) => pool.vault(chainId, scId, asset)),
+          switchMap((vault) => vault.investment(this.address))
+        )
     )
   }
 
@@ -97,7 +99,7 @@ export class Investor extends Entity {
    * Retrieve transactions given an address.
    */
   transactions(address: HexString, poolId: PoolId) {
-    return this._query(['transactions', address.toString(), poolId.toString()], () =>
+    return this._query(['transactions', address.toString().toLowerCase(), poolId.toString()], () =>
       combineLatest([
         this._root.pool(poolId).pipe(switchMap((pool) => pool.currency())),
         this._root._queryIndexer<{
