@@ -2,11 +2,10 @@ name: NPM publish
 on:
   release:
     types: [released]
-
 jobs:
   publish:
     runs-on: ubuntu-latest
-    # environment: release
+    environment: release
     permissions:
       contents: read
       id-token: write
@@ -17,7 +16,7 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version-file: '.nvmrc'
           registry-url: 'https://registry.npmjs.org'
 
       - name: Update npm to latest
@@ -36,12 +35,13 @@ jobs:
         run: yarn build
 
       - name: Publish to NPM
+        # npm ci should use OIDC authentication thus not needing NODE_AUTH_TOKEN
+        # https://docs.npmjs.com/trusted-publishers
+        # https://www.npmjs.com/package/@centrifuge/sdk/access <-- Needs admin access to the package to see settings
         run: npm publish --provenance --access public 2>&1
         # run: yarn npm publish --access public
         # Note: At this time, yarn is not a supported tool for publishing your packages with provenance.
         # https://docs.npmjs.com/generating-provenance-statements#using-third-party-package-publishing-tools
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
       - name: Verify provenance attestations
         run: |
