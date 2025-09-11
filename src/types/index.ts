@@ -66,4 +66,6 @@ export type ProtocolContracts = {
   spoke: HexString
   vaultRouter: HexString
   balanceSheet: HexString
+  merkleProofManagerFactory: HexString
+  onOfframpManagerFactory: HexString
 }

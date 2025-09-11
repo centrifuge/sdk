@@ -243,18 +243,35 @@ export class PoolNetwork extends Entity {
 
   async deployOnOfframpManager(scId: ShareClassId) {
     const self = this
-    // Get address for onOfframpManagerFactory from indexer
+    const deploymentManagers = await this.deploymentManagers(this.chainId.toString())
+
+    if (!deploymentManagers?.onOfframpManagerFactory) {
+      throw new Error('Deployment managers not found')
+    }
 
     return this._transact(async function* (ctx) {
       yield* doTransaction('AddManager', ctx, () =>
         ctx.walletClient.writeContract({
-          address: null,
+          address: deploymentManagers.onOfframpManagerFactory,
           abi: ABI.OnOffRampManagerFactory,
           functionName: 'newManager',
           args: [self.pool.id.raw, scId.raw],
         })
       )
     }, self.chainId)
+  }
+
+  async deploymentManagers(chainId: string) {
+    const { deployments } = await this._root._deployments()
+
+    const deploymentPerChain = deployments.items.filter((deployment) => deployment.chainId === chainId)[0]
+
+    return deploymentPerChain
+      ? {
+          onOfframpManagerFactory: deploymentPerChain.onOfframpManagerFactory,
+          merkleProofManagerFactory: deploymentPerChain.merkleProofManagerFactory,
+        }
+      : null
   }
 
   /**
