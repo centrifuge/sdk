@@ -186,6 +186,23 @@ export class PoolNetwork extends Entity {
     )
   }
 
+  async deployMerkleProofManager() {
+    const self = this
+
+    return this._transact(async function* (ctx) {
+      const { merkleProofManagerFactory } = await self._root._protocolAddresses(self.chainId)
+
+      yield* doTransaction('AddMerkleProofManager', ctx, () =>
+        ctx.walletClient.writeContract({
+          address: merkleProofManagerFactory,
+          abi: ABI.MerkleProofManagerFactory,
+          functionName: 'newManager',
+          args: [self.pool.id.raw],
+        })
+      )
+    }, self.chainId)
+  }
+
   onOfframpManager(scId: ShareClassId) {
     return this._query(null, () =>
       combineLatest([
@@ -247,7 +264,7 @@ export class PoolNetwork extends Entity {
     return this._transact(async function* (ctx) {
       const { onOfframpManagerFactory } = await self._root._protocolAddresses(self.chainId)
 
-      yield* doTransaction('AddManager', ctx, () =>
+      yield* doTransaction('AddOnOfframpManager', ctx, () =>
         ctx.walletClient.writeContract({
           address: onOfframpManagerFactory,
           abi: ABI.OnOffRampManagerFactory,

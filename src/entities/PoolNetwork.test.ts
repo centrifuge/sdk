@@ -152,6 +152,22 @@ describe('PoolNetwork', () => {
       expect(result).to.be.instanceOf(MerkleProofManager)
     })
 
+    it('should deploy merkleProofManager', async () => {
+      context.tenderlyFork.impersonateAddress = poolManager
+      context.centrifuge.setSigner(context.tenderlyFork.signer)
+
+      await context.tenderlyFork.fundAccountEth(poolManager, 10n ** 18n)
+
+      const poolId = PoolId.from(1, 10)
+      const { centrifuge } = context
+      const pool = new Pool(centrifuge, poolId.raw, 11155111)
+      const poolNetwork = new PoolNetwork(centrifuge, pool, 11155111)
+
+      const result = await poolNetwork.deployMerkleProofManager()
+
+      expect(result.type).to.equal('TransactionConfirmed')
+    })
+
     it('should throw when it does not find merkleProofManager', async () => {
       const poolId = PoolId.from(1, 10)
       const { centrifuge } = context

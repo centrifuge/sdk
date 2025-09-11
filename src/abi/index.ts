@@ -23,6 +23,7 @@ import ValuationAbi from './Valuation.abi.js'
 import VaultRouterAbi from './VaultRouter.abi.js'
 import OnOffRampManagerAbi from './OnOffRampManager.abi.js'
 import OnOffRampManagerFactoryAbi from './OnOffRampManagerFactory.abi.js'
+import MerkleProofManagerFactoryAbi from './MerkleProofManagerFactory.abi.js'
 
 export const ABI = {
   Hub: parseAbi(HubAbi),
@@ -49,4 +50,5 @@ export const ABI = {
   PoolEscrowFactory: parseAbi(PoolEscrowFactoryAbi),
   OnOffRampManager: parseAbi(OnOffRampManagerAbi),
   OnOffRampManagerFactory: parseAbi(OnOffRampManagerFactoryAbi),
+  MerkleProofManagerFactory: parseAbi(MerkleProofManagerFactoryAbi),
 }
