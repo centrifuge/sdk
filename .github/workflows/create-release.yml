@@ -1,90 +1,10 @@
-name: Release and Versioning
+name: Create Release
 on:
   pull_request:
-    types: [opened, reopened, labeled, synchronize, closed]
+    types: [closed]
 
 jobs:
-  version-bump:
-    if: github.event_name == 'pull_request' && github.event.action != 'closed'
-    runs-on: ubuntu-latest
-    permissions:
-      contents: write
-      pull-requests: write
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-          ref: ${{ github.event.pull_request.head.ref || github.ref_name }}
-
-      - name: Check PR labels
-        id: check_labels
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          PR_NUMBER=${{ github.event.pull_request.number }}
-          # Make script executable
-          chmod +x ./.github/ci-scripts/pr-label-check.sh
-          
-          # Capture both stdout and stderr from the script
-          if ! RELEASE_TYPE=$(./.github/ci-scripts/pr-label-check.sh $PR_NUMBER 2>&1); then
-            echo "::error::$RELEASE_TYPE"
-            exit 1
-          fi
-          
-          echo "version=$RELEASE_TYPE" >> $GITHUB_OUTPUT
-          echo "::notice::$RELEASE_TYPE label detected on PR #$PR_NUMBER"
-          if [ "$RELEASE_TYPE" == "no-release" ]; then
-            echo "::notice::PR is not flagged for release, skipping version bump"
-          fi
-
-      - name: Bump version
-        if: steps.check_labels.outputs.version != 'no-release'
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          chmod +x ./.github/ci-scripts/bump-check.sh
-          # Capture only the last line of output as BUMP_CHECK
-          BUMP_CHECK=$(./.github/ci-scripts/bump-check.sh | tail -n 1)
-          if [ "$BUMP_CHECK" == "true" ]; then
-            git config user.name "GitHub Actions"
-            git config user.email "actions@github.com"
-            if [ "${{ steps.check_labels.outputs.version }}" == "alpha" ]; then
-              npm version -m "[bot] New pkg version: %s" --preid=alpha prerelease
-            else
-              npm version -m "[bot] New pkg version: %s" ${{ steps.check_labels.outputs.version }}
-            fi
-            git push
-            gh pr comment ${{ github.event.pull_request.number }} --body "Auto-bumped version for release, this cannot be the last commit as bots can't trigger the workflows to pass the PR checks"
-          fi
-
-      - name: Revert version bump
-        if: steps.check_labels.outputs.version == 'no-release'
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          MERGE_BASE=$(git merge-base origin/main HEAD)
-          COMMITS=$(git log $MERGE_BASE..HEAD --format=%H:%B)
-          # Find the latest version bump commit
-          VERSION_COMMIT_SHA=$(echo "$COMMITS" | grep ":\[bot\] New pkg version:" | head -n 1 | cut -d':' -f1)
-
-          if [ -n "$VERSION_COMMIT_SHA" ]; then
-            # Count version bumps and reverts
-            BUMP_COUNT=$(echo "$COMMITS" | grep -c ":\[bot\] New pkg version:" || true)
-            REVERT_COUNT=$(echo "$COMMITS" | grep -c ":Revert.*\[bot\] New pkg version:" || true)
-
-            if [ $REVERT_COUNT -lt $BUMP_COUNT ]; then
-              git config user.name "GitHub Actions"
-              git config user.email "actions@github.com"
-              git revert --no-edit $VERSION_COMMIT_SHA
-              git push
-              gh pr comment ${{ github.event.pull_request.number }} --body "Reverted version bump as no-release label was detected"            
-            else
-              echo "::notice::Version bump has already been reverted, skipping"
-            fi
-          fi
-
   create-release:
-    if: github.event.pull_request.merged == true && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -92,6 +12,7 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Create GitHub Release
+        if: github.ref == 'refs/heads/main'
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
@@ -106,13 +27,7 @@ jobs:
           
           echo "::notice::Last PR merged detected: #$PR_NUMBER) with release label: $RELEASE_TYPE"
 
-          if [ "$RELEASE_TYPE" = "alpha" ] || [ "$RELEASE_TYPE" = "patch" ]; then
-            VERSION=$(node -p "require('./package.json').version")
-            gh release create "v${VERSION}" \
-              --title "Release v${VERSION}" \
-              --generate-notes \
-              --target "${GITHUB_SHA}"
-          elif [ "$RELEASE_TYPE" = "minor" ] || [ "$RELEASE_TYPE" = "major" ]; then
+          if [ "$RELEASE_TYPE" = "minor" ] || [ "$RELEASE_TYPE" = "major" ] || [ "$RELEASE_TYPE" = "patch" ] || [ "$RELEASE_TYPE" = "alpha" ]; then
             VERSION=$(node -p "require('./package.json').version")
             gh release create "v${VERSION}" \
               --title "Release v${VERSION}" \
