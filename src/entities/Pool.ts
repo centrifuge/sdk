@@ -254,6 +254,7 @@ export class Pool extends Entity {
   /**
    * Get the currency of the pool.
    */
+  //aaa
   currency() {
     return this._query(['currency'], () => {
       return this._root._protocolAddresses(this.chainId).pipe(
