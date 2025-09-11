@@ -18,7 +18,8 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          PR_NUMBER=${{ github.event.pull_request.number }}
+          # PR_NUMBER=${{ github.event.pull_request.number }}
+          PR_NUMBER=621
           chmod +x ./.github/ci-scripts/pr-label-check.sh
           
           # Capture both stdout and stderr from the script
