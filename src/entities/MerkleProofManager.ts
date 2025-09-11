@@ -20,6 +20,7 @@ import { PoolNetwork } from './PoolNetwork.js'
 export class MerkleProofManager extends Entity {
   pool: Pool
   chainId: number
+
   /**
    * The contract address of the Merkle Proof Manager.
    */
