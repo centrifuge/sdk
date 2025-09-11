@@ -345,7 +345,7 @@ export class Centrifuge {
   }
 
   pool(id: PoolId) {
-    return this._query(null, () =>
+    return this._query(['pool', id.toString()], () =>
       this.pools().pipe(
         map((pools) => {
           const pool = pools.find((pool) => pool.id.equals(id))
@@ -429,7 +429,7 @@ export class Centrifuge {
   }
 
   investor(address: HexString) {
-    return this._query(null, () => of(new Investor(this, address)))
+    return this._query(['investor', address], () => of(new Investor(this, address)))
   }
 
   /**
@@ -481,7 +481,7 @@ export class Centrifuge {
    * @param hubChainId - The chain ID where the assets should optionally be registered
    */
   assets(spokeChainId: number, hubChainId = spokeChainId) {
-    return this._query(null, () =>
+    return this._query(['assets', spokeChainId, hubChainId], () =>
       combineLatest([this.id(spokeChainId), this.id(hubChainId)]).pipe(
         switchMap(([spokeCentId, hubCentId]) =>
           this._queryIndexer<{
@@ -537,7 +537,7 @@ export class Centrifuge {
    * Get the valuation addresses that can be used for holdings.
    */
   valuations(chainId: number) {
-    return this._query(null, () =>
+    return this._query(['valuations', chainId], () =>
       this._protocolAddresses(chainId).pipe(
         map(({ identityValuation }) => {
           return {
@@ -552,7 +552,7 @@ export class Centrifuge {
    * Get the restriction hook addresses that can be used for share tokens.
    */
   restrictionHooks(chainId: number) {
-    return this._query(null, () =>
+    return this._query(['restrictionHooks', chainId], () =>
       this._protocolAddresses(chainId).pipe(
         map(({ freezeOnlyHook, redemptionRestrictionsHook, fullRestrictionsHook /* freelyTransferableHook */ }) => {
           return {
@@ -1122,7 +1122,7 @@ export class Centrifuge {
 
   /** @internal */
   _protocolAddresses(chainId: number) {
-    return this._query(null, () =>
+    return this._query(['protocolAddresses', chainId], () =>
       this._deployments().pipe(
         map((data) => {
           if (!this.chains.includes(chainId)) {
@@ -1245,7 +1245,7 @@ export class Centrifuge {
 
   /** @internal */
   _idToChain(centrifugeId: number) {
-    return this._query(null, () =>
+    return this._query(['idToChain', centrifugeId], () =>
       this._deployments().pipe(
         map((data) => {
           const item = data.blockchains.items.find((b) => Number(b.centrifugeId) === centrifugeId)

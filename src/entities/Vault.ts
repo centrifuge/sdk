@@ -58,7 +58,7 @@ export class Vault extends Entity {
    * Get the details of the vault.
    */
   details() {
-    return this._query(null, () =>
+    return this._query(['details'], () =>
       combineLatest([this.isLinked(), this._isSyncDeposit(), this._investmentCurrency(), this._shareCurrency()]).pipe(
         map(([isLinked, isSyncInvest, investmentCurrency, shareCurrency]) => ({
           pool: this.pool,
@@ -534,7 +534,7 @@ export class Vault extends Entity {
    * @internal
    */
   _allowance(owner: HexString) {
-    return this._query(null, () =>
+    return this._query(['allowance', owner.toLowerCase()], () =>
       combineLatest([
         this._investmentCurrency(),
         this._root._protocolAddresses(this.chainId),
