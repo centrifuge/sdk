@@ -1,29 +1,59 @@
 # GitHub Workflows Overview
 
-This repository contains several GitHub Actions workflows that automate various processes, including building, testing, versioning, and releasing your project. Below is an overview of each workflow and how they contribute to the release process.
+## Release Process
+
+1. **Pull Request Stage**:
+   - PR must have a Conventional Commits compliant title
+   - PR must have exactly one release label (major, minor, patch, alpha, no-release)
+   - Build and tests must pass
+
+2. **Version Bumping**:
+   - Triggered by PR approval
+   - Version is bumped based on PR label
+   - Skipped if PR has `no-release` label
+   - Additional checks prevent duplicate version bumps
+
+3. **Release Creation**:
+   - Draft release is automatically created when PR is merged to `main`
+   - Release notes are auto-generated
+   - Created as a prerelease 
+
+4. **Publishing**:
+   - When a developer publishes a release on GitHub, package is automatically published to NPM -- Generally this will be done by editing the draft release from step 3
+   - Uses NPM provenance for enhanced security
+   - Published with public access
+   
+   **To publish a draft release:**
+   
+   **Option 1 - CLI**
+   https://docs.github.com/en/repositories/releasing-projects-on-github/managing-releases-in-a-repository#editing-a-release
+   
+   **Option 2 - GH website**
+   https://github.com/centrifuge/sdk/releases
+   (a draft release will appear in this URL as indicated in step 3 above)
 
 ## Workflows
 
-### 1. `version-bump.yml`
+### 1. `bump-version.yml`
 
-This workflow handles both versioning and release creation through two separate jobs:
+This workflow handles version bumping:
 
-#### Version Bump Job
-
-- **Trigger**: Runs when a pull request review is approved
+- **Trigger**: Runs on pull request events (opened, reopened, labeled, synchronize)
 - **Version Bump**:
   - Determines version bump type based on PR labels (major, minor, patch, alpha)
   - Uses `npm version` to update version in `package.json`
   - For alpha releases, creates versions with `-alpha.N` suffix
   - Skips version bump if PR has `no-release` label
-  - Checks if version needs to be bumped again using `bump-check.sh`
+  - Reverts version bump if `no-release` label is added after version was bumped
 
-#### Create Release Job
+### 2. `create-release.yml`
 
-- **Trigger**: Runs on pushes to the `main` branch
+This workflow handles release creation:
+
+- **Trigger**: Runs when a pull request is closed (merged)
 - **Action**: Creates a prerelease draft on GitHub with auto-generated release notes
 
-### 2. `build-test-report.yml`
+### 3. `build-test-report.yml`
 
 Handles continuous integration tasks:
 
@@ -36,7 +66,7 @@ Handles continuous integration tasks:
   - Uploads test results and coverage reports
   - Reports coverage to Codecov
 
-### 3. `naming-conventions.yml`
+### 4. `naming-conventions.yml`
 
 Enforces PR conventions:
 
@@ -46,7 +76,7 @@ Enforces PR conventions:
   - Verifies exactly one release label is present (major, minor, patch, no-release, alpha)
 - **Feedback**: Adds/removes automated comments on PRs for validation issues
 
-### 4. `publish-release.yml`
+### 5. `publish-release.yml`
 
 Handles NPM package publishing:
 
@@ -55,32 +85,6 @@ Handles NPM package publishing:
   - Builds the project
   - Publishes to NPM with provenance enabled
   - Uses Node.js native `npm publish` command for provenance support
-
-## Release Process
-
-1. **Pull Request Stage**:
-
-   - PR must have a Conventional Commits compliant title
-   - PR must have exactly one release label (major, minor, patch, alpha, no-release)
-   - Build and tests must pass
-
-2. **Version Bumping**:
-
-   - Triggered by PR approval
-   - Version is bumped based on PR label
-   - Skipped if PR has `no-release` label
-   - Additional checks prevent duplicate version bumps
-
-3. **Release Creation**:
-
-   - Draft release is automatically created on `main` branch updates
-   - Release notes are auto-generated
-   - Created as a prerelease initially
-
-4. **Publishing**:
-   - When release is published on GitHub, package is automatically published to NPM
-   - Uses NPM provenance for enhanced security
-   - Published with public access
 
 ## Scripts
 
