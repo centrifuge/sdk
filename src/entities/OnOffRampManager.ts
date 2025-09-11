@@ -97,9 +97,6 @@ export class OnOffRampManager extends Entity {
     )
   }
 
-  /**
-   * Get the assets of an OnOffRampManager.
-   */
   assets() {
     return this._query(['assets'], () =>
       this._root.id(this.network.chainId).pipe(
