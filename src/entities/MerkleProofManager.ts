@@ -20,6 +20,7 @@ import { PoolNetwork } from './PoolNetwork.js'
 export class MerkleProofManager extends Entity {
   pool: Pool
   chainId: number
+
   /**
    * The contract address of the Merkle Proof Manager.
    */
@@ -37,7 +38,7 @@ export class MerkleProofManager extends Entity {
   }
 
   policies(strategist: HexString) {
-    return this._query(null, () =>
+    return this._query(['policies', strategist.toLowerCase()], () =>
       this.pool
         .metadata()
         .pipe(map((metadata) => metadata?.merkleProofManager?.[this.chainId]?.[strategist.toLowerCase() as any] ?? []))

@@ -39,7 +39,7 @@ export class ShareClass extends Entity {
    * @returns The details of the share class, including name, symbol, total issuance, NAV per share and relavant metadata from the pool metadata.
    */
   details() {
-    return this._query(null, () =>
+    return this._query(['shareClassDetails'], () =>
       combineLatest([
         this._metrics(),
         this._metadata(),
@@ -82,7 +82,7 @@ export class ShareClass extends Entity {
   }
 
   balanceSheet(chainId: number) {
-    return this._query(null, () =>
+    return this._query(['balanceSheet', chainId], () =>
       this.pool.activeNetworks().pipe(
         map((networks) => {
           const network = networks.find((n) => n.chainId === chainId)
@@ -96,7 +96,7 @@ export class ShareClass extends Entity {
   }
 
   deploymentPerNetwork() {
-    return this._query(null, () =>
+    return this._query(['deploymentPerNetwork'], () =>
       this.pool.activeNetworks().pipe(
         switchMap((networks) => {
           if (networks.length === 0) return of([])
@@ -125,7 +125,7 @@ export class ShareClass extends Entity {
   }
 
   navPerNetwork() {
-    return this._query(null, () =>
+    return this._query(['navPerNetwork'], () =>
       this.pool.currency().pipe(
         switchMap((poolCurrency) =>
           this._root._queryIndexer(
@@ -172,7 +172,7 @@ export class ShareClass extends Entity {
    * @returns Vaults of the share class.
    */
   vaults(chainId?: number, includeUnlinked = false) {
-    return this._query(null, () =>
+    return this._query(['vaults', chainId, includeUnlinked.toString()], () =>
       this._allVaults().pipe(
         map((allVaults) => {
           const vaults = allVaults.filter((vault) => {
@@ -200,7 +200,7 @@ export class ShareClass extends Entity {
    * Query all the balances of the share class (from BalanceSheet and Holdings).
    */
   balances(chainId?: number) {
-    return this._query(null, () =>
+    return this._query(['balances', chainId], () =>
       combineLatest([this._balances(), this.pool.currency()]).pipe(
         switchMap(([res, poolCurrency]) => {
           if (res.length === 0) {
@@ -273,7 +273,7 @@ export class ShareClass extends Entity {
    * Get the pending and approved amounts for deposits and redemptions for each asset.
    */
   pendingAmounts() {
-    return this._query(null, () =>
+    return this._query(['pendingAmounts'], () =>
       this._allVaults().pipe(
         map((vaults) => vaults.filter((vault) => vault.status === 'Linked')),
         switchMap((vaults) => {
@@ -1027,7 +1027,7 @@ export class ShareClass extends Entity {
    * Retrieve holders of the share class.
    */
   holders() {
-    return this._query(null, () =>
+    return this._query(['holders'], () =>
       combineLatest([
         this._root._deployments(),
         this.pool.currency(),
@@ -1475,7 +1475,7 @@ export class ShareClass extends Entity {
 
   /** @internal */
   _epochInvestOrders() {
-    return this._query(null, () =>
+    return this._query(['epochInvestOrders'], () =>
       this._root._queryIndexer(
         `query ($scId: String!) {
           epochInvestOrders(where: {tokenId: $scId, issuedAt: null, approvedAt_not: null}, limit: 1000) {
@@ -1519,7 +1519,7 @@ export class ShareClass extends Entity {
 
   /** @internal */
   _epochRedeemOrders() {
-    return this._query(null, () =>
+    return this._query(['epochRedeemOrders'], () =>
       this._root._queryIndexer(
         `query ($scId: String!) {
           epochRedeemOrders(where: {tokenId: $scId, revokedAt: null, approvedAt_not: null}, limit: 1000) {
@@ -1677,7 +1677,9 @@ export class ShareClass extends Entity {
 
   /** @internal */
   _share(chainId: number) {
-    return this._query(null, () => this.pool.network(chainId).pipe(switchMap((network) => network._share(this.id))))
+    return this._query(['share', chainId], () =>
+      this.pool.network(chainId).pipe(switchMap((network) => network._share(this.id)))
+    )
   }
 
   /** @internal */
@@ -1700,7 +1702,7 @@ export class ShareClass extends Entity {
 
   /** @internal */
   _getFreeAccountId() {
-    return this._query(null, () =>
+    return this._query(['getFreeAccountId'], () =>
       this._root._protocolAddresses(this.pool.chainId).pipe(
         map(({ accounting }) => ({ accounting, id: null, triesLeft: 10 })),
         expand(({ accounting, triesLeft }) => {
@@ -1726,7 +1728,7 @@ export class ShareClass extends Entity {
 
   /** @internal */
   _tokenInstancePositions() {
-    return this._query(null, () =>
+    return this._query(['tokenInstancePositions'], () =>
       this._root
         ._queryIndexer<{
           tokenInstancePositions: {

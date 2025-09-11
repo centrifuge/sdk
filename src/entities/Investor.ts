@@ -16,7 +16,7 @@ export class Investor extends Entity {
   }
 
   portfolio(chainId?: number) {
-    return this._query(null, () =>
+    return this._query(['portfolio', chainId], () =>
       this._root
         ._queryIndexer<{
           vaults: { items: { assetAddress: HexString; blockchain: { id: string } }[] }
@@ -72,11 +72,13 @@ export class Investor extends Entity {
   }
 
   investment(poolId: PoolId, scId: ShareClassId, asset: HexString | AssetId, chainId: number) {
-    return this._query(null, () =>
-      this._root.pool(poolId).pipe(
-        switchMap((pool) => pool.vault(chainId, scId, asset)),
-        switchMap((vault) => vault.investment(this.address))
-      )
+    return this._query(
+      ['investment', poolId.toString(), scId.toString(), asset.toString().toLowerCase(), chainId],
+      () =>
+        this._root.pool(poolId).pipe(
+          switchMap((pool) => pool.vault(chainId, scId, asset)),
+          switchMap((vault) => vault.investment(this.address))
+        )
     )
   }
 
@@ -84,7 +86,7 @@ export class Investor extends Entity {
    * Retrieve if an account is a member of a share class.
    */
   isMember(scId: ShareClassId, chainId: number) {
-    return this._query(null, () =>
+    return this._query(['isMember', scId.toString(), chainId], () =>
       this._root.pool(scId.poolId).pipe(
         switchMap((pool) => pool.shareClass(scId)),
         switchMap((shareClass) => shareClass.member(this.address, chainId)),
@@ -97,7 +99,7 @@ export class Investor extends Entity {
    * Retrieve transactions given an address.
    */
   transactions(address: HexString, poolId: PoolId) {
-    return this._query(null, () =>
+    return this._query(['transactions', address.toString().toLowerCase(), poolId.toString()], () =>
       combineLatest([
         this._root.pool(poolId).pipe(switchMap((pool) => pool.currency())),
         this._root._queryIndexer<{
