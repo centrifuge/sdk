@@ -30,13 +30,7 @@ jobs:
           
           echo "::notice::Last PR merged detected: #$PR_NUMBER) with release label: $RELEASE_TYPE"
 
-          if [ "$RELEASE_TYPE" = "alpha" ] || [ "$RELEASE_TYPE" = "patch" ]; then
-            VERSION=$(node -p "require('./package.json').version")
-            gh release create "v${VERSION}" \
-              --title "Release v${VERSION}" \
-              --generate-notes \
-              --target "${GITHUB_SHA}"
-          elif [ "$RELEASE_TYPE" = "minor" ] || [ "$RELEASE_TYPE" = "major" ]; then
+          if [ "$RELEASE_TYPE" = "minor" ] || [ "$RELEASE_TYPE" = "major" ] || [ "$RELEASE_TYPE" = "patch" ] || [ "$RELEASE_TYPE" = "alpha" ]; then
             VERSION=$(node -p "require('./package.json').version")
             gh release create "v${VERSION}" \
               --title "Release v${VERSION}" \

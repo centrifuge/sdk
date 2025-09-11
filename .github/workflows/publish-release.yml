@@ -2,9 +2,10 @@ name: NPM publish
 on:
   release:
     types: [released]
-  workflow_run:
-    workflows: ["Create Release"]
-    types: [completed]
+  # workflow_run:
+  #   workflows: ["Create Release"]
+  #   types: [completed]
+  # Activate this only if the release is not triggering this workflow
 jobs:
   publish:
     runs-on: ubuntu-latest
