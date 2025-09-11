@@ -25,7 +25,7 @@ export class OnOffRampManager extends Entity {
   }
 
   receivers() {
-    return this._query(null, () =>
+    return this._query(['receivers'], () =>
       this._root.id(this.network.chainId).pipe(
         switchMap((centrifugeId) =>
           this._root._queryIndexer(
@@ -67,7 +67,7 @@ export class OnOffRampManager extends Entity {
   }
 
   relayers() {
-    return this._query(null, () =>
+    return this._query(['relayers'], () =>
       this._root.id(this.network.chainId).pipe(
         switchMap((centrifugeId) =>
           this._root._queryIndexer(
@@ -98,7 +98,7 @@ export class OnOffRampManager extends Entity {
   }
 
   assets() {
-    return this._query(null, () =>
+    return this._query(['assets'], () =>
       this._root.id(this.network.chainId).pipe(
         switchMap((centrifugeId) =>
           this._root._queryIndexer(
@@ -137,7 +137,7 @@ export class OnOffRampManager extends Entity {
   }
 
   balances() {
-    return this._query(null, () =>
+    return this._query(['balances'], () =>
       this.assets().pipe(
         switchMap((onRampAssets) => {
           if (onRampAssets.length === 0) return of([])

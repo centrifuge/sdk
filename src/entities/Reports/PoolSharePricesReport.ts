@@ -47,7 +47,7 @@ export class PoolSharePricesReport extends Entity {
   }
 
   report(filter: SharePricesReportFilter = {}) {
-    return this._query(null, () =>
+    return this._query(['report', filter.shareClassId?.toString()], () =>
       combineLatest([this.pool._shareClassIds(), this.pool.currency()]).pipe(
         switchMap(([shareClassIds, poolCurrency]) =>
           this._root

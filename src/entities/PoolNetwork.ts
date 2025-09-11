@@ -35,7 +35,7 @@ export class PoolNetwork extends Entity {
    * and any deployed vaults.
    */
   details() {
-    return this._query(null, () =>
+    return this._query(['poolNetworkDetails'], () =>
       this.pool.shareClasses().pipe(
         switchMap((shareClasses) => {
           return combineLatest([
@@ -65,7 +65,7 @@ export class PoolNetwork extends Entity {
   }
 
   balanceSheet(scId: ShareClassId) {
-    return this._query(null, () =>
+    return this._query(['balanceSheet', scId.toString()], () =>
       of(new BalanceSheet(this._root, this, new ShareClass(this._root, this.pool, scId.raw)))
     )
   }
@@ -75,7 +75,7 @@ export class PoolNetwork extends Entity {
    * @param scId - The share class ID
    */
   shareCurrency(scId: ShareClassId) {
-    return this._query(null, () =>
+    return this._query(['shareCurrency', scId.toString()], () =>
       this._share(scId).pipe(switchMap((share) => this._root.currency(share, this.chainId)))
     )
   }
@@ -87,7 +87,7 @@ export class PoolNetwork extends Entity {
    * @param includeUnlinked - Whether to include unlinked vaults
    */
   vaults(scId: ShareClassId, includeUnlinked = false) {
-    return this._query(null, () =>
+    return this._query(['vaults', scId.toString(), includeUnlinked.toString()], () =>
       this._root.pool(this.pool.id).pipe(
         switchMap((pool) => pool.shareClass(scId)),
         switchMap((shareClass) => shareClass.vaults(this.chainId, includeUnlinked))
@@ -101,7 +101,7 @@ export class PoolNetwork extends Entity {
    * @param asset - The investment currency address or asset ID
    */
   vault(scId: ShareClassId, asset: HexString | AssetId) {
-    return this._query(null, () =>
+    return this._query(['vault', scId.toString(), asset.toString()], () =>
       combineLatest([
         this.vaults(scId),
         typeof asset === 'string' ? of({ address: asset, tokenId: 0n }) : this._root.assetCurrency(asset),
@@ -204,7 +204,7 @@ export class PoolNetwork extends Entity {
   }
 
   onOfframpManager(scId: ShareClassId) {
-    return this._query(null, () =>
+    return this._query(['onOfframpManager', scId.toString()], () =>
       combineLatest([
         this._root.id(this.chainId).pipe(
           switchMap((centrifugeId) =>
@@ -534,7 +534,7 @@ export class PoolNetwork extends Entity {
    * @internal
    */
   _vaultsByShareClass() {
-    return this._query(null, () =>
+    return this._query(['vaultsByShareClass'], () =>
       this.pool._shareClassIds().pipe(
         switchMap((scIds) => {
           if (scIds.length === 0) throw new Error('No share classes found')

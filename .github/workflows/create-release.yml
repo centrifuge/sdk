@@ -95,7 +95,7 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          PR_NUMBER=$(gh pr list --state merged --json number --jq '.[0].number')
+          PR_NUMBER=${{ github.event.pull_request.number }}
           chmod +x ./.github/ci-scripts/pr-label-check.sh
           
           # Capture both stdout and stderr from the script

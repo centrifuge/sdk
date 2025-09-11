@@ -37,7 +37,7 @@ export class Pool extends Entity {
    * @returns The pool metadata, id, shareClasses and currency.
    */
   details() {
-    return this._query(null, () =>
+    return this._query(['poolDetails'], () =>
       combineLatest([this.metadata(), this.shareClasses(), this.shareClassesDetails(), this.currency()]).pipe(
         map(([metadata, shareClasses, shareClassesDetails, currency]) => {
           return {
@@ -93,13 +93,13 @@ export class Pool extends Entity {
   }
 
   shareClasses() {
-    return this._query(null, () =>
+    return this._query(['shareClasses'], () =>
       this._shareClassIds().pipe(map((scIds) => scIds.map((scId) => new ShareClass(this._root, this, scId.raw))))
     )
   }
 
   shareClass(scId: ShareClassId) {
-    return this._query(null, () =>
+    return this._query(['shareClass', scId.toString()], () =>
       this.shareClasses().pipe(
         map((shareClasses) => {
           const shareClass = shareClasses.find((sc) => sc.id.equals(scId))
@@ -111,7 +111,7 @@ export class Pool extends Entity {
   }
 
   shareClassesDetails() {
-    return this._query(null, () => {
+    return this._query(['shareClassesDetails'], () => {
       return this.shareClasses().pipe(
         switchMap((shareClasses) => {
           if (shareClasses.length === 0) return of([])
@@ -126,7 +126,7 @@ export class Pool extends Entity {
    * These managers that can manage the pool, approve deposits, update prices, etc.
    */
   poolManagers() {
-    return this._query(null, () => {
+    return this._query(['poolManagers'], () => {
       return this._managers().pipe(
         map((managers) => {
           return managers
@@ -146,7 +146,7 @@ export class Pool extends Entity {
    * These managers can transfer funds to and from the balance sheet.
    */
   balanceSheetManagers() {
-    return this._query(null, () => {
+    return this._query(['balanceSheetManagers'], () => {
       return this._managers().pipe(
         map((managers) => {
           return managers
@@ -168,7 +168,7 @@ export class Pool extends Entity {
    */
   isPoolManager(address: HexString) {
     const addr = address.toLowerCase()
-    return this._query(null, () => {
+    return this._query(['isPoolManager', addr], () => {
       return this.poolManagers().pipe(
         map((managers) => {
           return managers.some((manager) => manager.address === addr)
@@ -184,7 +184,7 @@ export class Pool extends Entity {
    */
   isBalanceSheetManager(chainId: number, address: HexString) {
     const addr = address.toLowerCase()
-    return this._query(null, () => {
+    return this._query(['isBalanceSheetManager', chainId, addr], () => {
       return this.balanceSheetManagers().pipe(
         map((managers) => {
           return managers.some((manager) => manager.chainId === chainId && manager.address === addr)
@@ -197,7 +197,7 @@ export class Pool extends Entity {
    * Get all networks where a pool can potentially be deployed.
    */
   networks() {
-    return this._query(null, () => {
+    return this._query(['poolNetworks'], () => {
       return of(
         this._root.chains.map((chainId) => {
           return new PoolNetwork(this._root, this, chainId)
@@ -210,7 +210,7 @@ export class Pool extends Entity {
    * Get a specific network where a pool can potentially be deployed.
    */
   network(chainId: number) {
-    return this._query(null, () => {
+    return this._query(['poolNetwork', chainId], () => {
       return this.networks().pipe(
         map((networks) => {
           const network = networks.find((network) => network.chainId === chainId)
@@ -225,7 +225,7 @@ export class Pool extends Entity {
    * Get the networks where a pool is active. It doesn't mean that any vaults are deployed there necessarily.
    */
   activeNetworks() {
-    return this._query(null, () => {
+    return this._query(['poolActiveNetworks'], () => {
       return this.networks().pipe(
         switchMap((networks) => {
           if (networks.length === 0) return of([])
@@ -248,7 +248,9 @@ export class Pool extends Entity {
   }
 
   vault(chainId: number, scId: ShareClassId, asset: HexString | AssetId) {
-    return this._query(null, () => this.network(chainId).pipe(switchMap((network) => network.vault(scId, asset))))
+    return this._query(['vault', chainId, scId.toString(), asset.toString().toLowerCase()], () =>
+      this.network(chainId).pipe(switchMap((network) => network.vault(scId, asset)))
+    )
   }
 
   /**
@@ -737,7 +739,7 @@ export class Pool extends Entity {
 
   /** @internal */
   _managers() {
-    return this._query(null, () =>
+    return this._query(['poolManagers'], () =>
       combineLatest([
         this._root._deployments(),
         this._root._queryIndexer<{
