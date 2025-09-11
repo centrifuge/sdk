@@ -1,0 +1,5 @@
+# CODEOWNERS for GitHub metadata and workflows
+# Replace @centrifuge/your-team with the correct team or usernames
+.github/** @centrifuge/devops @gpmayorga
+
+
