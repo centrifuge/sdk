@@ -9,6 +9,7 @@ import { Pool } from './Pool.js'
 import { PoolNetwork } from './PoolNetwork.js'
 import { Vault } from './Vault.js'
 import { MerkleProofManager } from './MerkleProofManager.js'
+import { Centrifuge } from '../Centrifuge.js'
 
 const poolId = PoolId.from(1, 1)
 const scId = ShareClassId.from(poolId, 1)
@@ -202,6 +203,42 @@ describe('PoolNetwork', () => {
       } catch (error: any) {
         expect(error.message).to.equal('OnOffRampManager not found in balance sheet managers')
       }
+    })
+
+    it('should deploy onOfframpManager', async () => {
+      const centrifugeWithPin = new Centrifuge({
+        environment: 'testnet',
+        pinJson: async () => {
+          return 'abc'
+        },
+        rpcUrls: {
+          11155111: context.tenderlyFork.rpcUrl,
+        },
+      })
+
+      context.tenderlyFork.impersonateAddress = poolManager
+      centrifugeWithPin.setSigner(context.tenderlyFork.signer)
+
+      await context.tenderlyFork.fundAccountEth(poolManager, 10n ** 18n)
+
+      const pool = new Pool(centrifugeWithPin, poolId.raw, 11155111)
+
+      await pool.update({}, [], [{ tokenName: 'DummyShareClass', symbolName: 'DSC' }])
+
+      const addresses = await centrifugeWithPin._protocolAddresses(11155111)
+
+      const shareClassesCount = await centrifugeWithPin.getClient(11155111).readContract({
+        address: addresses.shareClassManager,
+        abi: ABI.ShareClassManager,
+        functionName: 'shareClassCount',
+        args: [poolId.raw],
+      })
+
+      await poolNetwork.deploy([{ id: ShareClassId.from(pool.id, shareClassesCount), hook: '0x' }])
+
+      const result = await poolNetwork.deployOnOfframpManager(ShareClassId.from(pool.id, shareClassesCount))
+
+      expect(result.type).to.equal('TransactionConfirmed')
     })
   })
 })
