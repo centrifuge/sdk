@@ -58,4 +58,4 @@ jobs:
           token: ${{ secrets.CODECOV_TOKEN }}
           # flags: unittests
           name: sdk-coverage
-          fail_ci_if_error: true
+          fail_ci_if_error: false
