@@ -24,6 +24,9 @@ export class OnOffRampManager extends Entity {
     this.onrampAddress = onrampAddress
   }
 
+  /**
+   * Get the receivers of an OnOffRampManager.
+   */
   receivers() {
     return this._query(['receivers'], () =>
       this._root.id(this.network.chainId).pipe(
