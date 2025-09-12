@@ -1070,6 +1070,24 @@ export class ShareClass extends Entity {
     )
   }
 
+  outstandingClaims() {
+    const self = this
+
+    return this._query(['outstandingClaims'], () =>
+      combineLatest([
+        self
+          ._investorOrders()
+          .pipe(
+            switchMap((orders) =>
+              combineLatest(
+                orders.outstandingInvests.map((order) => self._investorOrder(order.assetId, order.investor))
+              )
+            )
+          ),
+      ]).pipe(switchMap((outstandingInvests) => outstandingInvests))
+    )
+  }
+
   /** @internal */
   _balances() {
     return this._root._queryIndexer(

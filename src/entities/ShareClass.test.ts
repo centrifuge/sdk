@@ -192,6 +192,21 @@ describe('ShareClass', () => {
     // expect approvedAt values once they are available, right now we pendingIssuances and pendingRevocations return as empty list
   })
 
+  it('gets outstanding claims', async () => {
+    const outstandingClaims = await shareClass.outstandingClaims()
+
+    expect(outstandingClaims.length).to.be.greaterThan(0)
+
+    expect(outstandingClaims[0]).to.deep.equal({
+      assetId,
+      investor: '0x423420ae467df6e90291fd0252c0a8a637c1e03f',
+      maxDepositClaims: 0,
+      maxRedeemClaims: 0,
+      pendingDeposit: 12935000000n,
+      pendingRedeem: 0n,
+    })
+  })
+
   describe('approveDepositsAndIssueShares', () => {
     let vault: Vault
 
