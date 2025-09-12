@@ -1073,7 +1073,7 @@ export class ShareClass extends Entity {
   outstandingClaims() {
     const self = this
 
-    return this._query(['outstandingClaims'], () =>
+    return this._query(['outstandingClaims', this.id.toString()], () =>
       combineLatest([
         self
           ._investorOrders()
