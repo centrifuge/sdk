@@ -92,7 +92,7 @@ describe('OnOffRampManager', () => {
   })
 
   describe('assets', () => {
-    it.only('should return assets', async () => {
+    it('should return assets', async () => {
       const result = await onOffRampManager.assets()
 
       expect(result.length).to.be.equal(2)
