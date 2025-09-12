@@ -7,7 +7,7 @@ import { HexString } from '../types/index.js'
 import { MessageType, MessageTypeWithSubType, VaultUpdateKind } from '../types/transaction.js'
 import { addressToBytes32 } from '../utils/index.js'
 import { repeatOnEvents } from '../utils/rx.js'
-import { wrapTransaction } from '../utils/transaction.js'
+import { doTransaction, wrapTransaction } from '../utils/transaction.js'
 import { AssetId, ShareClassId } from '../utils/types.js'
 import { BalanceSheet } from './BalanceSheet.js'
 import { Entity } from './Entity.js'
@@ -186,6 +186,23 @@ export class PoolNetwork extends Entity {
     )
   }
 
+  async deployMerkleProofManager() {
+    const self = this
+
+    return this._transact(async function* (ctx) {
+      const { merkleProofManagerFactory } = await self._root._protocolAddresses(self.chainId)
+
+      yield* doTransaction('AddMerkleProofManager', ctx, () =>
+        ctx.walletClient.writeContract({
+          address: merkleProofManagerFactory,
+          abi: ABI.MerkleProofManagerFactory,
+          functionName: 'newManager',
+          args: [self.pool.id.raw],
+        })
+      )
+    }, self.chainId)
+  }
+
   onOfframpManager(scId: ShareClassId) {
     return this._query(['onOfframpManager', scId.toString()], () =>
       combineLatest([
@@ -239,6 +256,23 @@ export class PoolNetwork extends Entity {
         })
       )
     )
+  }
+
+  async deployOnOfframpManager(scId: ShareClassId) {
+    const self = this
+
+    return this._transact(async function* (ctx) {
+      const { onOfframpManagerFactory } = await self._root._protocolAddresses(self.chainId)
+
+      yield* doTransaction('AddOnOfframpManager', ctx, () =>
+        ctx.walletClient.writeContract({
+          address: onOfframpManagerFactory,
+          abi: ABI.OnOffRampManagerFactory,
+          functionName: 'newManager',
+          args: [self.pool.id.raw, scId.raw],
+        })
+      )
+    }, self.chainId)
   }
 
   /**

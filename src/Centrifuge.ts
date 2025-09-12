@@ -1303,6 +1303,8 @@ export class Centrifuge {
                 wormholeAdapter
                 vaultRouter
                 tokenFactory
+                onOfframpManagerFactory
+                merkleProofManagerFactory
               }
             }
           }`
