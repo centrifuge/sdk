@@ -204,7 +204,7 @@ export class PoolNetwork extends Entity {
   }
 
   onOfframpManager(scId: ShareClassId) {
-    return this._query(['onOfframpManager', scId.toString()], () =>
+    return this._query(null, () =>
       combineLatest([
         this._root.id(this.chainId).pipe(
           switchMap((centrifugeId) =>
