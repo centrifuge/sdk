@@ -37,7 +37,7 @@ export class Pool extends Entity {
    * @returns The pool metadata, id, shareClasses and currency.
    */
   details() {
-    return this._query(['poolDetails'], () =>
+    return this._query(['poolDetails', this.id.toString()], () =>
       combineLatest([this.metadata(), this.shareClasses(), this.shareClassesDetails(), this.currency()]).pipe(
         map(([metadata, shareClasses, shareClassesDetails, currency]) => {
           return {
@@ -55,7 +55,7 @@ export class Pool extends Entity {
   }
 
   metadata() {
-    return this._query(['metadata'], () =>
+    return this._query(['metadata', this.id.toString()], () =>
       this._root._protocolAddresses(this.chainId).pipe(
         switchMap(({ hubRegistry }) =>
           defer(() => {
@@ -111,7 +111,7 @@ export class Pool extends Entity {
   }
 
   shareClassesDetails() {
-    return this._query(['shareClassesDetails'], () => {
+    return this._query(['shareClassesDetails', this.id.toString()], () => {
       return this.shareClasses().pipe(
         switchMap((shareClasses) => {
           if (shareClasses.length === 0) return of([])
@@ -126,7 +126,7 @@ export class Pool extends Entity {
    * These managers that can manage the pool, approve deposits, update prices, etc.
    */
   poolManagers() {
-    return this._query(['poolManagers'], () => {
+    return this._query(['poolManagers', this.id.toString()], () => {
       return this._managers().pipe(
         map((managers) => {
           return managers
@@ -146,7 +146,7 @@ export class Pool extends Entity {
    * These managers can transfer funds to and from the balance sheet.
    */
   balanceSheetManagers() {
-    return this._query(['balanceSheetManagers'], () => {
+    return this._query(null, () => {
       return this._managers().pipe(
         map((managers) => {
           return managers
@@ -168,7 +168,7 @@ export class Pool extends Entity {
    */
   isPoolManager(address: HexString) {
     const addr = address.toLowerCase()
-    return this._query(['isPoolManager', addr], () => {
+    return this._query(['isPoolManager', this.id.toString(), addr], () => {
       return this.poolManagers().pipe(
         map((managers) => {
           return managers.some((manager) => manager.address === addr)
@@ -184,7 +184,7 @@ export class Pool extends Entity {
    */
   isBalanceSheetManager(chainId: number, address: HexString) {
     const addr = address.toLowerCase()
-    return this._query(['isBalanceSheetManager', chainId, addr], () => {
+    return this._query(['isBalanceSheetManager', chainId, this.id.toString(), addr], () => {
       return this.balanceSheetManagers().pipe(
         map((managers) => {
           return managers.some((manager) => manager.chainId === chainId && manager.address === addr)
@@ -197,7 +197,7 @@ export class Pool extends Entity {
    * Get all networks where a pool can potentially be deployed.
    */
   networks() {
-    return this._query(['poolNetworks'], () => {
+    return this._query(['poolNetworks', this.id.toString()], () => {
       return of(
         this._root.chains.map((chainId) => {
           return new PoolNetwork(this._root, this, chainId)
@@ -210,7 +210,7 @@ export class Pool extends Entity {
    * Get a specific network where a pool can potentially be deployed.
    */
   network(chainId: number) {
-    return this._query(['poolNetwork', chainId], () => {
+    return this._query(['poolNetwork', chainId, this.id.toString()], () => {
       return this.networks().pipe(
         map((networks) => {
           const network = networks.find((network) => network.chainId === chainId)
@@ -225,7 +225,7 @@ export class Pool extends Entity {
    * Get the networks where a pool is active. It doesn't mean that any vaults are deployed there necessarily.
    */
   activeNetworks() {
-    return this._query(['poolActiveNetworks'], () => {
+    return this._query(['poolActiveNetworks', this.id.toString()], () => {
       return this.networks().pipe(
         switchMap((networks) => {
           if (networks.length === 0) return of([])
@@ -257,7 +257,7 @@ export class Pool extends Entity {
    * Get the currency of the pool.
    */
   currency() {
-    return this._query(['currency'], () => {
+    return this._query(['currency', this.id.toString()], () => {
       return this._root._protocolAddresses(this.chainId).pipe(
         switchMap(({ hubRegistry }) => {
           return this._root.getClient(this.chainId).readContract({
@@ -691,7 +691,7 @@ export class Pool extends Entity {
    * @internal
    */
   _shareClassIds() {
-    return this._query(['shareClasses'], () =>
+    return this._query(['shareClasses', this.id.toString()], () =>
       this._root._protocolAddresses(this.chainId).pipe(
         switchMap(({ shareClassManager }) =>
           defer(async () => {
@@ -722,7 +722,7 @@ export class Pool extends Entity {
 
   /** @internal */
   _escrow() {
-    return this._query(['escrow'], () =>
+    return this._query(['escrow', this.id.toString()], () =>
       this._root._protocolAddresses(this.chainId).pipe(
         switchMap(({ poolEscrowFactory }) => {
           return this._root.getClient(this.chainId).readContract({
@@ -739,7 +739,7 @@ export class Pool extends Entity {
 
   /** @internal */
   _managers() {
-    return this._query(['poolManagers'], () =>
+    return this._query(null, () =>
       combineLatest([
         this._root._deployments(),
         this._root._queryIndexer<{
