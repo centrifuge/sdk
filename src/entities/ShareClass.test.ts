@@ -195,16 +195,20 @@ describe('ShareClass', () => {
   it('gets outstanding claims', async () => {
     const outstandingClaims = await shareClass.outstandingClaims()
 
-    expect(outstandingClaims.length).to.be.greaterThan(0)
-
-    expect(outstandingClaims[0]).to.deep.equal({
-      assetId,
-      investor: '0x423420ae467df6e90291fd0252c0a8a637c1e03f',
-      maxDepositClaims: 0,
-      maxRedeemClaims: 0,
-      pendingDeposit: 12935000000n,
-      pendingRedeem: 0n,
-    })
+    expect(outstandingClaims.get('0x423420ae467df6e90291fd0252c0a8a637c1e03f')).to.deep.equal([
+      {
+        assetId,
+        address: '0x423420ae467df6e90291fd0252c0a8a637c1e03f',
+        maxDepositClaims: 0,
+        maxRedeemClaims: 0,
+      },
+      {
+        assetId: assetId2,
+        address: '0x423420ae467df6e90291fd0252c0a8a637c1e03f',
+        maxDepositClaims: 1,
+        maxRedeemClaims: 1,
+      },
+    ])
   })
 
   describe('approveDepositsAndIssueShares', () => {

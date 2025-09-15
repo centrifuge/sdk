@@ -1074,17 +1074,59 @@ export class ShareClass extends Entity {
     const self = this
 
     return this._query(['outstandingClaims'], () =>
-      combineLatest([
-        self
-          ._investorOrders()
-          .pipe(
-            switchMap((orders) =>
-              combineLatest(
-                orders.outstandingInvests.map((order) => self._investorOrder(order.assetId, order.investor))
-              )
-            )
-          ),
-      ])
+      self._investorOrders().pipe(
+        switchMap((orders) =>
+          combineLatest([
+            ...orders.outstandingInvests.map((order) => self._investorOrder(order.assetId, order.investor)),
+            ...orders.outstandingRedeems.map((order) => self._investorOrder(order.assetId, order.investor)),
+          ]).pipe(
+            switchMap((investorOrders) => {
+              const claimsByInvestor = new Map<
+                string,
+                {
+                  address: HexString
+                  assetId: AssetId
+                  maxRedeemClaims: number
+                  maxDepositClaims: number
+                }[]
+              >()
+
+              investorOrders.forEach((order) => {
+                const key = order.investor
+
+                if (claimsByInvestor.has(key)) {
+                  const existing = claimsByInvestor.get(key)!
+
+                  const existingForAsset = existing.find((e) => e.assetId.equals(order.assetId))
+
+                  if (existingForAsset) {
+                    existingForAsset.maxDepositClaims = existingForAsset.maxDepositClaims + order.maxDepositClaims
+                    existingForAsset.maxRedeemClaims = existingForAsset.maxRedeemClaims + order.maxRedeemClaims
+                  } else {
+                    existing.push({
+                      address: order.investor,
+                      assetId: order.assetId,
+                      maxRedeemClaims: order.maxRedeemClaims,
+                      maxDepositClaims: order.maxDepositClaims,
+                    })
+                  }
+                } else {
+                  claimsByInvestor.set(key, [
+                    {
+                      address: order.investor,
+                      assetId: order.assetId,
+                      maxRedeemClaims: order.maxRedeemClaims,
+                      maxDepositClaims: order.maxDepositClaims,
+                    },
+                  ])
+                }
+              })
+
+              return of(claimsByInvestor)
+            })
+          )
+        )
+      )
     )
   }
 
