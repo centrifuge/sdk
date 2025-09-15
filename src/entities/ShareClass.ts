@@ -15,6 +15,7 @@ import { Entity } from './Entity.js'
 import type { Pool } from './Pool.js'
 import { PoolNetwork } from './PoolNetwork.js'
 import { Vault } from './Vault.js'
+import { AddressMap } from '../utils/AddressMap.js'
 
 /**
  * Query and interact with a share class, which allows querying total issuance, NAV per share,
@@ -1081,48 +1082,33 @@ export class ShareClass extends Entity {
             ...orders.outstandingRedeems.map((order) => self._investorOrder(order.assetId, order.investor)),
           ]).pipe(
             map((investorOrders) => {
-              const claimsByInvestor = new Map<
-                string,
+              const ordersByInvestor = new AddressMap<
                 {
-                  address: HexString
+                  investor: HexString
                   assetId: AssetId
                   maxRedeemClaims: number
                   maxDepositClaims: number
+                  pendingRedeem: bigint
+                  pendingDeposit: bigint
                 }[]
               >()
 
               investorOrders.forEach((order) => {
                 const key = order.investor
 
-                if (claimsByInvestor.has(key)) {
-                  const existing = claimsByInvestor.get(key)!
-
+                if (ordersByInvestor.has(key)) {
+                  const existing = ordersByInvestor.get(key)!
                   const existingForAsset = existing.find((e) => e.assetId.equals(order.assetId))
 
-                  if (existingForAsset) {
-                    existingForAsset.maxDepositClaims = existingForAsset.maxDepositClaims + order.maxDepositClaims
-                    existingForAsset.maxRedeemClaims = existingForAsset.maxRedeemClaims + order.maxRedeemClaims
-                  } else {
-                    existing.push({
-                      address: order.investor,
-                      assetId: order.assetId,
-                      maxRedeemClaims: order.maxRedeemClaims,
-                      maxDepositClaims: order.maxDepositClaims,
-                    })
+                  if (!existingForAsset) {
+                    existing.push(order)
                   }
                 } else {
-                  claimsByInvestor.set(key, [
-                    {
-                      address: order.investor,
-                      assetId: order.assetId,
-                      maxRedeemClaims: order.maxRedeemClaims,
-                      maxDepositClaims: order.maxDepositClaims,
-                    },
-                  ])
+                  ordersByInvestor.set(key, [order])
                 }
               })
 
-              return claimsByInvestor
+              return ordersByInvestor
             })
           )
         )

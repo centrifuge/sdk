@@ -198,15 +198,19 @@ describe('ShareClass', () => {
     expect(investorOrders.get('0x423420ae467df6e90291fd0252c0a8a637c1e03f')).to.deep.equal([
       {
         assetId,
-        address: '0x423420ae467df6e90291fd0252c0a8a637c1e03f',
+        investor: '0x423420ae467df6e90291fd0252c0a8a637c1e03f',
         maxDepositClaims: 0,
         maxRedeemClaims: 0,
+        pendingDeposit: 12935000000n,
+        pendingRedeem: 0n,
       },
       {
         assetId: assetId2,
-        address: '0x423420ae467df6e90291fd0252c0a8a637c1e03f',
+        investor: '0x423420ae467df6e90291fd0252c0a8a637c1e03f',
         maxDepositClaims: 1,
         maxRedeemClaims: 1,
+        pendingDeposit: 30000000000000000000n,
+        pendingRedeem: 30000000000000000000n,
       },
     ])
   })
