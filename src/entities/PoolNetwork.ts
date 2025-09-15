@@ -186,7 +186,7 @@ export class PoolNetwork extends Entity {
     )
   }
 
-  async deployMerkleProofManager() {
+  deployMerkleProofManager() {
     const self = this
 
     return this._transact(async function* (ctx) {
@@ -258,7 +258,7 @@ export class PoolNetwork extends Entity {
     )
   }
 
-  async deployOnOfframpManager(scId: ShareClassId) {
+  deployOnOfframpManager(scId: ShareClassId) {
     const self = this
 
     return this._transact(async function* (ctx) {

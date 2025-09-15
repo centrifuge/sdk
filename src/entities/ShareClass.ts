@@ -15,6 +15,7 @@ import { Entity } from './Entity.js'
 import type { Pool } from './Pool.js'
 import { PoolNetwork } from './PoolNetwork.js'
 import { Vault } from './Vault.js'
+import { AddressMap } from '../utils/AddressMap.js'
 
 /**
  * Query and interact with a share class, which allows querying total issuance, NAV per share,
@@ -1070,6 +1071,51 @@ export class ShareClass extends Entity {
     )
   }
 
+  investorOrders() {
+    const self = this
+
+    return this._query(['investorOrders'], () =>
+      self._investorOrders().pipe(
+        switchMap((orders) =>
+          combineLatest([
+            ...orders.outstandingInvests.map((order) => self._investorOrder(order.assetId, order.investor)),
+            ...orders.outstandingRedeems.map((order) => self._investorOrder(order.assetId, order.investor)),
+          ]).pipe(
+            map((investorOrders) => {
+              const ordersByInvestor = new AddressMap<
+                {
+                  investor: HexString
+                  assetId: AssetId
+                  maxRedeemClaims: number
+                  maxDepositClaims: number
+                  pendingRedeem: bigint
+                  pendingDeposit: bigint
+                }[]
+              >()
+
+              investorOrders.forEach((order) => {
+                const key = order.investor
+
+                if (ordersByInvestor.has(key)) {
+                  const existing = ordersByInvestor.get(key)!
+                  const existingForAsset = existing.find((e) => e.assetId.equals(order.assetId))
+
+                  if (!existingForAsset) {
+                    existing.push(order)
+                  }
+                } else {
+                  ordersByInvestor.set(key, [order])
+                }
+              })
+
+              return ordersByInvestor
+            })
+          )
+        )
+      )
+    )
+  }
+
   /** @internal */
   _balances() {
     return this._root._queryIndexer(
@@ -1077,7 +1123,7 @@ export class ShareClass extends Entity {
         holdingEscrows(where: { tokenId: $scId }) {
           items {
             holding {
-              updatedAt
+              createdAt
             }
             assetAmount
             assetPrice
@@ -1102,7 +1148,7 @@ export class ShareClass extends Entity {
         holdingEscrows: {
           items: {
             holding: {
-              updatedAt: string | null
+              createdAt: string | null
             }
             assetId: string
             assetAmount: string
