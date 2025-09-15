@@ -1084,7 +1084,7 @@ export class ShareClass extends Entity {
               )
             )
           ),
-      ]).pipe(switchMap((outstandingInvests) => outstandingInvests))
+      ])
     )
   }
 
