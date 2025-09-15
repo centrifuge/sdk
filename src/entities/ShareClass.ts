@@ -1070,10 +1070,10 @@ export class ShareClass extends Entity {
     )
   }
 
-  outstandingClaims() {
+  investorOrders() {
     const self = this
 
-    return this._query(['outstandingClaims'], () =>
+    return this._query(['investorOrders'], () =>
       self._investorOrders().pipe(
         switchMap((orders) =>
           combineLatest([
