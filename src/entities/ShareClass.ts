@@ -1080,7 +1080,7 @@ export class ShareClass extends Entity {
             ...orders.outstandingInvests.map((order) => self._investorOrder(order.assetId, order.investor)),
             ...orders.outstandingRedeems.map((order) => self._investorOrder(order.assetId, order.investor)),
           ]).pipe(
-            switchMap((investorOrders) => {
+            map((investorOrders) => {
               const claimsByInvestor = new Map<
                 string,
                 {
@@ -1122,7 +1122,7 @@ export class ShareClass extends Entity {
                 }
               })
 
-              return of(claimsByInvestor)
+              return claimsByInvestor
             })
           )
         )
