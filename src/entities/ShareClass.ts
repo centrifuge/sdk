@@ -1077,7 +1077,7 @@ export class ShareClass extends Entity {
         holdingEscrows(where: { tokenId: $scId }) {
           items {
             holding {
-              updatedAt
+              createdAt
             }
             assetAmount
             assetPrice
@@ -1102,7 +1102,7 @@ export class ShareClass extends Entity {
         holdingEscrows: {
           items: {
             holding: {
-              updatedAt: string | null
+              createdAt: string | null
             }
             assetId: string
             assetAmount: string
