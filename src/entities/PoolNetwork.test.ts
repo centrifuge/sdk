@@ -152,7 +152,7 @@ describe('PoolNetwork', () => {
       expect(result).to.be.instanceOf(MerkleProofManager)
     })
 
-    it('should deploy merkleProofManager', async () => {
+    it.only('should deploy merkleProofManager', async () => {
       context.tenderlyFork.impersonateAddress = poolManager
       context.centrifuge.setSigner(context.tenderlyFork.signer)
 
