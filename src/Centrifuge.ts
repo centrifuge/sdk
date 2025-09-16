@@ -100,7 +100,7 @@ export class Centrifuge {
   }
 
   #clients = new Map<number, Client>()
-  getClient(chainId: number) {
+  getClient(chainId: number): Client {
     const client = this.#clients.get(chainId)
     if (!client) throw new Error(`No client found for chain ID "${chainId}"`)
     return client
