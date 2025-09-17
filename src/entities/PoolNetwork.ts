@@ -492,7 +492,7 @@ export class PoolNetwork extends Entity {
    * @internal
    */
   _share(scId: ShareClassId, throwOnNullAddress = true) {
-    return this._query(['share', scId.toString()], () =>
+    return this._query(['share', scId.toString(), throwOnNullAddress], () =>
       this._root._protocolAddresses(this.chainId).pipe(
         switchMap(({ spoke }) =>
           defer(async () => {
