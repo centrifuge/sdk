@@ -1,198 +1,208 @@
 # Centrifuge SDK [![Codecov](https://codecov.io/gh/centrifuge/sdk/graph/badge.svg?token=Q2yU8QfefP)](https://codecov.io/gh/centrifuge/sdk) [![Build CI status](https://github.com/centrifuge/sdk/actions/workflows/build-test-report.yml/badge.svg)](https://github.com/centrifuge/sdk/actions/workflows/build-test-report.yml) [![Latest Release](https://img.shields.io/github/v/release/centrifuge/sdk?sort=semver)](https://github.com/centrifuge/sdk/releases/latest)
 
-The Centrifuge SDK is a JavaScript client for interacting with the [Centrifuge](https://centrifuge.io) ecosystem. It provides a comprehensive, fully typed library to integrate investments and redemptions, generate financial reports, manage pools, and much more.
+# Centrifuge SDK
+
+A fully typed JavaScript client to interact with the Centrifuge ecosystem. Use it to manage pools, investments, redemptions, financial reports, and more.
+
+---
+
+## Table of Contents
+
+1. [Features](#features)
+2. [Installation](#installation)
+3. [Getting Started](#getting-started)
+   - [Initialization & Configuration](#initialization--configuration)
+   - [Queries](#queries)
+   - [Transactions](#transactions)
+   - [Investments](#investments)
+   - [Reports](#reports)
+4. [Developer Guide](#developer-guide)
+   - [Development Mode](#development-mode)
+   - [Building](#building)
+   - [Testing](#testing)
+5. [Contributing](#contributing)
+   - [Docs](#docs)
+   - [PR Conventions & Versioning](#pr-naming-convention--versioning)
+6. [License](#license)
+
+---
+
+## Features
+
+- Typed JavaScript/TypeScript client
+- Support for mainnet & testnet environments
+- Full querying interface (readonly) + subscription support
+- Transaction support (awaitable or observable for updates)
+- Handling of share classes, vaults, and ERC-7540 tokenized vaults
+- Reports: balance sheet, profit & loss, cash flow
+
+---
 
 ## Installation
 
 ```bash
-npm install --save @centrifuge/sdk
+npm install @centrifuge/sdk
 ```
 
-## Init and config
+## Getting Started
 
-Create an instance and pass optional configuration
+### Initialization & Configuration
 
-```js
-import Centrifuge from '@centrifuge/sdk'
+```typescript
+import Centrifuge from '@centrifuge/sdk';
 
-const centrifuge = new Centrifuge()
+const centrifuge = new Centrifuge({
+  environment: 'mainnet' | 'testnet',         // optional, defaults to 'mainnet'
+  rpcUrls?: { [chainId: number]: string },     // optional RPC endpoints
+  indexerUrl?: string,                         // optional indexer API URL
+  ipfsUrl?: string                             // optional IPFS gateway, default: https://centrifuge.mypinata.cloud
+});
 ```
 
-The following config options can be passed on initialization of the SDK:
+### Queries
 
-- `environment: 'mainnet' | 'testnet'`
-  - Optional
-  - Default value: `mainnet`
-- `rpcUrls: Record<number, string>`
-  - Optional
-  - A object mapping chain ids to RPC URLs
-- `indexerUrl: string`
-  - Optional
-  - A URL for the indexer
-- `ipfsUrl: string`
-  - Optional
-  - A URL for an IPFS gateway
-  - Default value: `https://centrifuge.mypinata.cloud`
+Queries return Observables (rxjs), which can be:
 
-## Queries
+- awaited (for one value), or
+- subscribed to (to receive updates when on-chain data changes)
 
-Queries return Promise-like [Observables](https://rxjs.dev/guide/observable). They can be either awaited to get a single value, or subscribed to to get fresh data whenever on-chain data changes.
+```typescript
+const pools = await centrifuge.pools()
 
-```js
-try {
-  const pool = await centrifuge.pools()
-} catch (error) {
-  console.error(error)
-}
-```
-
-```js
+// Or subscribe
 const subscription = centrifuge.pools().subscribe(
-  (pool) => console.log(pool),
+  (pools) => console.log(pools),
   (error) => console.error(error)
 )
+
+// Later, to stop updates:
 subscription.unsubscribe()
 ```
 
-The returned results are either immutable values, or entities that can be further queried.
+### Transactions
 
-## Transactions
+- Before calling transaction methods, set a signer on the centrifuge instance.
+- The signer can be:
+  - An EIP-1193-compatible provider
+  - A Viem LocalAccount
+- Transactions, like queries, support either awaiting for completion or subscribing for status updates.
 
-To perform transactions, you need to set a signer on the `centrifuge` instance.
-
-```js
+```typescript
 centrifuge.setSigner(signer)
-```
 
-`signer` can be either a [EIP1193](https://eips.ethereum.org/EIPS/eip-1193)-compatible provider or a Viem [LocalAccount](https://viem.sh/docs/accounts/local).
-
-With this you can call transaction methods. Similar to queries they can be awaited to get their final result, or subscribed to get get status updates.
-
-```js
 const pool = await centrifuge.pool('1')
-try {
-  const status = await pool.closeEpoch()
-  console.log(status)
-} catch (error) {
-  console.error(error)
-}
-```
+const tx = await pool.closeEpoch()
+console.log(tx.hash)
 
-```js
-const pool = await centrifuge.pool('1')
-const subscription = pool.closeEpoch().subscribe(
-  (status) => console.log(pool),
+// or, subscribe to transaction lifecycle:
+const sub = pool.closeEpoch().subscribe(
+  (status) => console.log(status),
   (error) => console.error(error),
-  () => console.log('complete')
+  () => console.log('Done')
 )
 ```
 
-## Investments
+### Investments
 
-Investments for a pool are done via [ERC-7540 Tokenized Vaults](https://eips.ethereum.org/EIPS/eip-7540). Vaults can be deployed for a share class on any supported network, for any supported currency
+The SDK supports ERC-7540 tokenized vaults. Vaults are created per share class, chain, and currency.
 
-Retrieve a vault by querying it from the pool:
-
-```js
+```typescript
 const pool = await centrifuge.pool('1')
-const vault = await pool.vault(1, '0xabc...', '0xdef...') // Chain ID, share class ID, investment currency address
+const vault = await pool.vault(1, '0xShareClassAddress', '0xInvestmentCurrencyAddress')
 ```
 
-Query the state of an investment on the vault for an investor:
+You can query an individual investor’s situation:
 
-```js
-const investment = await vault.investment('0x123...')
-// Will return an object containing:
-// isAllowedToInvest - Whether an investor is allowed to invest in the share class
-// investmentCurrency - The ERC20 token that is used to invest in the vault
-// investmentCurrencyBalance - The balance of the investor of the investment currency
-// investmentCurrencyAllowance - The allowance of the vault
-// shareCurrency - The ERC20 token that is issued to investors to account for their share in the share class
-// shareBalance - The number of shares the investor has in the share class
-// claimableInvestShares - The number of shares an investor can claim after their invest order has been processed (partially or not)
-// claimableInvestCurrencyEquivalent - The equivalent value of the claimable shares denominated in the invest currency
-// claimableRedeemCurrency - The amout of money an investor can claim after their redeem order has been processed (partially or not)
-// claimableRedeemSharesEquivalent - The amount of shares that have been redeemed for which the investor can claim money
-// pendingInvestCurrency - The amount of money that the investor wants to invest in the share class that has not been processed yet
-// pendingRedeemShares - The amount of shares that the investor wants to redeem from the share class that has not been processed yet
-// claimableCancelInvestCurrency - The amount of money an investor can claim after an invest order cancellation has been processed
-// claimableCancelRedeemShares - The amount of shares an investor can claim after a redeem order cancellation has been processed
-// hasPendingCancelInvestRequest - Whether the investor has an invest order that is in the process of being cancelled
-// hasPendingCancelRedeemRequest - Whether the investor has a redeem order that is in the process of being cancelled
+```typescript
+const inv = await vault.investment('0xInvestorAddress')
+
+// Example returned fields include:
+//   isAllowedToInvest
+//   investmentCurrency, investmentCurrencyBalance, investmentCurrencyAllowance
+//   shareCurrency, shareBalance
+//   claimableInvestShares, claimableInvestCurrencyEquivalent
+//   claimableRedeemCurrency, claimableRedeemSharesEquivalent
+//   pendingInvestCurrency, pendingRedeemShares
+//   hasPendingCancelInvestRequest, hasPendingCancelRedeemRequest
 ```
 
-Invest in a vault:
+To invest:
 
-```js
+```typescript
 const result = await vault.increaseInvestOrder(1000)
 console.log(result.hash)
 ```
 
-Once an order has been processed, `claimableInvestShares` will positive and shares can be claimed with:
+Once processed, any claimable shares or currencies can be claimed:
 
-```js
-const result = await vault.claim()
+```typescript
+const claimResult = await vault.claim()
 ```
 
-## Reports
+### Reports
 
-Reports are generated from data from the Centrifuge API and are combined with pool metadata to provide a comprehensive view of the pool's financials.
+You can generate financial reports for a pool based on on-chain + API data.
 
-Available reports are:
+Available report types:
 
-- `balanceSheet`
-- `profitAndLoss`
-- `cashflow`
+- balanceSheet
+- profitAndLoss
+- cashflow
 
-```ts
-const pool = await centrifuge.pool('<pool-id>')
-const balanceSheetReport = await pool.reports.balanceSheet()
-```
+Filtering is supported:
 
-### Report Filtering
+```typescript
+type ReportFilter = {
+  from?: string // e.g. '2024-01-01'
+  to?: string // e.g. '2024-01-31'
+  groupBy?: 'day' | 'month' | 'quarter' | 'year'
+}
 
-Reports can be filtered using the `ReportFilter` type.
-
-```ts
-type GroupBy = 'day' | 'month' | 'quarter' | 'year'
-
-const balanceSheetReport = await pool.reports.balanceSheet({
+const report = await pool.reports.balanceSheet({
   from: '2024-01-01',
   to: '2024-01-31',
   groupBy: 'month',
 })
 ```
 
-## Developer Docs
+### Developer Guide
 
-### Dev server
-
-```bash
-yarn dev
-```
-
-### Build
+#### Development Mode
 
 ```bash
-yarn build
+npm dev
 ```
 
-### Test
+#### Building
 
 ```bash
-yarn test
-yarn test:single <path-to-file>
-yarn test:simple:single <path-to-file> # without setup file, faster and without tenderly setup
+npm build
 ```
 
-## User Docs
+#### Testing
 
-User docs are written and maintained in the [sdk-docs](https://github.com/centrifuge/sdk-docs) repository.
+```bash
+yarn test                # full test suite
+yarn test:single <file>  # test specific file
+yarn test:simple:single <file>
+# (runs faster excluding setup files)
+```
 
-### PR Naming Convention
+### Contributing
 
-PR naming should follow the [Conventional Commits](https://www.conventionalcommits.org/en/v1.0.0/) specification.
+#### Docs
 
-### Semantic Versioning
+Detailed user & developer documentation is maintained in the `sdk/docs` repository.
 
-PRs should be marked with the appropriate type: `major`, `minor`, `patch`, `no-release`.
+#### PR Naming Convention & Versioning
+
+PR titles & commits should follow Conventional Commits style.
+
+Use semantic versioning: tags/releases should be one of major, minor, patch.
+
+If no release is needed, label as no-release.
+
+### License
+
+This project is licensed under LGPL-3.0.
+See the [LICENSE](./LICENSE) file for details.
