@@ -181,13 +181,13 @@ const report = await pool.reports.sharePrices({
 #### Development Mode
 
 ```bash
-npm dev
+yarn dev
 ```
 
 #### Building
 
 ```bash
-npm build
+yarn build
 ```
 
 #### Testing
