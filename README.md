@@ -2,7 +2,7 @@
 
 # Centrifuge SDK
 
-A fully typed JavaScript client to interact with the Centrifuge ecosystem. Use it to manage pools, investments, redemptions, financial reports, and more.
+A fully typed JavaScript client to interact with the [Centrifuge](https://centrifuge.io) ecosystem. Use it to manage pools, investments, redemptions, financial reports, and more.
 
 ---
 
@@ -104,14 +104,24 @@ const sub = pool.closeEpoch().subscribe(
 
 ### Investments
 
-The SDK supports ERC-7540 tokenized vaults. Vaults are created per share class, chain, and currency.
+The SDK supports [ERC-7540](https://eips.ethereum.org/EIPS/eip-7540) tokenized vaults. Vaults are created per share class, chain, and currency.
 
 ```typescript
 const pool = await centrifuge.pool('1')
 const vault = await pool.vault(1, '0xShareClassAddress', '0xInvestmentCurrencyAddress')
 ```
 
-You can query an individual investor’s situation:
+#### Vault Types
+
+Vaults can behave differently depending on how the pool is configured:
+
+- Synchronous deposit vaults
+  These vaults follow a hybrid model using both ERC-4626 and ERC-7540. Deposits are executed instantly using ERC-4626 behavior, allowing users to receive shares immediately. However, redemptions are handled asynchronously through ERC-7540, using the Hub to queue and manage the withdrawal requests.
+
+- Asynchronous vaults
+  Asynchronous vaults are fully request-based and follow the ERC-7540 standard. They allow both deposit and redemption actions to be handled through an asynchronous workflow, using the Centrifuge Hub to manage requests.
+
+You can query an individual investor’s state:
 
 ```typescript
 const inv = await vault.investment('0xInvestorAddress')
@@ -145,9 +155,7 @@ You can generate financial reports for a pool based on on-chain + API data.
 
 Available report types:
 
-- balanceSheet
-- profitAndLoss
-- cashflow
+- token price
 
 Filtering is supported:
 
@@ -158,10 +166,13 @@ type ReportFilter = {
   groupBy?: 'day' | 'month' | 'quarter' | 'year'
 }
 
-const report = await pool.reports.balanceSheet({
-  from: '2024-01-01',
-  to: '2024-01-31',
-  groupBy: 'month',
+const fromNum = toUTCEpoch(filters.from, unit)
+const toNum = toUTCEpoch(filters.to, unit)
+
+const report = await pool.reports.sharePrices({
+  from: fromNum,
+  to: toNum,
+  groupBy: 'day',
 })
 ```
 
@@ -192,7 +203,7 @@ yarn test:simple:single <file>
 
 #### Docs
 
-Detailed user & developer documentation is maintained in the `sdk/docs` repository.
+Detailed user & developer documentation is maintained in the [documentation repository](https://github.com/centrifuge/documentation/tree/main/docs/developer/centrifuge-sdk).
 
 #### PR Naming Convention & Versioning
 
