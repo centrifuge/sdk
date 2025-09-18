@@ -49,14 +49,14 @@ npm install @centrifuge/sdk
 ### Initialization & Configuration
 
 ```typescript
-import Centrifuge from '@centrifuge/sdk';
+import Centrifuge from '@centrifuge/sdk'
 
 const centrifuge = new Centrifuge({
   environment: 'mainnet' | 'testnet',         // optional, defaults to 'mainnet'
   rpcUrls?: { [chainId: number]: string },     // optional RPC endpoints
   indexerUrl?: string,                         // optional indexer API URL
   ipfsUrl?: string                             // optional IPFS gateway, default: https://centrifuge.mypinata.cloud
-});
+})
 ```
 
 ### Queries
