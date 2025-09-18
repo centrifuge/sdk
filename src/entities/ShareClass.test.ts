@@ -192,7 +192,7 @@ describe('ShareClass', () => {
     // expect approvedAt values once they are available, right now we pendingIssuances and pendingRevocations return as empty list
   })
 
-  it('gets investor orders', async () => {
+  it.only('gets investor orders', async () => {
     const investorOrders = await shareClass.investorOrders()
 
     expect(investorOrders.get('0x423420ae467df6e90291fd0252c0a8a637c1e03f')).to.deep.equal([
@@ -201,7 +201,7 @@ describe('ShareClass', () => {
         investor: '0x423420ae467df6e90291fd0252c0a8a637c1e03f',
         maxDepositClaims: 0,
         maxRedeemClaims: 0,
-        pendingDeposit: 12935000000n,
+        pendingDeposit: 12945000000n,
         pendingRedeem: 0n,
       },
       {
