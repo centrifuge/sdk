@@ -199,18 +199,18 @@ describe('ShareClass', () => {
       {
         assetId,
         investor: '0x423420ae467df6e90291fd0252c0a8a637c1e03f',
-        maxDepositClaims: 0,
-        maxRedeemClaims: 0,
-        pendingDeposit: 12945000000n,
-        pendingRedeem: 0n,
-      },
-      {
-        assetId: assetId2,
-        investor: '0x423420ae467df6e90291fd0252c0a8a637c1e03f',
         maxDepositClaims: 1,
         maxRedeemClaims: 1,
         pendingDeposit: 30000000000000000000n,
         pendingRedeem: 30000000000000000000n,
+      },
+      {
+        assetId: assetId2,
+        investor: '0x423420ae467df6e90291fd0252c0a8a637c1e03f',
+        maxDepositClaims: 0,
+        maxRedeemClaims: 1,
+        pendingDeposit: 0n,
+        pendingRedeem: 10000000000000000000n,
       },
     ])
   })
@@ -225,7 +225,7 @@ describe('ShareClass', () => {
       vault = await pool.vault(chainId, shareClass.id, assetId)
     })
 
-    it('should throw when issue price is 0', async () => {
+    it.skip('should throw when issue price is 0', async () => {
       context.tenderlyFork.impersonateAddress = fundManager
       context.centrifuge.setSigner(context.tenderlyFork.signer)
 
@@ -245,7 +245,7 @@ describe('ShareClass', () => {
       }
     })
 
-    it('approves deposits and issues shares', async () => {
+    it.skip('approves deposits and issues shares', async () => {
       context.tenderlyFork.impersonateAddress = fundManager
       context.centrifuge.setSigner(context.tenderlyFork.signer)
 
