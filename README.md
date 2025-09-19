@@ -1,7 +1,5 @@
 # Centrifuge SDK [![Codecov](https://codecov.io/gh/centrifuge/sdk/graph/badge.svg?token=Q2yU8QfefP)](https://codecov.io/gh/centrifuge/sdk) [![Build CI status](https://github.com/centrifuge/sdk/actions/workflows/build-test-report.yml/badge.svg)](https://github.com/centrifuge/sdk/actions/workflows/build-test-report.yml) [![Latest Release](https://img.shields.io/github/v/release/centrifuge/sdk?sort=semver)](https://github.com/centrifuge/sdk/releases/latest)
 
-# Centrifuge SDK
-
 A fully typed JavaScript client to interact with the [Centrifuge](https://centrifuge.io) ecosystem. Use it to manage pools, investments, redemptions, financial reports, and more.
 
 ---
