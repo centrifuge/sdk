@@ -87,17 +87,29 @@ subscription.unsubscribe()
 
 ```typescript
 centrifuge.setSigner(signer)
-
-const pool = await centrifuge.pool('1')
-const tx = await pool.closeEpoch()
+const poolId = PoolId.from(1, 1)
+const pool = await centrifuge.pool(poolId)
+const tx = await pool.updatePoolManagers([
+  {
+    address: '0xAddress',
+    canManage: true,
+  },
+])
 console.log(tx.hash)
 
 // or, subscribe to transaction lifecycle:
-const sub = pool.closeEpoch().subscribe(
-  (status) => console.log(status),
-  (error) => console.error(error),
-  () => console.log('Done')
-)
+const sub = pool.pool
+  .updatePoolManagers([
+    {
+      address: '0xAddress',
+      canManage: true,
+    },
+  ])
+  .subscribe(
+    (status) => console.log(status),
+    (error) => console.error(error),
+    () => console.log('Done')
+  )
 ```
 
 ### Investments
@@ -105,8 +117,11 @@ const sub = pool.closeEpoch().subscribe(
 The SDK supports [ERC-7540](https://eips.ethereum.org/EIPS/eip-7540) tokenized vaults. Vaults are created per share class, chain, and currency.
 
 ```typescript
-const pool = await centrifuge.pool('1')
-const vault = await pool.vault(1, '0xShareClassAddress', '0xInvestmentCurrencyAddress')
+const pool = await centrifuge.pool(poolId)
+const scId = ShareClassId.from(poolId, 1)
+const assetId = AssetId.from(centId, 1)
+// Get a vault
+const vault = await pool.vault(11155111, scId, assetId)
 ```
 
 #### Vault Types
@@ -137,7 +152,9 @@ const inv = await vault.investment('0xInvestorAddress')
 To invest:
 
 ```typescript
-const result = await vault.increaseInvestOrder(1000)
+const { investmentCurrency } = await vault.details()
+const amount = Balance.fromFloat(1000, investmentCurrency.decimals)
+const tx = await vault.increaseInvestOrder(amount)
 console.log(result.hash)
 ```
 
