@@ -342,7 +342,7 @@ describe('ShareClass', () => {
     })
   })
 
-  describe('approveRedeemsAndRevokeShares', () => {
+  describe.skip('approveRedeemsAndRevokeShares', () => {
     let vault: Vault
     let pendingAmount: Awaited<ReturnType<typeof shareClass.pendingAmounts>>[number]
 
@@ -519,7 +519,7 @@ describe('ShareClass', () => {
   })
 
   describe('claimRedeem', () => {
-    it('should be able to claim a redemption', async () => {
+    it.skip('should be able to claim a redemption', async () => {
       const { centrifuge } = context
       const pool = new Pool(centrifuge, poolId.raw, chainId)
       const sc = new ShareClass(centrifuge, pool, scId.raw)

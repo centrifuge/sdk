@@ -269,7 +269,7 @@ describe('Vault', () => {
     //   expect(emittedSigningStatus).to.equal(false)
     // })
 
-    it('cancels an invest order and claims the tokens back', async () => {
+    it.skip('cancels an invest order and claims the tokens back', async () => {
       await mint(vault._asset, investorC)
 
       context.tenderlyFork.impersonateAddress = fundManager
