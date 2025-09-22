@@ -1,4 +1,3 @@
-import type { Observable } from 'rxjs'
 import {
   combineLatest,
   concatWith,
@@ -14,7 +13,8 @@ import {
   Subject,
   switchMap,
   timer,
-  using,
+  share,
+  Observable,
 } from 'rxjs'
 import { fromFetch } from 'rxjs/fetch'
 import {
@@ -734,22 +734,19 @@ export class Centrifuge {
   _events(chainId: number) {
     return this._query(
       ['events', chainId],
-      () =>
-        using(
-          () => {
-            const subject = new Subject<WatchEventOnLogsParameter>()
-            const unwatch = this.getClient(chainId).watchEvent({
-              onLogs: (logs) => subject.next(logs),
-            })
-            return {
-              unsubscribe: unwatch,
-              subject,
-            }
-          },
-          ({ subject }: any) => subject as Subject<WatchEventOnLogsParameter>
-        ),
-      { cache: false } // Only emit new events
-    ).pipe(filter((logs) => logs.length > 0))
+      () => {
+        return new Observable<WatchEventOnLogsParameter>((subscriber) => {
+          const unwatch = this.getClient(chainId).watchEvent({
+            onLogs: (logs) => subscriber.next(logs),
+          })
+          return unwatch
+        }).pipe(
+          filter((logs) => logs.length > 0),
+          share()
+        )
+      },
+      { cache: true }
+    )
   }
 
   /**
