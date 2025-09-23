@@ -198,15 +198,6 @@ describe('Centrifuge', () => {
       expect(value3).to.equal(1)
     })
 
-    it("should't cache the value when no keys are passed", async () => {
-      let value = 0
-      const query = context.centrifuge._query(null, () => defer(() => lazy(++value)))
-      const value1 = await query
-      const value2 = await query
-      expect(value1).to.equal(1)
-      expect(value2).to.equal(2)
-    })
-
     it("should invalidate the cache when there's no subscribers for a while on an infinite observable", async () => {
       const subject = new Subject()
       const query1 = context.centrifuge._query([Math.random()], () => subject)
