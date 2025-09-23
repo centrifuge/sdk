@@ -929,12 +929,10 @@ export class Centrifuge {
 
     function get() {
       const $shared = observableCallback().pipe(
-        keys
-          ? shareReplayWithDelayedReset({
-              bufferSize: cache ? 1 : 0,
-              resetDelay: cache ? obsCacheTime : 0,
-            })
-          : shareReplay({ bufferSize: 1, refCount: true })
+        shareReplayWithDelayedReset({
+          bufferSize: cache ? 1 : 0,
+          resetDelay: cache ? obsCacheTime : 0,
+        })
       )
       return makeThenable($shared)
     }
