@@ -1,7 +1,5 @@
 import {
   combineLatest,
-  concatWith,
-  defaultIfEmpty,
   defer,
   filter,
   first,
@@ -10,11 +8,10 @@ import {
   map,
   mergeMap,
   of,
-  Subject,
   switchMap,
   timer,
-  share,
   Observable,
+  shareReplay,
 } from 'rxjs'
 import { fromFetch } from 'rxjs/fetch'
 import {
@@ -734,17 +731,16 @@ export class Centrifuge {
   _events(chainId: number) {
     return this._query(
       ['events', chainId],
-      () => {
-        return new Observable<WatchEventOnLogsParameter>((subscriber) => {
+      () =>
+        new Observable<WatchEventOnLogsParameter>((subscriber) => {
           const unwatch = this.getClient(chainId).watchEvent({
             onLogs: (logs) => subscriber.next(logs),
           })
           return unwatch
         }).pipe(
           filter((logs) => logs.length > 0),
-          share()
-        )
-      },
+          shareReplay({ bufferSize: 1, refCount: true }) // ensures only one watcher per chainId
+        ),
       { cache: true }
     )
   }
@@ -930,36 +926,17 @@ export class Centrifuge {
   _query<T>(keys: any[] | null, observableCallback: () => Observable<T>, options?: CentrifugeQueryOptions): Query<T> {
     const cache = options?.cache !== false && this.#config.cache !== false
     const obsCacheTime = options?.observableCacheTime ?? this.#config.pollingInterval ?? 4000
+
     function get() {
-      const sharedSubject = new Subject<Observable<T>>()
-      function createShared(): Observable<T> {
-        const $shared = observableCallback().pipe(
-          keys
-            ? shareReplayWithDelayedReset({
-                bufferSize: cache ? 1 : 0,
-                resetDelay: cache ? obsCacheTime : 0,
-                // TODO: Fix valueCacheTime to not cause an infinite loop when the value is expired.
-                // windowTime: options?.valueCacheTime ?? Infinity,
-              })
-            : map((val) => val)
-        )
-        sharedSubject.next($shared)
-        return $shared
-      }
-
-      const $query = createShared().pipe(
-        // When `valueCacheTime` is finite, and the cached value is expired,
-        // the shared observable will immediately complete upon the next subscription.
-        // This will cause the shared observable to be recreated.
-        defaultIfEmpty(defer(createShared)),
-        // For existing subscribers, merge any newly created shared observable.
-        concatWith(sharedSubject),
-        // Flatten observables emitted from the `sharedSubject`
-        mergeMap((d) => (isObservable(d) ? d : of(d)))
+      const $shared = observableCallback().pipe(
+        shareReplayWithDelayedReset({
+          bufferSize: cache ? 1 : 0,
+          resetDelay: cache ? obsCacheTime : 0,
+        })
       )
-
-      return makeThenable($query)
+      return makeThenable($shared)
     }
+
     return keys ? this.#memoizeWith(keys, get) : get()
   }
 
