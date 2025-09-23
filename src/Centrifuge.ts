@@ -934,7 +934,7 @@ export class Centrifuge {
               bufferSize: cache ? 1 : 0,
               resetDelay: cache ? obsCacheTime : 0,
             })
-          : shareReplay({ bufferSize: 1, refCount: true }) // simpler fallback
+          : shareReplay({ bufferSize: 1, refCount: true })
       )
       return makeThenable($shared)
     }
