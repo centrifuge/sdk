@@ -178,7 +178,7 @@ export class PoolNetwork extends Entity {
                 throw new Error('MerkleProofManager not found')
               }
 
-              return of(new MerkleProofManager(this._root, this, manager.address))
+              return new MerkleProofManager(this._root, this, manager.address)
             }
           )
         )
