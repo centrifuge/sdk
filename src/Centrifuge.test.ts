@@ -190,6 +190,7 @@ describe('Centrifuge', () => {
       )
       const value1 = await query1
       const value2 = await query1
+      clock.tick(60_000)
       const value3 = await firstValueFrom(query1)
       expect(subscribedTimes).to.equal(1)
       expect(value1).to.equal(1)
