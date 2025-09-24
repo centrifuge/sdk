@@ -164,7 +164,6 @@ describe('ShareClass', () => {
       holdings: h.holdings instanceof Balance,
       outstandingInvestIsBalance: h.outstandingInvest instanceof Balance,
       outstandingRedeemIsBalance: h.outstandingRedeem instanceof Balance,
-      whitelistedInvestors: h.whitelistedInvestors.length > 0,
     }))
 
     const expected = holders.map((h) => ({
@@ -174,7 +173,6 @@ describe('ShareClass', () => {
       holdings: true,
       outstandingInvestIsBalance: true,
       outstandingRedeemIsBalance: true,
-      whitelistedInvestors: true,
     }))
 
     expect(actual).to.deep.equal(expected)

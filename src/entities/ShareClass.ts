@@ -1046,28 +1046,31 @@ export class ShareClass extends Entity {
           ]) => {
             const chainsById = new Map(deployments.blockchains.items.map((chain) => [chain.centrifugeId, chain.id]))
 
-            return tokenInstancePositions.map((position) => {
-              const chainId = Number(chainsById.get(position.centrifugeId)!)
-              const outstandingInvest = outstandingInvests.find((order) => order.investor === position.accountAddress)
-              const outstandingRedeem = outstandingRedeems.find((order) => order.investor === position.accountAddress)
-              const assetId = outstandingInvest?.assetId.toString()
-              const assetDecimals =
-                assets.find((asset: { id: string; decimals: number }) => asset.id === assetId)?.decimals ?? 18
-              return {
-                address: position.accountAddress,
-                holdings: new Balance(position.balance, poolCurrency.decimals),
-                isFrozen: position.isFrozen,
-                chainId,
-                outstandingInvest: outstandingInvest
-                  ? new Balance(outstandingInvest.pendingAmount, assetDecimals).scale(poolCurrency.decimals)
-                  : new Balance(0n, poolCurrency.decimals),
-                amount: new Balance(outstandingInvest?.pendingAmount ?? 0n, assetDecimals),
-                outstandingRedeem: outstandingRedeem
-                  ? new Balance(outstandingRedeem.pendingAmount, poolCurrency.decimals)
-                  : new Balance(0n, poolCurrency.decimals),
-                whitelistedInvestors: whitelistedInvestors ?? [],
-              }
-            })
+            return tokenInstancePositions
+              .filter((position) =>
+                whitelistedInvestors.some((investor) => position.accountAddress === investor.address)
+              )
+              .map((position) => {
+                const chainId = Number(chainsById.get(position.centrifugeId)!)
+                const outstandingInvest = outstandingInvests.find((order) => order.investor === position.accountAddress)
+                const outstandingRedeem = outstandingRedeems.find((order) => order.investor === position.accountAddress)
+                const assetId = outstandingInvest?.assetId.toString()
+                const assetDecimals =
+                  assets.find((asset: { id: string; decimals: number }) => asset.id === assetId)?.decimals ?? 18
+                return {
+                  address: position.accountAddress,
+                  holdings: new Balance(position.balance, poolCurrency.decimals),
+                  isFrozen: position.isFrozen,
+                  chainId,
+                  outstandingInvest: outstandingInvest
+                    ? new Balance(outstandingInvest.pendingAmount, assetDecimals).scale(poolCurrency.decimals)
+                    : new Balance(0n, poolCurrency.decimals),
+                  amount: new Balance(outstandingInvest?.pendingAmount ?? 0n, assetDecimals),
+                  outstandingRedeem: outstandingRedeem
+                    ? new Balance(outstandingRedeem.pendingAmount, poolCurrency.decimals)
+                    : new Balance(0n, poolCurrency.decimals),
+                }
+              })
           }
         )
       )
