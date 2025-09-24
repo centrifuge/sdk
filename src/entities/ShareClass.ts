@@ -1065,7 +1065,7 @@ export class ShareClass extends Entity {
                 outstandingRedeem: outstandingRedeem
                   ? new Balance(outstandingRedeem.pendingAmount, poolCurrency.decimals)
                   : new Balance(0n, poolCurrency.decimals),
-                whitelistedInvestors,
+                whitelistedInvestors: whitelistedInvestors ?? [],
               }
             })
           }
@@ -1839,7 +1839,7 @@ export class ShareClass extends Entity {
           }
         }>(
           `query ($tokenId: String!) {
-            whitelistedInvestors(where { tokenId: $scId }) {
+            whitelistedInvestors(where: { tokenId: $tokenId }) {
               items {
                 accountAddress
                 isFrozen
