@@ -1034,6 +1034,7 @@ export class ShareClass extends Entity {
         this.pool.currency(),
         this._investorOrders(),
         this._tokenInstancePositions(),
+        this._whitelistedInvestors(),
       ]).pipe(
         map(
           ([
@@ -1041,6 +1042,7 @@ export class ShareClass extends Entity {
             poolCurrency,
             { outstandingInvests, outstandingRedeems },
             { items: tokenInstancePositions, assets },
+            { items: whitelistedInvestors },
           ]) => {
             const chainsById = new Map(deployments.blockchains.items.map((chain) => [chain.centrifugeId, chain.id]))
 
@@ -1063,6 +1065,7 @@ export class ShareClass extends Entity {
                 outstandingRedeem: outstandingRedeem
                   ? new Balance(outstandingRedeem.pendingAmount, poolCurrency.decimals)
                   : new Balance(0n, poolCurrency.decimals),
+                whitelistedInvestors,
               }
             })
           }
@@ -1113,48 +1116,6 @@ export class ShareClass extends Entity {
           )
         )
       )
-    )
-  }
-
-  /**
-   * Retrieve whitelisted investors of the share class.
-   */
-  whitelistedInvestors() {
-    return this._root._queryIndexer(
-      `query ($tokenId: String!) {
-            whitelistedInvestors(where { tokenId: $scId }) {
-              items {
-                accountAddress
-                createdAt
-                centrifugeId
-                isFrozen
-                poolId
-                tokenId
-              }
-            }
-          }`,
-      {
-        tokenId: this.id.toString(),
-      },
-      (data: {
-        whitelistedInvestors: {
-          items: {
-            accountAddress: HexString
-            createdAt: string
-            centrifugeId: string
-            isFrozen: boolean
-            poolId: string
-            tokenId: HexString
-            validUntil: boolean
-          }[]
-        }
-      }) =>
-        data.whitelistedInvestors.items.map((investor) => ({
-          ...investor,
-          centrifugeId: Number(investor.centrifugeId),
-          poolId: new PoolId(investor.poolId),
-          shareClassId: new ShareClassId(investor.tokenId),
-        }))
     )
   }
 
@@ -1858,6 +1819,43 @@ export class ShareClass extends Entity {
             return {
               items: data.tokenInstancePositions.items,
               assets: data.assets.items,
+            }
+          })
+        )
+    )
+  }
+
+  /** @internal */
+  _whitelistedInvestors() {
+    return this._query(['whitelistedInvestors'], () =>
+      this._root
+        ._queryIndexer<{
+          whitelistedInvestors: {
+            items: {
+              accountAddress: HexString
+              isFrozen: boolean
+              validUntil: string
+            }[]
+          }
+        }>(
+          `query ($tokenId: String!) {
+            whitelistedInvestors(where { tokenId: $scId }) {
+              items {
+                accountAddress
+                isFrozen
+                validUntil
+              }
+            }
+          }`,
+          { tokenId: this.id.toString() }
+        )
+        .pipe(
+          map((data) => {
+            return {
+              items: data.whitelistedInvestors.items.map(({ accountAddress, ...rest }) => ({
+                address: accountAddress.toLowerCase() as HexString,
+                ...rest,
+              })),
             }
           })
         )

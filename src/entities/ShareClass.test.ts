@@ -164,6 +164,7 @@ describe('ShareClass', () => {
       holdings: h.holdings instanceof Balance,
       outstandingInvestIsBalance: h.outstandingInvest instanceof Balance,
       outstandingRedeemIsBalance: h.outstandingRedeem instanceof Balance,
+      whitelistedInvestors: h.whitelistedInvestors,
     }))
 
     const expected = holders.map((h) => ({
@@ -173,16 +174,10 @@ describe('ShareClass', () => {
       holdings: true,
       outstandingInvestIsBalance: true,
       outstandingRedeemIsBalance: true,
+      whitelistedInvestors: true,
     }))
 
     expect(actual).to.deep.equal(expected)
-  })
-
-  it('gets whitelisted investors', async () => {
-    const whitelistedInvestors = await shareClass.whitelistedInvestors()
-    expect(whitelistedInvestors).to.have.length.greaterThan(0)
-    expect(whitelistedInvestors[0]?.shareClassId.equals(shareClass.id)).to.be.true
-    expect(whitelistedInvestors[0]?.poolId.equals(shareClass.pool.id)).to.be.true
   })
 
   it('gets pending amounts', async () => {
