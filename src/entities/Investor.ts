@@ -148,4 +148,48 @@ export class Investor extends Entity {
       )
     )
   }
+
+  /**
+   * Retrieve the whitelisted investor details.
+   */
+  whitelistedDetails(scId: ShareClassId, centrifugeId: number) {
+    return this._root._queryIndexer(
+      `query ($accountAddress: String!, $centrifugeId: String!, $tokenId: String!) {
+        whitelistedInvestor($accountAddress, $centrifugeId, $tokenId) {
+          items {
+            accountAddress
+            createdAt
+            centrifugeId
+            isFrozen
+            poolId
+            tokenId
+            validUntil
+          }
+        }
+      }`,
+      {
+        accountAddress: this.address,
+        centrifugeId: String(centrifugeId),
+        tokenId: scId.toString(),
+      },
+      (data: {
+        whitelistedInvestor: {
+          items: {
+            accountAddress: HexString
+            createdAt: string
+            centrifugeId: string
+            isFrozen: boolean
+            poolId: string
+            tokenId: HexString
+            validUntil: boolean
+          }
+        }
+      }) => ({
+        ...data.whitelistedInvestor.items,
+        centrifugeId: Number(data.whitelistedInvestor.items.centrifugeId),
+        poolId: new PoolId(data.whitelistedInvestor.items.poolId),
+        shareClassId: new ShareClassId(data.whitelistedInvestor.items.tokenId),
+      })
+    )
+  }
 }

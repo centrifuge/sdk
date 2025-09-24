@@ -73,6 +73,17 @@ describe('Investor', () => {
       expect(transactions).to.exist
     })
   })
+
+  // TODO: add more robust testing
+  describe('whitelistedDetails', () => {
+    it('should return whitelisted details for an investor', async () => {
+      const account = await context.centrifuge.investor(randomAddress())
+      const whitelistedDetails = await account.whitelistedDetails(scId, centId)
+      expect(whitelistedDetails).to.exist
+      expect(whitelistedDetails.poolId).to.be.instanceOf(PoolId)
+      expect(whitelistedDetails.shareClassId).to.be.instanceOf(ShareClassId)
+    })
+  })
 })
 
 async function mint(asset: string, address: string) {
