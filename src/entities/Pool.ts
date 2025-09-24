@@ -743,24 +743,24 @@ export class Pool extends Entity {
       combineLatest([
         this._root._deployments(),
         this._root._queryIndexer<{
-          poolManagers: {
+          whitelistedInvestors: {
             items: {
-              isHubManager: boolean
-              isBalancesheetManager: boolean
-              address: HexString
+              accountAddress: HexString
               centrifugeId: string
-              poolId: string
+              isFozen: boolean
+              tokenId: string
+              validUntil: string
             }[]
           }
         }>(
-          `query ($poolId: BigInt!) {
-            poolManagers(where: { poolId: $poolId }) {
+          `query ($poolId: String!) {
+            whitelistedInvestors(where { poolId: $poolId }) {
               items {
-                isHubManager
-                isBalancesheetManager
-                address
+                accountAddress
                 centrifugeId
-                poolId
+                isFrozen
+                tokenId
+                validUntil
               }
             }
           }`,
@@ -769,16 +769,17 @@ export class Pool extends Entity {
           }
         ),
       ]).pipe(
-        map(([deployments, { poolManagers }]) => {
+        map(([deployments, { whitelistedInvestors }]) => {
           const chainsById = new Map(deployments.blockchains.items.map((chain) => [chain.centrifugeId, chain.id]))
-          return poolManagers.items.map((manager) => {
-            const chainId = chainsById.get(manager.centrifugeId)!
+          return whitelistedInvestors.items.map((investor) => {
+            const chainId = chainsById.get(investor.centrifugeId)!
             return {
-              address: manager.address.toLowerCase() as HexString,
-              isHubManager: manager.isHubManager,
-              isBalancesheetManager: manager.isBalancesheetManager,
-              centrifugeId: Number(manager.centrifugeId),
+              address: investor.accountAddress.toLowerCase() as HexString,
+              centrifugeId: Number(investor.centrifugeId),
               chainId: Number(chainId),
+              isFozen: investor.isFozen,
+              shareClassId: new ShareClassId(investor.tokenId),
+              validUntil: investor.validUntil,
             }
           })
         })
