@@ -1069,6 +1069,8 @@ export class ShareClass extends Entity {
                   outstandingRedeem: outstandingRedeem
                     ? new Balance(outstandingRedeem.pendingAmount, poolCurrency.decimals)
                     : new Balance(0n, poolCurrency.decimals),
+                  validUntil: whitelistedInvestors.find((investor) => investor.address === position.accountAddress)
+                    ?.validUntil,
                 }
               })
           }
