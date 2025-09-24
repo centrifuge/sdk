@@ -763,7 +763,10 @@ export class Pool extends Entity {
                 poolId
               }
             }
-          }`
+          }`,
+          {
+            poolId: this.id.toString(),
+          }
         ),
       ]).pipe(
         map(([deployments, { poolManagers }]) => {
