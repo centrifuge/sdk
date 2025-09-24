@@ -9,7 +9,7 @@ import { Balance, Price } from '../utils/BigInt.js'
 import { addressToBytes32, randomUint } from '../utils/index.js'
 import { repeatOnEvents } from '../utils/rx.js'
 import { wrapTransaction } from '../utils/transaction.js'
-import { AssetId, ShareClassId } from '../utils/types.js'
+import { AssetId, PoolId, ShareClassId } from '../utils/types.js'
 import { BalanceSheet } from './BalanceSheet.js'
 import { Entity } from './Entity.js'
 import type { Pool } from './Pool.js'
@@ -1113,6 +1113,48 @@ export class ShareClass extends Entity {
           )
         )
       )
+    )
+  }
+
+  /**
+   * Retrieve whitelisted investors of the share class.
+   */
+  whitelistedInvestors() {
+    return this._root._queryIndexer(
+      `query ($tokenId: String!) {
+            whitelistedInvestors(where { tokenId: $scId }) {
+              items {
+                accountAddress
+                createdAt
+                centrifugeId
+                isFrozen
+                poolId
+                tokenId
+              }
+            }
+          }`,
+      {
+        tokenId: this.id.toString(),
+      },
+      (data: {
+        whitelistedInvestors: {
+          items: {
+            accountAddress: HexString
+            createdAt: string
+            centrifugeId: string
+            isFrozen: boolean
+            poolId: string
+            tokenId: HexString
+            validUntil: boolean
+          }[]
+        }
+      }) =>
+        data.whitelistedInvestors.items.map((investor) => ({
+          ...investor,
+          centrifugeId: Number(investor.centrifugeId),
+          poolId: new PoolId(investor.poolId),
+          shareClassId: new ShareClassId(investor.tokenId),
+        }))
     )
   }
 

@@ -178,6 +178,13 @@ describe('ShareClass', () => {
     expect(actual).to.deep.equal(expected)
   })
 
+  it('gets whitelisted investors', async () => {
+    const whitelistedInvestors = await shareClass.whitelistedInvestors()
+    expect(whitelistedInvestors).to.have.length.greaterThan(0)
+    expect(whitelistedInvestors[0]?.shareClassId.equals(shareClass.id)).to.be.true
+    expect(whitelistedInvestors[0]?.poolId.equals(shareClass.pool.id)).to.be.true
+  })
+
   it('gets pending amounts', async () => {
     const pendingAmounts = await shareClass.pendingAmounts()
     expect(pendingAmounts.length).to.be.greaterThan(0)
