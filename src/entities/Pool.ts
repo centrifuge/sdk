@@ -743,43 +743,39 @@ export class Pool extends Entity {
       combineLatest([
         this._root._deployments(),
         this._root._queryIndexer<{
-          whitelistedInvestors: {
+          poolManagers: {
             items: {
-              accountAddress: HexString
+              isHubManager: boolean
+              isBalancesheetManager: boolean
+              address: HexString
               centrifugeId: string
-              isFozen: boolean
-              tokenId: string
-              validUntil: string
+              poolId: string
             }[]
           }
         }>(
-          `query ($poolId: String!) {
-            whitelistedInvestors(where { poolId: $poolId }) {
+          `query ($poolId: BigInt!) {
+            poolManagers(where: { poolId: $poolId }) {
               items {
-                accountAddress
+                isHubManager
+                isBalancesheetManager
+                address
                 centrifugeId
-                isFrozen
-                tokenId
-                validUntil
+                poolId
               }
             }
-          }`,
-          {
-            poolId: this.id.toString(),
-          }
+          }`
         ),
       ]).pipe(
-        map(([deployments, { whitelistedInvestors }]) => {
+        map(([deployments, { poolManagers }]) => {
           const chainsById = new Map(deployments.blockchains.items.map((chain) => [chain.centrifugeId, chain.id]))
-          return whitelistedInvestors.items.map((investor) => {
-            const chainId = chainsById.get(investor.centrifugeId)!
+          return poolManagers.items.map((manager) => {
+            const chainId = chainsById.get(manager.centrifugeId)!
             return {
-              address: investor.accountAddress.toLowerCase() as HexString,
-              centrifugeId: Number(investor.centrifugeId),
+              address: manager.address.toLowerCase() as HexString,
+              isHubManager: manager.isHubManager,
+              isBalancesheetManager: manager.isBalancesheetManager,
+              centrifugeId: Number(manager.centrifugeId),
               chainId: Number(chainId),
-              isFozen: investor.isFozen,
-              shareClassId: new ShareClassId(investor.tokenId),
-              validUntil: investor.validUntil,
             }
           })
         })
