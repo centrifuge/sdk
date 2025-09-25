@@ -147,14 +147,22 @@ export class Pool extends Entity {
    */
   balanceSheetManagers() {
     return this._query(null, () => {
-      return this._managers().pipe(
-        map((managers) => {
+      return combineLatest([this._managers(), this._root._protocolAddresses(this.chainId)]).pipe(
+        map(([managers, { asyncRequestManager, syncManager }]) => {
           return managers
             .filter((manager) => manager.isBalancesheetManager)
             .map((manager) => {
+              let type = 'Custom'
+              if (manager.address.toLowerCase() === asyncRequestManager.toLowerCase()) {
+                type = 'AsyncRequestManager'
+              } else if (manager.address.toLowerCase() === syncManager.toLowerCase()) {
+                type = 'SyncManager'
+              }
+
               return {
                 address: manager.address,
                 chainId: manager.chainId,
+                type,
               }
             })
         })
