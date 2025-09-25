@@ -1034,6 +1034,7 @@ export class ShareClass extends Entity {
         this.pool.currency(),
         this._investorOrders(),
         this._tokenInstancePositions(),
+        this._whitelistedInvestors(),
       ]).pipe(
         map(
           ([
@@ -1041,28 +1042,35 @@ export class ShareClass extends Entity {
             poolCurrency,
             { outstandingInvests, outstandingRedeems },
             { items: tokenInstancePositions, assets },
+            { items: whitelistedInvestors },
           ]) => {
             const chainsById = new Map(deployments.blockchains.items.map((chain) => [chain.centrifugeId, chain.id]))
 
-            return tokenInstancePositions.map((position) => {
-              const chainId = Number(chainsById.get(position.centrifugeId)!)
-              const outstandingInvest = outstandingInvests.find((order) => order.investor === position.accountAddress)
-              const outstandingRedeem = outstandingRedeems.find((order) => order.investor === position.accountAddress)
+            return whitelistedInvestors.map((investor) => {
+              const chainId = Number(chainsById.get(investor.centrifugeId)!)
+              const outstandingInvest = outstandingInvests.find((order) => order.investor === investor.address)
+              const outstandingRedeem = outstandingRedeems.find((order) => order.investor === investor.address)
               const assetId = outstandingInvest?.assetId.toString()
+              const positionBalance =
+                tokenInstancePositions.find((p) => p.accountAddress === investor.address)?.balance ?? 0n
               const assetDecimals =
                 assets.find((asset: { id: string; decimals: number }) => asset.id === assetId)?.decimals ?? 18
+              const isWhitelisted = parseInt(investor.validUntil, 10) > Date.now()
+
               return {
-                address: position.accountAddress,
-                holdings: new Balance(position.balance, poolCurrency.decimals),
-                isFrozen: position.isFrozen,
+                address: investor.address,
+                amount: new Balance(outstandingInvest?.pendingAmount ?? 0n, assetDecimals),
                 chainId,
+                createdAt: investor.createdAt,
+                holdings: new Balance(positionBalance, poolCurrency.decimals),
+                isFrozen: investor.isFrozen,
                 outstandingInvest: outstandingInvest
                   ? new Balance(outstandingInvest.pendingAmount, assetDecimals).scale(poolCurrency.decimals)
                   : new Balance(0n, poolCurrency.decimals),
-                amount: new Balance(outstandingInvest?.pendingAmount ?? 0n, assetDecimals),
                 outstandingRedeem: outstandingRedeem
                   ? new Balance(outstandingRedeem.pendingAmount, poolCurrency.decimals)
                   : new Balance(0n, poolCurrency.decimals),
+                isWhitelisted,
               }
             })
           }
@@ -1816,6 +1824,47 @@ export class ShareClass extends Entity {
             return {
               items: data.tokenInstancePositions.items,
               assets: data.assets.items,
+            }
+          })
+        )
+    )
+  }
+
+  /** @internal */
+  _whitelistedInvestors() {
+    return this._query(['whitelistedInvestors'], () =>
+      this._root
+        ._queryIndexer<{
+          whitelistedInvestors: {
+            items: {
+              accountAddress: HexString
+              centrifugeId: string
+              createdAt: string
+              isFrozen: boolean
+              validUntil: string
+            }[]
+          }
+        }>(
+          `query ($tokenId: String!) {
+            whitelistedInvestors(where: { tokenId: $tokenId }) {
+              items {
+                accountAddress
+                centrifugeId
+                createdAt
+                isFrozen
+                validUntil
+              }
+            }
+          }`,
+          { tokenId: this.id.toString() }
+        )
+        .pipe(
+          map((data) => {
+            return {
+              items: data.whitelistedInvestors.items.map(({ accountAddress, ...rest }) => ({
+                address: accountAddress.toLowerCase() as HexString,
+                ...rest,
+              })),
             }
           })
         )
