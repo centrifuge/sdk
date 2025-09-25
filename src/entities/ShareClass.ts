@@ -1055,6 +1055,7 @@ export class ShareClass extends Entity {
                 tokenInstancePositions.find((p) => p.accountAddress === investor.address)?.balance ?? 0n
               const assetDecimals =
                 assets.find((asset: { id: string; decimals: number }) => asset.id === assetId)?.decimals ?? 18
+              const isWhitelisted = parseInt(investor.validUntil, 10) > Date.now()
 
               return {
                 address: investor.address,
@@ -1069,7 +1070,7 @@ export class ShareClass extends Entity {
                 outstandingRedeem: outstandingRedeem
                   ? new Balance(outstandingRedeem.pendingAmount, poolCurrency.decimals)
                   : new Balance(0n, poolCurrency.decimals),
-                validUntil: investor.validUntil,
+                isWhitelisted,
               }
             })
           }
