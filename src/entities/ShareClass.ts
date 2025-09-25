@@ -1046,33 +1046,32 @@ export class ShareClass extends Entity {
           ]) => {
             const chainsById = new Map(deployments.blockchains.items.map((chain) => [chain.centrifugeId, chain.id]))
 
-            return tokenInstancePositions
-              .filter((position) =>
-                whitelistedInvestors.some((investor) => position.accountAddress === investor.address)
-              )
-              .map((position) => {
-                const chainId = Number(chainsById.get(position.centrifugeId)!)
-                const outstandingInvest = outstandingInvests.find((order) => order.investor === position.accountAddress)
-                const outstandingRedeem = outstandingRedeems.find((order) => order.investor === position.accountAddress)
-                const assetId = outstandingInvest?.assetId.toString()
-                const assetDecimals =
-                  assets.find((asset: { id: string; decimals: number }) => asset.id === assetId)?.decimals ?? 18
-                return {
-                  address: position.accountAddress,
-                  holdings: new Balance(position.balance, poolCurrency.decimals),
-                  isFrozen: position.isFrozen,
-                  chainId,
-                  outstandingInvest: outstandingInvest
-                    ? new Balance(outstandingInvest.pendingAmount, assetDecimals).scale(poolCurrency.decimals)
-                    : new Balance(0n, poolCurrency.decimals),
-                  amount: new Balance(outstandingInvest?.pendingAmount ?? 0n, assetDecimals),
-                  outstandingRedeem: outstandingRedeem
-                    ? new Balance(outstandingRedeem.pendingAmount, poolCurrency.decimals)
-                    : new Balance(0n, poolCurrency.decimals),
-                  validUntil: whitelistedInvestors.find((investor) => investor.address === position.accountAddress)
-                    ?.validUntil,
-                }
-              })
+            return whitelistedInvestors.map((investor) => {
+              const chainId = Number(chainsById.get(investor.centrifugeId)!)
+              const outstandingInvest = outstandingInvests.find((order) => order.investor === investor.address)
+              const outstandingRedeem = outstandingRedeems.find((order) => order.investor === investor.address)
+              const assetId = outstandingInvest?.assetId.toString()
+              const positionBalance =
+                tokenInstancePositions.find((p) => p.accountAddress === investor.address)?.balance ?? 0n
+              const assetDecimals =
+                assets.find((asset: { id: string; decimals: number }) => asset.id === assetId)?.decimals ?? 18
+
+              return {
+                address: investor.address,
+                amount: new Balance(outstandingInvest?.pendingAmount ?? 0n, assetDecimals),
+                chainId,
+                createdAt: investor.createdAt,
+                holdings: new Balance(positionBalance, poolCurrency.decimals),
+                isFrozen: investor.isFrozen,
+                outstandingInvest: outstandingInvest
+                  ? new Balance(outstandingInvest.pendingAmount, assetDecimals).scale(poolCurrency.decimals)
+                  : new Balance(0n, poolCurrency.decimals),
+                outstandingRedeem: outstandingRedeem
+                  ? new Balance(outstandingRedeem.pendingAmount, poolCurrency.decimals)
+                  : new Balance(0n, poolCurrency.decimals),
+                validUntil: investor.validUntil,
+              }
+            })
           }
         )
       )
@@ -1838,6 +1837,8 @@ export class ShareClass extends Entity {
           whitelistedInvestors: {
             items: {
               accountAddress: HexString
+              centrifugeId: string
+              createdAt: string
               isFrozen: boolean
               validUntil: string
             }[]
@@ -1847,6 +1848,8 @@ export class ShareClass extends Entity {
             whitelistedInvestors(where: { tokenId: $tokenId }) {
               items {
                 accountAddress
+                centrifugeId
+                createdAt
                 isFrozen
                 validUntil
               }
