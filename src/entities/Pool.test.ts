@@ -74,7 +74,17 @@ describe('Pool', () => {
 
   it('gets balance sheet managers', async () => {
     const managers = await pool.balanceSheetManagers()
+
     expect(managers).to.have.length.greaterThan(0)
+
+    for (const manager of managers) {
+      expect(manager).to.have.property('address').that.is.a('string')
+      expect(manager).to.have.property('chainId').that.is.a('number')
+      expect(manager).to.have.property('type').that.is.oneOf(['AsyncRequestManager', 'SyncManager', 'Custom'])
+    }
+
+    const protocolManagers = managers.filter((m) => m.type === 'AsyncRequestManager' || m.type === 'SyncManager')
+    expect(protocolManagers).to.have.length.greaterThan(0)
   })
 
   it('updates pool managers', async () => {
