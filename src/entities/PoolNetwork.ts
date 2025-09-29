@@ -186,6 +186,9 @@ export class PoolNetwork extends Entity {
     )
   }
 
+  /**
+   * Deploy a Merkle Proof Manager.
+   */
   deployMerkleProofManager() {
     const self = this
 
