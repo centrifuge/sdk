@@ -146,7 +146,7 @@ export class Pool extends Entity {
    * These managers can transfer funds to and from the balance sheet.
    */
   balanceSheetManagers() {
-    return this._query(null, () => {
+    return this._query(['balanceSheetManagers'], () => {
       return combineLatest([this._managers(), this._root._protocolAddresses(this.chainId)]).pipe(
         map(([managers, { asyncRequestManager, syncManager }]) => {
           return managers
@@ -747,7 +747,7 @@ export class Pool extends Entity {
 
   /** @internal */
   _managers() {
-    return this._query(null, () =>
+    return this._query(['managers'], () =>
       combineLatest([
         this._root._deployments(),
         this._root._queryIndexer<{
