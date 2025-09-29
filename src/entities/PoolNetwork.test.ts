@@ -133,16 +133,44 @@ describe('PoolNetwork', () => {
       activeShareClasses: [{ id: scId, vaults: [{ assetId, address: vaultAddr }] }],
     })
 
-    const result = await poolNetwork.unlinkVaults([{ shareClassId: scId, assetId }])
-    expect(result.type).to.equal('TransactionConfirmed')
+    const unlinkResult = await poolNetwork.updateVaultLinks([{ shareClassId: scId, assetId }], false)
+    expect(unlinkResult.type).to.equal('TransactionConfirmed')
 
-    const vaultAddr2 = await context.centrifuge.getClient(chainId).readContract({
+    const vaultAddrAfterUnlink = await context.centrifuge.getClient(chainId).readContract({
       address: vaultRouter,
       abi: ABI.VaultRouter,
       functionName: 'getVault',
       args: [poolId.raw, scId.raw, asset.address],
     })
-    expect(vaultAddr2).to.equal(NULL_ADDRESS)
+    expect(vaultAddrAfterUnlink).to.equal(NULL_ADDRESS)
+  })
+
+  it('enables vaults again', async () => {
+    const { vaultRouter } = await context.centrifuge._protocolAddresses(chainId)
+
+    context.tenderlyFork.impersonateAddress = poolManager
+    context.centrifuge.setSigner(context.tenderlyFork.signer)
+
+    const scId = ShareClassId.from(poolId, 2)
+    const assetId = AssetId.from(1, 1)
+    const asset = await context.centrifuge.assetCurrency(assetId)
+    const vaultAddr = '0x1234567890abcdef1234567890abcdef12345678'
+
+    const mock = sinon.mock(poolNetwork)
+    mock.expects('details').resolves({
+      activeShareClasses: [{ id: scId, vaults: [{ assetId, address: vaultAddr }] }],
+    })
+
+    const linkResult = await poolNetwork.updateVaultLinks([{ shareClassId: scId, assetId }], true)
+    expect(linkResult.type).to.equal('TransactionConfirmed')
+
+    const vaultAddrAfterLink = await context.centrifuge.getClient(chainId).readContract({
+      address: vaultRouter,
+      abi: ABI.VaultRouter,
+      functionName: 'getVault',
+      args: [poolId.raw, scId.raw, asset.address],
+    })
+    expect(vaultAddrAfterLink).to.not.equal(NULL_ADDRESS)
   })
 
   describe('merkleProofManager', () => {
