@@ -89,6 +89,16 @@ describe('OnOffRampManager', () => {
 
       expect(setRelayer).to.be.true
     })
+
+    it('should disable relayer', async () => {
+      const address = randomAddress()
+
+      await onOffRampManager.setRelayer(address)
+
+      const result = await onOffRampManager.setRelayer(address, false)
+
+      expect(result.type).to.equal('TransactionConfirmed')
+    })
   })
 
   describe('assets', () => {
