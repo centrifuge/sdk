@@ -513,10 +513,10 @@ export class Vault extends Entity {
   /**
    * Find if the vault router is enabled to manage the investor funds in the vault,
    * which is required to be able to operate on their behalf and claim investments or redemptions.
-   * @param investor - The address of the investor
+   * @param investorAddress - The address of the investor
    * @internal
    */
-  _isOperator(investor: HexString) {
+  _isOperator(investorAddress: HexString) {
     return this._query(['isOperator'], () =>
       defer(() =>
         this._root
@@ -525,9 +525,9 @@ export class Vault extends Entity {
             address: this.address,
             abi: ABI.AsyncVault,
             functionName: 'isOperator',
-            args: [investor, this.address],
+            args: [investorAddress, this.address],
           })
-          .then((val) => !val)
+          .then((val) => val)
       )
     )
   }
