@@ -446,30 +446,63 @@ export class Vault extends Entity {
   claim(receiver?: HexString, controller?: HexString) {
     const self = this
     return this._transact(async function* (ctx) {
-      const [investment, { vaultRouter }] = await Promise.all([
+      const [investment, { vaultRouter, asyncRequestManager }] = await Promise.all([
         self.investment(ctx.signingAddress),
         self._root._protocolAddresses(self.chainId),
       ])
       const receiverAddress = receiver || ctx.signingAddress
       const controllerAddress = controller || ctx.signingAddress
-      const functionName = investment.claimableCancelInvestCurrency.gt(0n)
-        ? 'claimCancelDepositRequest'
-        : investment.claimableCancelRedeemShares.gt(0n)
-          ? 'claimCancelRedeemRequest'
-          : investment.claimableInvestShares.gt(0n)
-            ? 'claimDeposit'
-            : investment.claimableRedeemCurrency.gt(0n)
-              ? 'claimRedeem'
-              : ''
 
-      if (!functionName) throw new Error('No claimable funds')
+      let contractAddress: HexString = vaultRouter
+      let abi: any = ABI.VaultRouter
+      let functionName: string
+
+      if (investment.claimableCancelInvestCurrency.gt(0n)) {
+        functionName = 'claimCancelDepositRequest'
+      } else if (investment.claimableCancelRedeemShares.gt(0n)) {
+        functionName = 'claimCancelRedeemRequest'
+      } else if (investment.claimableInvestShares.gt(0n)) {
+        // For investment claims, try VaultRouter first, fallback to direct vault mint
+        try {
+          yield* doTransaction('Claim', ctx, () =>
+            ctx.walletClient.writeContract({
+              address: vaultRouter,
+              abi: ABI.VaultRouter,
+              functionName: 'claimDeposit',
+              args: [self.address, receiverAddress, controllerAddress],
+            })
+          )
+          return
+        } catch (error) {
+          console.error(
+            '❌ VaultRouter.claimDeposit failed. Trying AsyncRequestManager.mint for direct contract investments.',
+            error
+          )
+          contractAddress = asyncRequestManager
+          abi = ABI.AsyncRequests
+          functionName = 'mint'
+        }
+      } else if (investment.claimableRedeemCurrency.gt(0n)) {
+        contractAddress = vaultRouter
+        abi = ABI.VaultRouter
+        functionName = 'claimRedeem'
+      } else {
+        throw new Error('No claimable funds')
+      }
+
+      let args: any[]
+      if (functionName === 'mint') {
+        args = [self.address, investment.claimableInvestShares.toBigInt(), receiverAddress, controllerAddress]
+      } else {
+        args = [self.address, receiverAddress, controllerAddress]
+      }
 
       yield* doTransaction('Claim', ctx, () =>
         ctx.walletClient.writeContract({
-          address: vaultRouter,
-          abi: ABI.VaultRouter,
+          address: contractAddress,
+          abi,
           functionName,
-          args: [self.address, receiverAddress, controllerAddress],
+          args,
         })
       )
     }, this.chainId)
