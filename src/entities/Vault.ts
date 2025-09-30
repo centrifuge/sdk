@@ -121,9 +121,18 @@ export class Vault extends Entity {
         this._restrictionManager(),
         this._isSyncDeposit(),
         this.pool._escrow(),
+        this._isOperator(investorAddress),
       ]).pipe(
         switchMap(
-          ([investmentCurrency, shareCurrency, addresses, restrictionManagerAddress, isSyncInvest, escrowAddress]) =>
+          ([
+            investmentCurrency,
+            shareCurrency,
+            addresses,
+            restrictionManagerAddress,
+            isSyncInvest,
+            escrowAddress,
+            isOperator,
+          ]) =>
             combineLatest([
               this._root.balance(investmentCurrency.address, investorAddress, this.chainId),
               this._root.balance(shareCurrency.address, investorAddress, this.chainId),
@@ -187,6 +196,7 @@ export class Vault extends Entity {
                   isAllowedToInvest,
                   isAllowedToRedeem,
                   isSyncInvest,
+                  isOperator,
                   maxInvest: new Balance(maxDeposit, investmentCurrency.decimals),
                   claimableInvestShares: new Balance(isSyncInvest ? 0n : maxMint, shareCurrency.decimals),
                   claimableInvestCurrencyEquivalent: new Balance(
@@ -446,66 +456,80 @@ export class Vault extends Entity {
   claim(receiver?: HexString, controller?: HexString) {
     const self = this
     return this._transact(async function* (ctx) {
-      const [investment, { vaultRouter, asyncRequestManager }] = await Promise.all([
+      const [investment, { vaultRouter }, isOperator] = await Promise.all([
         self.investment(ctx.signingAddress),
         self._root._protocolAddresses(self.chainId),
+        self._isOperator(ctx.signingAddress),
       ])
       const receiverAddress = receiver || ctx.signingAddress
       const controllerAddress = controller || ctx.signingAddress
 
-      let contractAddress: HexString = vaultRouter
-      let abi: any = ABI.VaultRouter
-      let functionName: string
+      let functionName: 'claimCancelDepositRequest' | 'claimCancelRedeemRequest' | 'claimDeposit' | 'claimRedeem'
 
       if (investment.claimableCancelInvestCurrency.gt(0n)) {
         functionName = 'claimCancelDepositRequest'
       } else if (investment.claimableCancelRedeemShares.gt(0n)) {
         functionName = 'claimCancelRedeemRequest'
       } else if (investment.claimableInvestShares.gt(0n)) {
-        // For investment claims, try VaultRouter first, fallback to direct vault mint
-        try {
-          yield* doTransaction('Claim', ctx, () =>
+        if (isOperator) {
+          functionName = 'claimDeposit'
+        } else {
+          const enableData = encodeFunctionData({
+            abi: ABI.VaultRouter,
+            functionName: 'enable',
+            args: [self.address],
+          })
+          const claimData = encodeFunctionData({
+            abi: ABI.VaultRouter,
+            functionName: 'claimDeposit',
+            args: [self.address, receiverAddress, controllerAddress],
+          })
+          yield* doTransaction('Invest', ctx, () =>
             ctx.walletClient.writeContract({
               address: vaultRouter,
               abi: ABI.VaultRouter,
-              functionName: 'claimDeposit',
-              args: [self.address, receiverAddress, controllerAddress],
+              functionName: 'multicall',
+              args: [[enableData, claimData]],
             })
           )
-          return
-        } catch (error) {
-          console.error(
-            '❌ VaultRouter.claimDeposit failed. Trying AsyncRequestManager.mint for direct contract investments.',
-            error
-          )
-          contractAddress = asyncRequestManager
-          abi = ABI.AsyncRequests
-          functionName = 'mint'
         }
       } else if (investment.claimableRedeemCurrency.gt(0n)) {
-        contractAddress = vaultRouter
-        abi = ABI.VaultRouter
         functionName = 'claimRedeem'
       } else {
         throw new Error('No claimable funds')
       }
 
-      let args: any[]
-      if (functionName === 'mint') {
-        args = [self.address, investment.claimableInvestShares.toBigInt(), receiverAddress, controllerAddress]
-      } else {
-        args = [self.address, receiverAddress, controllerAddress]
-      }
-
       yield* doTransaction('Claim', ctx, () =>
         ctx.walletClient.writeContract({
-          address: contractAddress,
-          abi,
+          address: vaultRouter,
+          abi: ABI.VaultRouter,
           functionName,
-          args,
+          args: [self.address, receiverAddress, controllerAddress],
         })
       )
     }, this.chainId)
+  }
+
+  /**
+   * Find if the vault router is enabled to manage the investor funds in the vault,
+   * which is required to be able to operate on their behalf and claim investments or redemptions.
+   * @param investor - The address of the investor
+   * @internal
+   */
+  _isOperator(investor: HexString) {
+    return this._query(['isOperator'], () =>
+      defer(() =>
+        this._root
+          .getClient(this.chainId)
+          .readContract({
+            address: this.address,
+            abi: ABI.AsyncVault,
+            functionName: 'isOperator',
+            args: [investor, this.address],
+          })
+          .then((val) => !val)
+      )
+    )
   }
 
   /** @internal */
