@@ -10,6 +10,7 @@ import { PoolNetwork } from './PoolNetwork.js'
 import { Vault } from './Vault.js'
 import { MerkleProofManager } from './MerkleProofManager.js'
 import { Centrifuge } from '../Centrifuge.js'
+import { TenderlyFork } from '../tests/tenderly.js'
 
 const poolId = PoolId.from(1, 1)
 const scId = ShareClassId.from(poolId, 1)
@@ -19,10 +20,12 @@ const poolManager = '0x423420Ae467df6e90291fd0252c0A8a637C1e03f'
 describe('PoolNetwork', () => {
   let poolNetwork: PoolNetwork
 
-  beforeEach(() => {
+  beforeEach(async () => {
+    context.tenderlyFork = await TenderlyFork.create(context.tenderlyFork.chain)
+
     const { centrifuge } = context
-    const pool = new Pool(centrifuge, poolId.raw, 11155111)
-    poolNetwork = new PoolNetwork(centrifuge, pool, 11155111)
+    const pool = new Pool(centrifuge, poolId.raw, chainId)
+    poolNetwork = new PoolNetwork(centrifuge, pool, chainId)
   })
 
   it('should get whether a pool is deployed to a network', async () => {
@@ -148,7 +151,6 @@ describe('PoolNetwork', () => {
   describe('merkleProofManager', () => {
     it('should return merkleProofManager', async () => {
       const result = await poolNetwork.merkleProofManager()
-
       expect(result).to.be.instanceOf(MerkleProofManager)
     })
 
@@ -193,8 +195,6 @@ describe('PoolNetwork', () => {
 
       // TODO: Needs data in indexer for manager to be balance sheet manager
       await poolNetwork.onOfframpManager(ShareClassId.from(poolId, 1))
-
-      // expect(result).to.be.instanceOf(OnOffRampManager)
     })
 
     it('should throw when it does not find onOfframpManager', async () => {
