@@ -131,7 +131,7 @@ export class Vault extends Entity {
             restrictionManagerAddress,
             isSyncInvest,
             escrowAddress,
-            isOperator,
+            isOperatorEnabled,
           ]) =>
             combineLatest([
               this._root.balance(investmentCurrency.address, investorAddress, this.chainId),
@@ -196,7 +196,7 @@ export class Vault extends Entity {
                   isAllowedToInvest,
                   isAllowedToRedeem,
                   isSyncInvest,
-                  isOperator,
+                  isOperatorEnabled,
                   maxInvest: new Balance(maxDeposit, investmentCurrency.decimals),
                   claimableInvestShares: new Balance(isSyncInvest ? 0n : maxMint, shareCurrency.decimals),
                   claimableInvestCurrencyEquivalent: new Balance(
@@ -484,7 +484,7 @@ export class Vault extends Entity {
             functionName: 'claimDeposit',
             args: [self.address, receiverAddress, controllerAddress],
           })
-          yield* doTransaction('Invest', ctx, () =>
+          yield* doTransaction('Claim', ctx, () =>
             ctx.walletClient.writeContract({
               address: vaultRouter,
               abi: ABI.VaultRouter,
@@ -492,6 +492,7 @@ export class Vault extends Entity {
               args: [[enableData, claimData]],
             })
           )
+          return
         }
       } else if (investment.claimableRedeemCurrency.gt(0n)) {
         functionName = 'claimRedeem'
@@ -517,7 +518,7 @@ export class Vault extends Entity {
    * @internal
    */
   _isOperator(investorAddress: HexString) {
-    return this._query(['isOperator'], () =>
+    return this._query(['isOperator', investorAddress], () =>
       defer(() =>
         this._root
           .getClient(this.chainId)
