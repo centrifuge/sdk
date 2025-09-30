@@ -189,6 +189,11 @@ export class OnOffRampManager extends Entity {
     }, this.network.chainId)
   }
 
+  /**
+   * Set a relayer.
+   * @param relayer - The relayer address to set
+   * @param enabled - Whether the relayer is enabled
+   */
   setRelayer(relayer: HexString, enabled: boolean = true) {
     const self = this
     return this._transact(async function* (ctx) {
