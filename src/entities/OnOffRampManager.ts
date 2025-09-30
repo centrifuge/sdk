@@ -154,6 +154,11 @@ export class OnOffRampManager extends Entity {
     )
   }
 
+  /**
+   * Set a receiver.
+   * @param assetId - The asset ID to set the receiver for
+   * @param receiver - The receiver address to set
+   */
   setReceiver(assetId: AssetId, receiver: HexString) {
     const self = this
     return this._transact(async function* (ctx) {
