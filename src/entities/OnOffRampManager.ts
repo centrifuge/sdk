@@ -189,7 +189,7 @@ export class OnOffRampManager extends Entity {
     }, this.network.chainId)
   }
 
-  setRelayer(relayer: HexString) {
+  setRelayer(relayer: HexString, enabled: boolean = true) {
     const self = this
     return this._transact(async function* (ctx) {
       const [id, { hub }] = await Promise.all([
@@ -197,7 +197,7 @@ export class OnOffRampManager extends Entity {
         self._root._protocolAddresses(self.network.chainId),
       ])
 
-      yield* wrapTransaction('Set Relayer', ctx, {
+      yield* wrapTransaction(enabled ? 'Enable Relayer' : 'Disable Relayer', ctx, {
         contract: hub,
         data: encodeFunctionData({
           abi: ABI.Hub,
@@ -209,13 +209,7 @@ export class OnOffRampManager extends Entity {
             addressToBytes32(self.onrampAddress),
             encodePacked(
               ['uint8', 'bytes32', 'uint128', 'bytes32', 'bool'],
-              [
-                /* UpdateContractType.UpdateAddress */ 3,
-                toHex('relayer', { size: 32 }),
-                0n,
-                addressToBytes32(relayer),
-                true,
-              ]
+              [3, toHex('relayer', { size: 32 }), 0n, addressToBytes32(relayer), enabled]
             ),
             0n,
           ],
