@@ -1,5 +1,5 @@
 import { combineLatest, map, of, switchMap } from 'rxjs'
-import type { Centrifuge } from '../Centrifuge.js'
+import { Centrifuge } from '../Centrifuge.js'
 import type { HexString } from '../types/index.js'
 import { AssetId, PoolId, ShareClassId } from '../utils/types.js'
 import { Entity } from './Entity.js'
@@ -15,6 +15,10 @@ export class Investor extends Entity {
     this.address = addr
   }
 
+  /**
+   * Retrieve the portfolio of an investor.
+   * @param chainId - The chain ID
+   */
   portfolio(chainId?: number) {
     return this._query(['portfolio', chainId], () =>
       this._root
@@ -109,12 +113,15 @@ export class Investor extends Entity {
               createdAt: string
               type: string
               txHash: HexString
-              // Todo: return with asset decimal once indexer is providing assetId
+              // TODO: return with asset decimal once indexer is providing assetId
               currencyAmount: bigint
               token: {
                 name: string
+                symbol: string
               }
               tokenAmount: bigint
+              fromCentrifugeId: string
+              poolId: string
             }[]
           }
         }>(
@@ -128,8 +135,11 @@ export class Investor extends Entity {
                currencyAmount
                token {
                  name
+                 symbol
                }
                tokenAmount
+               fromCentrifugeId
+               poolId
               }
             }
           }`,
@@ -143,6 +153,11 @@ export class Investor extends Entity {
             createdAt: item.createdAt,
             token: item.token.name,
             tokenAmount: new Balance(item.tokenAmount, currency.decimals),
+            tokenSymbol: item.token.symbol,
+            // TODO: For now let's assume is the same as pool - fix when indexer provides assetId
+            currencyAmount: new Balance(item.currencyAmount, currency.decimals),
+            chainId: this._root._idToChain(Number(item.fromCentrifugeId)),
+            poolId: item.poolId,
           }))
         )
       )
