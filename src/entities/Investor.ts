@@ -19,7 +19,6 @@ export class Investor extends Entity {
    * Retrieve the portfolio of an investor.
    * @param chainId - The chain ID
    */
-
   portfolio(chainId?: number) {
     return this._query(['portfolio', chainId], () =>
       this._root
