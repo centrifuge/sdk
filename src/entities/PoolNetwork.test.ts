@@ -50,7 +50,7 @@ describe('PoolNetwork', () => {
     expect(details.activeShareClasses[0]!.vaults).to.have.length.greaterThan(0)
   })
 
-  it.only('deploys share classes and vaults', async () => {
+  it('deploys share classes and vaults', async () => {
     const { hub, freezeOnlyHook, vaultRouter } = await context.centrifuge._protocolAddresses(chainId)
 
     context.tenderlyFork.impersonateAddress = poolManager
