@@ -100,10 +100,13 @@ export class Investor extends Entity {
   }
 
   /**
-   * Retrieve transactions given an address.
+   * Retrieve the transactions of an investor.
+   * @param address - The address of the investor
+   * @param poolId - The pool ID
    */
+
   transactions(address: HexString, poolId: PoolId) {
-    return this._query(['transactions', address.toString().toLowerCase(), poolId.toString()], () =>
+    return this._query(['transactions', address.toLowerCase(), poolId.toString()], () =>
       combineLatest([
         this._root.pool(poolId).pipe(switchMap((pool) => pool.currency())),
         this._root._queryIndexer<{
@@ -115,10 +118,7 @@ export class Investor extends Entity {
               txHash: HexString
               // TODO: return with asset decimal once indexer is providing assetId
               currencyAmount: bigint
-              token: {
-                name: string
-                symbol: string
-              }
+              token: { name: string; symbol: string }
               tokenAmount: bigint
               fromCentrifugeId: string
               poolId: string
@@ -128,37 +128,40 @@ export class Investor extends Entity {
           `query ($address: String!) {
             investorTransactions(where: { account: $address } limit: 1000) {
               items {
-               account
-               createdAt
-               type
-               txHash
-               currencyAmount
-               token {
-                 name
-                 symbol
-               }
-               tokenAmount
-               fromCentrifugeId
-               poolId
+                account
+                createdAt
+                type
+                txHash
+                currencyAmount
+                token { name symbol }
+                tokenAmount
+                fromCentrifugeId
+                poolId
               }
             }
           }`,
           { address: address.toLowerCase() }
         ),
       ]).pipe(
-        map(([currency, { investorTransactions }]) =>
-          investorTransactions.items.map((item) => ({
-            type: item.type,
-            txHash: item.txHash,
-            createdAt: item.createdAt,
-            token: item.token.name,
-            tokenAmount: new Balance(item.tokenAmount, currency.decimals),
-            tokenSymbol: item.token.symbol,
-            // TODO: For now let's assume is the same as pool - fix when indexer provides assetId
-            currencyAmount: new Balance(item.currencyAmount, currency.decimals),
-            chainId: this._root._idToChain(Number(item.fromCentrifugeId)),
-            poolId: item.poolId,
-          }))
+        switchMap(([currency, { investorTransactions }]) =>
+          combineLatest(
+            investorTransactions.items.map((item) =>
+              this._root._idToChain(Number(item.fromCentrifugeId)).pipe(
+                map((chainId) => ({
+                  type: item.type,
+                  txHash: item.txHash,
+                  createdAt: item.createdAt,
+                  token: item.token.name,
+                  tokenAmount: new Balance(item.tokenAmount, currency.decimals),
+                  tokenSymbol: item.token.symbol,
+                  // TODO: For now let's assume is the same as pool - fix when indexer provides assetId
+                  currencyAmount: new Balance(item.currencyAmount, currency.decimals),
+                  chainId,
+                  poolId: item.poolId,
+                }))
+              )
+            )
+          )
         )
       )
     )
