@@ -75,6 +75,13 @@ export class Investor extends Entity {
     )
   }
 
+  /**
+   * Retrieve the investment of an investor.
+   * @param poolId - The pool ID
+   * @param scId - The share class ID
+   * @param asset - The asset ID
+   * @param chainId - The chain ID
+   */
   investment(poolId: PoolId, scId: ShareClassId, asset: HexString | AssetId, chainId: number) {
     return this._query(
       ['investment', poolId.toString(), scId.toString(), asset.toString().toLowerCase(), chainId],
@@ -100,11 +107,14 @@ export class Investor extends Entity {
   }
 
   /**
-   * Retrieve transactions given an address.
+   * Retrieve the transactions of an investor.
+   * @param address - The address of the investor
+   * @param poolId - The pool ID
    */
   transactions(address: HexString, poolId: PoolId) {
-    return this._query(['transactions', address.toString().toLowerCase(), poolId.toString()], () =>
+    return this._query(['transactions', address.toLowerCase(), poolId.toString()], () =>
       combineLatest([
+        this._root._deployments(),
         this._root.pool(poolId).pipe(switchMap((pool) => pool.currency())),
         this._root._queryIndexer<{
           investorTransactions: {
@@ -113,12 +123,8 @@ export class Investor extends Entity {
               createdAt: string
               type: string
               txHash: HexString
-              // TODO: return with asset decimal once indexer is providing assetId
               currencyAmount: bigint
-              token: {
-                name: string
-                symbol: string
-              }
+              token: { name: string; symbol: string }
               tokenAmount: bigint
               fromCentrifugeId: string
               poolId: string
@@ -128,38 +134,39 @@ export class Investor extends Entity {
           `query ($address: String!) {
             investorTransactions(where: { account: $address } limit: 1000) {
               items {
-               account
-               createdAt
-               type
-               txHash
-               currencyAmount
-               token {
-                 name
-                 symbol
-               }
-               tokenAmount
-               fromCentrifugeId
-               poolId
+                account
+                createdAt
+                type
+                txHash
+                currencyAmount
+                token { name symbol }
+                tokenAmount
+                fromCentrifugeId
+                poolId
               }
             }
           }`,
           { address: address.toLowerCase() }
         ),
       ]).pipe(
-        map(([currency, { investorTransactions }]) =>
-          investorTransactions.items.map((item) => ({
-            type: item.type,
-            txHash: item.txHash,
-            createdAt: item.createdAt,
-            token: item.token.name,
-            tokenAmount: new Balance(item.tokenAmount, currency.decimals),
-            tokenSymbol: item.token.symbol,
-            // TODO: For now let's assume is the same as pool - fix when indexer provides assetId
-            currencyAmount: new Balance(item.currencyAmount, currency.decimals),
-            chainId: this._root._idToChain(Number(item.fromCentrifugeId)),
-            poolId: item.poolId,
-          }))
-        )
+        map(([deployments, currency, { investorTransactions }]) => {
+          const chainsById = new Map(deployments.blockchains.items.map((chain) => [chain.centrifugeId, chain.id]))
+
+          return investorTransactions.items.map((item) => {
+            const chainId = chainsById.get(item.fromCentrifugeId)
+            return {
+              type: item.type,
+              txHash: item.txHash,
+              createdAt: item.createdAt,
+              token: item.token.name,
+              tokenSymbol: item.token.symbol,
+              tokenAmount: new Balance(item.tokenAmount, currency.decimals),
+              currencyAmount: new Balance(item.currencyAmount, currency.decimals),
+              chainId: Number(chainId),
+              poolId: item.poolId,
+            }
+          })
+        })
       )
     )
   }
