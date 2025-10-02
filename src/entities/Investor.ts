@@ -75,6 +75,13 @@ export class Investor extends Entity {
     )
   }
 
+  /**
+   * Retrieve the investment of an investor.
+   * @param poolId - The pool ID
+   * @param scId - The share class ID
+   * @param asset - The asset ID
+   * @param chainId - The chain ID
+   */
   investment(poolId: PoolId, scId: ShareClassId, asset: HexString | AssetId, chainId: number) {
     return this._query(
       ['investment', poolId.toString(), scId.toString(), asset.toString().toLowerCase(), chainId],
