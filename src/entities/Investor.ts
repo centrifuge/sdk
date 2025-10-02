@@ -104,10 +104,10 @@ export class Investor extends Entity {
    * @param address - The address of the investor
    * @param poolId - The pool ID
    */
-
   transactions(address: HexString, poolId: PoolId) {
     return this._query(['transactions', address.toLowerCase(), poolId.toString()], () =>
       combineLatest([
+        this._root._deployments(),
         this._root.pool(poolId).pipe(switchMap((pool) => pool.currency())),
         this._root._queryIndexer<{
           investorTransactions: {
@@ -116,7 +116,6 @@ export class Investor extends Entity {
               createdAt: string
               type: string
               txHash: HexString
-              // TODO: return with asset decimal once indexer is providing assetId
               currencyAmount: bigint
               token: { name: string; symbol: string }
               tokenAmount: bigint
@@ -143,26 +142,24 @@ export class Investor extends Entity {
           { address: address.toLowerCase() }
         ),
       ]).pipe(
-        switchMap(([currency, { investorTransactions }]) =>
-          combineLatest(
-            investorTransactions.items.map((item) =>
-              this._root._idToChain(Number(item.fromCentrifugeId)).pipe(
-                map((chainId) => ({
-                  type: item.type,
-                  txHash: item.txHash,
-                  createdAt: item.createdAt,
-                  token: item.token.name,
-                  tokenAmount: new Balance(item.tokenAmount, currency.decimals),
-                  tokenSymbol: item.token.symbol,
-                  // TODO: For now let's assume is the same as pool - fix when indexer provides assetId
-                  currencyAmount: new Balance(item.currencyAmount, currency.decimals),
-                  chainId,
-                  poolId: item.poolId,
-                }))
-              )
-            )
-          )
-        )
+        map(([deployments, currency, { investorTransactions }]) => {
+          const chainsById = new Map(deployments.blockchains.items.map((chain) => [chain.centrifugeId, chain.id]))
+
+          return investorTransactions.items.map((item) => {
+            const chainId = chainsById.get(item.fromCentrifugeId)
+            return {
+              type: item.type,
+              txHash: item.txHash,
+              createdAt: item.createdAt,
+              token: item.token.name,
+              tokenSymbol: item.token.symbol,
+              tokenAmount: new Balance(item.tokenAmount, currency.decimals),
+              currencyAmount: new Balance(item.currencyAmount, currency.decimals),
+              chainId: Number(chainId),
+              poolId: item.poolId,
+            }
+          })
+        })
       )
     )
   }
