@@ -37,7 +37,8 @@
     "test:coverage": "c8 yarn test:ci",
     "fork:server": "node ./src/tests/forkServer.mjs",
     "gen:docs": "typedoc",
-    "format": "prettier --write '**/*.{ts,js,mjs,json,md,yml}'"
+    "format": "prettier --write '**/*.{ts,js,mjs,json,md,yml}'",
+    "build:docker": "node ./src/tests/startLocalTest.mjs"
   },
   "dependencies": {
     "@openzeppelin/merkle-tree": "1.0.8",

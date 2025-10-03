@@ -201,21 +201,27 @@ export class TenderlyFork {
 
   async forkNetwork() {
     if (isLocalFork) {
-      const url = 'http://localhost:8544'
+      const url = 'http://localhost:8545'
       const response = await fetch(url, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          Accept: 'application/json',
         },
+        body: JSON.stringify({
+          jsonrpc: '2.0',
+          method: 'eth_chainId',
+          params: [],
+          id: 1,
+        }),
       })
+
       if (!response.ok) {
         throw new Error(`Failed to fork network: ${response.statusText}`)
       }
-      const { rpcUrl } = await response.json()
-      console.log('Forked network locally', rpcUrl)
-      this._rpcUrl = rpcUrl
-      return { url: rpcUrl }
+
+      console.log('Forked network locally', url)
+      this._rpcUrl = url
+      return { url }
     }
     const tenderlyApi = `${TENDERLY_API_URL}/account/${ACCOUNT_SLUG}/project/${PROJECT_SLUG}/vnets`
     const timestamp = Date.now()

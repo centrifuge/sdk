@@ -207,11 +207,39 @@ yarn build
 
 #### Testing
 
+This project uses a fully Dockerized setup for running the indexer and Anvil fork locally.  
+Tests can be run either against the Dockerized services or in a CI environment.
+
+##### Dockerized Test Workflow
+
+1. Build and start services:
+
 ```bash
-yarn test                # full test suite
-yarn test:single <file>  # test specific file
-yarn test:simple:single <file>
-# (runs faster excluding setup files)
+yarn build:docker
+```
+
+This will:
+
+- Start the indexer container (api-v3)
+- Start the Anvil fork container (foundry) with the configured fork URL, chain ID, and block number
+- Wait for the indexer to be ready to accept requests
+
+Environment variables (set in docker-compose.yml) are used to configure API keys, fork block numbers, and chain IDs.
+
+2. Run the tests:
+
+```bash
+yarn test
+```
+
+- This runs the full test suite against the running Dockerized services.
+- All test output from Mocha and related tooling is streamed to your console.
+- Tests can also be run in CI mode using yarn test:ci if desired.
+
+3. Stop and clean up services:
+
+```bash
+docker compose down -v
 ```
 
 ### Contributing
