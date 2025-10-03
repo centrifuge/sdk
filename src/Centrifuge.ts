@@ -72,14 +72,16 @@ import { AssetId, PoolId, ShareClassId } from './utils/types.js'
 
 const PINNING_API_DEMO = 'https://europe-central2-peak-vista-185616.cloudfunctions.net/pinning-api-demo'
 
+const LOCAL_INDEXER_URL = process.env.INDEXER_LOCAL_URL
+
 const envConfig = {
   mainnet: {
-    indexerUrl: 'https://api.centrifuge.io',
+    indexerUrl: LOCAL_INDEXER_URL ?? 'https://api.centrifuge.io',
     ipfsUrl: 'https://centrifuge.mypinata.cloud',
     ...createPinning(PINNING_API_DEMO),
   },
   testnet: {
-    indexerUrl: 'https://api-v3-hitz.marble.live/graphql',
+    indexerUrl: LOCAL_INDEXER_URL ?? 'https://api-v3-hitz.marble.live/graphql',
     ipfsUrl: 'https://centrifuge.mypinata.cloud',
     ...createPinning(PINNING_API_DEMO),
   },

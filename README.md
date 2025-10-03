@@ -226,7 +226,15 @@ This will:
 
 Environment variables (set in docker-compose.yml) are used to configure API keys, fork block numbers, and chain IDs.
 
-2. Run the tests:
+2. Set indexer to connect to localhost
+
+In `./src/tests/.env` set variable for indexer url:
+
+```bash
+INDEXER_LOCAL_URL=http://localhost:8080
+```
+
+3. Run the tests:
 
 ```bash
 yarn test
@@ -236,7 +244,7 @@ yarn test
 - All test output from Mocha and related tooling is streamed to your console.
 - Tests can also be run in CI mode using yarn test:ci if desired.
 
-3. Stop and clean up services:
+4. Stop and clean up services:
 
 ```bash
 docker compose down -v
