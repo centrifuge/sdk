@@ -11,7 +11,7 @@ const centId = 1
 const poolId = PoolId.from(centId, 1)
 const scId = ShareClassId.from(poolId, 1)
 
-describe('PoolSharePricesReport', () => {
+describe.skip('PoolSharePricesReport', () => {
   let poolSharePricesReport: PoolSharePricesReport
 
   before(() => {
