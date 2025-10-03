@@ -69,9 +69,11 @@ import {
   wrapTransaction,
 } from './utils/transaction.js'
 import { AssetId, PoolId, ShareClassId } from './utils/types.js'
+import dotenv from 'dotenv'
 
 const PINNING_API_DEMO = 'https://europe-central2-peak-vista-185616.cloudfunctions.net/pinning-api-demo'
 
+dotenv.config({ path: './src/tests/.env' })
 const LOCAL_INDEXER_URL = process.env.INDEXER_LOCAL_URL
 
 const envConfig = {

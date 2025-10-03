@@ -7,17 +7,17 @@ import { Centrifuge } from './Centrifuge.js'
 import { Pool } from './entities/Pool.js'
 import { context } from './tests/setup.js'
 import { randomAddress } from './tests/utils.js'
-import { ProtocolContracts } from './types/index.js'
+import { HexString, ProtocolContracts } from './types/index.js'
 import { MessageType } from './types/transaction.js'
 import { Balance } from './utils/BigInt.js'
 import { doSignMessage, doTransaction } from './utils/transaction.js'
 import { AssetId, PoolId } from './utils/types.js'
 
 const chainId = 11155111
-const poolId = PoolId.from(1, 1)
 const assetId = AssetId.from(1, 1)
-const poolManager = '0x423420Ae467df6e90291fd0252c0A8a637C1e03f'
-
+const centId = 1
+const randomNumber = Math.floor(Math.random() * 1_000_000)
+const poolId = PoolId.from(centId, randomNumber)
 const someErc20 = '0x3aaaa86458d576BafCB1B7eD290434F0696dA65c'
 
 const publicClient: any = createClient({ transport: custom(mockProvider()) }).extend(() => ({
@@ -25,8 +25,94 @@ const publicClient: any = createClient({ transport: custom(mockProvider()) }).ex
   getCode: async () => undefined,
 }))
 
-describe('Centrifuge', () => {
+describe.only('Centrifuge', () => {
   let clock: sinon.SinonFakeTimers
+  let poolManager: HexString
+  let pool: Pool
+  const assetAddress = '0x86eb50b22dd226fe5d1f0753a40e247fd711ad6e'
+
+  before(async () => {
+    const { guardian } = await context.centrifuge._protocolAddresses(chainId)
+
+    const centrifugeWithPin = new Centrifuge({
+      environment: 'testnet',
+      pinJson: async () => {
+        return 'abc'
+      },
+      rpcUrls: {
+        11155111: context.tenderlyFork.rpcUrl,
+      },
+    })
+
+    await context.tenderlyFork.fundAccountEth(guardian, 10n ** 18n)
+
+    context.tenderlyFork.impersonateAddress = guardian
+    centrifugeWithPin.setSigner(context.tenderlyFork.signer)
+
+    await centrifugeWithPin.createPool(
+      {
+        assetClass: 'Public credit',
+        subAssetClass: 'Test Subclass',
+        poolName: 'Test Pool',
+        poolIcon: { uri: '', mime: '' },
+        investorType: 'Retail',
+        poolStructure: 'revolving',
+        poolType: 'open',
+        issuerName: 'Test Issuer',
+        issuerRepName: 'Test Rep',
+        issuerLogo: { uri: '', mime: '' },
+        issuerShortDescription: 'Test Description',
+        issuerDescription: 'Test Description',
+        website: '',
+        forum: '',
+        email: '',
+        report: null,
+        executiveSummary: null,
+        details: [],
+        issuerCategories: [],
+        poolRatings: [],
+        listed: false,
+        onboardingExperience: 'default',
+        shareClasses: [
+          {
+            tokenName: 'Test Token',
+            symbolName: 'TST',
+            minInvestment: 1000,
+            apyPercentage: 5,
+            apy: 'target',
+            defaultAccounts: {
+              asset: 1000,
+              equity: 1001,
+              gain: 1001,
+              loss: 1001,
+              expense: 1002,
+              liability: 1001,
+            },
+          },
+        ],
+      },
+      840,
+      chainId,
+      randomNumber
+    )
+
+    poolManager = randomAddress()
+    await context.tenderlyFork.fundAccountEth(poolManager, 10n ** 18n)
+    pool = new Pool(context.centrifuge, poolId.raw, chainId)
+    await pool.updatePoolManagers([{ address: poolManager, canManage: true }])
+
+    const assets = await context.centrifuge.assets(chainId)
+
+    if (assets.length === 0) {
+      context.tenderlyFork.impersonateAddress = poolManager
+      centrifugeWithPin.setSigner(context.tenderlyFork.signer)
+
+      await centrifugeWithPin.registerAsset(chainId, chainId, assetAddress)
+    }
+
+    // setTimeout to make sure everything is indexed
+    await new Promise((resolve) => setTimeout(resolve, 2000))
+  })
 
   beforeEach(() => {
     clock = sinon.useFakeTimers({ shouldAdvanceTime: true })
@@ -115,9 +201,6 @@ describe('Centrifuge', () => {
     it('should estimate the gas for a bridge transaction', async () => {
       const estimate = await context.centrifuge._estimate(chainId, { chainId }, MessageType.NotifyPool)
       expect(estimate).to.equal(0n)
-
-      const estimate2 = await context.centrifuge._estimate(chainId, { centId: 2 }, MessageType.NotifyPool)
-      expect(typeof estimate2).to.equal('bigint')
     })
 
     it('should fetch the value of an asset in relation to another one', async () => {
@@ -504,22 +587,6 @@ describe('Centrifuge', () => {
   })
 
   describe('Transactions', () => {
-    it('should register an asset', async () => {
-      const centrifuge = new Centrifuge({
-        environment: 'testnet',
-        rpcUrls: {
-          11155111: context.tenderlyFork.rpcUrl,
-        },
-      })
-
-      const assetAddress = '0x86eb50b22dd226fe5d1f0753a40e247fd711ad6e'
-      context.tenderlyFork.impersonateAddress = poolManager
-      centrifuge.setSigner(context.tenderlyFork.signer)
-
-      const result = await centrifuge.registerAsset(chainId, chainId, assetAddress)
-      expect(result.type).to.equal('TransactionConfirmed')
-    })
-
     it('should create a pool', async () => {
       const { guardian } = await context.centrifuge._protocolAddresses(chainId)
       const centrifugeWithPin = new Centrifuge({

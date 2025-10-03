@@ -27,7 +27,7 @@ class TestContext {
       console.log('DEBUG is true, RPC endpoint will not be deleted', this.tenderlyFork.rpcUrl)
       return
     }
-    if (this.tenderlyFork) {
+    if (this.tenderlyFork && process.env.LOCAL !== 'true') {
       return this.tenderlyFork.deleteTenderlyRpcEndpoint()
     }
   }
