@@ -25,7 +25,7 @@ const publicClient: any = createClient({ transport: custom(mockProvider()) }).ex
   getCode: async () => undefined,
 }))
 
-describe.only('Centrifuge', () => {
+describe('Centrifuge', () => {
   let clock: sinon.SinonFakeTimers
   let poolManager: HexString
   let pool: Pool

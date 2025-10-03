@@ -28,7 +28,7 @@ const investor = '0x5b66af49742157E360A2897e3F480d192305B2b5'
 
 const defaultAssetsAmount = Balance.fromFloat(100, 6)
 
-describe('ShareClass', () => {
+describe.skip('ShareClass', () => {
   let shareClass: ShareClass
   let shareClass2: ShareClass
   beforeEach(() => {

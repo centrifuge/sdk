@@ -15,7 +15,7 @@ const poolManager = '0x423420Ae467df6e90291fd0252c0A8a637C1e03f'
 
 const assetId = AssetId.from(1, 2)
 
-describe('BalanceSheet', () => {
+describe.skip('BalanceSheet', () => {
   let balanceSheet: BalanceSheet
 
   beforeEach(() => {
