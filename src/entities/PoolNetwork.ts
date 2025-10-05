@@ -1,4 +1,4 @@
-import { combineLatest, defer, map, of, switchMap } from 'rxjs'
+import { combineLatest, defer, firstValueFrom, map, of, switchMap } from 'rxjs'
 import { encodeFunctionData, encodePacked, getContract, maxUint128 } from 'viem'
 import { ABI } from '../abi/index.js'
 import type { Centrifuge } from '../Centrifuge.js'
@@ -437,14 +437,15 @@ export class PoolNetwork extends Entity {
   }
 
   /**
-   * Unlink vaults.
-   * @param vaults - An array of vaults to unlink
+   * Link or unlink specific vaults.
+   * @param vaults - Array of vaults to update
+   * @param isLinked - true = link, false = unlink
    */
-  unlinkVaults(vaults: { shareClassId: ShareClassId; assetId: AssetId }[]) {
+  updateVaultLinks(vaults: { shareClassId: ShareClassId; assetId: AssetId }[], isLinked: boolean) {
     const self = this
     return this._transact(async function* (ctx) {
       if (vaults.length === 0) {
-        throw new Error('No vaults to unlink')
+        throw new Error('No vaults to update')
       }
 
       const [{ hub }, id, details] = await Promise.all([
@@ -459,6 +460,7 @@ export class PoolNetwork extends Entity {
       for (const vault of vaults) {
         const shareClass = details.activeShareClasses.find((sc) => sc.id.equals(vault.shareClassId))
         const existingVault = shareClass?.vaults.find((v) => v.assetId.equals(vault.assetId))
+
         if (!existingVault) {
           throw new Error(
             `Vault for share class "${vault.shareClassId.raw}" and asset ID "${vault.assetId.raw}" not found`
@@ -474,15 +476,19 @@ export class PoolNetwork extends Entity {
               vault.shareClassId.raw,
               vault.assetId.raw,
               addressToBytes32(existingVault.address),
-              VaultUpdateKind.Unlink,
-              0n, // gas limit
+              isLinked ? VaultUpdateKind.Link : VaultUpdateKind.Unlink,
+              0n,
             ],
           })
         )
-        messageTypes.push({ type: MessageType.UpdateVault, subtype: VaultUpdateKind.Unlink }) //
+
+        messageTypes.push({
+          type: MessageType.UpdateVault,
+          subtype: isLinked ? VaultUpdateKind.Link : VaultUpdateKind.Unlink,
+        })
       }
 
-      yield* wrapTransaction(`Unlink vault${batch.length > 1 ? 's' : ''}`, ctx, {
+      yield* wrapTransaction(`${isLinked ? 'Link' : 'Unlink'} vault${batch.length > 1 ? 's' : ''}`, ctx, {
         data: batch,
         contract: hub,
         messages: { [id]: messageTypes },
