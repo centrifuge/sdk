@@ -1079,6 +1079,10 @@ export class ShareClass extends Entity {
     )
   }
 
+  /**
+   * Retrieve investor orders of the share class.
+   * @returns Investor orders
+   */
   investorOrders() {
     const self = this
 
