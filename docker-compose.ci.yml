@@ -6,6 +6,7 @@ services:
     volumes:
       - .:/app
     working_dir: /app
+    container_name: app
     environment:
       INDEXER_LOCAL_URL: http://indexer:8000
     depends_on:
