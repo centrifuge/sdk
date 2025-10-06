@@ -1,8 +1,6 @@
 import { exec } from 'child_process'
 
 const indexerUrl = 'http://localhost:8000/ready'
-const timeout = 30000
-const interval = 2000
 
 function runCommand(cmd) {
   return new Promise((resolve, reject) => {
@@ -17,21 +15,27 @@ function runCommand(cmd) {
 
 async function waitFor(url) {
   const start = Date.now()
+  const timeout = 60000 // increase to 60s
+  const interval = 3000
+
   while (Date.now() - start < timeout) {
     try {
       const res = await fetch(url)
       if (res.ok) return
-    } catch (e) {
-      console.log(`Waiting for ${url}`)
+    } catch (err) {
+      console.log(`Waiting for ${url}... (${err.code || err.message})`)
     }
     await new Promise((r) => setTimeout(r, interval))
   }
+
   throw new Error(`Service at ${url} did not become ready in ${timeout / 1000}s`)
 }
 
 async function main() {
   console.log('Starting containers...')
   await runCommand('docker compose up -d')
+
+  await new Promise((r) => setTimeout(r, 5000))
 
   console.log('Waiting for indexer...')
   await waitFor(indexerUrl)
