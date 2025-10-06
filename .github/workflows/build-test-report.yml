@@ -31,7 +31,7 @@ jobs:
         run: yarn install --immutable
 
       - name: Build and start Dockerized environment
-        run: docker compose -f docker-compose.ci.yml up -d --build indexer foundry
+        run: docker compose up -d --build
 
       - name: Wait for indexer
         run: |
