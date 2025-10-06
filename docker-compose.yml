@@ -18,7 +18,7 @@ services:
       PONDER_RPC_WS_11155111: ws://foundry:8545 # indexer override for Sepolia
       PONDER_RPC_STARTING_BLOCK_11155111: 9325766 # Starting block for Sepolia, prevents historical indexing, will need to update once it takes too long to index
       SELECTED_NETWORKS: 11155111 # limit indexing to Sepolia only
-      ALCHEMY_API_KEY: faketoken # not used if tests are running locally
+      ALCHEMY_API_KEY: faketoken # token not used if tests are running locally, env var required
 
   foundry:
     build: .
