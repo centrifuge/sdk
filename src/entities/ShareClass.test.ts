@@ -178,6 +178,43 @@ describe.skip('ShareClass', () => {
     expect(actual).to.deep.equal(expected)
   })
 
+  it('freezes and unfreezes a member', async () => {
+    const investor = randomAddress()
+
+    context.tenderlyFork.impersonateAddress = fundManager
+    context.centrifuge.setSigner(context.tenderlyFork.signer)
+
+    await shareClass.updateMember(investor, 1800000000, chainId)
+
+    const [share, restrictionManager] = await Promise.all([
+      firstValueFrom(shareClass._share(chainId)),
+      firstValueFrom(shareClass._restrictionManager(chainId)),
+    ])
+
+    const client = context.centrifuge.getClient(chainId)
+
+    const isFrozen = async () => {
+      return await client.readContract({
+        address: restrictionManager,
+        abi: ABI.RestrictionManager,
+        functionName: 'isFrozen',
+        args: [share, investor],
+      })
+    }
+
+    expect(await isFrozen()).to.equal(false)
+
+    const freezeTx = await shareClass.freezeMember(investor, chainId)
+    expect(freezeTx.type).to.equal('TransactionConfirmed')
+
+    expect(await isFrozen()).to.equal(true)
+
+    const unfreezeTx = await shareClass.unfreezeMember(investor, chainId)
+    expect(unfreezeTx.type).to.equal('TransactionConfirmed')
+
+    expect(await isFrozen()).to.equal(false)
+  })
+
   it('gets pending amounts', async () => {
     const pendingAmounts = await shareClass.pendingAmounts()
     expect(pendingAmounts.length).to.be.greaterThan(0)
