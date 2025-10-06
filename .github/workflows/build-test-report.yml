@@ -31,12 +31,12 @@ jobs:
         run: yarn install --immutable
 
       - name: Build and start Dockerized environment
-        run: docker compose -f docker-compose.ci.yml up -d --build
+        run: docker compose -f docker-compose.ci.yml up -d --build indexer foundry
 
-      - name: Wait for indexer to be ready
+      - name: Wait for indexer
         run: |
-          for i in {1..10}; do
-            if docker compose -f docker-compose.ci.yml exec app curl -sSf http://indexer:8000/ready; then
+          for i in {1..20}; do
+            if curl -sSf http://localhost:8000/ready; then
               echo "Indexer ready"
               break
             fi
@@ -45,7 +45,7 @@ jobs:
           done
 
       - name: Run tests inside Docker
-        run: docker compose -f docker-compose.ci.yml exec app yarn test:coverage
+        run: docker compose -f docker-compose.ci.yml run --rm app yarn test:coverage
 
       - name: Clean up Docker containers
         if: always()
