@@ -1079,6 +1079,10 @@ export class ShareClass extends Entity {
     )
   }
 
+  /**
+   * Retrieve investor orders of the share class.
+   * @returns Investor orders
+   */
   investorOrders() {
     const self = this
 
@@ -1122,6 +1126,50 @@ export class ShareClass extends Entity {
         )
       )
     )
+  }
+
+  /**
+   * Freeze a member of the share class.
+   */
+  freezeMember(address: HexString, chainId: number) {
+    const self = this
+    return this._transact(async function* (ctx) {
+      const [share, restrictionManager] = await Promise.all([
+        firstValueFrom(self._share(chainId)),
+        firstValueFrom(self._restrictionManager(chainId)),
+      ])
+
+      yield* wrapTransaction('Freeze member', ctx, {
+        contract: restrictionManager,
+        data: encodeFunctionData({
+          abi: ABI.RestrictionManager,
+          functionName: 'freeze',
+          args: [share, address],
+        }),
+      })
+    }, chainId)
+  }
+
+  /**
+   * Unfreeze a member of the share class.
+   */
+  unfreezeMember(address: HexString, chainId: number) {
+    const self = this
+    return this._transact(async function* (ctx) {
+      const [share, restrictionManager] = await Promise.all([
+        firstValueFrom(self._share(chainId)),
+        firstValueFrom(self._restrictionManager(chainId)),
+      ])
+
+      yield* wrapTransaction('Unfreeze member', ctx, {
+        contract: restrictionManager,
+        data: encodeFunctionData({
+          abi: ABI.RestrictionManager,
+          functionName: 'unfreeze',
+          args: [share, address],
+        }),
+      })
+    }, chainId)
   }
 
   /** @internal */
