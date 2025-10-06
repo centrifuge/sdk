@@ -53,7 +53,7 @@ jobs:
 
       - name: Clean up Docker containers
         if: always()
-        run: docker compose -f docker-compose.ci.yml down -v
+        run: docker compose down -v
 
       - name: Upload test results
         if: success() || failure()
