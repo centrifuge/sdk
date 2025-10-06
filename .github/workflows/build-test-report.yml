@@ -35,14 +35,17 @@ jobs:
 
       - name: Wait for indexer to be ready
         run: |
-          echo "Waiting for indexer..."
           for i in {1..20}; do
-            curl -sSf http://localhost:8000 && break
+            if curl -sSf http://indexer:8000/ready; then
+              echo "Indexer ready"
+              break
+            fi
+            echo "Waiting for indexer..."
             sleep 5
           done
 
       - name: Run tests inside Docker
-        run: docker compose -f docker-compose.ci.yml run --rm app yarn test:coverage
+        run: docker compose -f docker-compose.ci.yml exec app yarn test:coverage
 
       - name: Clean up Docker containers
         if: always()
