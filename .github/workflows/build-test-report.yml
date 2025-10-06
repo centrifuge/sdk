@@ -31,14 +31,22 @@ jobs:
         run: yarn install --immutable
 
       - name: Build and start Dockerized environment
-        run: yarn build:docker
+        run: docker compose -f docker-compose.ci.yml up -d --build
 
-      - name: Run tests
-        run: yarn test:coverage
+      - name: Wait for indexer to be ready
+        run: |
+          echo "Waiting for indexer..."
+          for i in {1..20}; do
+            curl -sSf http://localhost:8000 && break
+            sleep 5
+          done
+
+      - name: Run tests inside Docker
+        run: docker compose -f docker-compose.ci.yml run --rm app yarn test:coverage
 
       - name: Clean up Docker containers
         if: always()
-        run: docker compose down -v
+        run: docker compose -f docker-compose.ci.yml down -v
 
       - name: Upload test results
         if: success() || failure()
