@@ -30,16 +30,15 @@ jobs:
       - name: Install dependencies
         run: yarn install --immutable
 
-      - name: Run Build
-        run: yarn build
+      - name: Build and start Dockerized environment
+        run: yarn build:docker
 
       - name: Run tests
         run: yarn test:coverage
-        env:
-          TENDERLY_ACCESS_KEY: ${{ secrets.TENDERLY_ACCESS_KEY }}
-          PROJECT_SLUG: ${{ secrets.PROJECT_SLUG }}
-          ACCOUNT_SLUG: ${{ secrets.ACCOUNT_SLUG }}
-          DEBUG: ${{ github.run_attempt > 1 }}
+
+      - name: Clean up Docker containers
+        if: always()
+        run: docker compose down -v
 
       - name: Upload test results
         if: success() || failure()
