@@ -1,13 +1,13 @@
 import { expect } from 'chai'
 import { combineLatest, defer, firstValueFrom, interval, map, of, Subject, take, tap, toArray } from 'rxjs'
 import sinon from 'sinon'
-import { createClient, custom } from 'viem'
+import { Abi, createClient, custom } from 'viem'
 import { ABI } from './abi/index.js'
 import { Centrifuge } from './Centrifuge.js'
 import { Pool } from './entities/Pool.js'
 import { context } from './tests/setup.js'
 import { randomAddress } from './tests/utils.js'
-import { HexString, ProtocolContracts } from './types/index.js'
+import { Client, HexString, ProtocolContracts } from './types/index.js'
 import { MessageType } from './types/transaction.js'
 import { Balance } from './utils/BigInt.js'
 import { doSignMessage, doTransaction } from './utils/transaction.js'
@@ -566,16 +566,18 @@ describe('Centrifuge', () => {
       expect(result.type).to.equal('TransactionConfirmed')
       expect((result as any).title).to.equal('Test')
 
+      await new Promise((r) => setTimeout(r, 500))
+
       const { hubRegistry, balanceSheet } = await context.centrifuge._protocolAddresses(chainId)
 
-      const isNewManager = await context.centrifuge.getClient(chainId).readContract({
+      const isNewManager = await safeReadContract(context.centrifuge.getClient(chainId), {
         address: hubRegistry,
         abi: ABI.HubRegistry,
         functionName: 'manager',
         args: [poolId.raw, newManager],
       })
 
-      const isNewManager2 = await context.centrifuge.getClient(chainId).readContract({
+      const isNewManager2 = await safeReadContract(context.centrifuge.getClient(chainId), {
         address: balanceSheet,
         abi: ABI.BalanceSheet,
         functionName: 'manager',
@@ -672,5 +674,20 @@ function mockProvider({ chainId = 11155111, accounts = ['0x2'] } = {}) {
       }
       throw new Error(`Unknown method ${method}`)
     },
+  }
+}
+
+async function safeReadContract(
+  client: Client,
+  args: { address: HexString; abi: Abi; functionName: string; args: unknown[] | undefined },
+  retries = 3
+) {
+  for (let i = 0; i < retries; i++) {
+    try {
+      return await client.readContract(args)
+    } catch (err) {
+      if (i === retries - 1) throw err
+      await new Promise((r) => setTimeout(r, 300))
+    }
   }
 }
