@@ -44,8 +44,12 @@ jobs:
             sleep 5
           done
 
-      - name: Run tests inside Docker
-        run: docker compose -f docker-compose.ci.yml run --rm app yarn test:coverage
+      - name: Run tests
+        env:
+          INDEXER_LOCAL_URL: http://localhost:8000
+          LOCAL: true
+          DEBUG: false
+        run: yarn test:coverage
 
       - name: Clean up Docker containers
         if: always()
