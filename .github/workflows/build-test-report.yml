@@ -47,6 +47,7 @@ jobs:
       - name: Run tests
         env:
           INDEXER_LOCAL_URL: http://localhost:8000
+          LOCAL_POLL_INTERVAL: 2000
           LOCAL: true
           DEBUG: false
         run: yarn test:coverage

@@ -807,7 +807,7 @@ export class Centrifuge {
     query: string,
     variables?: Record<string, any>,
     postProcess?: (data: Result) => Return,
-    pollInterval = 120_000
+    pollInterval = process.env.LOCAL_POLL_INTERVAL ? parseInt(process.env.LOCAL_POLL_INTERVAL) : 120_000
   ) {
     return this._query([query, variables], () =>
       // If subscribed, refetch every `pollInterval` milliseconds

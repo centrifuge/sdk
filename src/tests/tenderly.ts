@@ -303,11 +303,11 @@ export class TenderlyFork {
     })
   }
 
-  async fundAccountERC20(address: string, amount: bigint) {
+  async fundAccountERC20(address: string, amount: bigint, assetAddress: string = tUSD) {
     await this.publicClient.request({
       jsonrpc: '2.0',
       method: isLocalFork ? 'anvil_dealERC20' : 'tenderly_setErc20Balance',
-      params: [tUSD, address, toHex(amount)],
+      params: [assetAddress, address, toHex(amount)],
       id: '1234',
     })
   }

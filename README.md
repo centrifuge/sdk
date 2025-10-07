@@ -230,6 +230,7 @@ In your test environment file `(./src/tests/.env)`, set the local Indexer URL:
 
 ```bash
 INDEXER_LOCAL_URL=http://localhost:8080
+LOCAL_POLL_INTERVAL=2000
 ```
 
 This ensures all tests point to the locally running Indexer.
