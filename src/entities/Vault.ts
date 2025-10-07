@@ -20,7 +20,7 @@ import { ShareClass } from './ShareClass.js'
 // const ASYNC_CANCEL_DEPOSIT_INTERFACE_ID = '0x8bf840e3'
 // const ASYNC_CANCEL_REDEEM_INTERFACE_ID = '0xe76cffc7'
 
-const ESCROW_HOOK_ID = '0x00000000000000000000000000000000000000ce'
+const ESCROW_HOOK_ID = '0x000000000000000000000000000000000001cf60'
 
 /**
  * Query and interact with a vault, which is the main entry point for investing and redeeming funds.
