@@ -29,7 +29,8 @@ describe.only('BalanceSheet', () => {
   let centrifugeWithPin: Centrifuge
 
   before(async () => {
-    const { guardian } = await context.centrifuge._protocolAddresses(chainId)
+    const addresses = await context.centrifuge._protocolAddresses(chainId)
+    const { centrifuge } = context
 
     centrifugeWithPin = new Centrifuge({
       environment: 'testnet',
@@ -41,9 +42,9 @@ describe.only('BalanceSheet', () => {
       },
     })
 
-    await context.tenderlyFork.fundAccountEth(guardian, 10n ** 18n)
+    await context.tenderlyFork.fundAccountEth(addresses.guardian, 10n ** 18n)
 
-    context.tenderlyFork.impersonateAddress = guardian
+    context.tenderlyFork.impersonateAddress = addresses.guardian
     centrifugeWithPin.setSigner(context.tenderlyFork.signer)
 
     await centrifugeWithPin.createPool(
@@ -93,26 +94,56 @@ describe.only('BalanceSheet', () => {
       randomNumber
     )
 
+    await firstValueFrom(
+      centrifuge
+        .pools()
+        .pipe(skipWhile((pools) => (console.log('pools', pools), !pools.find((p) => p.id.equals(poolId)))))
+    )
+
     poolManager = randomAddress()
     await context.tenderlyFork.fundAccountEth(poolManager, 10n ** 18n)
-    pool = new Pool(context.centrifuge, poolId.raw, chainId)
+    pool = new Pool(centrifuge, poolId.raw, chainId)
     await pool.updatePoolManagers([{ address: poolManager, canManage: true }])
 
-    const assets = await context.centrifuge.assets(chainId)
+    const assets = await centrifuge.assets(chainId)
+
+    try {
+      assetId = new AssetId(
+        await centrifuge.getClient(chainId).readContract({
+          address: addresses.spoke,
+          abi: ABI.Spoke,
+          functionName: 'assetToId',
+          args: [assetAddress, 0n],
+        })
+      )
+    } catch {}
 
     context.tenderlyFork.impersonateAddress = poolManager
-    centrifugeWithPin.setSigner(context.tenderlyFork.signer)
+    centrifuge.setSigner(context.tenderlyFork.signer)
 
-    if (assets.length === 0) {
-      await centrifugeWithPin.registerAsset(chainId, chainId, assetAddress)
+
+    if (!assetId) {
+      console.log('registering')
+      await centrifuge.registerAsset(chainId, chainId, assetAddress)
     }
 
-    assetId = (await context.centrifuge.assets(chainId))[0]!.id
+    assetId = new AssetId(
+      await centrifuge.getClient(chainId).readContract({
+        address: addresses.spoke,
+        abi: ABI.Spoke,
+        functionName: 'assetToId',
+        args: [assetAddress, 0n],
+      })
+    )
 
-    const { centrifuge } = context
     const poolNetwork = new PoolNetwork(centrifuge, pool, chainId)
     const shareClass = new ShareClass(centrifuge, pool, scId.raw)
     balanceSheet = new BalanceSheet(centrifuge, poolNetwork, shareClass)
+
+    await poolNetwork.deploy(
+      [{ id: scId, hook: addresses.freezeOnlyHook }],
+      [{ shareClassId: scId, assetId, kind: 'syncDeposit' }]
+    )
 
     await shareClass.setMaxAssetPriceAge(assetId, 9999999999999)
     await shareClass.notifyAssetPrice(assetId)
@@ -126,12 +157,12 @@ describe.only('BalanceSheet', () => {
       const amount = Balance.fromFloat(1, 18)
 
       context.tenderlyFork.impersonateAddress = poolManager
-      centrifugeWithPin.setSigner(context.tenderlyFork.signer)
+      context.centrifuge.setSigner(context.tenderlyFork.signer)
 
       await balanceSheet.pool.updateBalanceSheetManagers([{ chainId, address: fundedAccount, canManage: true }])
 
       context.tenderlyFork.impersonateAddress = fundedAccount
-      centrifugeWithPin.setSigner(context.tenderlyFork.signer)
+      context.centrifuge.setSigner(context.tenderlyFork.signer)
 
       await firstValueFrom(pool.isBalanceSheetManager(chainId, fundedAccount).pipe(skipWhile((manager) => !manager)))
 
