@@ -14,7 +14,6 @@ import { doSignMessage, doTransaction } from './utils/transaction.js'
 import { AssetId, PoolId } from './utils/types.js'
 
 const chainId = 11155111
-const assetId = AssetId.from(1, 1)
 const centId = 1
 const randomNumber = Math.floor(Math.random() * 1_000_000)
 const poolId = PoolId.from(centId, randomNumber)
@@ -29,10 +28,12 @@ describe('Centrifuge', () => {
   let clock: sinon.SinonFakeTimers
   let poolManager: HexString
   let pool: Pool
+  let assetId: AssetId
   const assetAddress = '0x86eb50b22dd226fe5d1f0753a40e247fd711ad6e'
 
   before(async () => {
-    const { guardian } = await context.centrifuge._protocolAddresses(chainId)
+    const addresses = await context.centrifuge._protocolAddresses(chainId)
+    const { centrifuge } = context
 
     const centrifugeWithPin = new Centrifuge({
       environment: 'testnet',
@@ -44,9 +45,9 @@ describe('Centrifuge', () => {
       },
     })
 
-    await context.tenderlyFork.fundAccountEth(guardian, 10n ** 18n)
+    await context.tenderlyFork.fundAccountEth(addresses.guardian, 10n ** 18n)
 
-    context.tenderlyFork.impersonateAddress = guardian
+    context.tenderlyFork.impersonateAddress = addresses.guardian
     centrifugeWithPin.setSigner(context.tenderlyFork.signer)
 
     await centrifugeWithPin.createPool(
@@ -101,14 +102,32 @@ describe('Centrifuge', () => {
     pool = new Pool(context.centrifuge, poolId.raw, chainId)
     await pool.updatePoolManagers([{ address: poolManager, canManage: true }])
 
-    const assets = await context.centrifuge.assets(chainId)
+    try {
+      assetId = new AssetId(
+        await centrifuge.getClient(chainId).readContract({
+          address: addresses.spoke,
+          abi: ABI.Spoke,
+          functionName: 'assetToId',
+          args: [assetAddress, 0n],
+        })
+      )
+    } catch {}
 
-    if (assets.length === 0) {
-      context.tenderlyFork.impersonateAddress = poolManager
-      centrifugeWithPin.setSigner(context.tenderlyFork.signer)
+    context.tenderlyFork.impersonateAddress = poolManager
+    centrifuge.setSigner(context.tenderlyFork.signer)
 
-      await centrifugeWithPin.registerAsset(chainId, chainId, assetAddress)
+    if (!assetId) {
+      await centrifuge.registerAsset(chainId, chainId, assetAddress)
     }
+
+    assetId = new AssetId(
+      await centrifuge.getClient(chainId).readContract({
+        address: addresses.spoke,
+        abi: ABI.Spoke,
+        functionName: 'assetToId',
+        args: [assetAddress, 0n],
+      })
+    )
 
     // setTimeout to make sure everything is indexed
     await new Promise((resolve) => setTimeout(resolve, 2000))
