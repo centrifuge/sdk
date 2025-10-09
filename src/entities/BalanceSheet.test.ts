@@ -12,6 +12,7 @@ import { Centrifuge } from '../Centrifuge.js'
 import { randomAddress } from '../tests/utils.js'
 import { doTransaction } from '../utils/transaction.js'
 import { maxUint256, parseAbi } from 'viem'
+import { ABI } from '../abi/index.js'
 
 const centId = 1
 const randomNumber = Math.floor(Math.random() * 1_000_000)
@@ -94,18 +95,12 @@ describe.only('BalanceSheet', () => {
       randomNumber
     )
 
-    await firstValueFrom(
-      centrifuge
-        .pools()
-        .pipe(skipWhile((pools) => (console.log('pools', pools), !pools.find((p) => p.id.equals(poolId)))))
-    )
+    await firstValueFrom(centrifuge.pools().pipe(skipWhile((pools) => !pools.find((p) => p.id.equals(poolId)))))
 
     poolManager = randomAddress()
     await context.tenderlyFork.fundAccountEth(poolManager, 10n ** 18n)
     pool = new Pool(centrifuge, poolId.raw, chainId)
     await pool.updatePoolManagers([{ address: poolManager, canManage: true }])
-
-    const assets = await centrifuge.assets(chainId)
 
     try {
       assetId = new AssetId(
@@ -120,7 +115,6 @@ describe.only('BalanceSheet', () => {
 
     context.tenderlyFork.impersonateAddress = poolManager
     centrifuge.setSigner(context.tenderlyFork.signer)
-
 
     if (!assetId) {
       console.log('registering')
@@ -166,7 +160,10 @@ describe.only('BalanceSheet', () => {
 
       await firstValueFrom(pool.isBalanceSheetManager(chainId, fundedAccount).pipe(skipWhile((manager) => !manager)))
 
-      await approve(assetAddress, fundedAccount)
+      const addresses = await context.centrifuge._protocolAddresses(chainId)
+      await context.tenderlyFork.fundAccountEth(fundedAccount, 10n ** 18n)
+
+      await approve(assetAddress, addresses.balanceSheet)
 
       console.log({ assetId: assetId.toString() })
 
@@ -218,17 +215,14 @@ describe.only('BalanceSheet', () => {
   // })
 })
 
-async function approve(address: string, approvingAccount: HexString) {
-  context.tenderlyFork.impersonateAddress = approvingAccount
-  context.centrifuge.setSigner(context.tenderlyFork.signer)
-
+async function approve(address: string, spender: HexString) {
   await context.centrifuge._transact(async function* (ctx) {
     yield* doTransaction('Approve', ctx, async () => {
       return ctx.walletClient.writeContract({
         address: address as any,
         abi: parseAbi(['function approve(address, uint) external returns (bool)']),
         functionName: 'approve',
-        args: [address as any, maxUint256],
+        args: [spender as any, maxUint256],
       })
     })
   }, chainId)
