@@ -1967,7 +1967,7 @@ export class ShareClass extends Entity {
                   address: accountAddress.toLowerCase() as HexString,
                   ...rest,
                 }))
-                .filter((investor) => BigInt(investor.address) >= MAX_CENTRIFUGE_ID),
+                .filter((investor) => BigInt(investor.address) > MAX_CENTRIFUGE_ID),
               pageInfo: data.whitelistedInvestors.pageInfo,
               totalCount: data.whitelistedInvestors.totalCount,
             }
