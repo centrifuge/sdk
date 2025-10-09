@@ -1091,7 +1091,7 @@ export class ShareClass extends Entity {
             })
 
             return {
-              items: investors,
+              investors,
               pageInfo,
               totalCount,
             }

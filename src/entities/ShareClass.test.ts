@@ -155,24 +155,24 @@ describe('ShareClass', () => {
 
   it('gets holders', async () => {
     const holders = await shareClass.holders()
-    expect(holders.items).to.have.length.greaterThan(0)
+    expect(holders.investors).to.have.length.greaterThan(0)
     expect(holders.totalCount).to.be.greaterThan(0)
     expect(holders.pageInfo).to.have.property('hasNextPage')
     expect(holders.pageInfo).to.have.property('hasPreviousPage')
     expect(holders.pageInfo).to.have.property('startCursor')
     expect(holders.pageInfo).to.have.property('endCursor')
 
-    const actual = holders.items.map((h) => ({
-      address: h.address.toLowerCase(),
-      isFrozen: h.isFrozen,
-      chainId: h.chainId,
-      holdings: h.holdings instanceof Balance,
-      outstandingInvestIsBalance: h.outstandingInvest instanceof Balance,
-      outstandingRedeemIsBalance: h.outstandingRedeem instanceof Balance,
+    const actual = holders.investors.map((i) => ({
+      address: i.address.toLowerCase(),
+      isFrozen: i.isFrozen,
+      chainId: i.chainId,
+      holdings: i.holdings instanceof Balance,
+      outstandingInvestIsBalance: i.outstandingInvest instanceof Balance,
+      outstandingRedeemIsBalance: i.outstandingRedeem instanceof Balance,
     }))
 
-    const expected = holders.items.map((h) => ({
-      address: h.address.toLowerCase(),
+    const expected = holders.investors.map((i) => ({
+      address: i.address.toLowerCase(),
       isFrozen: false,
       chainId,
       holdings: true,
