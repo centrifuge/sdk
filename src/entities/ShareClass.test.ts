@@ -155,9 +155,14 @@ describe('ShareClass', () => {
 
   it('gets holders', async () => {
     const holders = await shareClass.holders()
-    expect(holders).to.have.length.greaterThan(0)
+    expect(holders.items).to.have.length.greaterThan(0)
+    expect(holders.totalCount).to.be.greaterThan(0)
+    expect(holders.pageInfo).to.have.property('hasNextPage')
+    expect(holders.pageInfo).to.have.property('hasPreviousPage')
+    expect(holders.pageInfo).to.have.property('startCursor')
+    expect(holders.pageInfo).to.have.property('endCursor')
 
-    const actual = holders.map((h) => ({
+    const actual = holders.items.map((h) => ({
       address: h.address.toLowerCase(),
       isFrozen: h.isFrozen,
       chainId: h.chainId,
@@ -166,7 +171,7 @@ describe('ShareClass', () => {
       outstandingRedeemIsBalance: h.outstandingRedeem instanceof Balance,
     }))
 
-    const expected = holders.map((h) => ({
+    const expected = holders.items.map((h) => ({
       address: h.address.toLowerCase(),
       isFrozen: false,
       chainId,
@@ -236,18 +241,18 @@ describe('ShareClass', () => {
       {
         assetId,
         investor: '0x423420ae467df6e90291fd0252c0a8a637c1e03f',
-        maxDepositClaims: 1,
+        maxDepositClaims: 0,
         maxRedeemClaims: 1,
-        pendingDeposit: 30000000000000000000n,
-        pendingRedeem: 30000000000000000000n,
+        pendingDeposit: 2000000n,
+        pendingRedeem: 10000000000000000000n,
       },
       {
         assetId: assetId2,
         investor: '0x423420ae467df6e90291fd0252c0a8a637c1e03f',
-        maxDepositClaims: 0,
+        maxDepositClaims: 1,
         maxRedeemClaims: 1,
-        pendingDeposit: 0n,
-        pendingRedeem: 10000000000000000000n,
+        pendingDeposit: 30000000000000000000n,
+        pendingRedeem: 30000000000000000000n,
       },
     ])
   })
