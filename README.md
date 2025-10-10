@@ -205,14 +205,72 @@ yarn dev
 yarn build
 ```
 
-#### Testing
+#### Dockerized test workflow
+
+This project uses a fully Dockerized setup to run both the Indexer (api-v3) and an Anvil fork (foundry) locally.
+Tests can be executed against this environment or within CI, ensuring consistent, reproducible results.
+
+1. Build and start services
 
 ```bash
-yarn test                # full test suite
-yarn test:single <file>  # test specific file
-yarn test:simple:single <file>
-# (runs faster excluding setup files)
+yarn build:docker
 ```
+
+This command will:
+
+- Start the Indexer container (api-v3)
+- Start the Anvil fork container (foundry) with the configured fork URL, chain ID, and block number
+- Wait for the Indexer to become ready and accept requests
+
+Environment variables defined in docker-compose.yml control parameters such as API keys, fork block numbers, and chain IDs.
+
+2. Configure local indexer connection
+
+In your test environment file `(./src/tests/.env)`, set the local Indexer URL:
+
+```bash
+INDEXER_LOCAL_URL=http://localhost:8080
+LOCAL_POLL_INTERVAL=2000
+```
+
+This ensures all tests point to the locally running Indexer.
+
+3. Run the tests
+
+```bash
+yarn test
+```
+
+Executes the full test suite against the Dockerized services.
+Streams all Mocha and related test output to your console.
+For CI pipelines, you can use:
+
+```bash
+yarn test:ci
+```
+
+4. Stop and cleanup services
+
+After tests complete, stop and remove all containers and volumes:
+
+```bash
+docker compose down -v
+```
+
+##### Running tests against Tenderly
+
+Tests can also be executed against Tenderly instead of the local Anvil fork.
+This mode is controlled by environment variables:
+
+```bash
+LOCAL=false
+DEBUG=true
+```
+
+:::info
+When testing against Tenderly, use existing on-chain pools instead of creating new ones.
+It’s recommended to run single tests in this mode for more predictable and faster runs.
+:::
 
 ### Contributing
 

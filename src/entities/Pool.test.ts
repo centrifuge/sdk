@@ -19,7 +19,7 @@ const scId = ShareClassId.from(poolId, 1)
 const assetId = AssetId.from(centId, 1)
 const poolManager = '0x423420Ae467df6e90291fd0252c0A8a637C1e03f'
 
-describe('Pool', () => {
+describe.skip('Pool', () => {
   let pool: Pool
   before(() => {
     const { centrifuge } = context

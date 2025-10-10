@@ -1,5 +1,6 @@
 import { HexString } from '../types/index.js'
+import { randomBytes } from 'crypto'
 
 export function randomAddress(): HexString {
-  return `0x${Math.random().toString(16).slice(2).padStart(40, '0')}`
+  return `0x${randomBytes(20).toString('hex')}` as HexString
 }

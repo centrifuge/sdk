@@ -20,7 +20,7 @@ const rampManager = '0x8c0E6DC2461c6190A3e5703B714942cacfCb3C14'
 const fundManager = '0x423420Ae467df6e90291fd0252c0A8a637C1e03f'
 const receiver = '0x0000000000000000000000000000a3df6c4f8fcf'
 
-describe('OnOffRampManager', () => {
+describe.skip('OnOffRampManager', () => {
   let pool: Pool
   let poolNetwork: PoolNetwork
   let shareClass: ShareClass

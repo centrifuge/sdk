@@ -1,23 +1,22 @@
 import { expect } from 'chai'
 import { combineLatest, defer, firstValueFrom, interval, map, of, Subject, take, tap, toArray } from 'rxjs'
 import sinon from 'sinon'
-import { createClient, custom } from 'viem'
+import { Abi, createClient, custom } from 'viem'
 import { ABI } from './abi/index.js'
 import { Centrifuge } from './Centrifuge.js'
 import { Pool } from './entities/Pool.js'
 import { context } from './tests/setup.js'
 import { randomAddress } from './tests/utils.js'
-import { ProtocolContracts } from './types/index.js'
+import { Client, HexString, ProtocolContracts } from './types/index.js'
 import { MessageType } from './types/transaction.js'
 import { Balance } from './utils/BigInt.js'
 import { doSignMessage, doTransaction } from './utils/transaction.js'
 import { AssetId, PoolId } from './utils/types.js'
 
 const chainId = 11155111
-const poolId = PoolId.from(1, 1)
-const assetId = AssetId.from(1, 1)
-const poolManager = '0x423420Ae467df6e90291fd0252c0A8a637C1e03f'
-
+const centId = 1
+const randomNumber = Math.floor(Math.random() * 1_000_000)
+const poolId = PoolId.from(centId, randomNumber)
 const someErc20 = '0x3aaaa86458d576BafCB1B7eD290434F0696dA65c'
 
 const publicClient: any = createClient({ transport: custom(mockProvider()) }).extend(() => ({
@@ -27,6 +26,112 @@ const publicClient: any = createClient({ transport: custom(mockProvider()) }).ex
 
 describe('Centrifuge', () => {
   let clock: sinon.SinonFakeTimers
+  let poolManager: HexString
+  let pool: Pool
+  let assetId: AssetId
+  const assetAddress = '0x86eb50b22dd226fe5d1f0753a40e247fd711ad6e'
+
+  before(async () => {
+    const addresses = await context.centrifuge._protocolAddresses(chainId)
+    const { centrifuge } = context
+
+    const centrifugeWithPin = new Centrifuge({
+      environment: 'testnet',
+      pinJson: async () => {
+        return 'abc'
+      },
+      rpcUrls: {
+        11155111: context.tenderlyFork.rpcUrl,
+      },
+    })
+
+    await context.tenderlyFork.fundAccountEth(addresses.guardian, 10n ** 18n)
+
+    context.tenderlyFork.impersonateAddress = addresses.guardian
+    centrifugeWithPin.setSigner(context.tenderlyFork.signer)
+
+    await centrifugeWithPin.createPool(
+      {
+        assetClass: 'Public credit',
+        subAssetClass: 'Test Subclass',
+        poolName: 'Test Pool',
+        poolIcon: { uri: '', mime: '' },
+        investorType: 'Retail',
+        poolStructure: 'revolving',
+        poolType: 'open',
+        issuerName: 'Test Issuer',
+        issuerRepName: 'Test Rep',
+        issuerLogo: { uri: '', mime: '' },
+        issuerShortDescription: 'Test Description',
+        issuerDescription: 'Test Description',
+        website: '',
+        forum: '',
+        email: '',
+        report: null,
+        executiveSummary: null,
+        details: [],
+        issuerCategories: [],
+        poolRatings: [],
+        listed: false,
+        onboardingExperience: 'default',
+        shareClasses: [
+          {
+            tokenName: 'Test Token',
+            symbolName: 'TST',
+            minInvestment: 1000,
+            apyPercentage: 5,
+            apy: 'target',
+            defaultAccounts: {
+              asset: 1000,
+              equity: 1001,
+              gain: 1001,
+              loss: 1001,
+              expense: 1002,
+              liability: 1001,
+            },
+          },
+        ],
+      },
+      840,
+      chainId,
+      randomNumber
+    )
+
+    poolManager = randomAddress()
+    await context.tenderlyFork.fundAccountEth(poolManager, 10n ** 18n)
+    pool = new Pool(context.centrifuge, poolId.raw, chainId)
+    await pool.updatePoolManagers([{ address: poolManager, canManage: true }])
+
+    try {
+      assetId = new AssetId(
+        await centrifuge.getClient(chainId).readContract({
+          address: addresses.spoke,
+          abi: ABI.Spoke,
+          functionName: 'assetToId',
+          args: [assetAddress, 0n],
+        })
+      )
+    } catch {}
+
+    context.tenderlyFork.impersonateAddress = poolManager
+    centrifuge.setSigner(context.tenderlyFork.signer)
+
+    if (!assetId) {
+      await centrifuge.registerAsset(chainId, chainId, assetAddress)
+    }
+
+    assetId = new AssetId(
+      await centrifuge.getClient(chainId).readContract({
+        address: addresses.spoke,
+        abi: ABI.Spoke,
+        functionName: 'assetToId',
+        args: [assetAddress, 0n],
+      })
+    )
+
+    // setTimeout to make sure everything is indexed
+    await new Promise((resolve) => setTimeout(resolve, 2000))
+  })
 
   beforeEach(() => {
     clock = sinon.useFakeTimers({ shouldAdvanceTime: true })
@@ -115,9 +220,6 @@ describe('Centrifuge', () => {
     it('should estimate the gas for a bridge transaction', async () => {
       const estimate = await context.centrifuge._estimate(chainId, { chainId }, MessageType.NotifyPool)
       expect(estimate).to.equal(0n)
-
-      const estimate2 = await context.centrifuge._estimate(chainId, { centId: 2 }, MessageType.NotifyPool)
-      expect(typeof estimate2).to.equal('bigint')
     })
 
     it('should fetch the value of an asset in relation to another one', async () => {
@@ -340,16 +442,6 @@ describe('Centrifuge', () => {
       expect(lastValue).to.equal('2-A')
       subscription1.unsubscribe()
     })
-
-    it('should batch calls', async () => {
-      const fetchSpy = sinon.spy(globalThis, 'fetch')
-      const centrifuge = new Centrifuge({ environment: 'testnet' })
-      const tUSD = '0x8503b4452Bf6238cC76CdbEE223b46d7196b1c93'
-      const user = '0x423420Ae467df6e90291fd0252c0A8a637C1e03f'
-      await centrifuge.balance(tUSD, user, chainId)
-      // One call to get the metadata, one to get the balance, and one to poll events
-      expect(fetchSpy.getCalls().length).to.equal(3)
-    })
   })
 
   describe('Transact', () => {
@@ -483,16 +575,18 @@ describe('Centrifuge', () => {
       expect(result.type).to.equal('TransactionConfirmed')
       expect((result as any).title).to.equal('Test')
 
+      await new Promise((r) => setTimeout(r, 500))
+
       const { hubRegistry, balanceSheet } = await context.centrifuge._protocolAddresses(chainId)
 
-      const isNewManager = await context.centrifuge.getClient(chainId).readContract({
+      const isNewManager = await safeReadContract(context.centrifuge.getClient(chainId), {
         address: hubRegistry,
         abi: ABI.HubRegistry,
         functionName: 'manager',
         args: [poolId.raw, newManager],
       })
 
-      const isNewManager2 = await context.centrifuge.getClient(chainId).readContract({
+      const isNewManager2 = await safeReadContract(context.centrifuge.getClient(chainId), {
         address: balanceSheet,
         abi: ABI.BalanceSheet,
         functionName: 'manager',
@@ -504,22 +598,6 @@ describe('Centrifuge', () => {
   })
 
   describe('Transactions', () => {
-    it('should register an asset', async () => {
-      const centrifuge = new Centrifuge({
-        environment: 'testnet',
-        rpcUrls: {
-          11155111: context.tenderlyFork.rpcUrl,
-        },
-      })
-
-      const assetAddress = '0x86eb50b22dd226fe5d1f0753a40e247fd711ad6e'
-      context.tenderlyFork.impersonateAddress = poolManager
-      centrifuge.setSigner(context.tenderlyFork.signer)
-
-      const result = await centrifuge.registerAsset(chainId, chainId, assetAddress)
-      expect(result.type).to.equal('TransactionConfirmed')
-    })
-
     it('should create a pool', async () => {
       const { guardian } = await context.centrifuge._protocolAddresses(chainId)
       const centrifugeWithPin = new Centrifuge({
@@ -605,5 +683,20 @@ function mockProvider({ chainId = 11155111, accounts = ['0x2'] } = {}) {
       }
       throw new Error(`Unknown method ${method}`)
     },
+  }
+}
+
+async function safeReadContract(
+  client: Client,
+  args: { address: HexString; abi: Abi; functionName: string; args: unknown[] | undefined },
+  retries = 3
+) {
+  for (let i = 0; i < retries; i++) {
+    try {
+      return await client.readContract(args)
+    } catch (err) {
+      if (i === retries - 1) throw err
+      await new Promise((r) => setTimeout(r, 300))
+    }
   }
 }

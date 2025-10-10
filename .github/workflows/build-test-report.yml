@@ -30,16 +30,31 @@ jobs:
       - name: Install dependencies
         run: yarn install --immutable
 
-      - name: Run Build
-        run: yarn build
+      - name: Build and start Dockerized environment
+        run: docker compose up -d --build
+
+      - name: Wait for indexer
+        run: |
+          for i in {1..20}; do
+            if curl -sSf http://localhost:8000/ready; then
+              echo "Indexer ready"
+              break
+            fi
+            echo "Waiting for indexer..."
+            sleep 5
+          done
 
       - name: Run tests
-        run: yarn test:coverage
         env:
-          TENDERLY_ACCESS_KEY: ${{ secrets.TENDERLY_ACCESS_KEY }}
-          PROJECT_SLUG: ${{ secrets.PROJECT_SLUG }}
-          ACCOUNT_SLUG: ${{ secrets.ACCOUNT_SLUG }}
-          DEBUG: ${{ github.run_attempt > 1 }}
+          INDEXER_LOCAL_URL: http://localhost:8000
+          LOCAL_POLL_INTERVAL: 2000
+          LOCAL: true
+          DEBUG: false
+        run: yarn test:coverage
+
+      - name: Clean up Docker containers
+        if: always()
+        run: docker compose down -v
 
       - name: Upload test results
         if: success() || failure()

@@ -69,17 +69,21 @@ import {
   wrapTransaction,
 } from './utils/transaction.js'
 import { AssetId, PoolId, ShareClassId } from './utils/types.js'
+import dotenv from 'dotenv'
 
 const PINNING_API_DEMO = 'https://europe-central2-peak-vista-185616.cloudfunctions.net/pinning-api-demo'
 
+dotenv.config({ path: './src/tests/.env' })
+const LOCAL_INDEXER_URL = process.env.INDEXER_LOCAL_URL
+
 const envConfig = {
   mainnet: {
-    indexerUrl: 'https://api.centrifuge.io',
+    indexerUrl: LOCAL_INDEXER_URL ?? 'https://api.centrifuge.io',
     ipfsUrl: 'https://centrifuge.mypinata.cloud',
     ...createPinning(PINNING_API_DEMO),
   },
   testnet: {
-    indexerUrl: 'https://api-v3-hitz.marble.live/graphql',
+    indexerUrl: LOCAL_INDEXER_URL ?? 'https://api-v3-hitz.marble.live/graphql',
     ipfsUrl: 'https://centrifuge.mypinata.cloud',
     ...createPinning(PINNING_API_DEMO),
   },
@@ -803,7 +807,7 @@ export class Centrifuge {
     query: string,
     variables?: Record<string, any>,
     postProcess?: (data: Result) => Return,
-    pollInterval = 120_000
+    pollInterval = process.env.LOCAL_POLL_INTERVAL ? parseInt(process.env.LOCAL_POLL_INTERVAL) : 120_000
   ) {
     return this._query([query, variables], () =>
       // If subscribed, refetch every `pollInterval` milliseconds
