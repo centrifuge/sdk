@@ -398,10 +398,11 @@ export class Vault extends Entity {
   increaseRedeemOrder(sharesAmount: Balance) {
     const self = this
     return this._transact(async function* (ctx) {
-      const [estimate, investment, { vaultRouter }] = await Promise.all([
+      const [estimate, investment, { vaultRouter }, isOperator] = await Promise.all([
         self._root._estimate(self.chainId, { centId: self.pool.id.centrifugeId }, MessageType.Request),
         self.investment(ctx.signingAddress),
         self._root._protocolAddresses(self.chainId),
+        self._isOperator(ctx.signingAddress),
       ])
 
       if (!investment.isAllowedToRedeem) throw new Error('Not allowed to redeem')
@@ -409,12 +410,35 @@ export class Vault extends Entity {
       if (sharesAmount.gt(investment.shareBalance)) throw new Error('Insufficient balance')
       if (!sharesAmount.gt(0n)) throw new Error('Order amount must be greater than 0')
 
+      if (isOperator) {
+        yield* doTransaction('Redeem', ctx, () =>
+          ctx.walletClient.writeContract({
+            address: vaultRouter,
+            abi: ABI.VaultRouter,
+            functionName: 'requestRedeem',
+            args: [self.address, sharesAmount.toBigInt(), ctx.signingAddress, ctx.signingAddress],
+            value: estimate,
+          })
+        )
+        return
+      }
+
+      const enableData = encodeFunctionData({
+        abi: ABI.VaultRouter,
+        functionName: 'enable',
+        args: [self.address],
+      })
+      const redeemData = encodeFunctionData({
+        abi: ABI.VaultRouter,
+        functionName: 'requestRedeem',
+        args: [self.address, sharesAmount.toBigInt(), ctx.signingAddress, ctx.signingAddress],
+      })
       yield* doTransaction('Redeem', ctx, () =>
         ctx.walletClient.writeContract({
           address: vaultRouter,
           abi: ABI.VaultRouter,
-          functionName: 'requestRedeem',
-          args: [self.address, sharesAmount.toBigInt(), ctx.signingAddress, ctx.signingAddress],
+          functionName: 'multicall',
+          args: [[enableData, redeemData]],
           value: estimate,
         })
       )
