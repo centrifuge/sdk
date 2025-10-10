@@ -1029,8 +1029,6 @@ export class ShareClass extends Entity {
    * @param options Optional pagination options object for whitelisted investors query
    * @param options.limit Number of results to return (default: 20)
    * @param options.after Cursor for pagination
-   * @param options.orderBy Field to order by (default: 'createdAt')
-   * @param options.orderDirection Order direction, either 'ASC' or 'DESC' (default: 'DESC')
    */
   holders(options?: { limit: number; after: string | undefined }) {
     const limit = options?.limit ?? 20
