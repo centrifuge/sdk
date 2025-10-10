@@ -1026,15 +1026,21 @@ export class ShareClass extends Entity {
 
   /**
    * Retrieve holders of the share class.
+   * @param options Optional pagination options object for whitelisted investors query
+   * @param options.limit Number of results to return (default: 20)
+   * @param options.after Cursor for pagination
    */
-  holders() {
-    return this._query(['holders'], () =>
+  holders(options?: { limit: number; after: string | undefined }) {
+    const limit = options?.limit ?? 20
+    const after = options?.after
+
+    return this._query(['holders', limit, after], () =>
       combineLatest([
         this._root._deployments(),
         this.pool.currency(),
         this._investorOrders(),
         this._tokenInstancePositions(),
-        this._whitelistedInvestors(),
+        this._whitelistedInvestors({ limit, after }),
       ]).pipe(
         map(
           ([
@@ -1042,11 +1048,11 @@ export class ShareClass extends Entity {
             poolCurrency,
             { outstandingInvests, outstandingRedeems },
             { items: tokenInstancePositions, assets },
-            { items: whitelistedInvestors },
+            { items: whitelistedInvestors, pageInfo, totalCount },
           ]) => {
             const chainsById = new Map(deployments.blockchains.items.map((chain) => [chain.centrifugeId, chain.id]))
 
-            return whitelistedInvestors.map((investor) => {
+            const investors = whitelistedInvestors.map((investor) => {
               const chainId = Number(chainsById.get(investor.centrifugeId)!)
               const outstandingInvest = outstandingInvests.find((order) => order.investor === investor.address)
               const outstandingRedeem = outstandingRedeems.find((order) => order.investor === investor.address)
@@ -1073,6 +1079,18 @@ export class ShareClass extends Entity {
                 isWhitelisted,
               }
             })
+
+            investors.sort((a, b) => {
+              const aValue = BigInt(a.holdings.toBigInt())
+              const bValue = BigInt(b.holdings.toBigInt())
+              return aValue > bValue ? -1 : aValue < bValue ? 1 : 0
+            })
+
+            return {
+              investors,
+              pageInfo,
+              totalCount,
+            }
           }
         )
       )
@@ -1879,8 +1897,14 @@ export class ShareClass extends Entity {
   }
 
   /** @internal */
-  _whitelistedInvestors() {
-    return this._query(['whitelistedInvestors'], () =>
+  _whitelistedInvestors(options?: { limit: number; after: string | undefined }) {
+    const limit = options?.limit ?? 20
+    const after = options?.after
+    const orderBy = 'createdAt'
+    const orderDirection = 'DESC'
+    const MAX_CENTRIFUGE_ID = 100n
+
+    return this._query(['whitelistedInvestors', limit, after, orderBy, orderDirection], () =>
       this._root
         ._queryIndexer<{
           whitelistedInvestors: {
@@ -1891,28 +1915,52 @@ export class ShareClass extends Entity {
               isFrozen: boolean
               validUntil: string
             }[]
+            pageInfo: {
+              hasNextPage: boolean
+              hasPreviousPage: boolean
+              startCursor: string
+              endCursor: string
+            }
+            totalCount: number
           }
         }>(
-          `query ($tokenId: String!) {
-            whitelistedInvestors(where: { tokenId: $tokenId }) {
-              items {
-                accountAddress
-                centrifugeId
-                createdAt
-                isFrozen
-                validUntil
-              }
+          `query ($tokenId: String!, $limit: Int!, $after: String, $orderBy: String!, $orderDirection: String!) {
+          whitelistedInvestors(
+            where: { tokenId: $tokenId }
+            limit: $limit
+            after: $after
+            orderBy: $orderBy
+            orderDirection: $orderDirection
+          ) {
+            items {
+              accountAddress
+              centrifugeId
+              createdAt
+              isFrozen
+              validUntil
             }
-          }`,
-          { tokenId: this.id.toString() }
+            pageInfo {
+              hasNextPage
+              hasPreviousPage
+              startCursor
+              endCursor
+            }
+            totalCount
+          }
+        }`,
+          { tokenId: this.id.toString(), limit, after, orderBy, orderDirection }
         )
         .pipe(
           map((data) => {
             return {
-              items: data.whitelistedInvestors.items.map(({ accountAddress, ...rest }) => ({
-                address: accountAddress.toLowerCase() as HexString,
-                ...rest,
-              })),
+              items: data.whitelistedInvestors.items
+                .map(({ accountAddress, ...rest }) => ({
+                  address: accountAddress.toLowerCase() as HexString,
+                  ...rest,
+                }))
+                .filter((investor) => BigInt(investor.address) > MAX_CENTRIFUGE_ID),
+              pageInfo: data.whitelistedInvestors.pageInfo,
+              totalCount: data.whitelistedInvestors.totalCount,
             }
           })
         )
