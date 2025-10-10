@@ -1032,11 +1032,9 @@ export class ShareClass extends Entity {
    * @param options.orderBy Field to order by (default: 'createdAt')
    * @param options.orderDirection Order direction, either 'ASC' or 'DESC' (default: 'DESC')
    */
-  holders(options?: { limit?: number; after?: string; orderBy?: string; orderDirection?: 'ASC' | 'DESC' }) {
+  holders(options?: { limit: number; after: string }) {
     const limit = options?.limit ?? 20
     const after = options?.after
-    const orderBy = options?.orderBy ?? 'createdAt'
-    const orderDirection = options?.orderDirection ?? 'DESC'
 
     return this._query(['holders', limit, after], () =>
       combineLatest([
@@ -1044,7 +1042,7 @@ export class ShareClass extends Entity {
         this.pool.currency(),
         this._investorOrders(),
         this._tokenInstancePositions(),
-        this._whitelistedInvestors({ limit, after, orderBy, orderDirection }),
+        this._whitelistedInvestors({ limit, after }),
       ]).pipe(
         map(
           ([
@@ -1901,16 +1899,11 @@ export class ShareClass extends Entity {
   }
 
   /** @internal */
-  _whitelistedInvestors(options?: {
-    limit?: number
-    after?: string
-    orderBy?: string
-    orderDirection?: 'ASC' | 'DESC'
-  }) {
+  _whitelistedInvestors(options?: { limit: number; after: string | undefined }) {
     const limit = options?.limit ?? 20
     const after = options?.after
-    const orderBy = options?.orderBy ?? 'createdAt'
-    const orderDirection = options?.orderDirection ?? 'DESC'
+    const orderBy = 'createdAt'
+    const orderDirection = 'DESC'
     const MAX_CENTRIFUGE_ID = 100n
 
     return this._query(['whitelistedInvestors', limit, after, orderBy, orderDirection], () =>
