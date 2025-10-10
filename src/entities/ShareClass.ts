@@ -1032,7 +1032,7 @@ export class ShareClass extends Entity {
    * @param options.orderBy Field to order by (default: 'createdAt')
    * @param options.orderDirection Order direction, either 'ASC' or 'DESC' (default: 'DESC')
    */
-  holders(options?: { limit: number; after: string }) {
+  holders(options?: { limit: number; after: string | undefined }) {
     const limit = options?.limit ?? 20
     const after = options?.after
 
