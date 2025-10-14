@@ -162,7 +162,7 @@ export class Investor extends Entity {
               tokenSymbol: item.token.symbol,
               tokenAmount: new Balance(item.tokenAmount, currency.decimals),
               currencyAmount: new Balance(item.currencyAmount, currency.decimals),
-              chainId: chainId,
+              chainId: Number(chainId),
               poolId: item.poolId,
             }
           })
