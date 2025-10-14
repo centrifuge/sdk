@@ -1,29 +1,30 @@
+# Logs
 *.log
+npm-debug.log*
+pnpm-debug.log*
+
+# macOS system files
 .DS_Store
-node_modules
-dist
-.next
+
+# Dependency directories
+node_modules/
+
+# Build output
+dist/
+out/
+.next/
+
+# IDE / Editor configs
 .idea/
-.vscode
-.DS_Store
-node_modules
-out
-dist
+.vscode/
 
-# Yarn
-yarn-error.log
-.yarn/*
-!.yarn/releases
-!.yarn/plugins
-!.yarn/sdks
-!.yarn/versions
-.yarn/cache
-.yarn/unplugged
-.yarn/build-state.yml
-
+# Environment variables
 .env
 
 # Tests and coverage
 coverage/
 test-results.xml
 report/
+
+# pnpm
+pnpm-lock.yaml

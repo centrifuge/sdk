@@ -3,31 +3,35 @@
 ## Release Process
 
 1. **Pull Request Stage**:
+
    - PR must have a Conventional Commits compliant title
    - PR must have exactly one release label (major, minor, patch, alpha, no-release)
    - Build and tests must pass
 
 2. **Version Bumping**:
+
    - Triggered by PR approval
    - Version is bumped based on PR label
    - Skipped if PR has `no-release` label
    - Additional checks prevent duplicate version bumps
 
 3. **Release Creation**:
+
    - Draft release is automatically created when PR is merged to `main`
    - Release notes are auto-generated
-   - Created as a prerelease 
+   - Created as a prerelease
 
 4. **Publishing**:
+
    - When a developer publishes a release on GitHub, package is automatically published to NPM -- Generally this will be done by editing the draft release from step 3
    - Uses NPM provenance for enhanced security
    - Published with public access
-   
+
    **To publish a draft release:**
-   
+
    **Option 1 - CLI**
    https://docs.github.com/en/repositories/releasing-projects-on-github/managing-releases-in-a-repository#editing-a-release
-   
+
    **Option 2 - GH website**
    https://github.com/centrifuge/sdk/releases
    (a draft release will appear in this URL as indicated in step 3 above)
@@ -59,7 +63,7 @@ Handles continuous integration tasks:
 
 - **Trigger**: Runs on pull requests and pushes to `main`
 - **Actions**:
-  - Sets up Node.js 20 and Yarn 4.5.0
+  - Sets up Node.js 20 and pnpm 9.10.0
   - Installs dependencies
   - Runs build process
   - Executes tests with coverage

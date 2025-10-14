@@ -24,17 +24,16 @@
   "engines": {
     "node": ">=18.18"
   },
-  "packageManager": "yarn@4.5.0",
   "scripts": {
     "dev": "tsc -w --importHelpers",
     "build": "tsc --importHelpers",
-    "prepare": "yarn build",
+    "prepare": "pnpm build",
     "test": "mocha --loader=ts-node/esm --require $(pwd)/src/tests/setup.ts --exit --timeout 30000 'src/**/*.test.ts' --recursive",
     "test:simple": "mocha --loader=ts-node/esm --exit --timeout 30000 'src/**/*.test.ts'",
     "test:simple:single": "mocha --loader=ts-node/esm --exit --timeout 30000",
     "test:single": "mocha --loader=ts-node/esm --require $(pwd)/src/tests/setup.ts --exit --timeout 30000",
-    "test:ci": "yarn test --reporter mocha-multi-reporters --reporter-options configFile=mocha-reporter-config.json",
-    "test:coverage": "c8 yarn test:ci",
+    "test:ci": "pnpm test --reporter mocha-multi-reporters --reporter-options configFile=mocha-reporter-config.json",
+    "test:coverage": "c8 pnpm test:ci",
     "fork:server": "node ./src/tests/forkServer.mjs",
     "gen:docs": "typedoc",
     "format": "prettier --write '**/*.{ts,js,mjs,json,md,yml}'"
@@ -71,5 +70,6 @@
     "typescript": "5.6.3",
     "typescript-eslint": "8.8.1"
   },
-  "stableVersion": "0.0.0-alpha"
+  "stableVersion": "0.0.0-alpha",
+  "packageManager": "pnpm@9.10.0"
 }

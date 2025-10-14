@@ -1,7 +1,9 @@
 name: NPM publish
+
 on:
   release:
     types: [released]
+
 jobs:
   publish:
     runs-on: ubuntu-latest
@@ -9,6 +11,7 @@ jobs:
     permissions:
       contents: read
       id-token: write
+
     steps:
       - uses: actions/checkout@v5
         with:
@@ -18,51 +21,40 @@ jobs:
         with:
           node-version-file: '.nvmrc'
           registry-url: 'https://registry.npmjs.org'
+          cache: 'pnpm'
 
-      - name: Update npm to latest
-        run: npm install -g npm@latest
-
-      - name: Enable Corepack
-        run: corepack enable
-
-      - name: Set Yarn version
-        run: yarn set version 4.5.0
+      - name: Enable pnpm via Corepack
+        run: |
+          corepack enable
+          corepack prepare pnpm@9.10.0 --activate
 
       - name: Install dependencies
-        run: yarn install --immutable
+        run: pnpm install --frozen-lockfile
 
       - name: Build
-        run: yarn build
+        run: pnpm build
 
       - name: Publish to NPM
-        # npm ci should use OIDC authentication thus not needing NODE_AUTH_TOKEN
-        # https://docs.npmjs.com/trusted-publishers
-        # https://www.npmjs.com/package/@centrifuge/sdk/access <-- Needs admin access to the package to see settings
         run: npm publish --provenance --access public 2>&1
-        # run: yarn npm publish --access public
-        # Note: At this time, yarn is not a supported tool for publishing your packages with provenance.
-        # https://docs.npmjs.com/generating-provenance-statements#using-third-party-package-publishing-tools
 
       - name: Verify provenance attestations
         run: |
           echo "Verifying provenance attestations on published package..."
-          
-          # Get the package version from package.json
+
           PACKAGE_VERSION=$(node -p "require('./package.json').version")
           PACKAGE_NAME=$(node -p "require('./package.json').name")
-          
+
           echo "Checking package: $PACKAGE_NAME@$PACKAGE_VERSION"
-          
-          # Check for attestations in the published package
+
           echo "--- Registry metadata ---"
           npm view $PACKAGE_NAME@$PACKAGE_VERSION dist.attestations --json || echo "No attestations found"
-          
+
           echo "--- Registry signatures ---"
           npm view $PACKAGE_NAME@$PACKAGE_VERSION dist.signatures --json || echo "No signatures found"
-          
+
           echo "--- Git head ---"
           npm view $PACKAGE_NAME@$PACKAGE_VERSION gitHead --json || echo "No git head found"
-          
+
           echo "---"
           echo "If provenance is working, you should see:"
           echo "1. Attestations in the registry metadata"
