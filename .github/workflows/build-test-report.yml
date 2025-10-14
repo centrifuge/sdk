@@ -23,10 +23,10 @@ jobs:
           cache: 'pnpm'
 
       - name: Setup pnpm
-        run: |
-          corepack enable
-          corepack prepare pnpm@9.10.0 --activate
-          pnpm --version
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9.10.0
+          run_install: false
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
