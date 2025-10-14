@@ -130,7 +130,7 @@ export enum MessageType {
   CancelUpgrade,
   RecoverTokens,
   RegisterAsset,
-  _Placeholder5,
+  UpdateOfframp,
   _Placeholder6,
   _Placeholder7,
   _Placeholder8,

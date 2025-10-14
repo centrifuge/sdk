@@ -266,15 +266,17 @@ export class PoolNetwork extends Entity {
 
     return this._transact(async function* (ctx) {
       const { onOfframpManagerFactory } = await self._root._protocolAddresses(self.chainId)
+      const id = await self._root.id(self.chainId)
 
-      yield* doTransaction('AddOnOfframpManager', ctx, () =>
-        ctx.walletClient.writeContract({
-          address: onOfframpManagerFactory,
+      yield* wrapTransaction('AddOnOfframpManager', ctx, {
+        contract: onOfframpManagerFactory,
+        data: encodeFunctionData({
           abi: ABI.OnOffRampManagerFactory,
           functionName: 'newManager',
           args: [self.pool.id.raw, scId.raw],
-        })
-      )
+        }),
+        messages: { [id]: [MessageType.UpdateOfframp] },
+      })
     }, self.chainId)
   }
 
