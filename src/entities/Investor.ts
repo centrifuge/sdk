@@ -126,7 +126,7 @@ export class Investor extends Entity {
               currencyAmount: bigint
               token: { name: string; symbol: string }
               tokenAmount: bigint
-              fromCentrifugeId: string
+              centrifugeId: string
               poolId: string
             }[]
           }
@@ -141,7 +141,7 @@ export class Investor extends Entity {
                 currencyAmount
                 token { name symbol }
                 tokenAmount
-                fromCentrifugeId
+                centrifugeId
                 poolId
               }
             }
@@ -153,7 +153,7 @@ export class Investor extends Entity {
           const chainsById = new Map(deployments.blockchains.items.map((chain) => [chain.centrifugeId, chain.id]))
 
           return investorTransactions.items.map((item) => {
-            const chainId = chainsById.get(item.fromCentrifugeId)
+            const chainId = chainsById.get(item.centrifugeId)!
             return {
               type: item.type,
               txHash: item.txHash,
@@ -162,7 +162,7 @@ export class Investor extends Entity {
               tokenSymbol: item.token.symbol,
               tokenAmount: new Balance(item.tokenAmount, currency.decimals),
               currencyAmount: new Balance(item.currencyAmount, currency.decimals),
-              chainId: Number(chainId),
+              chainId: chainId,
               poolId: item.poolId,
             }
           })
