@@ -1,0 +1,33 @@
+version: "3.9"
+
+services:
+  indexer:
+    image: ghcr.io/centrifuge/api-v3:latest
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/ready"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    container_name: indexer
+    platform: linux/amd64
+    ports:
+      - "8000:8000"
+    restart: unless-stopped
+    environment:
+      PONDER_RPC_URL_11155111: http://foundry:8545 # indexer override for Sepolia
+      PONDER_RPC_WS_11155111: ws://foundry:8545 # indexer override for Sepolia
+      PONDER_RPC_STARTING_BLOCK_11155111: 9325766 # Starting block for Sepolia, prevents historical indexing, adjust as needed
+      SELECTED_NETWORKS: 11155111 # limit indexing to Sepolia only
+      ALCHEMY_API_KEY: faketoken
+
+  foundry:
+    build: .
+    container_name: foundry
+    environment:
+      ANVIL_IP_ADDR: "0.0.0.0" # allows access from outside the container
+      API_KEY: 18704429-288d-4f55-bda8-8b60f4c53b96
+      BLOCK_NUMBER: 9325766 # Sepolia block number, adjust as needed
+      CHAIN_NUMBER: 11155111 # Sepolia
+    ports:
+      - "8545:8545"
+    restart: unless-stopped

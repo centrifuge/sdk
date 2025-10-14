@@ -11,6 +11,7 @@ export type Config = {
    */
   cache?: boolean
   pollingInterval?: number
+  indexerPollingInterval?: number
   pinJson?: (json: any) => Promise<string>
   pinFile?: (b64URI: string) => Promise<string>
 }

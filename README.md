@@ -18,6 +18,7 @@ A fully typed JavaScript client to interact with the [Centrifuge](https://centri
    - [Development Mode](#development-mode)
    - [Building](#building)
    - [Testing](#testing)
+   - [Debugging](#debugging)
 5. [Contributing](#contributing)
    - [Docs](#docs)
    - [PR Conventions & Versioning](#pr-naming-convention--versioning)
@@ -212,6 +213,76 @@ yarn test                # full test suite
 yarn test:single <file>  # test specific file
 yarn test:simple:single <file>
 # (runs faster excluding setup files)
+```
+
+#### Debugging
+
+This project provides a fully Dockerized environment for running both the Indexer (api-v3) and an Anvil fork (Foundry) locally.
+To prepare your testing environment for on-chain debugging, first set up the debugging script:
+
+`./src/debugIssues.mjs`
+
+```javascript
+// @ts-check
+
+import { catchError, combineLatest, lastValueFrom, map, of, switchMap, tap } from 'rxjs'
+import { parseAbiItem } from 'viem'
+import { privateKeyToAccount } from 'viem/accounts'
+import { AssetId, Balance, Centrifuge, PoolId, Price, ShareClass, ShareClassId } from './dist/index.js'
+
+const abiItem = parseAbiItem('function balanceOf(address owner) view returns (uint256)')
+
+const chainId = 1
+
+const cent = new Centrifuge({
+  environment: 'mainnet',
+  pinJson: async () => 'test',
+  rpcUrls: {
+    1: 'http://127.0.0.1:8545',
+  },
+  inexerPollingInterval: 2000,
+  indexerUrl: 'http://localhost:8000',
+})
+
+const account = privateKeyToAccount('0xPrivateKey')
+
+cent.setSigner(account)
+
+async function main() {
+  const client = cent.getClient(chainId)
+
+  const pool = await cent.pool(new PoolId('PoolId'))
+  const scId = new ShareClassId('0x00010000000000010000000000000001')
+  const shareClass = new ShareClass(cent, pool, scId)
+  const assetId = new AssetId('AssetId')
+
+  const result = await shareClass.approveDepositsAndIssueShares([
+    {
+      assetId,
+      approveAssetAmount: Balance.fromFloat(10, 6),
+      issuePricePerShare: Price.fromFloat(1.0),
+    },
+  ])
+}
+
+main()
+```
+
+:::warning
+Before running the debugging script, comment out the transaction you intend to test if you don’t want it to execute.
+Keep in mind that running this script locally will perform the same transaction logic as it would on the testnet or mainnet.
+:::
+
+Then, build and start the Docker containers:
+
+```bash
+docker compose up -d
+```
+
+Once you’re done, tear down the environment and remove associated volumes with:
+
+```bash
+docker compose down -v
 ```
 
 ### Contributing
