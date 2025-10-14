@@ -22,10 +22,11 @@ jobs:
           node-version-file: '.nvmrc'
           cache: 'pnpm'
 
-      - name: Enable pnpm via Corepack
+      - name: Setup pnpm
         run: |
           corepack enable
           corepack prepare pnpm@9.10.0 --activate
+          pnpm --version
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
