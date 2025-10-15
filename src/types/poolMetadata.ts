@@ -125,7 +125,6 @@ export type PoolMetadata = {
     [shareClassId: string]: {
       address: string
       label?: string
-      investorType?: string
     }[]
   }
 }
