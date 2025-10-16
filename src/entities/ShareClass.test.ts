@@ -164,20 +164,28 @@ describe('ShareClass', () => {
 
     const actual = holders.investors.map((i) => ({
       address: i.address.toLowerCase(),
+      amount: i.amount instanceof Balance,
       isFrozen: i.isFrozen,
       chainId: i.chainId,
       holdings: i.holdings instanceof Balance,
       outstandingInvestIsBalance: i.outstandingInvest instanceof Balance,
       outstandingRedeemIsBalance: i.outstandingRedeem instanceof Balance,
+      queuedInvestIsBalance: i.queuedInvest instanceof Balance,
+      queuedRedeemIsBalance: i.queuedRedeem instanceof Balance,
+      isWhitelisted: typeof i.isWhitelisted === 'boolean',
     }))
 
     const expected = holders.investors.map((i) => ({
       address: i.address.toLowerCase(),
+      amount: true,
       isFrozen: false,
       chainId,
       holdings: true,
       outstandingInvestIsBalance: true,
       outstandingRedeemIsBalance: true,
+      queuedInvestIsBalance: true,
+      queuedRedeemIsBalance: true,
+      isWhitelisted: true,
     }))
 
     expect(actual).to.deep.equal(expected)
@@ -241,18 +249,18 @@ describe('ShareClass', () => {
       {
         assetId,
         investor: '0x423420ae467df6e90291fd0252c0a8a637c1e03f',
-        maxDepositClaims: 0,
-        maxRedeemClaims: 1,
-        pendingDeposit: 2000000n,
-        pendingRedeem: 10000000000000000000n,
-      },
-      {
-        assetId: assetId2,
-        investor: '0x423420ae467df6e90291fd0252c0a8a637c1e03f',
         maxDepositClaims: 1,
         maxRedeemClaims: 1,
         pendingDeposit: 30000000000000000000n,
         pendingRedeem: 30000000000000000000n,
+      },
+      {
+        assetId: assetId2,
+        investor: '0x423420ae467df6e90291fd0252c0a8a637c1e03f',
+        maxDepositClaims: 0,
+        maxRedeemClaims: 1,
+        pendingDeposit: 0n,
+        pendingRedeem: 10000000000000000000n,
       },
     ])
   })
