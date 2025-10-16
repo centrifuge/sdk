@@ -42,8 +42,6 @@ describe('OnOffRampManager', () => {
   describe('receivers', () => {
     it.skip('should return receivers', async () => {
       const receivers = await onOffRampManager.receivers()
-
-      // TODO: assert once the data is available
       console.log({ receivers })
     })
 
@@ -51,7 +49,6 @@ describe('OnOffRampManager', () => {
       const address = randomAddress()
 
       const result = await onOffRampManager.setReceiver(assetId, address)
-
       expect(result.type).to.equal('TransactionConfirmed')
 
       const setReceiver = await context.centrifuge.getClient(chainId).readContract({
@@ -62,6 +59,24 @@ describe('OnOffRampManager', () => {
       })
 
       expect(setReceiver).to.be.true
+    })
+
+    it('should disable receiver', async () => {
+      const address = randomAddress()
+
+      await onOffRampManager.setReceiver(assetId, address)
+
+      const result = await onOffRampManager.setReceiver(assetId, address, false)
+      expect(result.type).to.equal('TransactionConfirmed')
+
+      const disabledReceiver = await context.centrifuge.getClient(chainId).readContract({
+        address: rampManager,
+        abi: ABI.OnOffRampManager,
+        functionName: 'offramp',
+        args: ['0x3aaaa86458d576bafcb1b7ed290434f0696da65c', address],
+      })
+
+      expect(disabledReceiver).to.be.false
     })
   })
 
