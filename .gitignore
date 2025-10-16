@@ -25,6 +25,3 @@ out/
 coverage/
 test-results.xml
 report/
-
-# pnpm
-pnpm-lock.yaml
