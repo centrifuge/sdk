@@ -1076,6 +1076,12 @@ export class ShareClass extends Entity {
                 outstandingRedeem: outstandingRedeem
                   ? new Balance(outstandingRedeem.pendingAmount, poolCurrency.decimals)
                   : new Balance(0n, poolCurrency.decimals),
+                queuedInvest: outstandingInvest
+                  ? new Balance(outstandingInvest.queuedAmount, assetDecimals).scale(poolCurrency.decimals)
+                  : new Balance(0n, poolCurrency.decimals),
+                queuedRedeem: outstandingRedeem
+                  ? new Balance(outstandingRedeem.queuedAmount, poolCurrency.decimals)
+                  : new Balance(0n, poolCurrency.decimals),
                 isWhitelisted,
               }
             })
