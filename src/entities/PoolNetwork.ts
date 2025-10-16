@@ -206,6 +206,11 @@ export class PoolNetwork extends Entity {
     }, self.chainId)
   }
 
+  /**
+   * Get the OnOffRampManager for a given share class.
+   * @param scId - The share class ID
+   * @returns The OnOffRampManager
+   */
   onOfframpManager(scId: ShareClassId) {
     return this._query(null, () =>
       combineLatest([
