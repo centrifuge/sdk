@@ -155,11 +155,11 @@ export class OnOffRampManager extends Entity {
   }
 
   /**
-   * Set a receiver.
+   * Set a receiver address for a given asset.
    * @param assetId - The asset ID to set the receiver for
    * @param receiver - The receiver address to set
    */
-  setReceiver(assetId: AssetId, receiver: HexString) {
+  setReceiver(assetId: AssetId, receiver: HexString, enabled: boolean = true) {
     const self = this
     return this._transact(async function* (ctx) {
       const [id, { hub }] = await Promise.all([
@@ -167,7 +167,7 @@ export class OnOffRampManager extends Entity {
         self._root._protocolAddresses(self.network.chainId),
       ])
 
-      yield* wrapTransaction('Set Receiver', ctx, {
+      yield* wrapTransaction(enabled ? 'Enable Receiver' : 'Disable Receiver', ctx, {
         contract: hub,
         data: encodeFunctionData({
           abi: ABI.Hub,
@@ -179,13 +179,7 @@ export class OnOffRampManager extends Entity {
             addressToBytes32(self.onrampAddress),
             encodePacked(
               ['uint8', 'bytes32', 'uint128', 'bytes32', 'bool'],
-              [
-                /* UpdateContractType.UpdateAddress */ 3,
-                toHex('offramp', { size: 32 }),
-                assetId.raw,
-                addressToBytes32(receiver),
-                true,
-              ]
+              [3, toHex('offramp', { size: 32 }), assetId.raw, addressToBytes32(receiver), enabled]
             ),
             0n,
           ],
