@@ -121,4 +121,10 @@ export type PoolMetadata = {
     headers: string[]
     data: Record<string, unknown>[]
   }
+  investors?: {
+    [shareClassId: string]: {
+      address: string
+      label?: string
+    }[]
+  }
 }

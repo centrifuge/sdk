@@ -25,7 +25,7 @@ export class OnOffRampManager extends Entity {
   }
 
   /**
-   * Get the receivers of an OnOffRampManager.
+   * Get the receivers of an OnOffRampManager
    */
   receivers() {
     return this._query(null, () =>
