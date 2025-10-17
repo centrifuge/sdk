@@ -2,7 +2,7 @@ FROM node:22-slim
 
 ENV FOUNDRY_VERSION=1.3.2
 
-RUN corepack enable && corepack prepare yarn@4.5.0 --activate
+RUN corepack enable && corepack prepare pnpm@10.10.0 --activate
 
 RUN apt-get update && apt-get install -y curl ca-certificates git bash \
  && rm -rf /var/lib/apt/lists/*
