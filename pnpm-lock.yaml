@@ -21,7 +21,7 @@ importers:
         specifier: 7.8.1
         version: 7.8.1
       tslib:
-        specifier: ^2.8.1
+        specifier: 2.8.1
         version: 2.8.1
       viem:
         specifier: 2.33.3
