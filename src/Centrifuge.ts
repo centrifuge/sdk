@@ -977,7 +977,9 @@ export class Centrifuge {
   _transact(
     transactionCallback: (
       params: TransactionContext
-    ) => AsyncGenerator<OperationStatus | BatchTransactionData> | Observable<OperationStatus | BatchTransactionData>,
+    ) =>
+      | AsyncGenerator<OperationStatus | BatchTransactionData | undefined>
+      | Observable<OperationStatus | BatchTransactionData | undefined>,
     chainId: number
   ): Transaction {
     const self = this

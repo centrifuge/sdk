@@ -273,8 +273,8 @@ export class PoolNetwork extends Entity {
    */
   assignOnOffRampManagerPermissions(scId: ShareClassId) {
     const self = this
-    return this._query(null, () =>
-      combineLatest([
+    return this._transact(() => {
+      return combineLatest([
         this._root.id(this.chainId).pipe(
           switchMap((centrifugeId) =>
             this._root._queryIndexer(
@@ -301,7 +301,7 @@ export class PoolNetwork extends Entity {
         ),
         this.pool.balanceSheetManagers(),
       ]).pipe(
-        map(async ([deployedOnOffRampManager, balanceSheetManagers]) => {
+        switchMap(async ([deployedOnOffRampManager, balanceSheetManagers]) => {
           const bsManagers = new Map<string, { address: `0x${string}`; chainId: number; type: string }>()
           balanceSheetManagers.forEach((manager) => {
             bsManagers.set(manager.address.toLowerCase(), manager)
@@ -317,14 +317,16 @@ export class PoolNetwork extends Entity {
               canManage: true,
             }))
 
+          console.log({ deployedOnOffRampManager, onOffRampManagers, balanceSheetManagers, bsManagers })
+
           if (onOffRampManagers.length === 0) {
-            return
+            return undefined
           }
 
-          await self.pool.updateBalanceSheetManagers(onOffRampManagers)
+          return this.pool.updateBalanceSheetManagers(onOffRampManagers)
         })
       )
-    )
+    }, this.pool.chainId)
   }
 
   deployOnOfframpManager(scId: ShareClassId) {
