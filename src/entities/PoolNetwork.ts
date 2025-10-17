@@ -1,4 +1,4 @@
-import { combineLatest, defer, map, of, switchMap } from 'rxjs'
+import { combineLatest, defer, EMPTY, map, of, switchMap } from 'rxjs'
 import { encodeFunctionData, encodePacked, getContract, maxUint128 } from 'viem'
 import { ABI } from '../abi/index.js'
 import type { Centrifuge } from '../Centrifuge.js'
@@ -301,7 +301,7 @@ export class PoolNetwork extends Entity {
         ),
         this.pool.balanceSheetManagers(),
       ]).pipe(
-        switchMap(async ([deployedOnOffRampManager, balanceSheetManagers]) => {
+        switchMap(([deployedOnOffRampManager, balanceSheetManagers]) => {
           const bsManagers = new Map<string, { address: `0x${string}`; chainId: number; type: string }>()
           balanceSheetManagers.forEach((manager) => {
             bsManagers.set(manager.address.toLowerCase(), manager)
@@ -317,10 +317,8 @@ export class PoolNetwork extends Entity {
               canManage: true,
             }))
 
-          console.log({ deployedOnOffRampManager, onOffRampManagers, balanceSheetManagers, bsManagers })
-
           if (onOffRampManagers.length === 0) {
-            return undefined
+            return EMPTY
           }
 
           return this.pool.updateBalanceSheetManagers(onOffRampManagers)
