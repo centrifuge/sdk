@@ -197,21 +197,21 @@ const report = await pool.reports.sharePrices({
 #### Development Mode
 
 ```bash
-yarn dev
+pnpm dev
 ```
 
 #### Building
 
 ```bash
-yarn build
+pnpm build
 ```
 
 #### Testing
 
 ```bash
-yarn test                # full test suite
-yarn test:single <file>  # test specific file
-yarn test:simple:single <file>
+pnpm test                # full test suite
+pnpm test:single <file>  # test specific file
+pnpm test:simple:single <file>
 # (runs faster excluding setup files)
 ```
 
