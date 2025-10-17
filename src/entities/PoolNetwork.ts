@@ -269,7 +269,6 @@ export class PoolNetwork extends Entity {
   /**
    * Get all OnOffRampManagers for a given share class and assign balance sheet manager permissions.
    * @param scId - The share class ID
-   * @returns Promise<void>
    */
   assignOnOffRampManagerPermissions(scId: ShareClassId) {
     const self = this
