@@ -266,6 +266,67 @@ export class PoolNetwork extends Entity {
     )
   }
 
+  /**
+   * Get all OnOffRampManagers for a given share class and assign balance sheet manager permissions.
+   * @param scId - The share class ID
+   * @returns Promise<void>
+   */
+  assignOnOffRampManagerPermissions(scId: ShareClassId) {
+    const self = this
+    return this._query(null, () =>
+      combineLatest([
+        this._root.id(this.chainId).pipe(
+          switchMap((centrifugeId) =>
+            this._root._queryIndexer(
+              `query ($scId: String!, $centrifugeId: String!) {
+                onOffRampManagers(where: {tokenId: $scId, centrifugeId: $centrifugeId}) {
+                  items {
+                    address
+                  }
+                }
+              }`,
+              {
+                scId: scId.toString(),
+                centrifugeId: centrifugeId.toString(),
+              },
+              (data: {
+                onOffRampManagers: {
+                  items: {
+                    address: HexString
+                  }[]
+                }
+              }) => data.onOffRampManagers.items
+            )
+          )
+        ),
+        this.pool.balanceSheetManagers(),
+      ]).pipe(
+        map(async ([deployedOnOffRampManager, balanceSheetManagers]) => {
+          const bsManagers = new Map<string, { address: `0x${string}`; chainId: number; type: string }>()
+          balanceSheetManagers.forEach((manager) => {
+            bsManagers.set(manager.address.toLowerCase(), manager)
+          })
+
+          const onOffRampManagers = deployedOnOffRampManager
+            .filter((onOffRampManager) => {
+              return bsManagers.has(onOffRampManager.address.toLowerCase()) === false
+            })
+            .map((onOffRampManager) => ({
+              chainId: self.chainId,
+              address: onOffRampManager.address,
+              canManage: true,
+            }))
+
+          if (onOffRampManagers.length === 0) {
+            return
+          }
+
+          await self.pool.updateBalanceSheetManagers(onOffRampManagers)
+        })
+      )
+    )
+  }
+
   deployOnOfframpManager(scId: ShareClassId) {
     const self = this
 

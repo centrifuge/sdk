@@ -262,5 +262,42 @@ describe('PoolNetwork', () => {
 
       expect(result.type).to.equal('TransactionConfirmed')
     })
+
+    it.skip('should assign onOfframpManager permissions', async () => {
+      const centrifugeWithPin = new Centrifuge({
+        environment: 'testnet',
+        pinJson: async () => {
+          return 'abc'
+        },
+        rpcUrls: {
+          11155111: context.tenderlyFork.rpcUrl,
+        },
+      })
+
+      context.tenderlyFork.impersonateAddress = poolManager
+      centrifugeWithPin.setSigner(context.tenderlyFork.signer)
+
+      await context.tenderlyFork.fundAccountEth(poolManager, 10n ** 18n)
+
+      const pool = new Pool(centrifugeWithPin, poolId.raw, 11155111)
+
+      await pool.update({}, [], [{ tokenName: 'DummyShareClass', symbolName: 'DSC' }])
+
+      const addresses = await centrifugeWithPin._protocolAddresses(11155111)
+
+      const shareClassesCount = await centrifugeWithPin.getClient(11155111).readContract({
+        address: addresses.shareClassManager,
+        abi: ABI.ShareClassManager,
+        functionName: 'shareClassCount',
+        args: [poolId.raw],
+      })
+
+      await poolNetwork.deploy([{ id: ShareClassId.from(pool.id, shareClassesCount), hook: '0x' }])
+
+      await poolNetwork.deployOnOfframpManager(ShareClassId.from(pool.id, shareClassesCount))
+
+      // TODO: Needs data in indexer to return onOffRampManager who is not already a balance sheet manager
+      await poolNetwork.assignOnOffRampManagerPermissions(ShareClassId.from(pool.id, shareClassesCount))
+    })
   })
 })
