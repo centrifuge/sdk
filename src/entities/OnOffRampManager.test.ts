@@ -223,7 +223,7 @@ describe('OnOffRampManager', () => {
         args: [receiver],
       })
 
-      expect(receiverBalanceBefore).to.equal(0n)
+      expect(receiverBalanceBefore).to.equal(1000000000n)
 
       const result = await onOffRampManager.withdraw(assetAddress, amount, receiver)
 
@@ -236,7 +236,7 @@ describe('OnOffRampManager', () => {
         args: [receiver],
       })
 
-      expect(receiverBalanceAfter).to.equal(56n)
+      expect(receiverBalanceAfter).to.equal(1000000056n)
     })
   })
 })

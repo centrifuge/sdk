@@ -1,25 +1,15 @@
+# Logs
 *.log
+npm-debug.log*
+pnpm-debug.log*
+
 .DS_Store
 node_modules
 dist
 .next
 .idea/
 .vscode
-.DS_Store
-node_modules
 out
-dist
-
-# Yarn
-yarn-error.log
-.yarn/*
-!.yarn/releases
-!.yarn/plugins
-!.yarn/sdks
-!.yarn/versions
-.yarn/cache
-.yarn/unplugged
-.yarn/build-state.yml
 
 .env
 
