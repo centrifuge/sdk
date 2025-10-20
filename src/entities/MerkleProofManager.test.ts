@@ -28,7 +28,7 @@ const fundManager = '0x423420Ae467df6e90291fd0252c0A8a637C1e03f'
 const mpmAddress = '0x9E14250c4C53bdcA1437F7EDa25B0D9ca46CfFE2'
 const vaultDecoder = '0x8E5bE47D081F53033eb7C9DB3ad31BaF67F15585'
 
-describe.only('MerkleProofManager', () => {
+describe('MerkleProofManager', () => {
   let pool: Pool
   let merkleProofManager: MerkleProofManager
   let mockPolicies: MerkleProofPolicy[]
@@ -519,7 +519,7 @@ describe.only('MerkleProofManager', () => {
     expect(rootHash).to.equal(tree.root)
   })
 
-  it.only('can execute calls', async () => {
+  it('can execute calls', async () => {
     const { vaultRouter } = await context.centrifuge._protocolAddresses(chainId)
 
     const mock = sinon.stub(merkleProofManager.pool, 'metadata')
@@ -563,6 +563,47 @@ describe.only('MerkleProofManager', () => {
     })
 
     expect(balance).to.equal(123_000_000n)
+
+    mock.restore()
+  })
+
+  it('cannot execute calls with invalid proof', async () => {
+    const { vaultRouter } = await context.centrifuge._protocolAddresses(chainId)
+
+    const mock = sinon.stub(merkleProofManager.pool, 'metadata')
+    mock.returns(
+      makeThenable(
+        of({
+          merkleProofManager: {
+            [chainId]: {
+              [strategist.toLowerCase()]: { policies: mockPolicies },
+            },
+          },
+        } as any)
+      )
+    )
+
+    const centrifugeWithPin = new Centrifuge({
+      environment: 'testnet',
+      pinJson: async () => {
+        return 'abc'
+      },
+      rpcUrls: {
+        11155111: context.tenderlyFork.rpcUrl,
+      },
+    })
+    context.tenderlyFork.impersonateAddress = fundManager
+    centrifugeWithPin.setSigner(context.tenderlyFork.signer)
+
+    await context.tenderlyFork.fundAccountEth(strategist, 10n ** 18n)
+    context.tenderlyFork.impersonateAddress = strategist
+    context.centrifuge.setSigner(context.tenderlyFork.signer)
+
+    try {
+      await merkleProofManager.execute([{ policy: mockPolicies[0]!, inputs: [vaultRouter, 123_000_000n] }])
+    } catch (e) {
+      expect((e as Error).message).to.include('Transaction reverted')
+    }
 
     mock.restore()
   })
