@@ -49,6 +49,7 @@ export type ProtocolContracts = {
   accounting: HexString
   holdings: HexString
   shareClassManager: HexString
+  batchRequestManager: HexString
   hub: HexString
   identityValuation: HexString
   poolEscrowFactory: HexString
@@ -65,6 +66,7 @@ export type ProtocolContracts = {
   axelarAdapter?: HexString
   syncDepositVaultFactory: HexString
   spoke: HexString
+  vaultRegistry: HexString
   vaultRouter: HexString
   balanceSheet: HexString
   merkleProofManagerFactory: HexString

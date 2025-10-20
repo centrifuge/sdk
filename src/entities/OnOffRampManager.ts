@@ -182,6 +182,7 @@ export class OnOffRampManager extends Entity {
               [3, toHex('offramp', { size: 32 }), assetId.raw, addressToBytes32(receiver), enabled]
             ),
             0n,
+            ctx.signingAddress,
           ],
         }),
       })
@@ -216,6 +217,7 @@ export class OnOffRampManager extends Entity {
               [3, toHex('relayer', { size: 32 }), 0n, addressToBytes32(relayer), enabled]
             ),
             0n,
+            ctx.signingAddress,
           ],
         }),
       })
@@ -251,6 +253,7 @@ export class OnOffRampManager extends Entity {
               ]
             ),
             0n,
+            ctx.signingAddress,
           ],
         }),
       })

@@ -298,7 +298,7 @@ describe('Pool', () => {
 
     // Check if all accounts got created properly
     for (const account of expectedAccounts) {
-      const exists = await accountsContract.read.exists([poolId.raw, account])
+      const exists = await accountsContract.read.exists([poolId.raw, BigInt(account)])
       expect(exists).to.be.true
     }
 

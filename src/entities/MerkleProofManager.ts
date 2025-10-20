@@ -157,6 +157,7 @@ export class MerkleProofManager extends Entity {
                 [/* UpdateContractType.Policy */ 4, addressToBytes32(strategist), rootHash]
               ),
               0n,
+              ctx.signingAddress,
             ],
           }),
         ],

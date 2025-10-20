@@ -9,7 +9,6 @@ import { context } from './tests/setup.js'
 import { randomAddress } from './tests/utils.js'
 import { ProtocolContracts } from './types/index.js'
 import { MessageType } from './types/transaction.js'
-import { Balance } from './utils/BigInt.js'
 import { doSignMessage, doTransaction } from './utils/transaction.js'
 import { AssetId, PoolId } from './utils/types.js'
 
@@ -118,19 +117,6 @@ describe('Centrifuge', () => {
 
       const estimate2 = await context.centrifuge._estimate(chainId, { centId: 2 }, MessageType.NotifyPool)
       expect(typeof estimate2).to.equal('bigint')
-    })
-
-    it('should fetch the value of an asset in relation to another one', async () => {
-      const quote = await context.centrifuge._getQuote(
-        (await context.centrifuge._protocolAddresses(chainId)).identityValuation,
-        Balance.fromFloat(100, 6),
-        assetId,
-        AssetId.fromIso(840),
-        chainId
-      )
-      expect(quote).to.instanceOf(Balance)
-      expect(quote.decimals).to.equal(18)
-      expect(quote.toFloat()).to.equal(100)
     })
   })
 

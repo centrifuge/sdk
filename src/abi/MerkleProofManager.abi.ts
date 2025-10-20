@@ -4,7 +4,7 @@ export default [
   'function execute((address decoder, address target, bytes targetData, uint256 value, bytes32[] proof)[] calls)',
   'function policy(address strategist) view returns (bytes32 root)',
   // 'function poolId() view returns (uint64)',
-  // 'function update(uint64 poolId_, bytes16, bytes payload)',
+  // 'function trustedCall(uint64 poolId_, bytes16, bytes payload)',
   // 'event ExecuteCall(address indexed target, bytes4 indexed selector, bytes targetData, uint256 value)',
   // 'event UpdatePolicy(address indexed strategist, bytes32 oldRoot, bytes32 newRoot)',
   // 'error CallFailed()',
@@ -18,8 +18,6 @@ export default [
   // 'error InvalidValuesLength()',
   // 'error NotAStrategist()',
   // 'error NotAuthorized()',
-  // 'error SliceOutOfBounds()',
-  // 'error UnknownMessageType()',
-  // 'error UnknownUpdateContractType()',
+  // 'error PrefixNotZero()',
   // 'error WrappedError(address target, bytes4 selector, bytes reason, bytes details)',
 ] as const

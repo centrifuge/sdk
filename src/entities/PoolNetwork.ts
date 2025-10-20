@@ -355,8 +355,8 @@ export class PoolNetwork extends Entity {
     const self = this
     return this._transact(async function* (ctx) {
       const [
-        { hub },
-        { balanceSheet, syncDepositVaultFactory, asyncVaultFactory, syncManager, asyncRequestManager },
+        { hub, batchRequestManager },
+        { spoke, balanceSheet, syncDepositVaultFactory, asyncVaultFactory, syncManager, asyncRequestManager },
         id,
         details,
       ] = await Promise.all([
@@ -371,35 +371,58 @@ export class PoolNetwork extends Entity {
         address: balanceSheet,
         abi: ABI.BalanceSheet,
       })
-      const [isAsyncManagerSet, isSyncManagerSet] = await Promise.all([
-        balanceSheetContract.read.manager([self.pool.id.raw, asyncRequestManager]),
-        balanceSheetContract.read.manager([self.pool.id.raw, syncManager]),
-      ])
+      const [isAsyncManagerSetOnBalanceSheet, isSyncManagerSetOnBalanceSheet, existingRequestManager] =
+        await Promise.all([
+          balanceSheetContract.read.manager([self.pool.id.raw, asyncRequestManager]),
+          balanceSheetContract.read.manager([self.pool.id.raw, syncManager]),
+          self._root.getClient(self.chainId).readContract({
+            address: spoke,
+            abi: ABI.Spoke,
+            functionName: 'requestManager',
+            args: [self.pool.id.raw],
+          }),
+        ])
 
       const batch: HexString[] = []
       const messageTypes: MessageTypeWithSubType[] = []
 
       // Set vault managers as balance sheet managers if not already set
       // Always set async manager, as it's used by both async and sync deposit vaults
-      if (!isAsyncManagerSet) {
+      if (!isAsyncManagerSetOnBalanceSheet) {
         batch.push(
           encodeFunctionData({
             abi: ABI.Hub,
             functionName: 'updateBalanceSheetManager',
-            args: [id, self.pool.id.raw, addressToBytes32(asyncRequestManager), true],
+            args: [self.pool.id.raw, id, addressToBytes32(asyncRequestManager), true, ctx.signingAddress],
           })
         )
         messageTypes.push(MessageType.UpdateBalanceSheetManager)
       }
-      if (!isSyncManagerSet && vaults.some((v) => v.kind === 'syncDeposit')) {
+      if (!isSyncManagerSetOnBalanceSheet && vaults.some((v) => v.kind === 'syncDeposit')) {
         batch.push(
           encodeFunctionData({
             abi: ABI.Hub,
             functionName: 'updateBalanceSheetManager',
-            args: [id, self.pool.id.raw, addressToBytes32(syncManager), true],
+            args: [self.pool.id.raw, id, addressToBytes32(syncManager), true, ctx.signingAddress],
           })
         )
         messageTypes.push(MessageType.UpdateBalanceSheetManager)
+      }
+      if (existingRequestManager === NULL_ADDRESS) {
+        batch.push(
+          encodeFunctionData({
+            abi: ABI.Hub,
+            functionName: 'setRequestManager',
+            args: [
+              self.pool.id.raw,
+              id,
+              batchRequestManager,
+              addressToBytes32(asyncRequestManager),
+              ctx.signingAddress,
+            ],
+          })
+        )
+        messageTypes.push(MessageType.SetRequestManager)
       }
 
       if (!details.isActive) {
@@ -407,7 +430,7 @@ export class PoolNetwork extends Entity {
           encodeFunctionData({
             abi: ABI.Hub,
             functionName: 'notifyPool',
-            args: [self.pool.id.raw, id],
+            args: [self.pool.id.raw, id, ctx.signingAddress],
           })
         )
         messageTypes.push(MessageType.NotifyPool)
@@ -425,7 +448,7 @@ export class PoolNetwork extends Entity {
           encodeFunctionData({
             abi: ABI.Hub,
             functionName: 'notifyShareClass',
-            args: [self.pool.id.raw, sc.id.raw, id, addressToBytes32(sc.hook)],
+            args: [self.pool.id.raw, sc.id.raw, id, addressToBytes32(sc.hook), ctx.signingAddress],
           })
         )
         messageTypes.push(MessageType.NotifyShareClass)
@@ -451,24 +474,17 @@ export class PoolNetwork extends Entity {
                   [/* UpdateContractType.SyncDepositMaxReserve */ 2, vault.assetId.raw, maxUint128]
                 ),
                 0n,
+                ctx.signingAddress,
               ],
             })
           )
         }
 
         batch.push(
-          // TODO: When we have fully sync vaults, we have to check if a vault for this share class and asset already exists
-          // and if so, we shouldn't set the request manager again.
-          // `setRequestManager` will revert if the share class / asset combination already has a vault.
-          encodeFunctionData({
-            abi: ABI.Hub,
-            functionName: 'setRequestManager',
-            args: [self.pool.id.raw, vault.shareClassId.raw, vault.assetId.raw, addressToBytes32(asyncRequestManager)],
-          }),
           encodeFunctionData({
             abi: ABI.Hub,
             functionName: 'notifyAssetPrice',
-            args: [self.pool.id.raw, vault.shareClassId.raw, vault.assetId.raw],
+            args: [self.pool.id.raw, vault.shareClassId.raw, vault.assetId.raw, ctx.signingAddress],
           }),
           encodeFunctionData({
             abi: ABI.Hub,
@@ -480,6 +496,7 @@ export class PoolNetwork extends Entity {
               addressToBytes32(vault.kind === 'syncDeposit' ? syncDepositVaultFactory : asyncVaultFactory),
               VaultUpdateKind.DeployAndLink,
               0n, // gas limit
+              ctx.signingAddress,
             ],
           })
         )
@@ -541,6 +558,7 @@ export class PoolNetwork extends Entity {
               addressToBytes32(existingVault.address),
               VaultUpdateKind.Unlink,
               0n, // gas limit
+              ctx.signingAddress,
             ],
           })
         )
