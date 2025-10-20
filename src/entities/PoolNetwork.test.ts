@@ -50,73 +50,72 @@ describe('PoolNetwork', () => {
     expect(details.activeShareClasses[0]!.vaults).to.have.length.greaterThan(0)
   })
 
-  // TODO: fix test when creating scId from shareClassCount
-  // it('deploys share classes and vaults', async () => {
-  //   const { hub, freezeOnlyHook, vaultRouter } = await context.centrifuge._protocolAddresses(chainId)
+  it.skip('deploys share classes and vaults', async () => {
+    const { hub, freezeOnlyHook, vaultRouter } = await context.centrifuge._protocolAddresses(chainId)
 
-  //   context.tenderlyFork.impersonateAddress = poolManager
-  //   context.centrifuge.setSigner(context.tenderlyFork.signer)
+    context.tenderlyFork.impersonateAddress = poolManager
+    context.centrifuge.setSigner(context.tenderlyFork.signer)
 
-  //   await context.centrifuge._transact(async function* (ctx) {
-  //     yield* doTransaction('Add share class', ctx, async () => {
-  //       return ctx.walletClient.writeContract({
-  //         address: hub,
-  //         abi: ABI.Hub,
-  //         functionName: 'addShareClass',
-  //         args: [poolId.raw, 'Test Share Class', 'TSC', '0x123'.padEnd(66, '0') as any],
-  //       })
-  //     })
-  //   }, chainId)
+    await context.centrifuge._transact(async function* (ctx) {
+      yield* doTransaction('Add share class', ctx, async () => {
+        return ctx.walletClient.writeContract({
+          address: hub,
+          abi: ABI.Hub,
+          functionName: 'addShareClass',
+          args: [poolId.raw, 'Test Share Class', 'TSC', '0x123'.padEnd(66, '0') as any],
+        })
+      })
+    }, chainId)
 
-  //   const addresses = await context.centrifuge._protocolAddresses(chainId)
-  //   const shareClassCount = await context.centrifuge.getClient(chainId).readContract({
-  //     address: addresses.shareClassManager,
-  //     abi: ABI.ShareClassManager,
-  //     functionName: 'shareClassCount',
-  //     args: [poolId.raw],
-  //   })
-  //   const nextIndex = Number(shareClassCount)
-  //   const scId = ShareClassId.from(poolId, nextIndex)
+    const addresses = await context.centrifuge._protocolAddresses(chainId)
+    const shareClassCount = await context.centrifuge.getClient(chainId).readContract({
+      address: addresses.shareClassManager,
+      abi: ABI.ShareClassManager,
+      functionName: 'shareClassCount',
+      args: [poolId.raw],
+    })
+    const nextIndex = Number(shareClassCount)
+    const scId = ShareClassId.from(poolId, nextIndex)
 
-  //   const assetId = AssetId.from(1, 1)
+    const assetId = AssetId.from(1, 1)
 
-  //   const result = await poolNetwork.deploy(
-  //     [{ id: scId, hook: freezeOnlyHook }],
-  //     [{ shareClassId: scId, assetId, kind: 'syncDeposit' }]
-  //   )
-  //   expect(result.type).to.equal('TransactionConfirmed')
+    const result = await poolNetwork.deploy(
+      [{ id: scId, hook: freezeOnlyHook }],
+      [{ shareClassId: scId, assetId, kind: 'syncDeposit' }]
+    )
+    expect(result.type).to.equal('TransactionConfirmed')
 
-  //   const details = await poolNetwork.details()
-  //   expect(details.activeShareClasses.some((sc) => sc.id.equals(scId))).to.be.true
+    const details = await poolNetwork.details()
+    expect(details.activeShareClasses.some((sc) => sc.id.equals(scId))).to.be.true
 
-  //   const asset = await context.centrifuge.assetCurrency(assetId)
-  //   const vaultAddr = await context.centrifuge.getClient(chainId).readContract({
-  //     address: vaultRouter,
-  //     abi: ABI.VaultRouter,
-  //     functionName: 'getVault',
-  //     args: [poolId.raw, scId.raw, asset.address],
-  //   })
+    const asset = await context.centrifuge.assetCurrency(assetId)
+    const vaultAddr = await context.centrifuge.getClient(chainId).readContract({
+      address: vaultRouter,
+      abi: ABI.VaultRouter,
+      functionName: 'getVault',
+      args: [poolId.raw, scId.raw, asset.address],
+    })
 
-  //   const vault = new Vault(
-  //     context.centrifuge,
-  //     new PoolNetwork(context.centrifuge, new Pool(context.centrifuge, poolId.raw, chainId), chainId),
-  //     details.activeShareClasses.find((sc) => sc.id.equals(scId))!.shareClass,
-  //     asset.address,
-  //     vaultAddr as any,
-  //     assetId
-  //   )
+    const vault = new Vault(
+      context.centrifuge,
+      new PoolNetwork(context.centrifuge, new Pool(context.centrifuge, poolId.raw, chainId), chainId),
+      details.activeShareClasses.find((sc) => sc.id.equals(scId))!.shareClass,
+      asset.address,
+      vaultAddr as any,
+      assetId
+    )
 
-  //   const vaultDetails = await vault.details()
-  //   expect(vaultDetails.isSyncInvest).to.be.true
+    const vaultDetails = await vault.details()
+    expect(vaultDetails.isSyncInvest).to.be.true
 
-  //   const maxReserve = await context.centrifuge.getClient(chainId).readContract({
-  //     address: addresses.syncManager,
-  //     abi: ABI.SyncRequests,
-  //     functionName: 'maxReserve',
-  //     args: [poolId.raw, scId.raw, asset.address, 0n],
-  //   })
-  //   expect(maxReserve).to.equal(340282366920938463463374607431768211455n)
-  // })
+    const maxReserve = await context.centrifuge.getClient(chainId).readContract({
+      address: addresses.syncManager,
+      abi: ABI.SyncRequests,
+      functionName: 'maxReserve',
+      args: [poolId.raw, scId.raw, asset.address, 0n],
+    })
+    expect(maxReserve).to.equal(340282366920938463463374607431768211455n)
+  })
 
   it('disables vaults', async () => {
     const { vaultRouter } = await context.centrifuge._protocolAddresses(chainId)
