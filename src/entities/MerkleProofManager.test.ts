@@ -5,6 +5,7 @@ import sinon from 'sinon'
 import { encodePacked } from 'viem'
 import { ABI } from '../abi/index.js'
 import { Centrifuge } from '../Centrifuge.js'
+import { HexString } from '../index.js'
 import { context } from '../tests/setup.js'
 import { randomAddress } from '../tests/utils.js'
 import { MerkleProofPolicy } from '../types/poolMetadata.js'
@@ -13,7 +14,6 @@ import { AssetId, PoolId, ShareClassId } from '../utils/types.js'
 import { getMerkleTree, MerkleProofManager } from './MerkleProofManager.js'
 import { Pool } from './Pool.js'
 import { PoolNetwork } from './PoolNetwork.js'
-import { HexString } from '../index.js'
 
 const chainId = 11155111
 const centId = 1
@@ -522,10 +522,6 @@ describe.only('MerkleProofManager', () => {
   it.only('can execute calls', async () => {
     const { vaultRouter } = await context.centrifuge._protocolAddresses(chainId)
 
-    await context.tenderlyFork.fundAccountEth(strategist, 10n ** 18n)
-    context.tenderlyFork.impersonateAddress = strategist
-    context.centrifuge.setSigner(context.tenderlyFork.signer)
-
     const mock = sinon.stub(merkleProofManager.pool, 'metadata')
     mock.returns(
       makeThenable(
@@ -538,6 +534,24 @@ describe.only('MerkleProofManager', () => {
         } as any)
       )
     )
+
+    const centrifugeWithPin = new Centrifuge({
+      environment: 'testnet',
+      pinJson: async () => {
+        return 'abc'
+      },
+      rpcUrls: {
+        11155111: context.tenderlyFork.rpcUrl,
+      },
+    })
+    context.tenderlyFork.impersonateAddress = fundManager
+    centrifugeWithPin.setSigner(context.tenderlyFork.signer)
+    const mpm = new MerkleProofManager(centrifugeWithPin, merkleProofManager.network, mpmAddress)
+    await mpm.setPolicies(strategist, mockPolicies)
+
+    await context.tenderlyFork.fundAccountEth(strategist, 10n ** 18n)
+    context.tenderlyFork.impersonateAddress = strategist
+    context.centrifuge.setSigner(context.tenderlyFork.signer)
 
     await merkleProofManager.execute([{ policy: mockPolicies[0]!, inputs: [vaultRouter, 123_000_000n] }])
 
