@@ -21,20 +21,18 @@ jobs:
         with:
           node-version-file: '.nvmrc'
 
-      - name: Enable Corepack
-        run: corepack enable
-
-      - name: Set Yarn version
-        run: yarn set version 4.5.0
-
+      - name: Enable Corepack and Set pnpm version
+        run: |
+          corepack enable
+          corepack prepare pnpm@10.10.0 --activate
       - name: Install dependencies
-        run: yarn install --immutable
+        run: pnpm install --frozen-lockfile
 
       - name: Run Build
-        run: yarn build
+        run: pnpm build
 
       - name: Run tests
-        run: yarn test:coverage
+        run: pnpm test:coverage
         env:
           TENDERLY_ACCESS_KEY: ${{ secrets.TENDERLY_ACCESS_KEY }}
           PROJECT_SLUG: ${{ secrets.PROJECT_SLUG }}

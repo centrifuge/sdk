@@ -15,25 +15,25 @@ Tenderly allows us to create a local Ethereum network that is compatible with Et
 Install dependencies:
 
 ```bash
-yarn
+pnpm
 ```
 
 Run the tests:
 
 ```bash
-yarn test
+pnpm test
 ```
 
 Run a single test:
 
 ```bash
-yarn test:single <path-to-test>
+pnpm test:single <path-to-test>
 ```
 
 Run a single test without setting up the fork:
 
 ```bash
-yarn test:simple:single <path-to-test>
+pnpm test:simple:single <path-to-test>
 ```
 
 ### Usage
