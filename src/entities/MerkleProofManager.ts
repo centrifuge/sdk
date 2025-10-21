@@ -275,6 +275,8 @@ export function getMerkleProof(tree: SimpleMerkleTree, leaf: MerkleProofPolicy, 
 }
 
 export function generateCombinations(inputs: MerkleProofPolicyInput['inputs']) {
+  if (inputs.length === 0) throw new Error('No inputs provided for generating combinations')
+
   function combine(index: number, current: (HexString | null)[][]) {
     if (index >= inputs.length) return current
 

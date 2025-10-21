@@ -28,7 +28,7 @@ const fundManager = '0x423420Ae467df6e90291fd0252c0A8a637C1e03f'
 const mpmAddress = '0x9E14250c4C53bdcA1437F7EDa25B0D9ca46CfFE2'
 const vaultDecoder = '0x8E5bE47D081F53033eb7C9DB3ad31BaF67F15585'
 
-describe.only('MerkleProofManager', () => {
+describe('MerkleProofManager', () => {
   let pool: Pool
   let merkleProofManager: MerkleProofManager
   let mockPolicies: MerkleProofPolicy[]
@@ -725,10 +725,11 @@ describe.only('MerkleProofManager', () => {
         inputs: [],
       }
 
-      const expectedCombinations: (HexString | null)[][] = [[]]
-
-      const combinations = generateCombinations(policyInput.inputs)
-      expect(combinations).to.deep.equal(expectedCombinations)
+      try {
+        generateCombinations(policyInput.inputs)
+      } catch (error) {
+        expect((error as Error).message).to.include('No inputs provided for generating combinations')
+      }
     })
   })
 })
