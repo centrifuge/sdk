@@ -8,7 +8,7 @@ import type { HexString } from '../types/index.js'
 import { MerkleProofPolicy, MerkleProofPolicyInput } from '../types/poolMetadata.js'
 import { MessageType } from '../types/transaction.js'
 import { Balance, BigIntWrapper, Price } from '../utils/BigInt.js'
-import { addressToBytes32 } from '../utils/index.js'
+import { addressToBytes32, encode } from '../utils/index.js'
 import { wrapTransaction } from '../utils/transaction.js'
 import { Entity } from './Entity.js'
 import type { Pool } from './Pool.js'
@@ -152,16 +152,13 @@ export class MerkleProofManager extends Entity {
               shareClasses[0]!.shareClass.id.raw,
               id,
               addressToBytes32(self.address),
-              encodePacked(
-                ['uint8', 'bytes32', 'bytes32'],
-                [/* UpdateContractType.Policy */ 4, addressToBytes32(strategist), rootHash]
-              ),
+              encode([addressToBytes32(strategist), rootHash]),
               0n,
               ctx.signingAddress,
             ],
           }),
         ],
-        messages: { [id]: [MessageType.UpdateContract] },
+        messages: { [id]: [MessageType.TrustedContractUpdate] },
       })
     }, this.pool.chainId)
   }

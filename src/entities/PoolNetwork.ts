@@ -1,11 +1,11 @@
 import { combineLatest, defer, EMPTY, map, of, switchMap } from 'rxjs'
-import { encodeFunctionData, encodePacked, getContract, maxUint128 } from 'viem'
+import { encodeFunctionData, getContract, maxUint128 } from 'viem'
 import { ABI } from '../abi/index.js'
 import type { Centrifuge } from '../Centrifuge.js'
 import { NULL_ADDRESS } from '../constants.js'
 import { HexString } from '../types/index.js'
 import { MessageType, MessageTypeWithSubType, VaultUpdateKind } from '../types/transaction.js'
-import { addressToBytes32 } from '../utils/index.js'
+import { addressToBytes32, encode } from '../utils/index.js'
 import { repeatOnEvents } from '../utils/rx.js'
 import { doTransaction, wrapTransaction } from '../utils/transaction.js'
 import { AssetId, ShareClassId } from '../utils/types.js'
@@ -15,6 +15,11 @@ import { MerkleProofManager } from './MerkleProofManager.js'
 import { OnOffRampManager } from './OnOffRampManager.js'
 import type { Pool } from './Pool.js'
 import { ShareClass } from './ShareClass.js'
+
+enum VaultManagerTrustedCall {
+  Valuation,
+  MaxReserve,
+}
 
 /**
  * Query and interact with a pool on a specific network.
@@ -469,10 +474,7 @@ export class PoolNetwork extends Entity {
                 vault.shareClassId.raw,
                 id,
                 addressToBytes32(syncManager),
-                encodePacked(
-                  ['uint8', 'uint128', 'uint128'],
-                  [/* UpdateContractType.SyncDepositMaxReserve */ 2, vault.assetId.raw, maxUint128]
-                ),
+                encode([VaultManagerTrustedCall.MaxReserve, vault.assetId.raw, maxUint128]),
                 0n,
                 ctx.signingAddress,
               ],

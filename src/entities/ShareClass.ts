@@ -29,6 +29,8 @@ import type { Pool } from './Pool.js'
 import { PoolNetwork } from './PoolNetwork.js'
 import { Vault } from './Vault.js'
 
+const GAS_LIMIT = 30_000_000n
+
 /**
  * Query and interact with a share class, which allows querying total issuance, NAV per share,
  * and allows interactions related to asynchronous deposits and redemptions.
@@ -537,7 +539,7 @@ export class ShareClass extends Entity {
           args: [self.pool.id.raw, self.id.raw, assetId.raw, BigInt(maxPriceAge), ctx.signingAddress],
         }),
         messages: {
-          [assetId.centrifugeId]: [MessageType.MaxAssetPriceAge],
+          [assetId.centrifugeId]: [MessageType.SetMaxAssetPriceAge],
         },
       })
     }, this.pool.chainId)
@@ -558,7 +560,7 @@ export class ShareClass extends Entity {
           args: [self.pool.id.raw, self.id.raw, id, BigInt(maxPriceAge), ctx.signingAddress],
         }),
         messages: {
-          [id]: [MessageType.MaxSharePriceAge],
+          [id]: [MessageType.SetMaxSharePriceAge],
         },
       })
     }, this.pool.chainId)
@@ -616,7 +618,7 @@ export class ShareClass extends Entity {
   ) {
     const self = this
     return this._transact(async function* (ctx) {
-      const [{ batchRequestManager }, id, pendingAmounts, orders, maxBatchGasLimit] = await Promise.all([
+      const [{ batchRequestManager }, id, pendingAmounts, orders] = await Promise.all([
         self._root._protocolAddresses(self.pool.chainId),
         self._root.id(self.pool.chainId),
         self.pendingAmounts(),
@@ -631,11 +633,10 @@ export class ShareClass extends Entity {
             })
           )
         ),
-        self._root._maxBatchGasLimit(self.pool.chainId),
       ])
       const assetsWithApprove = assets.filter((a) => 'approveAssetAmount' in a).length
       const assetsWithIssue = assets.filter((a) => 'issuePricePerShare' in a).length
-      const gasLimitPerAsset = assetsWithIssue ? maxBatchGasLimit / BigInt(assetsWithIssue) : 0n
+      const gasLimitPerAsset = assetsWithIssue ? GAS_LIMIT / BigInt(assetsWithIssue) : 0n
       const estimatePerMessage = 700_000n
       const estimatePerMessageIfLocal = 360_000n
 
@@ -789,7 +790,7 @@ export class ShareClass extends Entity {
   ) {
     const self = this
     return this._transact(async function* (ctx) {
-      const [{ batchRequestManager }, id, pendingAmounts, orders, maxBatchGasLimit] = await Promise.all([
+      const [{ batchRequestManager }, id, pendingAmounts, orders] = await Promise.all([
         self._root._protocolAddresses(self.pool.chainId),
         self._root.id(self.pool.chainId),
         self.pendingAmounts(),
@@ -804,12 +805,11 @@ export class ShareClass extends Entity {
             })
           )
         ),
-        self._root._maxBatchGasLimit(self.pool.chainId),
       ])
 
       const assetsWithApprove = assets.filter((a) => 'approveShareAmount' in a).length
       const assetsWithRevoke = assets.filter((a) => 'revokePricePerShare' in a).length
-      const gasLimitPerAsset = assetsWithRevoke ? maxBatchGasLimit / BigInt(assetsWithRevoke) : 0n
+      const gasLimitPerAsset = assetsWithRevoke ? GAS_LIMIT / BigInt(assetsWithRevoke) : 0n
       const estimatePerMessage = 700_000n
       const estimatePerMessageIfLocal = 360_000n
 
@@ -1855,7 +1855,7 @@ export class ShareClass extends Entity {
           functionName: 'updateContract',
           args: [self.pool.id.raw, self.id.raw, id, addressToBytes32(target), payload, 0n, ctx.signingAddress],
         }),
-        messages: { [id]: [MessageType.UpdateContract] },
+        messages: { [id]: [MessageType.TrustedContractUpdate] },
       })
     }, this.pool.chainId)
   }
