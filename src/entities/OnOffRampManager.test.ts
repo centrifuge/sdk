@@ -40,11 +40,6 @@ describe('OnOffRampManager', () => {
   })
 
   describe('receivers', () => {
-    it.skip('should return receivers', async () => {
-      const receivers = await onOffRampManager.receivers()
-      console.log({ receivers })
-    })
-
     it('should set receiver', async () => {
       const address = randomAddress()
 
