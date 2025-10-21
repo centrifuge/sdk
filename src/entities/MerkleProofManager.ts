@@ -58,58 +58,68 @@ export class MerkleProofManager extends Entity {
       const client = self._root.getClient(self.chainId)
 
       // Get the encoded args from chain by calling the decoder contract.
-      async function getEncodedArgs(policy: MerkleProofPolicyInput) {
-        const abi = parseAbiItem(policy.abi) as AbiFunction
-        const args = policy.args.map((arg, i) => {
-          if (arg !== null) return arg
-          const { type } = abi.inputs[i] || {}
-          if (!type) {
-            throw new Error(`No type found for argument ${i} in abi item "${policy.abi}, args: ${policy.args}"`)
-          }
-          if (type === 'address') {
-            return NULL_ADDRESS
-          } else if (type.includes('int')) {
-            return 0
-          } else if (type === 'bytes') {
-            return '0x'
-          } else if (type === 'bool') {
-            return false
-          } else if (type === 'string') {
-            return ''
-          } else if (type.startsWith('bytes')) {
-            return toHex(0, { size: parseInt(type.slice(5)) })
-          } else if (type.includes('[')) {
-            return []
-          }
-          throw new Error(`Unsupported type "${type}" for abi item "${policy.abi}"`)
-        })
+      async function getEncodedArgs(policy: MerkleProofPolicyInput, policyCombinations: (string | null)[][]) {
+        const abi = parseAbiItem(policy.selector) as AbiFunction
+        return Promise.all(
+          policyCombinations.map(async (pc) => {
+            const args = pc.map((arg, i) => {
+              if (arg !== null) return arg
+              const { type } = abi.inputs[i] || {}
+              if (!type) {
+                throw new Error(
+                  `No type found for argument ${i} in abi item "${policy.selector}, inputs: ${policy.inputs}"`
+                )
+              }
+              if (type === 'address') {
+                return NULL_ADDRESS
+              } else if (type.includes('int')) {
+                return 0
+              } else if (type === 'bytes') {
+                return '0x'
+              } else if (type === 'bool') {
+                return false
+              } else if (type === 'string') {
+                return ''
+              } else if (type.startsWith('bytes')) {
+                return toHex(0, { size: parseInt(type.slice(5)) })
+              } else if (type.includes('[')) {
+                return []
+              }
+              throw new Error(`Unsupported type "${type}" for abi item "${policy.selector}"`)
+            })
 
-        abi.outputs = [
-          {
-            name: 'addressesFound',
-            type: 'bytes',
-            internalType: 'bytes',
-          },
-        ]
+            abi.outputs = [
+              {
+                name: 'addressesFound',
+                type: 'bytes',
+                internalType: 'bytes',
+              },
+            ]
 
-        const encoded = await client.readContract({
-          address: policy.decoder,
-          abi: [abi],
-          functionName: abi.name,
-          args,
-        })
+            const encoded = await client.readContract({
+              address: policy.decoder,
+              abi: [abi],
+              functionName: abi.name,
+              args,
+            })
 
-        return encoded as any as HexString
+            return encoded as any as HexString
+          })
+        )
       }
 
       const policies = await Promise.all(
         policyInputs.map(async (input) => {
-          const argsEncoded = await getEncodedArgs(input)
+          const policyCombinations = generateCombinations(input.inputs)
+          const argsEncoded = await getEncodedArgs(input, policyCombinations)
           return {
             ...input,
             assetId: input.assetId?.toString(),
             valueNonZero: input.valueNonZero ?? false,
-            argsEncoded,
+            inputCombinations: policyCombinations.map((inputs, i) => ({
+              inputs,
+              inputsEncoded: argsEncoded[i]!,
+            })),
           } satisfies MerkleProofPolicy
         })
       )
@@ -199,21 +209,28 @@ export class MerkleProofManager extends Entity {
       const formattedCalls = calls.map((call) => {
         const { policy, inputs, value } = call
 
-        const abi = parseAbiItem(policy.abi)
-        const args: (string | number | bigint)[] = [...policy.args] as any
-        const inputIndeces = args.map((arg, i) => (arg === null ? i : -1)).filter((i) => i >= 0)
-        inputs.forEach((value, i) => {
-          const argIndex = inputIndeces[i]!
-          args[argIndex] = value instanceof BigIntWrapper ? value.toBigInt() : value
+        const abi = parseAbiItem(policy.selector)
+
+        const args = inputs.map((value) => {
+          return value instanceof BigIntWrapper ? value.toBigInt() : value
         })
 
-        const proof = getMerkleProof(tree, policy)
+        const argsEncoded = policy.inputCombinations.find((ic) =>
+          ic.inputs.every((input, i) => input === null || inputs[i] === input)
+        )?.inputsEncoded
+
+        if (!argsEncoded) {
+          throw new Error(`No encoded args found for policy with selector "${policy.selector}" and inputs [${inputs}]`)
+        }
+
+        const proof = getMerkleProof(tree, policy, argsEncoded)
 
         const targetData = encodeFunctionData({
           abi: [abi],
           functionName: (abi as any).name,
           args,
         })
+
         return {
           decoder: policy.decoder,
           target: policy.target,
@@ -222,6 +239,7 @@ export class MerkleProofManager extends Entity {
           proof,
         }
       })
+
       yield* wrapTransaction('Execute calls', ctx, {
         contract: self.address,
         data: encodeFunctionData({
@@ -235,21 +253,48 @@ export class MerkleProofManager extends Entity {
   }
 }
 
-export function toHashedPolicyLeaf(policy: MerkleProofPolicy): HexString {
+export function toHashedPolicyLeaf(policy: MerkleProofPolicy, argsEncoded: HexString): HexString {
   return keccak256(
     encodePacked(
       ['address', 'address', 'bool', 'bytes4', 'bytes'],
-      [policy.decoder, policy.target, policy.valueNonZero, toFunctionSelector(policy.abi), policy.argsEncoded]
+      [policy.decoder, policy.target, policy.valueNonZero, toFunctionSelector(policy.selector), argsEncoded]
     )
   )
 }
 
 export function getMerkleTree(MerkleTreeConstructor: typeof SimpleMerkleTree, policies: MerkleProofPolicy[]) {
-  const leaves = policies.map(toHashedPolicyLeaf)
+  const leaves = policies.flatMap((policy) =>
+    policy.inputCombinations.map(({ inputsEncoded }) => toHashedPolicyLeaf(policy, inputsEncoded))
+  )
 
   return MerkleTreeConstructor.of(leaves)
 }
 
-export function getMerkleProof(tree: SimpleMerkleTree, leaf: MerkleProofPolicy) {
-  return tree.getProof(toHashedPolicyLeaf(leaf)) as HexString[]
+export function getMerkleProof(tree: SimpleMerkleTree, leaf: MerkleProofPolicy, argsEncoded: HexString) {
+  return tree.getProof(toHashedPolicyLeaf(leaf, argsEncoded)) as HexString[]
+}
+
+export function generateCombinations(inputs: MerkleProofPolicyInput['inputs']) {
+  if (inputs.length === 0) throw new Error('No inputs provided for generating combinations')
+
+  function combine(index: number, current: (HexString | null)[][]) {
+    if (index >= inputs.length) return current
+
+    const nextInput = inputs[index]?.input
+    if (!nextInput) {
+      return []
+    }
+    const options = nextInput.length > 0 ? nextInput : [null]
+    const newCombinations = []
+
+    for (const combination of current) {
+      for (const option of options) {
+        newCombinations.push([...combination, option])
+      }
+    }
+
+    return combine(index + 1, newCombinations)
+  }
+
+  return combine(0, [[]])
 }

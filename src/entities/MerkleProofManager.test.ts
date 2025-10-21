@@ -5,12 +5,13 @@ import sinon from 'sinon'
 import { encodePacked } from 'viem'
 import { ABI } from '../abi/index.js'
 import { Centrifuge } from '../Centrifuge.js'
+import { HexString } from '../index.js'
 import { context } from '../tests/setup.js'
 import { randomAddress } from '../tests/utils.js'
-import { MerkleProofPolicy } from '../types/poolMetadata.js'
+import { MerkleProofPolicy, MerkleProofPolicyInput } from '../types/poolMetadata.js'
 import { makeThenable } from '../utils/rx.js'
 import { AssetId, PoolId, ShareClassId } from '../utils/types.js'
-import { getMerkleTree, MerkleProofManager } from './MerkleProofManager.js'
+import { generateCombinations, getMerkleTree, MerkleProofManager } from './MerkleProofManager.js'
 import { Pool } from './Pool.js'
 import { PoolNetwork } from './PoolNetwork.js'
 
@@ -47,121 +48,355 @@ describe('MerkleProofManager', () => {
         assetId: undefined,
         decoder,
         target: someErc20,
-        abi: 'function approve(address,uint256)',
+        selector: 'function approve(address,uint256)',
         valueNonZero: false,
-        args: [vaultRouter, null],
-        argsEncoded: encodePacked(['address'], [vaultRouter]),
+        inputs: [
+          {
+            parameter: 'address',
+            input: [vaultRouter],
+          },
+          {
+            parameter: 'uint256',
+            input: [],
+          },
+        ],
+        inputCombinations: [
+          {
+            inputs: [vaultRouter, null],
+            inputsEncoded: encodePacked(['address'], [vaultRouter]),
+          },
+        ],
       },
       {
         assetId: assetId.toString(),
         decoder,
         target,
-        abi: 'function cancelDepositRequest(uint256, address controller)',
+        selector: 'function cancelDepositRequest(uint256, address controller)',
         valueNonZero: false,
-        args: [null, randomUser],
-        argsEncoded: encodePacked(['address'], [randomUser]),
+        inputs: [
+          {
+            parameter: 'uint256',
+            input: [],
+          },
+          {
+            parameter: 'address',
+            input: [randomUser],
+          },
+        ],
+        inputCombinations: [
+          {
+            inputs: [null, randomUser],
+            inputsEncoded: encodePacked(['address'], [randomUser]),
+          },
+        ],
       },
       {
         assetId: assetId.toString(),
         decoder,
         target,
-        abi: 'function cancelRedeemRequest(uint256, address controller)',
+        selector: 'function cancelRedeemRequest(uint256, address controller)',
         valueNonZero: false,
-        args: [null, randomUser],
-        argsEncoded: encodePacked(['address'], [randomUser]),
+        inputs: [
+          {
+            parameter: 'uint256',
+            input: [],
+          },
+          {
+            parameter: 'address',
+            input: [randomUser],
+          },
+        ],
+        inputCombinations: [
+          {
+            inputs: [null, randomUser],
+            inputsEncoded: encodePacked(['address'], [randomUser]),
+          },
+        ],
       },
       {
         assetId: assetId.toString(),
         decoder,
         target,
-        abi: 'function claimCancelDepositRequest(uint256, address receiver, address controller)',
+        selector: 'function claimCancelDepositRequest(uint256, address receiver, address controller)',
         valueNonZero: false,
-        args: [null, randomUser, randomUser],
-        argsEncoded: encodePacked(['address', 'address'], [randomUser, randomUser]),
+        inputs: [
+          {
+            parameter: 'uint256',
+            input: [],
+          },
+          {
+            parameter: 'address receiver',
+            input: [randomUser],
+          },
+          {
+            parameter: 'address controller',
+            input: [randomUser],
+          },
+        ],
+        inputCombinations: [
+          {
+            inputs: [null, randomUser, randomUser],
+            inputsEncoded: encodePacked(['address', 'address'], [randomUser, randomUser]),
+          },
+        ],
       },
       {
         assetId: assetId.toString(),
         decoder,
         target,
-        abi: 'function claimCancelRedeemRequest(uint256, address receiver, address controller)',
+        selector: 'function claimCancelRedeemRequest(uint256, address receiver, address controller)',
         valueNonZero: false,
-        args: [null, randomUser, randomUser],
-        argsEncoded: encodePacked(['address', 'address'], [randomUser, randomUser]),
+        inputs: [
+          {
+            parameter: 'uint256',
+            input: [],
+          },
+          {
+            parameter: 'address receiver',
+            input: [randomUser],
+          },
+          {
+            parameter: 'address controller',
+            input: [randomUser],
+          },
+        ],
+        inputCombinations: [
+          {
+            inputs: [null, randomUser, randomUser],
+            inputsEncoded: encodePacked(['address', 'address'], [randomUser, randomUser]),
+          },
+        ],
       },
       {
         assetId: assetId.toString(),
         decoder,
         target,
-        abi: 'function deposit(uint64 poolId, bytes16 scId, address asset, uint256, uint128)',
+        selector: 'function deposit(uint64 poolId, bytes16 scId, address asset, uint256, uint128)',
         valueNonZero: false,
-        args: [poolId.toString(), scId.raw, someErc20, null, null],
-        argsEncoded: encodePacked(['uint64', 'bytes16', 'address'], [poolId.raw, scId.raw, someErc20]),
+        inputs: [
+          {
+            parameter: 'poolId',
+            input: [poolId.toString() as HexString],
+          },
+          {
+            parameter: 'shareClassId',
+            input: [scId.raw],
+          },
+          {
+            parameter: 'erc20',
+            input: [someErc20],
+          },
+          {
+            parameter: 'uint256',
+            input: [],
+          },
+          {
+            parameter: 'uint128',
+            input: [],
+          },
+        ],
+        inputCombinations: [
+          {
+            inputs: [poolId.toString() as HexString, scId.raw, someErc20, null, null],
+            inputsEncoded: encodePacked(['uint64', 'bytes16', 'address'], [poolId.raw, scId.raw, someErc20]),
+          },
+        ],
       },
       {
         assetId: assetId.toString(),
         decoder,
         target,
-        abi: 'function deposit(uint256, address receiver)',
+        selector: 'function deposit(uint256, address receiver)',
         valueNonZero: false,
-        args: [null, randomUser],
-        argsEncoded: encodePacked(['address'], [randomUser]),
+        inputs: [
+          {
+            parameter: 'uint256',
+            input: [],
+          },
+          {
+            parameter: 'address',
+            input: [randomUser],
+          },
+        ],
+        inputCombinations: [
+          {
+            inputs: [null, randomUser],
+            inputsEncoded: encodePacked(['address'], [randomUser]),
+          },
+        ],
       },
       {
         assetId: assetId.toString(),
         decoder,
         target,
-        abi: 'function mint(uint256, address receiver)',
+        selector: 'function mint(uint256, address receiver)',
         valueNonZero: false,
-        args: [null, randomUser],
-        argsEncoded: encodePacked(['address'], [randomUser]),
+        inputs: [
+          {
+            parameter: 'uint256',
+            input: [],
+          },
+          {
+            parameter: 'address',
+            input: [randomUser],
+          },
+        ],
+        inputCombinations: [
+          {
+            inputs: [null, randomUser],
+            inputsEncoded: encodePacked(['address'], [randomUser]),
+          },
+        ],
       },
       {
         assetId: assetId.toString(),
         decoder,
         target,
-        abi: 'function redeem(uint256, address receiver, address owner)',
+        selector: 'function redeem(uint256, address receiver, address owner)',
         valueNonZero: false,
-        args: [null, randomUser, randomUser],
-        argsEncoded: encodePacked(['address', 'address'], [randomUser, randomUser]),
+        inputs: [
+          {
+            parameter: 'uint256',
+            input: [],
+          },
+          {
+            parameter: 'address receiver',
+            input: [randomUser],
+          },
+          {
+            parameter: 'address controller',
+            input: [randomUser],
+          },
+        ],
+        inputCombinations: [
+          {
+            inputs: [null, randomUser, randomUser],
+            inputsEncoded: encodePacked(['address', 'address'], [randomUser, randomUser]),
+          },
+        ],
       },
       {
         assetId: assetId.toString(),
         decoder,
         target,
-        abi: 'function requestDeposit(uint256, address controller, address owner)',
+        selector: 'function requestDeposit(uint256, address controller, address owner)',
         valueNonZero: false,
-        args: [null, randomUser, randomUser],
-        argsEncoded: encodePacked(['address', 'address'], [randomUser, randomUser]),
+        inputs: [
+          {
+            parameter: 'uint256',
+            input: [],
+          },
+          {
+            parameter: 'address receiver',
+            input: [randomUser],
+          },
+          {
+            parameter: 'address controller',
+            input: [randomUser],
+          },
+        ],
+        inputCombinations: [
+          {
+            inputs: [null, randomUser, randomUser],
+            inputsEncoded: encodePacked(['address', 'address'], [randomUser, randomUser]),
+          },
+        ],
       },
       {
         assetId: assetId.toString(),
         decoder,
         target,
-        abi: 'function requestRedeem(uint256, address controller, address owner)',
+        selector: 'function requestRedeem(uint256, address controller, address owner)',
         valueNonZero: false,
-        args: [null, randomUser, randomUser],
-        argsEncoded: encodePacked(['address', 'address'], [randomUser, randomUser]),
+        inputs: [
+          {
+            parameter: 'uint256',
+            input: [],
+          },
+          {
+            parameter: 'address receiver',
+            input: [randomUser],
+          },
+          {
+            parameter: 'address controller',
+            input: [randomUser],
+          },
+        ],
+        inputCombinations: [
+          {
+            inputs: [null, randomUser, randomUser],
+            inputsEncoded: encodePacked(['address', 'address'], [randomUser, randomUser]),
+          },
+        ],
       },
       {
         assetId: assetId.toString(),
         decoder,
         target,
-        abi: 'function withdraw(uint256, address receiver, address owner)',
+        selector: 'function withdraw(uint256, address receiver, address owner)',
         valueNonZero: false,
-        args: [null, randomUser, randomUser],
-        argsEncoded: encodePacked(['address', 'address'], [randomUser, randomUser]),
+        inputs: [
+          {
+            parameter: 'uint256',
+            input: [],
+          },
+          {
+            parameter: 'address receiver',
+            input: [randomUser],
+          },
+          {
+            parameter: 'address controller',
+            input: [randomUser],
+          },
+        ],
+        inputCombinations: [
+          {
+            inputs: [null, randomUser, randomUser],
+            inputsEncoded: encodePacked(['address', 'address'], [randomUser, randomUser]),
+          },
+        ],
       },
       {
         assetId: assetId.toString(),
         decoder,
         target,
-        abi: 'function withdraw(uint64,bytes16,address,uint256,address,uint128)',
+        selector: 'function withdraw(uint64,bytes16,address,uint256,address,uint128)',
         valueNonZero: false,
-        args: [poolId.toString(), scId.toString(), someErc20, null, randomUser, null],
-        argsEncoded: encodePacked(
-          ['uint64', 'bytes16', 'address', 'address'],
-          [poolId.raw, scId.raw, someErc20, randomUser]
-        ),
+        inputs: [
+          {
+            parameter: 'poolId',
+            input: [poolId.toString() as HexString],
+          },
+          {
+            parameter: 'shareClassId',
+            input: [scId.raw],
+          },
+          {
+            parameter: 'erc20',
+            input: [someErc20],
+          },
+          {
+            parameter: 'uint256',
+            input: [],
+          },
+          {
+            parameter: 'address',
+            input: [randomUser],
+          },
+          {
+            parameter: 'uint128',
+            input: [],
+          },
+        ],
+        inputCombinations: [
+          {
+            inputs: [poolId.toString() as HexString, scId.raw, someErc20, null, randomUser, null],
+            inputsEncoded: encodePacked(
+              ['uint64', 'bytes16', 'address', 'address'],
+              [poolId.raw, scId.raw, someErc20, randomUser]
+            ),
+          },
+        ],
       },
     ]
 
@@ -185,19 +420,67 @@ describe('MerkleProofManager', () => {
         assetId: assetId.toString(),
         decoder,
         target,
-        abi: 'function withdraw(uint64,bytes16,address,uint256,address,uint128)',
+        selector: 'function withdraw(uint64,bytes16,address,uint256,address,uint128)',
         valueNonZero: false,
-        args: [poolId.toString(), scId, erc20, null, manager, null],
-        argsEncoded: encodePacked(['uint64', 'bytes16', 'address', 'address'], [poolId, scId, erc20, manager]),
+        inputs: [
+          {
+            parameter: 'poolId',
+            input: [poolId.toString() as HexString],
+          },
+          {
+            parameter: 'shareClassId',
+            input: [scId],
+          },
+          {
+            parameter: 'erc20',
+            input: [someErc20],
+          },
+          {
+            parameter: 'uint256',
+            input: [],
+          },
+          {
+            parameter: 'address',
+            input: [manager],
+          },
+          {
+            parameter: 'uint128',
+            input: [],
+          },
+        ],
+        inputCombinations: [
+          {
+            inputs: [poolId.toString() as HexString, scId, erc20, null, manager, null],
+            inputsEncoded: encodePacked(['uint64', 'bytes16', 'address', 'address'], [poolId, scId, erc20, manager]),
+          },
+        ],
       },
       {
         assetId: assetId.toString(),
         decoder,
         target,
-        abi: 'function deposit(uint64,bytes16,address,uint256,uint128)',
+        selector: 'function deposit(uint64,bytes16,address,uint256,uint128)',
         valueNonZero: false,
-        args: [poolId.toString(), scId, erc20, null],
-        argsEncoded: encodePacked(['uint64', 'bytes16', 'address'], [poolId, scId, erc20]),
+        inputs: [
+          {
+            parameter: 'shareClassId',
+            input: [scId],
+          },
+          {
+            parameter: 'erc20',
+            input: [someErc20],
+          },
+          {
+            parameter: 'uint256',
+            input: [],
+          },
+        ],
+        inputCombinations: [
+          {
+            inputs: [poolId.toString() as HexString, scId, erc20],
+            inputsEncoded: encodePacked(['uint64', 'bytes16', 'address'], [poolId, scId, erc20]),
+          },
+        ],
       },
     ]
 
@@ -222,10 +505,7 @@ describe('MerkleProofManager', () => {
     context.tenderlyFork.impersonateAddress = fundManager
     centrifugeWithPin.setSigner(context.tenderlyFork.signer)
 
-    await mpm.setPolicies(
-      strategist,
-      mockPolicies.map((p) => ({ ...p, argsEncoded: undefined }))
-    )
+    await mpm.setPolicies(strategist, mockPolicies)
 
     const tree = getMerkleTree(SimpleMerkleTree, mockPolicies)
 
@@ -242,9 +522,53 @@ describe('MerkleProofManager', () => {
   it('can execute calls', async () => {
     const { vaultRouter } = await context.centrifuge._protocolAddresses(chainId)
 
+    const mock = sinon.stub(merkleProofManager.pool, 'metadata')
+    mock.returns(
+      makeThenable(
+        of({
+          merkleProofManager: {
+            [chainId]: {
+              [strategist.toLowerCase()]: { policies: mockPolicies },
+            },
+          },
+        } as any)
+      )
+    )
+
+    const centrifugeWithPin = new Centrifuge({
+      environment: 'testnet',
+      pinJson: async () => {
+        return 'abc'
+      },
+      rpcUrls: {
+        11155111: context.tenderlyFork.rpcUrl,
+      },
+    })
+    context.tenderlyFork.impersonateAddress = fundManager
+    centrifugeWithPin.setSigner(context.tenderlyFork.signer)
+    const mpm = new MerkleProofManager(centrifugeWithPin, merkleProofManager.network, mpmAddress)
+    await mpm.setPolicies(strategist, mockPolicies)
+
     await context.tenderlyFork.fundAccountEth(strategist, 10n ** 18n)
     context.tenderlyFork.impersonateAddress = strategist
     context.centrifuge.setSigner(context.tenderlyFork.signer)
+
+    await merkleProofManager.execute([{ policy: mockPolicies[0]!, inputs: [vaultRouter, 123_000_000n] }])
+
+    const balance = await context.centrifuge.getClient(chainId).readContract({
+      address: someErc20,
+      abi: ABI.Currency,
+      functionName: 'allowance',
+      args: [mpmAddress, vaultRouter],
+    })
+
+    expect(balance).to.equal(123_000_000n)
+
+    mock.restore()
+  })
+
+  it('cannot execute calls with invalid proof', async () => {
+    const { vaultRouter } = await context.centrifuge._protocolAddresses(chainId)
 
     const mock = sinon.stub(merkleProofManager.pool, 'metadata')
     mock.returns(
@@ -259,17 +583,153 @@ describe('MerkleProofManager', () => {
       )
     )
 
-    await merkleProofManager.execute([{ policy: mockPolicies[0]!, inputs: [123_000_000n] }])
-
-    const balance = await context.centrifuge.getClient(chainId).readContract({
-      address: someErc20,
-      abi: ABI.Currency,
-      functionName: 'allowance',
-      args: [mpmAddress, vaultRouter],
+    const centrifugeWithPin = new Centrifuge({
+      environment: 'testnet',
+      pinJson: async () => {
+        return 'abc'
+      },
+      rpcUrls: {
+        11155111: context.tenderlyFork.rpcUrl,
+      },
     })
+    context.tenderlyFork.impersonateAddress = fundManager
+    centrifugeWithPin.setSigner(context.tenderlyFork.signer)
 
-    expect(balance).to.equal(123_000_000n)
+    await context.tenderlyFork.fundAccountEth(strategist, 10n ** 18n)
+    context.tenderlyFork.impersonateAddress = strategist
+    context.centrifuge.setSigner(context.tenderlyFork.signer)
+
+    try {
+      await merkleProofManager.execute([{ policy: mockPolicies[0]!, inputs: [vaultRouter, 123_000_000n] }])
+    } catch (e) {
+      expect((e as Error).message).to.include('Transaction reverted')
+    }
 
     mock.restore()
+  })
+
+  describe('generateCombinations', () => {
+    it('generates all combinations of inputs', async () => {
+      const policyInput: MerkleProofPolicyInput = {
+        decoder: '0xDecoder',
+        target: '0xTarget',
+        action: 'someAction',
+        selector: 'function doSomething(uint256 a, address b, uint256 c)',
+        inputs: [
+          {
+            parameter: 'a',
+            input: ['0x1', '0x2'],
+          },
+          {
+            parameter: 'b',
+            input: ['0xAddress1', '0xAddress2'],
+          },
+          {
+            parameter: 'c',
+            input: ['0x3'],
+          },
+        ],
+      }
+
+      const expectedCombinations: (HexString | null)[][] = [
+        ['0x1', '0xAddress1', '0x3'],
+        ['0x1', '0xAddress2', '0x3'],
+        ['0x2', '0xAddress1', '0x3'],
+        ['0x2', '0xAddress2', '0x3'],
+      ]
+
+      const combinations = generateCombinations(policyInput.inputs)
+      expect(combinations).to.deep.equal(expectedCombinations)
+    })
+
+    it('handles inputs that are null', () => {
+      const policyInput: MerkleProofPolicyInput = {
+        decoder: '0xDecoder',
+        target: '0xTarget',
+        action: 'someAction',
+        selector: 'function doSomething()',
+        inputs: [
+          {
+            parameter: 'a',
+            input: [],
+          },
+          {
+            parameter: 'b',
+            input: ['0xAddress1', '0xAddress2'],
+          },
+          {
+            parameter: 'c',
+            input: ['0x3'],
+          },
+        ],
+      }
+
+      const expectedCombinations: (HexString | null)[][] = [
+        [null, '0xAddress1', '0x3'],
+        [null, '0xAddress2', '0x3'],
+      ]
+
+      const combinations = generateCombinations(policyInput.inputs)
+      expect(combinations).to.deep.equal(expectedCombinations)
+    })
+
+    it('handles many inputs with mix of nulls and values', () => {
+      const policyInput: MerkleProofPolicyInput = {
+        decoder: '0xDecoder',
+        target: '0xTarget',
+        action: 'someAction',
+        selector: 'function doSomething()',
+        inputs: [
+          {
+            parameter: 'a',
+            input: ['0x1', '0x2', '0x3'],
+          },
+          {
+            parameter: 'b',
+            input: [],
+          },
+          {
+            parameter: 'c',
+            input: ['0x4', '0x5'],
+          },
+          {
+            parameter: 'd',
+            input: ['0x6'],
+          },
+          {
+            parameter: 'e',
+            input: [],
+          },
+        ],
+      }
+
+      const expectedCombinations: (HexString | null)[][] = [
+        ['0x1', null, '0x4', '0x6', null],
+        ['0x1', null, '0x5', '0x6', null],
+        ['0x2', null, '0x4', '0x6', null],
+        ['0x2', null, '0x5', '0x6', null],
+        ['0x3', null, '0x4', '0x6', null],
+        ['0x3', null, '0x5', '0x6', null],
+      ]
+
+      const combinations = generateCombinations(policyInput.inputs)
+      expect(combinations).to.deep.equal(expectedCombinations)
+    })
+
+    it('handles empty inputs', () => {
+      const policyInput: MerkleProofPolicyInput = {
+        decoder: '0xDecoder',
+        target: '0xTarget',
+        action: 'someAction',
+        selector: 'function doSomething()',
+        inputs: [],
+      }
+
+      try {
+        generateCombinations(policyInput.inputs)
+      } catch (error) {
+        expect((error as Error).message).to.include('No inputs provided for generating combinations')
+      }
+    })
   })
 })

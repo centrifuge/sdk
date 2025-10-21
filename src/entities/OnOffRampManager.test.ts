@@ -84,7 +84,7 @@ describe('OnOffRampManager', () => {
     it('should return relayers', async () => {
       const relayers = await onOffRampManager.relayers()
 
-      expect(relayers.length).to.equal(3)
+      expect(relayers.length).to.equal(4)
       expect(relayers[0]!.address).to.equal('0x000000000000000000000000000ffc2d83c1400c')
     })
 

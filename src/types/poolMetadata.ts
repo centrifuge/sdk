@@ -6,19 +6,40 @@ export type MerkleProofPolicy = {
   assetId?: string
   decoder: HexString
   target: HexString
-  targetName?: string
+  action?: string
   /** e.g. 'function requestDeposit(uint256 assets, address controller, address owner) returns (uint256)' */
-  abi: string
+  selector: string
   valueNonZero: boolean
-  /** Fixed arguments in their right position, null for strategist inputs. Example for ERC7540.requestDeposit: [null, controller, owner] */
-  args: (HexString | string | null)[]
-  /** To avoid reading the decoder whenever we want to build the merkle tree */
-  argsEncoded: HexString
+  /** Fixed arguments in their right position, null for strategist inputs.
+   * Example for ERC7540.requestDeposit:
+   *   "inputs": [
+   *     {
+   *       "parameter": "assets",
+   *       "input": [] // Empty means user can input anything
+   *     },
+   *     {
+   *       "parameter": "controller",
+   *       "input": ["address1"] // Only 1 option possible
+   *     },
+   *     {
+   *       "parameter": "owner",
+   *       "input": ["address1", "address2"] // Only 2 options possible
+   *     }
+   *  ]
+   */
+  inputs: {
+    parameter: string
+    input: HexString[]
+  }[]
+  inputCombinations: {
+    inputs: (HexString | null)[]
+    inputsEncoded: HexString
+  }[]
 }
 
 export type MerkleProofPolicyInput = Pick<
   MerkleProofPolicy,
-  'assetId' | 'target' | 'decoder' | 'targetName' | 'abi' | 'args'
+  'assetId' | 'target' | 'decoder' | 'action' | 'selector' | 'inputs'
 > & {
   valueNonZero?: boolean
 }
