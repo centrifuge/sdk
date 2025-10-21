@@ -8,10 +8,10 @@ import { Centrifuge } from '../Centrifuge.js'
 import { HexString } from '../index.js'
 import { context } from '../tests/setup.js'
 import { randomAddress } from '../tests/utils.js'
-import { MerkleProofPolicy } from '../types/poolMetadata.js'
+import { MerkleProofPolicy, MerkleProofPolicyInput } from '../types/poolMetadata.js'
 import { makeThenable } from '../utils/rx.js'
 import { AssetId, PoolId, ShareClassId } from '../utils/types.js'
-import { getMerkleTree, MerkleProofManager } from './MerkleProofManager.js'
+import { generateCombinations, getMerkleTree, MerkleProofManager } from './MerkleProofManager.js'
 import { Pool } from './Pool.js'
 import { PoolNetwork } from './PoolNetwork.js'
 
@@ -28,7 +28,7 @@ const fundManager = '0x423420Ae467df6e90291fd0252c0A8a637C1e03f'
 const mpmAddress = '0x9E14250c4C53bdcA1437F7EDa25B0D9ca46CfFE2'
 const vaultDecoder = '0x8E5bE47D081F53033eb7C9DB3ad31BaF67F15585'
 
-describe('MerkleProofManager', () => {
+describe.only('MerkleProofManager', () => {
   let pool: Pool
   let merkleProofManager: MerkleProofManager
   let mockPolicies: MerkleProofPolicy[]
@@ -606,5 +606,129 @@ describe('MerkleProofManager', () => {
     }
 
     mock.restore()
+  })
+
+  describe('generateCombinations', () => {
+    it('generates all combinations of inputs', async () => {
+      const policyInput: MerkleProofPolicyInput = {
+        decoder: '0xDecoder',
+        target: '0xTarget',
+        action: 'someAction',
+        selector: 'function doSomething(uint256 a, address b, uint256 c)',
+        inputs: [
+          {
+            parameter: 'a',
+            input: ['0x1', '0x2'],
+          },
+          {
+            parameter: 'b',
+            input: ['0xAddress1', '0xAddress2'],
+          },
+          {
+            parameter: 'c',
+            input: ['0x3'],
+          },
+        ],
+      }
+
+      const expectedCombinations: (HexString | null)[][] = [
+        ['0x1', '0xAddress1', '0x3'],
+        ['0x1', '0xAddress2', '0x3'],
+        ['0x2', '0xAddress1', '0x3'],
+        ['0x2', '0xAddress2', '0x3'],
+      ]
+
+      const combinations = generateCombinations(policyInput.inputs)
+      expect(combinations).to.deep.equal(expectedCombinations)
+    })
+
+    it('handles inputs that are null', () => {
+      const policyInput: MerkleProofPolicyInput = {
+        decoder: '0xDecoder',
+        target: '0xTarget',
+        action: 'someAction',
+        selector: 'function doSomething()',
+        inputs: [
+          {
+            parameter: 'a',
+            input: [],
+          },
+          {
+            parameter: 'b',
+            input: ['0xAddress1', '0xAddress2'],
+          },
+          {
+            parameter: 'c',
+            input: ['0x3'],
+          },
+        ],
+      }
+
+      const expectedCombinations: (HexString | null)[][] = [
+        [null, '0xAddress1', '0x3'],
+        [null, '0xAddress2', '0x3'],
+      ]
+
+      const combinations = generateCombinations(policyInput.inputs)
+      expect(combinations).to.deep.equal(expectedCombinations)
+    })
+
+    it('handles many inputs with mix of nulls and values', () => {
+      const policyInput: MerkleProofPolicyInput = {
+        decoder: '0xDecoder',
+        target: '0xTarget',
+        action: 'someAction',
+        selector: 'function doSomething()',
+        inputs: [
+          {
+            parameter: 'a',
+            input: ['0x1', '0x2', '0x3'],
+          },
+          {
+            parameter: 'b',
+            input: [],
+          },
+          {
+            parameter: 'c',
+            input: ['0x4', '0x5'],
+          },
+          {
+            parameter: 'd',
+            input: ['0x6'],
+          },
+          {
+            parameter: 'e',
+            input: [],
+          },
+        ],
+      }
+
+      const expectedCombinations: (HexString | null)[][] = [
+        ['0x1', null, '0x4', '0x6', null],
+        ['0x1', null, '0x5', '0x6', null],
+        ['0x2', null, '0x4', '0x6', null],
+        ['0x2', null, '0x5', '0x6', null],
+        ['0x3', null, '0x4', '0x6', null],
+        ['0x3', null, '0x5', '0x6', null],
+      ]
+
+      const combinations = generateCombinations(policyInput.inputs)
+      expect(combinations).to.deep.equal(expectedCombinations)
+    })
+
+    it('handles empty inputs', () => {
+      const policyInput: MerkleProofPolicyInput = {
+        decoder: '0xDecoder',
+        target: '0xTarget',
+        action: 'someAction',
+        selector: 'function doSomething()',
+        inputs: [],
+      }
+
+      const expectedCombinations: (HexString | null)[][] = [[]]
+
+      const combinations = generateCombinations(policyInput.inputs)
+      expect(combinations).to.deep.equal(expectedCombinations)
+    })
   })
 })

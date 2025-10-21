@@ -57,29 +57,6 @@ export class MerkleProofManager extends Entity {
       const { metadata, shareClasses } = poolDetails
       const client = self._root.getClient(self.chainId)
 
-      function generateCombinations(inputs: MerkleProofPolicyInput['inputs']) {
-        function combine(index: number, current: (HexString | null)[][]) {
-          if (index >= inputs.length) return current
-
-          const nextInput = inputs[index]?.input
-          if (!nextInput) {
-            return []
-          }
-          const options = nextInput.length > 0 ? nextInput : [null]
-          const newCombinations = []
-
-          for (const combination of current) {
-            for (const option of options) {
-              newCombinations.push([...combination, option])
-            }
-          }
-
-          return combine(index + 1, newCombinations)
-        }
-
-        return combine(0, [[]])
-      }
-
       // Get the encoded args from chain by calling the decoder contract.
       async function getEncodedArgs(policy: MerkleProofPolicyInput, policyCombinations: (string | null)[][]) {
         const abi = parseAbiItem(policy.selector) as AbiFunction
@@ -295,4 +272,27 @@ export function getMerkleTree(MerkleTreeConstructor: typeof SimpleMerkleTree, po
 
 export function getMerkleProof(tree: SimpleMerkleTree, leaf: MerkleProofPolicy, argsEncoded: HexString) {
   return tree.getProof(toHashedPolicyLeaf(leaf, argsEncoded)) as HexString[]
+}
+
+export function generateCombinations(inputs: MerkleProofPolicyInput['inputs']) {
+  function combine(index: number, current: (HexString | null)[][]) {
+    if (index >= inputs.length) return current
+
+    const nextInput = inputs[index]?.input
+    if (!nextInput) {
+      return []
+    }
+    const options = nextInput.length > 0 ? nextInput : [null]
+    const newCombinations = []
+
+    for (const combination of current) {
+      for (const option of options) {
+        newCombinations.push([...combination, option])
+      }
+    }
+
+    return combine(index + 1, newCombinations)
+  }
+
+  return combine(0, [[]])
 }
