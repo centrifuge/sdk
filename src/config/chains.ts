@@ -4,11 +4,11 @@ import {
   avalanche,
   base,
   baseSepolia,
-  bsc,
-  bscTestnet,
   mainnet,
   plumeMainnet,
   sepolia,
+  bsc,
+  bscTestnet,
 } from 'viem/chains'
 
 export const chains = [

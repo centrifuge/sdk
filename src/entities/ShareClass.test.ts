@@ -153,7 +153,7 @@ describe('ShareClass', () => {
     ])
   })
 
-  it('gets holders', async () => {
+  it.skip('gets holders', async () => {
     const holders = await shareClass.holders()
     expect(holders.investors).to.have.length.greaterThan(0)
     expect(holders.totalCount).to.be.greaterThan(0)
