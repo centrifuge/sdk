@@ -11,6 +11,7 @@ import {
   bscTestnet,
 } from 'viem/chains'
 
+// TODO: convert to use the indexer to avoid hard coding
 export const chains = [
   mainnet,
   sepolia,
@@ -20,5 +21,6 @@ export const chains = [
   arbitrumSepolia,
   avalanche,
   plumeMainnet,
+  bsc,
   bscTestnet,
 ]
