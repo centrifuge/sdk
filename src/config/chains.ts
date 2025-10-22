@@ -1,8 +1,16 @@
-import { arbitrum, arbitrumSepolia, avalanche, base, baseSepolia, mainnet, plumeMainnet, sepolia } from 'viem/chains'
+import {
+  arbitrum,
+  arbitrumSepolia,
+  avalanche,
+  base,
+  baseSepolia,
+  bsc,
+  bscTestnet,
+  mainnet,
+  plumeMainnet,
+  sepolia,
+} from 'viem/chains'
 
-<<<<<<< Updated upstream
-export const chains = [mainnet, sepolia, base, baseSepolia, arbitrum, arbitrumSepolia, avalanche, plumeMainnet]
-=======
 export const chains = [
   mainnet,
   sepolia,
@@ -15,4 +23,3 @@ export const chains = [
   bsc,
   bscTestnet,
 ]
->>>>>>> Stashed changes
