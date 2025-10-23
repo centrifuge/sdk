@@ -149,7 +149,7 @@ export type PoolMetadata = {
     }[]
   }
   withdrawManagers?: Record<
-    string, // share class id
+    string,
     {
       assetAddress: HexString
       chainId: string
