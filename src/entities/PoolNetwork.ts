@@ -332,7 +332,7 @@ export class PoolNetwork extends Entity {
     return this._transact(async function* (ctx) {
       const { onOfframpManagerFactory } = await self._root._protocolAddresses(self.chainId)
 
-      yield* doTransaction('AddOnOfframpManager', ctx, () =>
+      yield* doTransaction('DeployOnOfframpManager', ctx, () =>
         ctx.walletClient.writeContract({
           address: onOfframpManagerFactory,
           abi: ABI.OnOffRampManagerFactory,
