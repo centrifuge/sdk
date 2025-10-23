@@ -25,7 +25,7 @@ const assetId = AssetId.from(centId, 1)
 const someErc20 = '0x3aaaa86458d576BafCB1B7eD290434F0696dA65c'
 
 const fundManager = '0x423420Ae467df6e90291fd0252c0A8a637C1e03f'
-const mpmAddress = '0x9E14250c4C53bdcA1437F7EDa25B0D9ca46CfFE2'
+const mpmAddress = '0x9E5FD1A9D960d8CfA76Ad1dd2F5D8FEeB5bdD382'
 const vaultDecoder = '0x8E5bE47D081F53033eb7C9DB3ad31BaF67F15585'
 
 describe('MerkleProofManager', () => {

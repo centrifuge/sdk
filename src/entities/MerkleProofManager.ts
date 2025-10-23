@@ -162,7 +162,7 @@ export class MerkleProofManager extends Entity {
               shareClasses[0]!.shareClass.id.raw,
               id,
               addressToBytes32(self.address),
-              encode([addressToBytes32(strategist), rootHash]),
+              encode([strategist, rootHash]),
               0n,
               ctx.signingAddress,
             ],
