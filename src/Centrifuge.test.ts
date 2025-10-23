@@ -46,7 +46,6 @@ describe('Centrifuge', () => {
   it('should fetch protocol addresses for the demo chain (sepolia)', async () => {
     const expectedContractKeys = [
       'root',
-      'guardian',
       'gasService',
       'gateway',
       'multiAdapter',
@@ -507,7 +506,7 @@ describe('Centrifuge', () => {
     })
 
     it('should create a pool', async () => {
-      const { guardian } = await context.centrifuge._protocolAddresses(chainId)
+      const { opsGuardian } = await context.centrifuge._protocolAddresses(chainId)
       const centrifugeWithPin = new Centrifuge({
         environment: 'testnet',
         pinJson: async () => {
@@ -518,9 +517,9 @@ describe('Centrifuge', () => {
         },
       })
 
-      await context.tenderlyFork.fundAccountEth(guardian, 10n ** 18n)
+      await context.tenderlyFork.fundAccountEth(opsGuardian, 10n ** 18n)
 
-      context.tenderlyFork.impersonateAddress = guardian
+      context.tenderlyFork.impersonateAddress = opsGuardian
       centrifugeWithPin.setSigner(context.tenderlyFork.signer)
 
       const result = await centrifugeWithPin.createPool(

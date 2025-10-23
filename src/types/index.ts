@@ -39,7 +39,6 @@ export type CurrencyDetails = {
 
 export type ProtocolContracts = {
   root: HexString
-  guardian: HexString
   gasService: HexString
   gateway: HexString
   multiAdapter: HexString
@@ -71,4 +70,18 @@ export type ProtocolContracts = {
   balanceSheet: HexString
   merkleProofManagerFactory: HexString
   onOfframpManagerFactory: HexString
+  tokenRecoverer: HexString
+  contractUpdater: HexString
+  vaultDecoder: HexString
+  circleDecoder: HexString
+  hubHandler: HexString
+  protocolGuardian: HexString
+  opsGuardian: HexString
+  refundEscrowFactory: HexString
+  freelyTransferableHook: HexString
+  queueManager: HexString
+  oracleValuation: HexString
+  navManager: HexString
+  simplePriceManager: HexString
+  layerZeroAdapter?: HexString
 }

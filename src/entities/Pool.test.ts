@@ -316,6 +316,18 @@ describe('Pool', () => {
     expect(updatedShareClassSymbol).to.equal('sep.poo.one2')
   })
 
+  it('creates accounts', async () => {
+    context.tenderlyFork.impersonateAddress = poolManager
+    context.centrifuge.setSigner(context.tenderlyFork.signer)
+
+    const result = await pool.createAccounts([
+      { accountId: 111n, isDebitNormal: true },
+      { accountId: 222n, isDebitNormal: false },
+      { accountId: 333n, isDebitNormal: true },
+    ])
+    expect(result.type).to.equal('TransactionConfirmed')
+  })
+
   it('should update the pool metadata', async () => {
     const fakeHash = 'QmPdzJkZ4PVJ21HfBXMJbGopSpUP9C9fqu3A1f9ZVhtRY2'
 
