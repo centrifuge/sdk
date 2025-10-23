@@ -148,4 +148,17 @@ export type PoolMetadata = {
       label?: string
     }[]
   }
+  withdrawManagers?: Record<
+    string,
+    Record<
+      string,
+      Record<
+        string,
+        {
+          manager: HexString
+          label: string
+        }
+      >
+    >
+  >
 }
