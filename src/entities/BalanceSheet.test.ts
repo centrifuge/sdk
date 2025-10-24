@@ -71,5 +71,27 @@ describe('BalanceSheet', () => {
       expect(result[5]!.type).to.equal('TransactionConfirmed')
       expect((result[5] as any).title).to.equal('Deposit')
     })
+
+    // fix tests, right now it depends on indexer data which fails quite often
+    describe('issue and revoke', () => {
+      it.skip('issues and revokes shares', async () => {
+        context.tenderlyFork.impersonateAddress = poolManager
+        context.centrifuge.setSigner(context.tenderlyFork.signer)
+
+        await balanceSheet.pool.updateBalanceSheetManagers([{ chainId, address: poolManager, canManage: true }])
+
+        await balanceSheet.shareClass.setMaxAssetPriceAge(assetId, 9999999999999)
+        await balanceSheet.shareClass.notifyAssetPrice(assetId)
+
+        const pending = await firstValueFrom(balanceSheet.shareClass.pendingAmounts())
+        expect(pending.length).to.be.greaterThan(0)
+
+        const txIssue = await balanceSheet.issue()
+        expect(txIssue.type).to.equal('TransactionConfirmed')
+
+        const txRevoke = await balanceSheet.revoke()
+        expect(txRevoke.type).to.equal('TransactionConfirmed')
+      })
+    })
   })
 })
