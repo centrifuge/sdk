@@ -9,6 +9,7 @@ import { Entity } from './Entity.js'
 import type { Pool } from './Pool.js'
 import { PoolNetwork } from './PoolNetwork.js'
 import { ShareClass } from './ShareClass.js'
+import { firstValueFrom } from 'rxjs'
 
 /**
  * Query and interact with the balanceSheet, which is the main entry point for withdrawing and depositing funds.
@@ -113,6 +114,82 @@ export class BalanceSheet extends Entity {
       yield* wrapTransaction('Withdraw', ctx, {
         contract: balanceSheet,
         data: tx,
+      })
+    }, this.chainId)
+  }
+
+  issue() {
+    const self = this
+    return this._transact(async function* (ctx) {
+      const [{ balanceSheet }, isManager] = await Promise.all([
+        self._root._protocolAddresses(self.chainId),
+        self.pool.isBalanceSheetManager(self.chainId, ctx.signingAddress),
+      ])
+
+      if (!isManager) throw new Error('Signing address is not a BalanceSheetManager')
+
+      const pendingAmounts = await firstValueFrom(self.shareClass.pendingAmounts())
+      const approved = pendingAmounts.filter((a) => !a.pendingIssuancesTotal.isZero())
+
+      if (approved.length === 0) throw new Error('No approved investments to issue')
+
+      const { pricePerShare } = await self.shareClass.details()
+
+      const totalShares = approved.reduce(
+        (acc, item) => {
+          const shares = item.pendingIssuancesTotal.div(pricePerShare.toDecimal())
+          return acc.add(shares)
+        },
+        new Balance(0n, 18)
+      )
+
+      if (totalShares.eq(0n)) throw new Error('Total shares to issue is 0')
+
+      yield* doTransaction('Issue', ctx, () => {
+        return ctx.walletClient.writeContract({
+          address: balanceSheet,
+          abi: ABI.BalanceSheet,
+          functionName: 'issue',
+          args: [self.pool.id.raw, self.shareClass.id.raw, ctx.signingAddress, totalShares.toBigInt()],
+        })
+      })
+    }, this.chainId)
+  }
+
+  revoke() {
+    const self = this
+    return this._transact(async function* (ctx) {
+      const [{ balanceSheet }, isManager] = await Promise.all([
+        self._root._protocolAddresses(self.chainId),
+        self.pool.isBalanceSheetManager(self.chainId, ctx.signingAddress),
+      ])
+
+      if (!isManager) throw new Error('Signing address is not a BalanceSheetManager')
+
+      const pendingAmounts = await firstValueFrom(self.shareClass.pendingAmounts())
+      const approved = pendingAmounts.filter((a) => !a.pendingRevocationsTotal.isZero())
+
+      if (approved.length === 0) throw new Error('No approved redemptions to revoke')
+
+      const { pricePerShare } = await self.shareClass.details()
+
+      const totalShares = approved.reduce(
+        (acc, item) => {
+          const shares = item.pendingRevocationsTotal.div(pricePerShare.toDecimal())
+          return acc.add(shares)
+        },
+        new Balance(0n, 18)
+      )
+
+      if (totalShares.eq(0n)) throw new Error('Total shares to revoke is 0')
+
+      yield* doTransaction('Revoke', ctx, () => {
+        return ctx.walletClient.writeContract({
+          address: balanceSheet,
+          abi: ABI.BalanceSheet,
+          functionName: 'revoke',
+          args: [self.pool.id.raw, self.shareClass.id.raw, totalShares.toBigInt()],
+        })
       })
     }, this.chainId)
   }

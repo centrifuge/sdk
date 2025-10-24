@@ -71,5 +71,42 @@ describe('BalanceSheet', () => {
       expect(result[5]!.type).to.equal('TransactionConfirmed')
       expect((result[5] as any).title).to.equal('Deposit')
     })
+
+    describe('issue and revoke', () => {
+      it('throws an error during issue if signing address is not a BalanceSheetManager', async () => {
+        try {
+          await balanceSheet.issue()
+        } catch (error: any) {
+          expect(error.message).to.include('Signing address is not a BalanceSheetManager')
+        }
+      })
+
+      it('throws an error during revoke if signing address is not a BalanceSheetManager', async () => {
+        try {
+          await balanceSheet.revoke()
+        } catch (error: any) {
+          expect(error.message).to.include('Signing address is not a BalanceSheetManager')
+        }
+      })
+
+      it.skip('issues and revokes shares', async () => {
+        context.tenderlyFork.impersonateAddress = poolManager
+        context.centrifuge.setSigner(context.tenderlyFork.signer)
+
+        await balanceSheet.pool.updateBalanceSheetManagers([{ chainId, address: poolManager, canManage: true }])
+
+        await balanceSheet.shareClass.setMaxAssetPriceAge(assetId, 9999999999999)
+        await balanceSheet.shareClass.notifyAssetPrice(assetId)
+
+        const pending = await firstValueFrom(balanceSheet.shareClass.pendingAmounts())
+        expect(pending.length).to.be.greaterThan(0)
+
+        const txIssue = await balanceSheet.issue()
+        expect(txIssue.type).to.equal('TransactionConfirmed')
+
+        const txRevoke = await balanceSheet.revoke()
+        expect(txRevoke.type).to.equal('TransactionConfirmed')
+      })
+    })
   })
 })
