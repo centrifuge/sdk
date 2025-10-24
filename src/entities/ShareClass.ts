@@ -276,18 +276,34 @@ export class ShareClass extends Entity {
   pendingAmounts() {
     return this._query(['pendingAmounts'], () =>
       this._allVaults().pipe(
-        map((vaults) => vaults.filter((vault) => vault.status === 'Linked')),
+        map((vaults) => vaults.filter((v) => v.status === 'Linked')),
         switchMap((vaults) => {
-          if (vaults.length === 0) {
-            return of([])
-          }
-          return combineLatest(vaults.map((vault) => this._epoch(vault.assetId))).pipe(
-            map((epochs) => {
+          if (vaults.length === 0) return of([])
+
+          return combineLatest([
+            combineLatest(vaults.map((v) => this._epoch(v.assetId))),
+            this._epochOutstandingInvests(),
+            this._epochOutstandingRedeems(),
+          ]).pipe(
+            map(([epochs, outInv, outRed]) => {
+              const invByKey = new Map<string, Balance>()
+              outInv.forEach((o) => invByKey.set(`${o.assetId.toString()}-${o.chainId}`, o.amount))
+
+              const redByKey = new Map<string, Balance>()
+              outRed.forEach((o) => redByKey.set(`${o.assetId.toString()}-${o.chainId}`, o.amount))
+
               return epochs.map((epoch, i) => {
                 const vault = vaults[i]!
+                const key = `${vault.assetId.toString()}-${vault.chainId}`
+
+                const queuedInvest = invByKey.get(key) ?? new Balance(0n, 18)
+                const queuedRedeem = redByKey.get(key) ?? new Balance(0n, 18)
+
                 return {
                   assetId: vault.assetId,
                   chainId: vault.chainId,
+                  queuedInvest,
+                  queuedRedeem,
                   ...epoch,
                 }
               })
@@ -1802,6 +1818,84 @@ export class ShareClass extends Entity {
   }
 
   /** @internal */
+  _epochOutstandingInvests() {
+    return this._query(['epochOutstandingInvests'], () =>
+      combineLatest([this._root._deployments()]).pipe(
+        switchMap(([deployments]) =>
+          this._root._queryIndexer(
+            `query ($scId: String!) {
+            epochOutstandingInvests(where: { tokenId: $scId }, limit: 1000) {
+              items {
+                assetId
+                pendingAssetsAmount
+                asset { decimals centrifugeId }
+              }
+            }
+          }`,
+            { scId: this.id.raw },
+            (data: {
+              epochOutstandingInvests: {
+                items: {
+                  assetId: string
+                  pendingAssetsAmount: string
+                  asset: { decimals: number; centrifugeId: string }
+                }[]
+              }
+            }) => {
+              const chainsById = new Map(deployments.blockchains.items.map((c) => [c.centrifugeId, c.id]))
+
+              return data.epochOutstandingInvests.items.map((item) => ({
+                assetId: new AssetId(item.assetId),
+                chainId: Number(chainsById.get(item.asset.centrifugeId)),
+                amount: new Balance(BigInt(item.pendingAssetsAmount || 0), item.asset.decimals),
+              }))
+            }
+          )
+        )
+      )
+    )
+  }
+
+  /** @internal */
+  _epochOutstandingRedeems() {
+    return this._query(['epochOutstandingRedeems'], () =>
+      combineLatest([this._root._deployments()]).pipe(
+        switchMap(([deployments]) =>
+          this._root._queryIndexer(
+            `query ($scId: String!) {
+            epochOutstandingRedeems(where: { tokenId: $scId }, limit: 1000) {
+              items {
+                assetId
+                pendingSharesAmount
+                asset { decimals centrifugeId }
+              }
+            }
+          }`,
+            { scId: this.id.raw },
+            (data: {
+              epochOutstandingRedeems: {
+                items: {
+                  assetId: string
+                  pendingSharesAmount: string
+                  asset: { decimals: number; centrifugeId: string }
+                }[]
+              }
+            }) => {
+              const chainsById = new Map(deployments.blockchains.items.map((c) => [c.centrifugeId, c.id]))
+
+              return data.epochOutstandingRedeems.items.map((item) => ({
+                assetId: new AssetId(item.assetId),
+                chainId: Number(chainsById.get(item.asset.centrifugeId)),
+                amount: new Balance(BigInt(item.pendingSharesAmount || 0), 18),
+              }))
+            }
+          )
+        )
+      )
+    )
+  }
+
+  /** @internal */
   _share(chainId: number) {
     return this._query(['share', chainId], () =>
       this.pool.network(chainId).pipe(switchMap((network) => network._share(this.id)))
@@ -1970,6 +2064,51 @@ export class ShareClass extends Entity {
             }
           })
         )
+    )
+  }
+
+  /** @internal */
+  _epochOutstandingInvest() {
+    return this._query(['epochOutstandingInvests'], () =>
+      this._root._queryIndexer(
+        `query ($scId: String!) {
+          epochOutstandingInvests(where: {tokenId: $scId}, limit: 1000) {
+            items {
+              pendingAssetsAmount
+              asset {
+               decimals
+              }
+            }
+          }
+        }`,
+        { scId: this.id.raw },
+        (data: {
+          epochRedeemOrders: {
+            items: {
+              approvedAt: Date
+              assetId: AssetId
+              index: number
+            }[]
+          }
+        }) => {
+          const ordersMap = new Map<string, { approvedAt: Date; assetId: AssetId; index: number }[]>()
+
+          data.epochRedeemOrders.items.forEach((item) => {
+            const key = item.assetId.toString()
+            if (!ordersMap.has(key)) {
+              ordersMap.set(key, [])
+            }
+
+            ordersMap.get(key)![item.index] = {
+              approvedAt: item.approvedAt,
+              assetId: item.assetId,
+              index: item.index,
+            }
+          })
+
+          return ordersMap
+        }
+      )
     )
   }
 }
