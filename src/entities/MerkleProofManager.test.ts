@@ -14,6 +14,7 @@ import { AssetId, PoolId, ShareClassId } from '../utils/types.js'
 import { generateCombinations, getMerkleTree, MerkleProofManager } from './MerkleProofManager.js'
 import { Pool } from './Pool.js'
 import { PoolNetwork } from './PoolNetwork.js'
+import { SimulationStatus } from '../types/transaction.js'
 
 const chainId = 11155111
 const centId = 1
@@ -730,6 +731,82 @@ describe('MerkleProofManager', () => {
       } catch (error) {
         expect((error as Error).message).to.include('No inputs provided for generating combinations')
       }
+    })
+  })
+
+  describe('simulate', () => {
+    it('simulates execution of calls', async () => {
+      const { vaultRouter } = await context.centrifuge._protocolAddresses(chainId)
+
+      const mock = sinon.stub(merkleProofManager.pool, 'metadata')
+      mock.returns(
+        makeThenable(
+          of({
+            merkleProofManager: {
+              [chainId]: {
+                [strategist.toLowerCase()]: { policies: mockPolicies },
+              },
+            },
+          } as any)
+        )
+      )
+
+      const centrifugeWithPin = new Centrifuge({
+        environment: 'testnet',
+        pinJson: async () => {
+          return 'abc'
+        },
+        rpcUrls: {
+          11155111: context.tenderlyFork.rpcUrl,
+        },
+      })
+      context.tenderlyFork.impersonateAddress = fundManager
+      centrifugeWithPin.setSigner(context.tenderlyFork.signer)
+      const mpm = new MerkleProofManager(centrifugeWithPin, merkleProofManager.network, mpmAddress)
+      await mpm.setPolicies(strategist, mockPolicies)
+
+      await context.tenderlyFork.fundAccountEth(strategist, 10n ** 18n)
+      context.tenderlyFork.impersonateAddress = strategist
+      context.centrifuge.setSigner(context.tenderlyFork.signer)
+
+      const result = (await merkleProofManager.execute(
+        [{ policy: mockPolicies[0]!, inputs: [vaultRouter, 123_000_000n] }],
+        { simulate: true }
+      )) as SimulationStatus
+
+      expect(result.type).to.equal('simulation')
+      expect(result.title).to.equal('Execute calls')
+      expect(result.result).to.have.length(1)
+      expect(result.result[0]!.status).to.equal('success')
+      expect(result.result[0]!.logs).to.have.length(2)
+
+      mock.restore()
+    })
+
+    it('simulates multi calls to set policies', async () => {
+      const centrifugeWithPin = new Centrifuge({
+        environment: 'testnet',
+        pinJson: async (data) => {
+          expect(data.merkleProofManager[chainId][strategist].policies).to.deep.equal(mockPolicies)
+          // Simulate pinning JSON and returning a CID
+          return 'abc'
+        },
+        rpcUrls: {
+          11155111: context.tenderlyFork.rpcUrl,
+        },
+      })
+      const mpm = new MerkleProofManager(centrifugeWithPin, merkleProofManager.network, mpmAddress)
+
+      context.tenderlyFork.impersonateAddress = fundManager
+      centrifugeWithPin.setSigner(context.tenderlyFork.signer)
+
+      const result = (await mpm.setPolicies(strategist, mockPolicies, { simulate: true })) as SimulationStatus
+
+      expect(result.type).to.equal('simulation')
+      expect(result.title).to.equal('Set policies')
+      expect(result.result).to.have.length(1)
+      expect(result.result[0]!.status).to.equal('success')
+      expect(result.result[0]!.logs).to.have.length(4)
     })
   })
 })

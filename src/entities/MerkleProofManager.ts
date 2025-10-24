@@ -45,7 +45,13 @@ export class MerkleProofManager extends Entity {
     )
   }
 
-  setPolicies(strategist: HexString, policyInputs: MerkleProofPolicyInput[]) {
+  setPolicies(
+    strategist: HexString,
+    policyInputs: MerkleProofPolicyInput[],
+    options?: {
+      simulate: boolean
+    }
+  ) {
     const self = this
     return this._transact(async function* (ctx) {
       const [{ hub }, id, poolDetails, { SimpleMerkleTree: SimpleMerkleTreeConstructor }] = await Promise.all([
@@ -146,32 +152,37 @@ export class MerkleProofManager extends Entity {
 
       const cid = await self._root.config.pinJson(newMetadata)
 
-      yield* wrapTransaction('Set policies', ctx, {
-        contract: hub,
-        data: [
-          encodeFunctionData({
-            abi: ABI.Hub,
-            functionName: 'setPoolMetadata',
-            args: [self.pool.id.raw, toHex(cid)],
-          }),
-          encodeFunctionData({
-            abi: ABI.Hub,
-            functionName: 'updateContract',
-            args: [
-              self.pool.id.raw,
-              shareClasses[0]!.shareClass.id.raw,
-              id,
-              addressToBytes32(self.address),
-              encodePacked(
-                ['uint8', 'bytes32', 'bytes32'],
-                [/* UpdateContractType.Policy */ 4, addressToBytes32(strategist), rootHash]
-              ),
-              0n,
-            ],
-          }),
-        ],
-        messages: { [id]: [MessageType.UpdateContract] },
-      })
+      yield* wrapTransaction(
+        'Set policies',
+        ctx,
+        {
+          contract: hub,
+          data: [
+            encodeFunctionData({
+              abi: ABI.Hub,
+              functionName: 'setPoolMetadata',
+              args: [self.pool.id.raw, toHex(cid)],
+            }),
+            encodeFunctionData({
+              abi: ABI.Hub,
+              functionName: 'updateContract',
+              args: [
+                self.pool.id.raw,
+                shareClasses[0]!.shareClass.id.raw,
+                id,
+                addressToBytes32(self.address),
+                encodePacked(
+                  ['uint8', 'bytes32', 'bytes32'],
+                  [/* UpdateContractType.Policy */ 4, addressToBytes32(strategist), rootHash]
+                ),
+                0n,
+              ],
+            }),
+          ],
+          messages: { [id]: [MessageType.UpdateContract] },
+        },
+        options && { simulate: options.simulate }
+      )
     }, this.pool.chainId)
   }
 
@@ -188,7 +199,10 @@ export class MerkleProofManager extends Entity {
       policy: MerkleProofPolicy
       inputs: (string | number | bigint | Balance | Price)[]
       value?: bigint
-    }[]
+    }[],
+    options?: {
+      simulate: boolean
+    }
   ) {
     const self = this
     return this._transact(async function* (ctx) {
@@ -240,15 +254,20 @@ export class MerkleProofManager extends Entity {
         }
       })
 
-      yield* wrapTransaction('Execute calls', ctx, {
-        contract: self.address,
-        data: encodeFunctionData({
-          abi: ABI.MerkleProofManager,
-          functionName: 'execute',
-          args: [formattedCalls],
-        }),
-        value: calls.reduce((acc, call) => acc + (call.value ?? 0n), 0n),
-      })
+      yield* wrapTransaction(
+        'Execute calls',
+        ctx,
+        {
+          contract: self.address,
+          data: encodeFunctionData({
+            abi: ABI.MerkleProofManager,
+            functionName: 'execute',
+            args: [formattedCalls],
+          }),
+          value: calls.reduce((acc, call) => acc + (call.value ?? 0n), 0n),
+        },
+        options && { simulate: options.simulate }
+      )
     }, this.chainId)
   }
 }
