@@ -118,6 +118,9 @@ export class BalanceSheet extends Entity {
     }, this.chainId)
   }
 
+  /**
+   * Ability to issue directly into the balance sheet.
+   */
   issue() {
     const self = this
     return this._transact(async function* (ctx) {
