@@ -118,7 +118,7 @@ export class BalanceSheet extends Entity {
     }, this.chainId)
   }
 
-  issue(amount: Balance) {
+  issue(to: HexString, amount: Balance) {
     const self = this
     return this._transact(async function* (ctx) {
       const [{ balanceSheet }, isManager] = await Promise.all([
@@ -130,20 +130,20 @@ export class BalanceSheet extends Entity {
       const { pricePerShare } = await self.shareClass.details()
       const shares = amount.div(pricePerShare.toDecimal())
 
-      if (shares.eq(0n)) throw new Error('Share amount cannot be 0')
+      if (shares.eq(0n)) throw new Error('Cannot issue 0 shares')
 
-      yield* doTransaction('Issue', ctx, () =>
+      yield* doTransaction(`Issue shares`, ctx, () =>
         ctx.walletClient.writeContract({
           address: balanceSheet,
           abi: ABI.BalanceSheet,
           functionName: 'issue',
-          args: [self.pool.id.raw, self.shareClass.id.raw, ctx.signingAddress, shares.toBigInt()],
+          args: [self.pool.id.raw, self.shareClass.id.raw, to, shares.toBigInt()],
         })
       )
     }, this.chainId)
   }
 
-  revoke(amount: Balance) {
+  revoke(from: HexString, amount: Balance) {
     const self = this
     return this._transact(async function* (ctx) {
       const [{ balanceSheet }, isManager] = await Promise.all([
@@ -155,14 +155,14 @@ export class BalanceSheet extends Entity {
       const { pricePerShare } = await self.shareClass.details()
       const shares = amount.div(pricePerShare.toDecimal())
 
-      if (shares.eq(0n)) throw new Error('Share amount cannot be 0')
+      if (shares.eq(0n)) throw new Error('Cannot revoke 0 shares')
 
-      yield* doTransaction('Revoke', ctx, () =>
+      yield* doTransaction(`Revoke shares`, ctx, () =>
         ctx.walletClient.writeContract({
           address: balanceSheet,
           abi: ABI.BalanceSheet,
           functionName: 'revoke',
-          args: [self.pool.id.raw, self.shareClass.id.raw, shares.toBigInt()],
+          args: [self.pool.id.raw, self.shareClass.id.raw, from, shares.toBigInt()],
         })
       )
     }, this.chainId)
