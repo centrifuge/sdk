@@ -1,5 +1,6 @@
 import {
   encodePacked,
+  Log,
   toHex,
   type Account,
   type Chain,
@@ -97,6 +98,19 @@ export type OperationSwitchChainStatus = {
   chainId: number
 }
 
+type SimulationResult = {
+  data: HexString
+  gasUsed: bigint
+  status: string
+  logs?: Log[]
+}
+
+export type SimulationStatus = {
+  type: 'simulation'
+  title: string
+  result: SimulationResult[]
+}
+
 export type OperationStatus =
   | OperationSigningStatus
   | OperationSigningMessageStatus
@@ -104,6 +118,7 @@ export type OperationStatus =
   | OperationPendingStatus
   | OperationConfirmedStatus
   | OperationSwitchChainStatus
+  | SimulationStatus
 
 export type EIP1193ProviderLike = {
   request(...args: any): Promise<any>
