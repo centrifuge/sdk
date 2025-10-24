@@ -2066,49 +2066,4 @@ export class ShareClass extends Entity {
         )
     )
   }
-
-  /** @internal */
-  _epochOutstandingInvest() {
-    return this._query(['epochOutstandingInvests'], () =>
-      this._root._queryIndexer(
-        `query ($scId: String!) {
-          epochOutstandingInvests(where: {tokenId: $scId}, limit: 1000) {
-            items {
-              pendingAssetsAmount
-              asset {
-               decimals
-              }
-            }
-          }
-        }`,
-        { scId: this.id.raw },
-        (data: {
-          epochRedeemOrders: {
-            items: {
-              approvedAt: Date
-              assetId: AssetId
-              index: number
-            }[]
-          }
-        }) => {
-          const ordersMap = new Map<string, { approvedAt: Date; assetId: AssetId; index: number }[]>()
-
-          data.epochRedeemOrders.items.forEach((item) => {
-            const key = item.assetId.toString()
-            if (!ordersMap.has(key)) {
-              ordersMap.set(key, [])
-            }
-
-            ordersMap.get(key)![item.index] = {
-              approvedAt: item.approvedAt,
-              assetId: item.assetId,
-              index: item.index,
-            }
-          })
-
-          return ordersMap
-        }
-      )
-    )
-  }
 }
