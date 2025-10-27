@@ -2,7 +2,7 @@ import { encodeFunctionData } from 'viem'
 import { ABI } from '../abi/index.js'
 import type { Centrifuge } from '../Centrifuge.js'
 import type { HexString } from '../types/index.js'
-import { Balance } from '../utils/BigInt.js'
+import { Balance, Price } from '../utils/BigInt.js'
 import { doTransaction, wrapTransaction } from '../utils/transaction.js'
 import { AssetId } from '../utils/types.js'
 import { Entity } from './Entity.js'
@@ -117,7 +117,7 @@ export class BalanceSheet extends Entity {
     }, this.chainId)
   }
 
-  issue(to: HexString, amount: Balance, pricePerShare: Balance) {
+  issue(to: HexString, amount: Balance, pricePerShare: Price) {
     const self = this
     return this._transact(async function* (ctx) {
       const [{ balanceSheet }, isManager] = await Promise.all([
@@ -152,7 +152,7 @@ export class BalanceSheet extends Entity {
     }, this.chainId)
   }
 
-  revoke(user: HexString, amount: Balance, pricePerShare: Balance) {
+  revoke(user: HexString, amount: Balance, pricePerShare: Price) {
     const self = this
     return this._transact(async function* (ctx) {
       const [{ balanceSheet }, isManager] = await Promise.all([
