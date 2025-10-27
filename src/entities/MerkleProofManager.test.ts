@@ -734,7 +734,8 @@ describe('MerkleProofManager', () => {
     })
   })
 
-  describe('simulate', () => {
+  // Enable once Tenderly supports eth_simulateV1 calls
+  describe.skip('simulate', () => {
     it('simulates execution of calls', async () => {
       const { vaultRouter } = await context.centrifuge._protocolAddresses(chainId)
 
