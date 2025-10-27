@@ -143,7 +143,7 @@ export class BalanceSheet extends Entity {
     }, this.chainId)
   }
 
-  revoke(from: HexString, amount: Balance) {
+  revoke(amount: Balance) {
     const self = this
     return this._transact(async function* (ctx) {
       const [{ balanceSheet }, isManager] = await Promise.all([
@@ -154,7 +154,6 @@ export class BalanceSheet extends Entity {
 
       const { pricePerShare } = await self.shareClass.details()
       const shares = amount.div(pricePerShare.toDecimal())
-
       if (shares.eq(0n)) throw new Error('Cannot revoke 0 shares')
 
       yield* doTransaction(`Revoke shares`, ctx, () =>
@@ -162,7 +161,7 @@ export class BalanceSheet extends Entity {
           address: balanceSheet,
           abi: ABI.BalanceSheet,
           functionName: 'revoke',
-          args: [self.pool.id.raw, self.shareClass.id.raw, from, shares.toBigInt()],
+          args: [self.pool.id.raw, self.shareClass.id.raw, shares.toBigInt()],
         })
       )
     }, this.chainId)

@@ -71,5 +71,45 @@ describe('BalanceSheet', () => {
       expect(result[5]!.type).to.equal('TransactionConfirmed')
       expect((result[5] as any).title).to.equal('Deposit')
     })
+
+    describe('issue and revoke', () => {
+      it('throws an error during issue if not BalanceSheetManager', async () => {
+        try {
+          await firstValueFrom(
+            balanceSheet.issue('0x1234567890123456789012345678901234567890', Balance.fromFloat(100, 6))
+          )
+        } catch (error: any) {
+          expect(error.message).to.include('Signing address is not a BalanceSheetManager')
+        }
+      })
+
+      it('throws an error during revoke if not BalanceSheetManager', async () => {
+        try {
+          await firstValueFrom(balanceSheet.revoke(Balance.fromFloat(100, 6)))
+        } catch (error: any) {
+          expect(error.message).to.include('Signing address is not a BalanceSheetManager')
+        }
+      })
+
+      it('issues and revokes shares successfully', async () => {
+        context.tenderlyFork.impersonateAddress = poolManager
+        context.centrifuge.setSigner(context.tenderlyFork.signer)
+
+        await balanceSheet.pool.updateBalanceSheetManagers([{ chainId, address: poolManager, canManage: true }])
+
+        const amount = Balance.fromFloat(100, 18)
+
+        await balanceSheet.shareClass.setMaxAssetPriceAge(assetId, 9999999999999)
+        await balanceSheet.shareClass.notifyAssetPrice(assetId)
+
+        const issueResult = await firstValueFrom(balanceSheet.issue(poolManager, amount).pipe(toArray()))
+        expect(issueResult.at(-1)?.type).to.equal('TransactionConfirmed')
+        expect((issueResult.at(-1) as any).title).to.equal('Issue shares')
+
+        const revokeResult = await firstValueFrom(balanceSheet.revoke(amount).pipe(toArray()))
+        expect(revokeResult.at(-1)?.type).to.equal('TransactionConfirmed')
+        expect((revokeResult.at(-1) as any).title).to.equal('Revoke shares')
+      })
+    })
   })
 })
