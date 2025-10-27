@@ -91,6 +91,9 @@ export class BalanceSheet extends Entity {
     }, this.chainId)
   }
 
+  /**
+   * Withdraw directly from the balance sheet
+   */
   withdraw(assetId: AssetId, to: HexString, amount: Balance) {
     const self = this
     return this._transact(async function* (ctx) {
