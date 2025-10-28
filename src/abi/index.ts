@@ -3,6 +3,7 @@ import AccountingAbi from './Accounting.abi.js'
 import AsyncRequestsAbi from './AsyncRequestManager.abi.js'
 import AsyncVaultAbit from './AsyncVault.abi.js'
 import BalanceSheetAbi from './BalanceSheet.abi.js'
+import BatchRequestManagerAbi from './BatchRequestManager.abi.js'
 import CurrencyAbi from './Currency.abi.js'
 import ERC6909Abi from './ERC6909.abi.js'
 import GasServiceAbi from './GasService.abi.js'
@@ -11,23 +12,25 @@ import HoldingsAbi from './Holdings.abi.js'
 import HubAbi from './Hub.abi.js'
 import HubRegistryAbi from './HubRegistry.abi.js'
 import MerkleProofManagerAbi from './MerkleProofManager.abi.js'
+import MerkleProofManagerFactoryAbi from './MerkleProofManagerFactory.abi.js'
 import MessageDispatcherAbi from './MessageDispatcher.abi.js'
 import MultiAdapterAbi from './MultiAdapter.abi.js'
+import OnOffRampManagerAbi from './OnOffRampManager.abi.js'
+import OnOffRampManagerFactoryAbi from './OnOffRampManagerFactory.abi.js'
 import PoolEscrowAbi from './PoolEscrow.abi.js'
 import PoolEscrowFactoryAbi from './PoolEscrowFactory.abi.js'
 import RestrictionManagerAbi from './RestrictionManager.abi.js'
 import ShareClassManagerAbi from './ShareClassManager.abi.js'
 import SpokeAbi from './Spoke.abi.js'
-import SyncRequestsAbi from './SyncRequestManager.abi.js'
+import SyncManagerAbi from './SyncManager.abi.js'
 import ValuationAbi from './Valuation.abi.js'
+import VaultRegistryAbi from './VaultRegistry.abi.js'
 import VaultRouterAbi from './VaultRouter.abi.js'
-import OnOffRampManagerAbi from './OnOffRampManager.abi.js'
-import OnOffRampManagerFactoryAbi from './OnOffRampManagerFactory.abi.js'
-import MerkleProofManagerFactoryAbi from './MerkleProofManagerFactory.abi.js'
 
 export const ABI = {
   Hub: parseAbi(HubAbi),
   ShareClassManager: parseAbi(ShareClassManagerAbi),
+  BatchRequestManager: parseAbi(BatchRequestManagerAbi),
   HubRegistry: parseAbi(HubRegistryAbi),
   MessageDispatcher: parseAbi(MessageDispatcherAbi),
   Currency: parseAbi(CurrencyAbi),
@@ -36,12 +39,13 @@ export const ABI = {
   MerkleProofManager: parseAbi(MerkleProofManagerAbi),
   AsyncVault: parseAbi(AsyncVaultAbit),
   Spoke: parseAbi(SpokeAbi),
+  VaultRegistry: parseAbi(VaultRegistryAbi),
   Gateway: parseAbi(GatewayAbi),
   VaultRouter: parseAbi(VaultRouterAbi),
   Accounting: parseAbi(AccountingAbi),
   Holdings: parseAbi(HoldingsAbi),
   Valuation: parseAbi(ValuationAbi),
-  SyncRequests: parseAbi(SyncRequestsAbi),
+  SyncManager: parseAbi(SyncManagerAbi),
   AsyncRequests: parseAbi(AsyncRequestsAbi),
   MultiAdapter: parseAbi(MultiAdapterAbi),
   BalanceSheet: parseAbi(BalanceSheetAbi),
