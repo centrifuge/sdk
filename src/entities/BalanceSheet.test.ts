@@ -1,7 +1,7 @@
 import { expect } from 'chai'
 import { firstValueFrom, toArray } from 'rxjs'
 import { context } from '../tests/setup.js'
-import { Balance } from '../utils/BigInt.js'
+import { Balance, Price } from '../utils/BigInt.js'
 import { AssetId, PoolId, ShareClassId } from '../utils/types.js'
 import { BalanceSheet } from './BalanceSheet.js'
 import { Pool } from './Pool.js'
@@ -76,7 +76,7 @@ describe('BalanceSheet', () => {
       it('throws an error during issue if not BalanceSheetManager', async () => {
         try {
           await firstValueFrom(
-            balanceSheet.issue('0x1234567890123456789012345678901234567890', Balance.fromFloat(100, 6))
+            balanceSheet.issue('0x1234567890123456789012345678901234567890', Balance.fromFloat(100, 6), new Price(1n))
           )
         } catch (error: any) {
           expect(error.message).to.include('Signing address is not a BalanceSheetManager')
@@ -85,7 +85,9 @@ describe('BalanceSheet', () => {
 
       it('throws an error during revoke if not BalanceSheetManager', async () => {
         try {
-          await firstValueFrom(balanceSheet.revoke(Balance.fromFloat(100, 6)))
+          await firstValueFrom(
+            balanceSheet.revoke('0x1234567890123456789012345678901234567890', Balance.fromFloat(100, 6), new Price(1n))
+          )
         } catch (error: any) {
           expect(error.message).to.include('Signing address is not a BalanceSheetManager')
         }
@@ -98,15 +100,18 @@ describe('BalanceSheet', () => {
         await balanceSheet.pool.updateBalanceSheetManagers([{ chainId, address: poolManager, canManage: true }])
 
         const amount = Balance.fromFloat(100, 18)
+        const pricePerShare = new Price(1n)
 
         await balanceSheet.shareClass.setMaxAssetPriceAge(assetId, 9999999999999)
         await balanceSheet.shareClass.notifyAssetPrice(assetId)
 
-        const issueResult = await firstValueFrom(balanceSheet.issue(poolManager, amount).pipe(toArray()))
+        const issueResult = await firstValueFrom(balanceSheet.issue(poolManager, amount, pricePerShare).pipe(toArray()))
         expect(issueResult.at(-1)?.type).to.equal('TransactionConfirmed')
         expect((issueResult.at(-1) as any).title).to.equal('Issue shares')
 
-        const revokeResult = await firstValueFrom(balanceSheet.revoke(amount).pipe(toArray()))
+        const revokeResult = await firstValueFrom(
+          balanceSheet.revoke(poolManager, amount, pricePerShare).pipe(toArray())
+        )
         expect(revokeResult.at(-1)?.type).to.equal('TransactionConfirmed')
         expect((revokeResult.at(-1) as any).title).to.equal('Revoke shares')
       })
