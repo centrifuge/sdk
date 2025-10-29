@@ -36,9 +36,10 @@ export class BalanceSheet extends Entity {
     const self = this
     return this._transact(async function* (ctx) {
       const client = self._root.getClient(self.chainId)
-      const [{ balanceSheet, spoke }, isBalanceSheetManager] = await Promise.all([
+      const [{ balanceSheet, spoke }, isBalanceSheetManager, signingAddressCode] = await Promise.all([
         self._root._protocolAddresses(self.chainId),
         self.pool.isBalanceSheetManager(self.chainId, ctx.signingAddress),
+        ctx.publicClient.getCode({ address: ctx.signingAddress }),
       ])
 
       if (!isBalanceSheetManager) {
@@ -61,21 +62,50 @@ export class BalanceSheet extends Entity {
       )
 
       const needsApproval = allowance < amount.toBigInt()
+      const isSafeWallet = signingAddressCode !== undefined
 
-      // For Safe wallets (when batching is enabled), wrap both approve and deposit
-      // so the UI can batch them into a single Safe transaction
-      if (needsApproval && ctx.isBatching) {
-        const approveTx = encodeFunctionData({
+      // For Safe wallets with approval needed, try to batch using EIP-5792 since multicall only works on a single contract
+      // and we need to call both the token contract and the balance sheet contract.
+      if (needsApproval && isSafeWallet) {
+        const approveTxData = encodeFunctionData({
           abi: tokenId ? ABI.ERC6909 : ABI.Currency,
           functionName: 'approve',
           args: tokenId ? [balanceSheet, tokenId, amount.toBigInt()] : [balanceSheet, amount.toBigInt()],
         })
 
-        yield* wrapTransaction('Approve', ctx, {
-          contract: assetAddress as HexString,
-          data: approveTx,
+        const depositTxData = encodeFunctionData({
+          abi: ABI.BalanceSheet,
+          functionName: 'deposit',
+          args: [self.pool.id.raw, self.shareClass.id.raw, assetAddress, tokenId, amount.toBigInt()],
         })
-      } else if (needsApproval) {
+
+        try {
+          // Try EIP-5792 wallet_sendCalls for batching approve + deposit
+          yield* doTransaction('Approve and Deposit', ctx, async () => {
+            const provider = ctx.signer as { request: (...args: any) => Promise<any> }
+            const batchCallId = await provider.request({
+              method: 'wallet_sendCalls',
+              params: [
+                {
+                  version: '1.0',
+                  chainId: `0x${self.chainId.toString(16)}`,
+                  from: ctx.signingAddress,
+                  calls: [
+                    { to: assetAddress, data: approveTxData },
+                    { to: balanceSheet, data: depositTxData },
+                  ],
+                },
+              ],
+            })
+            return batchCallId as HexString
+          })
+          return
+        } catch (error) {
+          console.warn('Batching not supported, using sequential transactions:', error)
+        }
+      }
+
+      if (needsApproval) {
         yield* doTransaction('Approve', ctx, () => {
           if (tokenId) {
             return ctx.walletClient.writeContract({
@@ -94,15 +124,13 @@ export class BalanceSheet extends Entity {
         })
       }
 
-      const depositTx = encodeFunctionData({
-        abi: ABI.BalanceSheet,
-        functionName: 'deposit',
-        args: [self.pool.id.raw, self.shareClass.id.raw, assetAddress, tokenId, amount.toBigInt()],
-      })
-
-      yield* wrapTransaction('Deposit', ctx, {
-        contract: balanceSheet,
-        data: depositTx,
+      yield* doTransaction('Deposit', ctx, () => {
+        return ctx.walletClient.writeContract({
+          address: balanceSheet,
+          abi: ABI.BalanceSheet,
+          functionName: 'deposit',
+          args: [self.pool.id.raw, self.shareClass.id.raw, assetAddress, tokenId, amount.toBigInt()],
+        })
       })
     }, this.chainId)
   }
