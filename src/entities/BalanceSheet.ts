@@ -2,14 +2,13 @@ import { encodeFunctionData } from 'viem'
 import { ABI } from '../abi/index.js'
 import type { Centrifuge } from '../Centrifuge.js'
 import type { HexString } from '../types/index.js'
-import { Balance } from '../utils/BigInt.js'
+import { Balance, Price } from '../utils/BigInt.js'
 import { doTransaction, wrapTransaction } from '../utils/transaction.js'
 import { AssetId } from '../utils/types.js'
 import { Entity } from './Entity.js'
 import type { Pool } from './Pool.js'
 import { PoolNetwork } from './PoolNetwork.js'
 import { ShareClass } from './ShareClass.js'
-import { firstValueFrom } from 'rxjs'
 
 /**
  * Query and interact with the balanceSheet, which is the main entry point for withdrawing and depositing funds.
@@ -119,81 +118,91 @@ export class BalanceSheet extends Entity {
   }
 
   /**
-   * Ability to issue directly into the balance sheet.
+   * Issue directly into the balance sheet.
+   * @param to - The address that should receive the shares.
+   * @param amount - The amount to receive.
+   * @param pricePerShare - The price of the shares to issue.
    */
-  issue() {
+  issue(to: HexString, amount: Balance, pricePerShare: Price) {
     const self = this
     return this._transact(async function* (ctx) {
       const [{ balanceSheet }, isManager] = await Promise.all([
         self._root._protocolAddresses(self.chainId),
         self.pool.isBalanceSheetManager(self.chainId, ctx.signingAddress),
       ])
-
       if (!isManager) throw new Error('Signing address is not a BalanceSheetManager')
 
-      const pendingAmounts = await firstValueFrom(self.shareClass.pendingAmounts())
-      const approved = pendingAmounts.filter((a) => !a.pendingIssuancesTotal.isZero())
+      const shares = amount.div(pricePerShare.toDecimal())
+      if (shares.eq(0n)) throw new Error('Cannot issue 0 shares')
 
-      if (approved.length === 0) throw new Error('No approved investments to issue')
+      const overrideTx = encodeFunctionData({
+        abi: ABI.BalanceSheet,
+        functionName: 'overridePricePoolPerShare',
+        args: [self.pool.id.raw, self.shareClass.id.raw, pricePerShare.toBigInt()],
+      })
 
-      const { pricePerShare } = await self.shareClass.details()
+      const issueTx = encodeFunctionData({
+        abi: ABI.BalanceSheet,
+        functionName: 'issue',
+        args: [self.pool.id.raw, self.shareClass.id.raw, to, shares.toBigInt()],
+      })
 
-      const totalShares = approved.reduce(
-        (acc, item) => {
-          const shares = item.pendingIssuancesTotal.div(pricePerShare.toDecimal())
-          return acc.add(shares)
-        },
-        new Balance(0n, 18)
-      )
-
-      if (totalShares.eq(0n)) throw new Error('Total shares to issue is 0')
-
-      yield* doTransaction('Issue', ctx, () => {
-        return ctx.walletClient.writeContract({
+      yield* doTransaction('Issue shares', ctx, () =>
+        ctx.walletClient.writeContract({
           address: balanceSheet,
           abi: ABI.BalanceSheet,
-          functionName: 'issue',
-          args: [self.pool.id.raw, self.shareClass.id.raw, ctx.signingAddress, totalShares.toBigInt()],
+          functionName: 'multicall',
+          args: [[overrideTx, issueTx]],
         })
-      })
+      )
     }, this.chainId)
   }
 
-  revoke() {
+  revoke(user: HexString, amount: Balance, pricePerShare: Price) {
     const self = this
     return this._transact(async function* (ctx) {
       const [{ balanceSheet }, isManager] = await Promise.all([
         self._root._protocolAddresses(self.chainId),
         self.pool.isBalanceSheetManager(self.chainId, ctx.signingAddress),
       ])
-
       if (!isManager) throw new Error('Signing address is not a BalanceSheetManager')
 
-      const pendingAmounts = await firstValueFrom(self.shareClass.pendingAmounts())
-      const approved = pendingAmounts.filter((a) => !a.pendingRevocationsTotal.isZero())
+      const shares = amount.div(pricePerShare.toDecimal())
+      if (shares.eq(0n)) throw new Error('Cannot revoke 0 shares')
 
-      if (approved.length === 0) throw new Error('No approved redemptions to revoke')
+      const transferTx = encodeFunctionData({
+        abi: ABI.BalanceSheet,
+        functionName: 'transferSharesFrom',
+        args: [
+          self.pool.id.raw,
+          self.shareClass.id.raw,
+          ctx.signingAddress,
+          user,
+          ctx.signingAddress,
+          shares.toBigInt(),
+        ],
+      })
 
-      const { pricePerShare } = await self.shareClass.details()
+      const overrideTx = encodeFunctionData({
+        abi: ABI.BalanceSheet,
+        functionName: 'overridePricePoolPerShare',
+        args: [self.pool.id.raw, self.shareClass.id.raw, pricePerShare.toBigInt()],
+      })
 
-      const totalShares = approved.reduce(
-        (acc, item) => {
-          const shares = item.pendingRevocationsTotal.div(pricePerShare.toDecimal())
-          return acc.add(shares)
-        },
-        new Balance(0n, 18)
-      )
+      const revokeTx = encodeFunctionData({
+        abi: ABI.BalanceSheet,
+        functionName: 'revoke',
+        args: [self.pool.id.raw, self.shareClass.id.raw, shares.toBigInt()],
+      })
 
-      if (totalShares.eq(0n)) throw new Error('Total shares to revoke is 0')
-
-      yield* doTransaction('Revoke', ctx, () => {
-        return ctx.walletClient.writeContract({
+      yield* doTransaction('Revoke shares', ctx, () =>
+        ctx.walletClient.writeContract({
           address: balanceSheet,
           abi: ABI.BalanceSheet,
-          functionName: 'revoke',
-          args: [self.pool.id.raw, self.shareClass.id.raw, totalShares.toBigInt()],
+          functionName: 'multicall',
+          args: [[transferTx, overrideTx, revokeTx]],
         })
-      })
+      )
     }, this.chainId)
   }
 }
