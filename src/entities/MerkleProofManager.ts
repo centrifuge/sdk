@@ -52,7 +52,7 @@ export class MerkleProofManager extends Entity {
           const strategists = metadata?.merkleProofManager?.[this.chainId]
           const { SimpleMerkleTree: SimpleMerkleTreeConstructor } = await import('@openzeppelin/merkle-tree')
 
-          if (!strategists) throw new Error('No strategists found')
+          if (!strategists) return []
 
           return Object.entries(strategists).map(([address, { policies }]) => ({
             address,
