@@ -60,7 +60,22 @@ export class BalanceSheet extends Entity {
         tokenId
       )
 
-      if (allowance < amount.toBigInt()) {
+      const needsApproval = allowance < amount.toBigInt()
+
+      // For Safe wallets (when batching is enabled), wrap both approve and deposit
+      // so the UI can batch them into a single Safe transaction
+      if (needsApproval && ctx.isBatching) {
+        const approveTx = encodeFunctionData({
+          abi: tokenId ? ABI.ERC6909 : ABI.Currency,
+          functionName: 'approve',
+          args: tokenId ? [balanceSheet, tokenId, amount.toBigInt()] : [balanceSheet, amount.toBigInt()],
+        })
+
+        yield* wrapTransaction('Approve', ctx, {
+          contract: assetAddress as HexString,
+          data: approveTx,
+        })
+      } else if (needsApproval) {
         yield* doTransaction('Approve', ctx, () => {
           if (tokenId) {
             return ctx.walletClient.writeContract({
@@ -79,13 +94,15 @@ export class BalanceSheet extends Entity {
         })
       }
 
-      yield* doTransaction('Deposit', ctx, () => {
-        return ctx.walletClient.writeContract({
-          address: balanceSheet,
-          abi: ABI.BalanceSheet,
-          functionName: 'deposit',
-          args: [self.pool.id.raw, self.shareClass.id.raw, assetAddress, tokenId, amount.toBigInt()],
-        })
+      const depositTx = encodeFunctionData({
+        abi: ABI.BalanceSheet,
+        functionName: 'deposit',
+        args: [self.pool.id.raw, self.shareClass.id.raw, assetAddress, tokenId, amount.toBigInt()],
+      })
+
+      yield* wrapTransaction('Deposit', ctx, {
+        contract: balanceSheet,
+        data: depositTx,
       })
     }, this.chainId)
   }
