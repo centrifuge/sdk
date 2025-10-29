@@ -1,5 +1,5 @@
 import type { SimpleMerkleTree } from '@openzeppelin/merkle-tree'
-import { map, of, switchMap } from 'rxjs'
+import { map, switchMap } from 'rxjs'
 import { AbiFunction, encodeFunctionData, encodePacked, keccak256, parseAbiItem, toFunctionSelector, toHex } from 'viem'
 import { ABI } from '../abi/index.js'
 import type { Centrifuge } from '../Centrifuge.js'
@@ -52,7 +52,7 @@ export class MerkleProofManager extends Entity {
           const strategists = metadata?.merkleProofManager?.[this.chainId]
           const { SimpleMerkleTree: SimpleMerkleTreeConstructor } = await import('@openzeppelin/merkle-tree')
 
-          if (!strategists) return of([])
+          if (!strategists) return []
 
           return Object.entries(strategists).map(([address, { policies }]) => ({
             address,
