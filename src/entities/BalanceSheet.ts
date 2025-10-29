@@ -9,6 +9,7 @@ import { Entity } from './Entity.js'
 import type { Pool } from './Pool.js'
 import { PoolNetwork } from './PoolNetwork.js'
 import { ShareClass } from './ShareClass.js'
+import { EIP1193ProviderLike } from '../types/transaction.js'
 
 /**
  * Query and interact with the balanceSheet, which is the main entry point for withdrawing and depositing funds.
@@ -82,7 +83,7 @@ export class BalanceSheet extends Entity {
         try {
           // Try EIP-5792 wallet_sendCalls for batching approve + deposit
           yield* doTransaction('Approve and Deposit', ctx, async () => {
-            const provider = ctx.signer as { request: (...args: any) => Promise<any> }
+            const provider = ctx.signer as EIP1193ProviderLike
             const batchCallId = await provider.request({
               method: 'wallet_sendCalls',
               params: [
