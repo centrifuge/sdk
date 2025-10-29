@@ -117,6 +117,12 @@ export class BalanceSheet extends Entity {
     }, this.chainId)
   }
 
+  /**
+   * Issue directly into the balance sheet.
+   * @param to - The address that should receive the shares.
+   * @param amount - The amount to receive.
+   * @param pricePerShare - The price of the shares to issue.
+   */
   issue(to: HexString, amount: Balance, pricePerShare: Price) {
     const self = this
     return this._transact(async function* (ctx) {
