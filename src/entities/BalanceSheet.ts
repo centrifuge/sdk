@@ -2,14 +2,13 @@ import { encodeFunctionData } from 'viem'
 import { ABI } from '../abi/index.js'
 import type { Centrifuge } from '../Centrifuge.js'
 import type { HexString } from '../types/index.js'
-import { Balance } from '../utils/BigInt.js'
+import { Balance, Price } from '../utils/BigInt.js'
 import { doTransaction, wrapTransaction } from '../utils/transaction.js'
 import { AssetId } from '../utils/types.js'
 import { Entity } from './Entity.js'
 import type { Pool } from './Pool.js'
 import { PoolNetwork } from './PoolNetwork.js'
 import { ShareClass } from './ShareClass.js'
-import { firstValueFrom } from 'rxjs'
 
 /**
  * Query and interact with the balanceSheet, which is the main entry point for withdrawing and depositing funds.
@@ -91,9 +90,6 @@ export class BalanceSheet extends Entity {
     }, this.chainId)
   }
 
-  /**
-   * Withdraw directly from the balance sheet
-   */
   withdraw(assetId: AssetId, to: HexString, amount: Balance) {
     const self = this
     return this._transact(async function* (ctx) {
@@ -121,7 +117,13 @@ export class BalanceSheet extends Entity {
     }, this.chainId)
   }
 
-  issue(to: HexString, amount: Balance) {
+  /**
+   * Issue directly into the balance sheet.
+   * @param to - The address that should receive the shares.
+   * @param amount - The amount to receive.
+   * @param pricePerShare - The price of the shares to issue.
+   */
+  issue(to: HexString, amount: Balance, pricePerShare: Price) {
     const self = this
     return this._transact(async function* (ctx) {
       const [{ balanceSheet }, isManager] = await Promise.all([
@@ -130,23 +132,33 @@ export class BalanceSheet extends Entity {
       ])
       if (!isManager) throw new Error('Signing address is not a BalanceSheetManager')
 
-      const { pricePerShare } = await self.shareClass.details()
       const shares = amount.div(pricePerShare.toDecimal())
-
       if (shares.eq(0n)) throw new Error('Cannot issue 0 shares')
 
-      yield* doTransaction(`Issue shares`, ctx, () =>
+      const overrideTx = encodeFunctionData({
+        abi: ABI.BalanceSheet,
+        functionName: 'overridePricePoolPerShare',
+        args: [self.pool.id.raw, self.shareClass.id.raw, pricePerShare.toBigInt()],
+      })
+
+      const issueTx = encodeFunctionData({
+        abi: ABI.BalanceSheet,
+        functionName: 'issue',
+        args: [self.pool.id.raw, self.shareClass.id.raw, to, shares.toBigInt()],
+      })
+
+      yield* doTransaction('Issue shares', ctx, () =>
         ctx.walletClient.writeContract({
           address: balanceSheet,
           abi: ABI.BalanceSheet,
-          functionName: 'issue',
-          args: [self.pool.id.raw, self.shareClass.id.raw, to, shares.toBigInt()],
+          functionName: 'multicall',
+          args: [[overrideTx, issueTx]],
         })
       )
     }, this.chainId)
   }
 
-  revoke(amount: Balance) {
+  revoke(user: HexString, amount: Balance, pricePerShare: Price) {
     const self = this
     return this._transact(async function* (ctx) {
       const [{ balanceSheet }, isManager] = await Promise.all([
@@ -155,16 +167,40 @@ export class BalanceSheet extends Entity {
       ])
       if (!isManager) throw new Error('Signing address is not a BalanceSheetManager')
 
-      const { pricePerShare } = await self.shareClass.details()
       const shares = amount.div(pricePerShare.toDecimal())
       if (shares.eq(0n)) throw new Error('Cannot revoke 0 shares')
 
-      yield* doTransaction(`Revoke shares`, ctx, () =>
+      const transferTx = encodeFunctionData({
+        abi: ABI.BalanceSheet,
+        functionName: 'transferSharesFrom',
+        args: [
+          self.pool.id.raw,
+          self.shareClass.id.raw,
+          ctx.signingAddress,
+          user,
+          ctx.signingAddress,
+          shares.toBigInt(),
+        ],
+      })
+
+      const overrideTx = encodeFunctionData({
+        abi: ABI.BalanceSheet,
+        functionName: 'overridePricePoolPerShare',
+        args: [self.pool.id.raw, self.shareClass.id.raw, pricePerShare.toBigInt()],
+      })
+
+      const revokeTx = encodeFunctionData({
+        abi: ABI.BalanceSheet,
+        functionName: 'revoke',
+        args: [self.pool.id.raw, self.shareClass.id.raw, shares.toBigInt()],
+      })
+
+      yield* doTransaction('Revoke shares', ctx, () =>
         ctx.walletClient.writeContract({
           address: balanceSheet,
           abi: ABI.BalanceSheet,
-          functionName: 'revoke',
-          args: [self.pool.id.raw, self.shareClass.id.raw, shares.toBigInt()],
+          functionName: 'multicall',
+          args: [[transferTx, overrideTx, revokeTx]],
         })
       )
     }, this.chainId)
