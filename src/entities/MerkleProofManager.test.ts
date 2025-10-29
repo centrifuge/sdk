@@ -775,7 +775,7 @@ describe('MerkleProofManager', () => {
         { simulate: true }
       )) as SimulationStatus
 
-      expect(result.type).to.equal('simulation')
+      expect(result.type).to.equal('TransactionSimulation')
       expect(result.title).to.equal('Execute calls')
       expect(result.result).to.have.length(1)
       expect(result.result[0]!.status).to.equal('success')
@@ -803,7 +803,7 @@ describe('MerkleProofManager', () => {
 
       const result = (await mpm.setPolicies(strategist, mockPolicies, { simulate: true })) as SimulationStatus
 
-      expect(result.type).to.equal('simulation')
+      expect(result.type).to.equal('TransactionSimulation')
       expect(result.title).to.equal('Set policies')
       expect(result.result).to.have.length(1)
       expect(result.result[0]!.status).to.equal('success')

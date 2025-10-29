@@ -106,7 +106,7 @@ type SimulationResult = {
 }
 
 export type SimulationStatus = {
-  type: 'simulation'
+  type: 'TransactionSimulation'
   title: string
   result: SimulationResult[]
 }
