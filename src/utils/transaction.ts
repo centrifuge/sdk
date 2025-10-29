@@ -131,7 +131,7 @@ export async function* wrapTransaction(
       }
 
       yield {
-        type: 'simulation',
+        type: 'TransactionSimulation',
         title,
         result: simulationResult,
       } satisfies OperationStatus
