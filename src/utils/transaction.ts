@@ -15,6 +15,7 @@ import { ABI } from '../abi/index.js'
 import { SAFE_PROXY_BYTECODE } from '../constants.js'
 import type { HexString } from '../types/index.js'
 import type {
+  EIP1193ProviderLike,
   MessageTypeWithSubType,
   OperationStatus,
   SafeMultisigTransactionResponse,
@@ -39,24 +40,78 @@ export type BatchTransactionData = {
 export async function* wrapTransaction(
   title: string,
   ctx: TransactionContext,
-  {
-    contract,
-    data: data_,
-    value: value_,
-    messages,
-  }: {
-    contract: HexString
-    data: HexString | HexString[]
-    value?: bigint
-    // Messages to estimate gas for, that will be sent as a result of the transaction, separated by Centrifuge ID.
-    // Used to estimate the payment for the transaction.
-    // It is assumed that the messages belong to a single pool.
-    messages?: Record<number /* Centrifuge ID */, MessageTypeWithSubType[]>
-  },
+  params:
+    | {
+        contract: HexString
+        data: HexString | HexString[]
+        value?: bigint
+        // Messages to estimate gas for, that will be sent as a result of the transaction, separated by Centrifuge ID.
+        // Used to estimate the payment for the transaction.
+        // It is assumed that the messages belong to a single pool.
+        messages?: Record<number /* Centrifuge ID */, MessageTypeWithSubType[]>
+      }
+    | {
+        // For cross-contract calls (e.g., approve on token + deposit on contract)
+        calls: Array<{ contract: HexString; data: HexString; value?: bigint }>
+      },
   options: {
     simulate: boolean
   } = { simulate: false }
 ): AsyncGenerator<OperationStatus | BatchTransactionData> {
+  const isCrossContract = 'calls' in params
+
+  if (isCrossContract) {
+    const { calls } = params
+
+    if (ctx.isBatching) {
+      throw new Error('Cross-contract batching not supported with experimental batch mode')
+    }
+
+    // Try EIP-5792 wallet_sendCalls for batching.
+    // Only EIP1193 providers support this. LocalAccounts don't have the request method.
+    if ('request' in ctx.signer) {
+      try {
+        const result = yield* doTransaction(title, ctx, async () => {
+          const provider = ctx.signer as EIP1193ProviderLike
+          const batchCallId = await provider.request({
+            method: 'wallet_sendCalls',
+            params: [
+              {
+                version: '1.0',
+                chainId: `0x${ctx.chainId.toString(16)}`,
+                from: ctx.signingAddress,
+                calls: calls.map((call) => ({
+                  to: call.contract,
+                  data: call.data,
+                  value: call.value ? `0x${call.value.toString(16)}` : undefined,
+                })),
+              },
+            ],
+          })
+          return batchCallId as HexString
+        })
+        return result
+      } catch (error) {
+        console.warn('wallet_sendCalls not supported, falling back to sequential transactions:', error)
+      }
+    }
+
+    // Fallback: execute calls sequentially if batching not supported or failed.
+    for (let i = 0; i < calls.length; i++) {
+      const call = calls[i]!
+
+      yield* doTransaction(`${title} (${i + 1}/${calls.length})`, ctx, () =>
+        ctx.walletClient.sendTransaction({
+          to: call.contract,
+          data: call.data,
+          value: call.value ?? 0n,
+        })
+      )
+    }
+    return
+  }
+
+  const { contract, data: data_, value: value_, messages } = params
   const data = Array.isArray(data_) ? data_ : [data_]
   if (ctx.isBatching) {
     yield {
