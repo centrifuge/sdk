@@ -52,7 +52,10 @@ export async function* wrapTransaction(
     // Used to estimate the payment for the transaction.
     // It is assumed that the messages belong to a single pool.
     messages?: Record<number /* Centrifuge ID */, MessageTypeWithSubType[]>
-  }
+  },
+  options: {
+    simulate: boolean
+  } = { simulate: false }
 ): AsyncGenerator<OperationStatus | BatchTransactionData> {
   const data = Array.isArray(data_) ? data_ : [data_]
   if (ctx.isBatching) {
@@ -72,23 +75,69 @@ export async function* wrapTransaction(
       : []
     const estimate = messagesEstimates.reduce((acc, val) => acc + val, 0n)
     const value = (value_ ?? 0n) + estimate
-    const result = yield* doTransaction(title, ctx, async () => {
-      if (data.length === 1) {
-        return ctx.walletClient.sendTransaction({
-          to: contract,
-          data: data[0],
+
+    if (!options.simulate) {
+      const result = yield* doTransaction(title, ctx, async () => {
+        if (data.length === 1) {
+          return ctx.walletClient.sendTransaction({
+            to: contract,
+            data: data[0],
+            value,
+          })
+        }
+        return ctx.walletClient.writeContract({
+          address: contract,
+          abi: parseAbi(['function multicall(bytes[] data) payable']),
+          functionName: 'multicall',
+          args: [data],
           value,
         })
-      }
-      return ctx.walletClient.writeContract({
-        address: contract,
-        abi: parseAbi(['function multicall(bytes[] data) payable']),
-        functionName: 'multicall',
-        args: [data],
-        value,
       })
-    })
-    return result
+
+      return result
+    }
+
+    if (options.simulate) {
+      let simulationResult
+
+      if (data.length === 1) {
+        const { results } = await ctx.publicClient.simulateCalls({
+          account: ctx.signingAddress,
+          calls: [
+            {
+              to: contract,
+              data: data[0],
+              value,
+            },
+          ],
+        })
+
+        simulationResult = results
+      } else {
+        const { results } = await ctx.publicClient.simulateCalls({
+          account: ctx.signingAddress,
+          calls: [
+            {
+              to: contract,
+              abi: parseAbi(['function multicall(bytes[] data) payable']),
+              functionName: 'multicall',
+              args: [data],
+              value,
+            },
+          ],
+        })
+
+        simulationResult = results
+      }
+
+      yield {
+        type: 'TransactionSimulation',
+        title,
+        result: simulationResult,
+      } satisfies OperationStatus
+
+      return
+    }
   }
 }
 
