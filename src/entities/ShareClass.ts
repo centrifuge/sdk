@@ -1218,21 +1218,26 @@ export class ShareClass extends Entity {
    */
   investmentsByVault(chainId: number) {
     return this._query(['investmentsByVault', chainId], () =>
-      combineLatest([this._investorOrders(), this.pool.currency(), this.vaults(chainId)]).pipe(
-        switchMap(([orders, poolCurrency, vaults]) => {
-          if (vaults.length === 0) return of([])
+      combineLatest([this._investorOrders(), this.vaults(chainId)]).pipe(
+        switchMap(([orders, vaults]) => {
+          if (!vaults.length) return of([])
 
           return combineLatest(
             vaults.map((vault) =>
               combineLatest([
-                ...orders.outstandingInvests
-                  .filter((o) => o.assetId.equals(vault.assetId))
-                  .map((o) => this._investorOrder(o.assetId, o.investor)),
-                ...orders.outstandingRedeems
-                  .filter((o) => o.assetId.equals(vault.assetId))
-                  .map((o) => this._investorOrder(o.assetId, o.investor)),
+                vault._investmentCurrency(),
+                vault._shareCurrency(),
+                this.pool.currency(),
+                combineLatest([
+                  ...orders.outstandingInvests
+                    .filter((o) => o.assetId.equals(vault.assetId))
+                    .map((o) => this._investorOrder(o.assetId, o.investor)),
+                  ...orders.outstandingRedeems
+                    .filter((o) => o.assetId.equals(vault.assetId))
+                    .map((o) => this._investorOrder(o.assetId, o.investor)),
+                ]).pipe(catchError(() => of([]))),
               ]).pipe(
-                map((investorOrders) => {
+                map(([investmentCurrency, shareCurrency, poolCurrency, investorOrders]) => {
                   const investorsMap = new Map<
                     HexString,
                     {
@@ -1247,16 +1252,19 @@ export class ShareClass extends Entity {
 
                   investorOrders.forEach((order) => {
                     const prev = investorsMap.get(order.investor)
-                    const pendingInvest = new Balance(order.pendingDeposit, poolCurrency.decimals)
-                    const pendingRedeem = new Balance(order.pendingRedeem, poolCurrency.decimals)
+
+                    const pendingInvest = new Balance(order.pendingDeposit, investmentCurrency.decimals)
+                    const pendingRedeem = new Balance(order.pendingRedeem, shareCurrency.decimals)
+                    const claimableInvest = new Balance(0n, poolCurrency.decimals)
+                    const claimableRedeem = new Balance(0n, shareCurrency.decimals)
 
                     investorsMap.set(order.investor, {
                       investor: order.investor,
                       assetId: vault.assetId,
                       pendingInvestCurrency: prev ? prev.pendingInvestCurrency.add(pendingInvest) : pendingInvest,
                       pendingRedeemShares: prev ? prev.pendingRedeemShares.add(pendingRedeem) : pendingRedeem,
-                      claimableInvestShares: new Balance(0n, poolCurrency.decimals),
-                      claimableRedeemCurrency: new Balance(0n, poolCurrency.decimals),
+                      claimableInvestShares: claimableInvest,
+                      claimableRedeemCurrency: claimableRedeem,
                     })
                   })
 
