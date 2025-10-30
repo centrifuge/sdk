@@ -1,4 +1,4 @@
-import { encodeFunctionData } from 'viem'
+import { encodeFunctionData, toHex } from 'viem'
 import { ABI } from '../abi/index.js'
 import type { Centrifuge } from '../Centrifuge.js'
 import type { HexString } from '../types/index.js'
@@ -9,6 +9,7 @@ import { Entity } from './Entity.js'
 import type { Pool } from './Pool.js'
 import { PoolNetwork } from './PoolNetwork.js'
 import { ShareClass } from './ShareClass.js'
+import { isEIP1193ProviderLike } from '../utils/isEIP1193ProviderLike.js'
 
 /**
  * Query and interact with the balanceSheet, which is the main entry point for withdrawing and depositing funds.
@@ -56,11 +57,77 @@ export class BalanceSheet extends Entity {
         ctx.signingAddress,
         balanceSheet,
         self.chainId,
-        assetAddress as HexString,
+        assetAddress,
         tokenId
       )
 
-      if (allowance < amount.toBigInt()) {
+      const needsApproval = allowance < amount.toBigInt()
+
+      // Try batching using EIP-5792 for any EIP1193Provider (i.e. Safe or Coinbase wallets) when approval is needed.
+      // Using multicall only works on a single contract, and we need to call both the token contract and the balance sheet contract.
+      if (needsApproval && isEIP1193ProviderLike(ctx.signer)) {
+        const provider = ctx.signer
+
+        const approveTxData = () => {
+          if (tokenId) {
+            return encodeFunctionData({
+              abi: ABI.ERC6909,
+              functionName: 'approve',
+              args: [balanceSheet, tokenId, amount.toBigInt()],
+            })
+          }
+          return encodeFunctionData({
+            abi: ABI.Currency,
+            functionName: 'approve',
+            args: [balanceSheet, amount.toBigInt()],
+          })
+        }
+
+        const depositTxData = encodeFunctionData({
+          abi: ABI.BalanceSheet,
+          functionName: 'deposit',
+          args: [self.pool.id.raw, self.shareClass.id.raw, assetAddress, tokenId, amount.toBigInt()],
+        })
+
+        const calls = [
+          { to: assetAddress, data: approveTxData() },
+          { to: balanceSheet, data: depositTxData },
+        ]
+
+        try {
+          // Try EIP-5792 wallet_sendCalls for batching approve + deposit
+          yield* doTransaction('Approve and Deposit', ctx, async () => {
+            const batchCallId = await provider.request({
+              method: 'wallet_sendCalls',
+              params: [
+                {
+                  version: '1.0',
+                  chainId: toHex(self.chainId),
+                  from: ctx.signingAddress,
+                  calls,
+                },
+              ],
+            })
+            return batchCallId as HexString
+          })
+          return
+        } catch (error) {
+          console.warn('Batching not supported, using sequential transactions:', error)
+
+          // Fallback to sequential transactions if batching fails.
+          for (const [index, call] of calls.entries()) {
+            yield* doTransaction(`Approve and Deposit (${index + 1}/${calls.length})`, ctx, () =>
+              ctx.walletClient.sendTransaction({
+                to: call.to,
+                data: call.data,
+              })
+            )
+          }
+          return
+        }
+      }
+
+      if (needsApproval) {
         yield* doTransaction('Approve', ctx, () => {
           if (tokenId) {
             return ctx.walletClient.writeContract({
