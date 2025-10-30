@@ -1212,6 +1212,64 @@ export class ShareClass extends Entity {
     }, chainId)
   }
 
+  /**
+   * Get the pending and claimable investment/redeem amounts for all investors
+   * in a given share class (per vault/chain).
+   */
+  investmentsByVault(chainId: number) {
+    return this._query(['investmentsByVault', chainId], () =>
+      combineLatest([this._investorOrders(), this.pool.currency(), this.vaults(chainId)]).pipe(
+        switchMap(([orders, poolCurrency, vaults]) => {
+          if (vaults.length === 0) return of([])
+
+          return combineLatest(
+            vaults.map((vault) =>
+              combineLatest([
+                ...orders.outstandingInvests
+                  .filter((o) => o.assetId.equals(vault.assetId))
+                  .map((o) => this._investorOrder(o.assetId, o.investor)),
+                ...orders.outstandingRedeems
+                  .filter((o) => o.assetId.equals(vault.assetId))
+                  .map((o) => this._investorOrder(o.assetId, o.investor)),
+              ]).pipe(
+                map((investorOrders) => {
+                  const investorsMap = new Map<
+                    HexString,
+                    {
+                      investor: HexString
+                      assetId: AssetId
+                      pendingInvestCurrency: Balance
+                      pendingRedeemShares: Balance
+                      claimableInvestShares: Balance
+                      claimableRedeemCurrency: Balance
+                    }
+                  >()
+
+                  investorOrders.forEach((order) => {
+                    const prev = investorsMap.get(order.investor)
+                    const pendingInvest = new Balance(order.pendingDeposit, poolCurrency.decimals)
+                    const pendingRedeem = new Balance(order.pendingRedeem, poolCurrency.decimals)
+
+                    investorsMap.set(order.investor, {
+                      investor: order.investor,
+                      assetId: vault.assetId,
+                      pendingInvestCurrency: prev ? prev.pendingInvestCurrency.add(pendingInvest) : pendingInvest,
+                      pendingRedeemShares: prev ? prev.pendingRedeemShares.add(pendingRedeem) : pendingRedeem,
+                      claimableInvestShares: new Balance(0n, poolCurrency.decimals),
+                      claimableRedeemCurrency: new Balance(0n, poolCurrency.decimals),
+                    })
+                  })
+
+                  return Array.from(investorsMap.values())
+                })
+              )
+            )
+          ).pipe(map((results) => results.flat()))
+        })
+      )
+    )
+  }
+
   /** @internal */
   _balances() {
     return this._root._queryIndexer(

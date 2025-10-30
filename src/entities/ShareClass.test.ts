@@ -730,6 +730,33 @@ describe('ShareClass', () => {
       expect(result).equal(newPrice.toBigInt())
     })
   })
+
+  it('gets all investors by vault with pending and claimable balances', async () => {
+    const { centrifuge } = context
+    const pool = new Pool(centrifuge, poolId.raw, chainId)
+    const shareClass = new ShareClass(centrifuge, pool, scId.raw)
+
+    const result = await firstValueFrom(shareClass.investmentsByVault(chainId))
+
+    expect(result).to.be.an('array')
+    expect(result.length).to.be.greaterThan(0)
+
+    const item = result[0]!
+    expect(item).to.have.keys([
+      'investor',
+      'assetId',
+      'pendingInvestCurrency',
+      'pendingRedeemShares',
+      'claimableInvestShares',
+      'claimableRedeemCurrency',
+    ])
+
+    expect(item.assetId).to.be.instanceOf(AssetId)
+    expect(item.pendingInvestCurrency).to.be.instanceOf(Balance)
+    expect(item.pendingRedeemShares).to.be.instanceOf(Balance)
+    expect(item.claimableInvestShares).to.be.instanceOf(Balance)
+    expect(item.claimableRedeemCurrency).to.be.instanceOf(Balance)
+  })
 })
 
 async function mint(asset: string, address: string) {
