@@ -155,7 +155,6 @@ describe('ShareClass', () => {
 
   it('gets holders', async () => {
     const holders = await shareClass.holders()
-    console.log(holders)
     expect(holders.investors).to.have.length.greaterThan(0)
     expect(holders).to.have.property('totalCount')
     expect(holders.pageInfo).to.have.property('hasNextPage')
