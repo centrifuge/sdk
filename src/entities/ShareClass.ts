@@ -1189,7 +1189,7 @@ export class ShareClass extends Entity {
                     chainId,
                     createdAt: investor.createdAt,
                     holdings: new Balance(positionBalance, poolCurrency.decimals),
-                    isFrozen: investor.isFrozen ?? positionData?.isFrozen ?? false,
+                    isFrozen: investor.isFrozen ?? positionData?.isFrozen,
                     outstandingInvest: outstandingInvest
                       ? new Balance(outstandingInvest.pendingAmount, assetDecimals).scale(poolCurrency.decimals)
                       : new Balance(0n, poolCurrency.decimals),
