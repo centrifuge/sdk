@@ -299,6 +299,9 @@ export class Pool extends Entity {
     })
   }
 
+  /**
+   * Update pool metadata.
+   */
   updateMetadata(metadata: PoolMetadata) {
     const self = this
     return this._transact(async function* (ctx) {
