@@ -153,10 +153,10 @@ describe('ShareClass', () => {
     ])
   })
 
-  it.skip('gets holders', async () => {
+  it('gets holders', async () => {
     const holders = await shareClass.holders()
     expect(holders.investors).to.have.length.greaterThan(0)
-    expect(holders.totalCount).to.be.greaterThan(0)
+    expect(holders).to.have.property('totalCount')
     expect(holders.pageInfo).to.have.property('hasNextPage')
     expect(holders.pageInfo).to.have.property('hasPreviousPage')
     expect(holders.pageInfo).to.have.property('startCursor')
@@ -166,7 +166,6 @@ describe('ShareClass', () => {
       address: i.address.toLowerCase(),
       amount: i.amount instanceof Balance,
       isFrozen: i.isFrozen,
-      chainId: i.chainId,
       holdings: i.holdings instanceof Balance,
       outstandingInvestIsBalance: i.outstandingInvest instanceof Balance,
       outstandingRedeemIsBalance: i.outstandingRedeem instanceof Balance,
@@ -179,7 +178,42 @@ describe('ShareClass', () => {
       address: i.address.toLowerCase(),
       amount: true,
       isFrozen: false,
-      chainId,
+      holdings: true,
+      outstandingInvestIsBalance: true,
+      outstandingRedeemIsBalance: true,
+      queuedInvestIsBalance: true,
+      queuedRedeemIsBalance: true,
+      isWhitelisted: true,
+    }))
+
+    expect(actual).to.deep.equal(expected)
+  })
+
+  it('gets whitelisted holders', async () => {
+    const whitelistedHolders = await shareClass.whitelistedHolders()
+    expect(whitelistedHolders.investors).to.have.length.greaterThan(0)
+    expect(whitelistedHolders.totalCount).to.be.greaterThan(0)
+    expect(whitelistedHolders.pageInfo).to.have.property('hasNextPage')
+    expect(whitelistedHolders.pageInfo).to.have.property('hasPreviousPage')
+    expect(whitelistedHolders.pageInfo).to.have.property('startCursor')
+    expect(whitelistedHolders.pageInfo).to.have.property('endCursor')
+
+    const actual = whitelistedHolders.investors.map((i) => ({
+      address: i.address.toLowerCase(),
+      amount: i.amount instanceof Balance,
+      isFrozen: i.isFrozen,
+      holdings: i.holdings instanceof Balance,
+      outstandingInvestIsBalance: i.outstandingInvest instanceof Balance,
+      outstandingRedeemIsBalance: i.outstandingRedeem instanceof Balance,
+      queuedInvestIsBalance: i.queuedInvest instanceof Balance,
+      queuedRedeemIsBalance: i.queuedRedeem instanceof Balance,
+      isWhitelisted: true,
+    }))
+
+    const expected = whitelistedHolders.investors.map((i) => ({
+      address: i.address.toLowerCase(),
+      amount: true,
+      isFrozen: false,
       holdings: true,
       outstandingInvestIsBalance: true,
       outstandingRedeemIsBalance: true,
