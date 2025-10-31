@@ -1045,17 +1045,19 @@ export class ShareClass extends Entity {
    * @param options Optional pagination options object for whitelisted investors query
    * @param options.limit Number of results to return (default: 20)
    * @param options.after Cursor for pagination
+   * @param options.balance_gt Ivestor minimum position amount filter (default: 0)
    */
-  holders(options?: { limit: number; after: string | undefined }) {
+  holders(options?: { limit: number; after?: string; balance_gt?: bigint }) {
     const limit = options?.limit ?? 20
     const after = options?.after
+    const balance_gt = options?.balance_gt ?? 0n
 
-    return this._query(['holders', limit, after], () =>
+    return this._query(['holders', limit, after, balance_gt.toString()], () =>
       combineLatest([
         this._root._deployments(),
         this.pool.currency(),
         this._investorOrders(),
-        this._tokenInstancePositions({ limit, after, balance_gt: 0n }),
+        this._tokenInstancePositions({ limit, balance_gt, after }),
       ]).pipe(
         switchMap(
           ([
@@ -1140,11 +1142,11 @@ export class ShareClass extends Entity {
    * @param options.limit Number of results to return (default: 20)
    * @param options.after Cursor for pagination
    */
-  whitelistedHolders(options?: { limit: number; after: string | undefined }) {
+  whitelistedHolders(options?: { limit: number; after?: string }) {
     const limit = options?.limit ?? 20
     const after = options?.after
 
-    return this._query(['holders', limit, after], () =>
+    return this._query(['whitelistedHolders', limit, after], () =>
       combineLatest([
         this._root._deployments(),
         this.pool.currency(),
@@ -2071,11 +2073,11 @@ export class ShareClass extends Entity {
             }[]
           }
         }>(
-          `query ($scId: String!, $limit: Int!, $after: String, $balance_gt: BigInt) {
+          `query ($scId: String!, $limit: Int!${after ? ', $after: String' : ''}${balance_gt ? ', $balance_gt: BigInt' : ''}) {
           tokenInstancePositions(
             where: { 
               tokenId: $scId
-              ${balance_gt !== undefined ? 'balance_gt: $balance_gt' : ''}
+              ${balance_gt ? 'balance_gt: $balance_gt' : ''}
             }
             limit: $limit
             ${after ? 'after: $after' : ''}
@@ -2105,7 +2107,7 @@ export class ShareClass extends Entity {
             scId: this.id.raw,
             limit,
             ...(after && { after }),
-            ...(balance_gt !== undefined && { balance_gt: balance_gt.toString() }),
+            ...(balance_gt && { balance_gt: balance_gt.toString() }),
           }
         )
         .pipe(
@@ -2147,7 +2149,7 @@ export class ShareClass extends Entity {
             totalCount: number
           }
         }>(
-          `query ($tokenId: String!, $limit: Int!, $after: String) {
+          `query ($tokenId: String!, $limit: Int!${after ? ', $after: String' : ''}) {
           whitelistedInvestors(
             where: { tokenId: $tokenId }
             limit: $limit
