@@ -106,11 +106,6 @@ export class Investor extends Entity {
     )
   }
 
-  /**
-   * Retrieve the transactions of an investor.
-   * @param address - The address of the investor
-   * @param poolId - The pool ID
-   */
   transactions(address: HexString, poolId: PoolId) {
     return this._query(['transactions', address.toLowerCase(), poolId.toString()], () =>
       combineLatest([
@@ -123,49 +118,60 @@ export class Investor extends Entity {
               createdAt: string
               type: string
               txHash: HexString
-              currencyAmount: bigint
-              token: { name: string; symbol: string }
-              tokenAmount: bigint
+              currencyAmount: string
+              token: { name: string; symbol: string; decimals: string }
+              tokenAmount: string
               centrifugeId: string
               poolId: string
             }[]
           }
         }>(
-          `query ($address: String!) {
-            investorTransactions(where: { account: $address } limit: 1000) {
+          `query ($address: String!, $poolId: String!) {
+            investorTransactions(
+              where: { 
+                account: $address,
+                poolId: $poolId
+              } 
+              limit: 1000
+            ) {
               items {
                 account
                 createdAt
                 type
                 txHash
                 currencyAmount
-                token { name symbol }
+                token { name symbol decimals }
                 tokenAmount
                 centrifugeId
                 poolId
               }
             }
           }`,
-          { address: address.toLowerCase() }
+          {
+            address: address.toLowerCase(),
+            poolId: poolId.toString(),
+          }
         ),
       ]).pipe(
         map(([deployments, currency, { investorTransactions }]) => {
           const chainsById = new Map(deployments.blockchains.items.map((chain) => [chain.centrifugeId, chain.id]))
 
-          return investorTransactions.items.map((item) => {
-            const chainId = chainsById.get(item.centrifugeId)!
-            return {
-              type: item.type,
-              txHash: item.txHash,
-              createdAt: item.createdAt,
-              token: item.token.name,
-              tokenSymbol: item.token.symbol,
-              tokenAmount: new Balance(item.tokenAmount, currency.decimals),
-              currencyAmount: new Balance(item.currencyAmount, currency.decimals),
-              chainId: Number(chainId),
-              poolId: item.poolId,
-            }
-          })
+          return investorTransactions.items
+            .filter((item) => item.poolId === poolId.toString())
+            .map((item) => {
+              const chainId = chainsById.get(item.centrifugeId)!
+              return {
+                type: item.type,
+                txHash: item.txHash,
+                createdAt: item.createdAt,
+                token: item.token.name,
+                tokenSymbol: item.token.symbol,
+                tokenAmount: new Balance(item.tokenAmount, Number(item.token.decimals)),
+                currencyAmount: new Balance(item.currencyAmount, currency.decimals),
+                chainId: Number(chainId),
+                poolId: item.poolId,
+              }
+            })
         })
       )
     )
