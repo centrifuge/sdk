@@ -106,8 +106,10 @@ export class Investor extends Entity {
     )
   }
 
-  transactions(address: HexString, poolId: PoolId) {
-    return this._query(['transactions', address.toLowerCase(), poolId.toString()], () =>
+  transactions(address: HexString, poolId: PoolId, page: number = 1, pageSize: number = 10) {
+    const offset = (page - 1) * pageSize
+
+    return this._query(['transactions', address.toLowerCase(), poolId.toString(), page, pageSize], () =>
       combineLatest([
         this._root._deployments(),
         this._root.pool(poolId).pipe(switchMap((pool) => pool.currency())),
@@ -124,15 +126,18 @@ export class Investor extends Entity {
               centrifugeId: string
               poolId: string
             }[]
+            totalCount: number
           }
         }>(
-          `query ($address: String!, $poolId: String!) {
+          `query ($address: String!, $poolId: String!, $limit: Int!, $offset: Int!) {
             investorTransactions(
               where: { 
                 account: $address,
                 poolId: $poolId
               } 
-              limit: 1000
+              limit: $limit
+              offset: $offset
+              orderBy: createdAt_DESC
             ) {
               items {
                 account
@@ -145,35 +150,47 @@ export class Investor extends Entity {
                 centrifugeId
                 poolId
               }
+              totalCount
             }
           }`,
           {
             address: address.toLowerCase(),
             poolId: poolId.toString(),
+            limit: pageSize,
+            offset: offset,
           }
         ),
       ]).pipe(
         map(([deployments, currency, { investorTransactions }]) => {
           const chainsById = new Map(deployments.blockchains.items.map((chain) => [chain.centrifugeId, chain.id]))
 
-          return investorTransactions.items
-            .filter((item) => item.poolId === poolId.toString())
-            .map((item) => {
-              const chainId = chainsById.get(item.centrifugeId)!
-              return {
-                type: item.type,
-                txHash: item.txHash,
-                createdAt: item.createdAt,
-                token: item.token.name,
-                tokenSymbol: item.token.symbol,
-                tokenAmount: new Balance(item.tokenAmount, Number(item.token.decimals)),
-                currencyAmount: new Balance(item.currencyAmount, currency.decimals),
-                chainId: Number(chainId),
-                poolId: item.poolId,
-              }
-            })
+          return {
+            transactions: investorTransactions.items
+              .filter((item) => item.poolId === poolId.toString())
+              .map((item) => {
+                const chainId = chainsById.get(item.centrifugeId)!
+                return {
+                  type: item.type,
+                  txHash: item.txHash,
+                  createdAt: item.createdAt,
+                  token: item.token.name,
+                  tokenSymbol: item.token.symbol,
+                  tokenAmount: new Balance(item.tokenAmount, Number(item.token.decimals)),
+                  currencyAmount: new Balance(item.currencyAmount, currency.decimals),
+                  chainId: Number(chainId),
+                  poolId: item.poolId,
+                }
+              }),
+            totalCount: investorTransactions.totalCount || investorTransactions.items.length,
+            page,
+            pageSize,
+          }
         })
       )
     )
+  }
+
+  allTransactions(address: HexString, poolId: PoolId) {
+    return this.transactions(address, poolId, 1, 1000)
   }
 }
