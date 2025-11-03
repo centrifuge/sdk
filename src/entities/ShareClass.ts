@@ -1041,78 +1041,184 @@ export class ShareClass extends Entity {
   }
 
   /**
-   * Retrieve holders of the share class.
+   * Retrieve all holders of the share class.
    * @param options Optional pagination options object for whitelisted investors query
    * @param options.limit Number of results to return (default: 20)
-   * @param options.after Cursor for pagination
+   * @param options.offset Offset for pagination (default: 0)
+   * @param options.balance_gt Ivestor minimum position amount filter (default: 0)
    */
-  holders(options?: { limit: number; after: string | undefined }) {
+  holders(options?: { limit: number; offset?: number; balance_gt?: bigint }) {
     const limit = options?.limit ?? 20
-    const after = options?.after
+    const offset = options?.offset ?? 0
+    const balance_gt = options?.balance_gt ?? 0n
 
-    return this._query(['holders', limit, after], () =>
+    return this._query(['holders', this.id.raw, limit, offset, balance_gt.toString()], () =>
       combineLatest([
         this._root._deployments(),
         this.pool.currency(),
         this._investorOrders(),
-        this._tokenInstancePositions(),
-        this._whitelistedInvestors({ limit, after }),
+        this._tokenInstancePositions({ limit, balance_gt, offset }),
       ]).pipe(
-        map(
+        switchMap(
           ([
             deployments,
             poolCurrency,
             { outstandingInvests, outstandingRedeems },
-            { items: tokenInstancePositions, assets },
-            { items: whitelistedInvestors, pageInfo, totalCount },
+            { items: tokenInstancePositions, assets, pageInfo, totalCount },
           ]) => {
             const chainsById = new Map(deployments.blockchains.items.map((chain) => [chain.centrifugeId, chain.id]))
 
-            const investors = whitelistedInvestors.map((investor) => {
-              const chainId = Number(chainsById.get(investor.centrifugeId)!)
-              const outstandingInvest = outstandingInvests.find((order) => order.investor === investor.address)
-              const outstandingRedeem = outstandingRedeems.find((order) => order.investor === investor.address)
-              const assetId = outstandingInvest?.assetId.toString()
-              const positionBalance =
-                tokenInstancePositions.find((p) => p.accountAddress === investor.address)?.balance ?? 0n
-              const assetDecimals =
-                assets.find((asset: { id: string; decimals: number }) => asset.id === assetId)?.decimals ?? 18
-              const isWhitelisted = parseInt(investor.validUntil, 10) > Date.now()
+            const whitelistedQueries = tokenInstancePositions.map((position) =>
+              this._whitelistedInvestor({
+                accountAddress: position.accountAddress,
+                centrifugeId: position.centrifugeId,
+                tokenId: this.id.raw,
+              }).pipe(catchError(() => of(null)))
+            )
 
-              return {
-                address: investor.address,
-                amount: new Balance(outstandingInvest?.pendingAmount ?? 0n, assetDecimals),
-                chainId,
-                createdAt: investor.createdAt,
-                holdings: new Balance(positionBalance, poolCurrency.decimals),
-                isFrozen: investor.isFrozen,
-                outstandingInvest: outstandingInvest
-                  ? new Balance(outstandingInvest.pendingAmount, assetDecimals).scale(poolCurrency.decimals)
-                  : new Balance(0n, poolCurrency.decimals),
-                outstandingRedeem: outstandingRedeem
-                  ? new Balance(outstandingRedeem.pendingAmount, poolCurrency.decimals)
-                  : new Balance(0n, poolCurrency.decimals),
-                queuedInvest: outstandingInvest
-                  ? new Balance(outstandingInvest.queuedAmount, assetDecimals).scale(poolCurrency.decimals)
-                  : new Balance(0n, poolCurrency.decimals),
-                queuedRedeem: outstandingRedeem
-                  ? new Balance(outstandingRedeem.queuedAmount, poolCurrency.decimals)
-                  : new Balance(0n, poolCurrency.decimals),
-                isWhitelisted,
-              }
-            })
+            return combineLatest(whitelistedQueries).pipe(
+              map((whitelistResults) => {
+                const investors = tokenInstancePositions.map((position, i) => {
+                  const whitelistData = whitelistResults[i]
+                  const chainId = Number(chainsById.get(position.centrifugeId)!)
+                  const outstandingInvest = outstandingInvests.find(
+                    (order) => order.investor === position.accountAddress
+                  )
+                  const outstandingRedeem = outstandingRedeems.find(
+                    (order) => order.investor === position.accountAddress
+                  )
+                  const assetId = outstandingInvest?.assetId.toString()
+                  const assetDecimals =
+                    assets.find((asset: { id: string; decimals: number }) => asset.id === assetId)?.decimals ?? 18
+                  const isWhitelistedStatus = whitelistData
+                    ? parseInt(whitelistData.validUntil, 10) > Date.now()
+                    : false
 
-            investors.sort((a, b) => {
-              const aValue = BigInt(a.holdings.toBigInt())
-              const bValue = BigInt(b.holdings.toBigInt())
-              return aValue > bValue ? -1 : aValue < bValue ? 1 : 0
-            })
+                  return {
+                    address: position.accountAddress,
+                    amount: new Balance(outstandingInvest?.pendingAmount ?? 0n, assetDecimals),
+                    chainId,
+                    createdAt: whitelistData?.createdAt ?? '',
+                    holdings: new Balance(position.balance, poolCurrency.decimals),
+                    isFrozen: whitelistData?.isFrozen ?? position.isFrozen,
+                    outstandingInvest: outstandingInvest
+                      ? new Balance(outstandingInvest.pendingAmount, assetDecimals).scale(poolCurrency.decimals)
+                      : new Balance(0n, poolCurrency.decimals),
+                    outstandingRedeem: outstandingRedeem
+                      ? new Balance(outstandingRedeem.pendingAmount, poolCurrency.decimals)
+                      : new Balance(0n, poolCurrency.decimals),
+                    queuedInvest: outstandingInvest
+                      ? new Balance(outstandingInvest.queuedAmount, assetDecimals).scale(poolCurrency.decimals)
+                      : new Balance(0n, poolCurrency.decimals),
+                    queuedRedeem: outstandingRedeem
+                      ? new Balance(outstandingRedeem.queuedAmount, poolCurrency.decimals)
+                      : new Balance(0n, poolCurrency.decimals),
+                    isWhitelisted: isWhitelistedStatus,
+                  }
+                })
 
-            return {
-              investors,
-              pageInfo,
-              totalCount,
-            }
+                investors.sort((a, b) => {
+                  const aValue = BigInt(a.holdings.toBigInt())
+                  const bValue = BigInt(b.holdings.toBigInt())
+                  return aValue > bValue ? -1 : aValue < bValue ? 1 : 0
+                })
+
+                return {
+                  investors,
+                  pageInfo,
+                  totalCount,
+                }
+              })
+            )
+          }
+        )
+      )
+    )
+  }
+
+  /**
+   * Retrieve only whitelisted holders of the share class.
+   * @param options Optional pagination options object for whitelisted investors query
+   * @param options.limit Number of results to return (default: 20)
+   * @param options.offset Offset for pagination (default: 0)
+   */
+  whitelistedHolders(options?: { limit: number; offset?: number }) {
+    const limit = options?.limit ?? 20
+    const offset = options?.offset ?? 0
+
+    return this._query(['whitelistedHolders', this.id.raw, limit, offset], () =>
+      combineLatest([
+        this._root._deployments(),
+        this.pool.currency(),
+        this._investorOrders(),
+        this._whitelistedInvestors({ limit, offset }),
+      ]).pipe(
+        switchMap(
+          ([
+            deployments,
+            poolCurrency,
+            { outstandingInvests, outstandingRedeems },
+            { items: whitelistedInvestors, assets, pageInfo, totalCount },
+          ]) => {
+            const chainsById = new Map(deployments.blockchains.items.map((chain) => [chain.centrifugeId, chain.id]))
+
+            const positionQueries = whitelistedInvestors.map((investor) =>
+              this._tokenInstancePosition({
+                accountAddress: investor.address,
+                centrifugeId: investor.centrifugeId,
+                tokenId: this.id.raw,
+              }).pipe(catchError(() => of(null)))
+            )
+
+            return combineLatest(positionQueries).pipe(
+              map((positionResults) => {
+                const investors = whitelistedInvestors.map((investor, i) => {
+                  const positionData = positionResults[i]
+                  const chainId = Number(chainsById.get(investor.centrifugeId)!)
+                  const outstandingInvest = outstandingInvests.find((order) => order.investor === investor.address)
+                  const outstandingRedeem = outstandingRedeems.find((order) => order.investor === investor.address)
+                  const assetId = outstandingInvest?.assetId.toString()
+                  const positionBalance = positionData?.balance ?? 0n
+                  const assetDecimals =
+                    assets.find((asset: { id: string; decimals: number }) => asset.id === assetId)?.decimals ?? 18
+                  const isWhitelisted = parseInt(investor.validUntil, 10) > Date.now()
+
+                  return {
+                    address: investor.address,
+                    amount: new Balance(outstandingInvest?.pendingAmount ?? 0n, assetDecimals),
+                    chainId,
+                    createdAt: investor.createdAt,
+                    holdings: new Balance(positionBalance, poolCurrency.decimals),
+                    isFrozen: investor.isFrozen ?? positionData?.isFrozen,
+                    outstandingInvest: outstandingInvest
+                      ? new Balance(outstandingInvest.pendingAmount, assetDecimals).scale(poolCurrency.decimals)
+                      : new Balance(0n, poolCurrency.decimals),
+                    outstandingRedeem: outstandingRedeem
+                      ? new Balance(outstandingRedeem.pendingAmount, poolCurrency.decimals)
+                      : new Balance(0n, poolCurrency.decimals),
+                    queuedInvest: outstandingInvest
+                      ? new Balance(outstandingInvest.queuedAmount, assetDecimals).scale(poolCurrency.decimals)
+                      : new Balance(0n, poolCurrency.decimals),
+                    queuedRedeem: outstandingRedeem
+                      ? new Balance(outstandingRedeem.queuedAmount, poolCurrency.decimals)
+                      : new Balance(0n, poolCurrency.decimals),
+                    isWhitelisted,
+                  }
+                })
+
+                investors.sort((a, b) => {
+                  const aValue = BigInt(a.holdings.toBigInt())
+                  const bValue = BigInt(b.holdings.toBigInt())
+                  return aValue > bValue ? -1 : aValue < bValue ? 1 : 0
+                })
+
+                return {
+                  investors,
+                  pageInfo,
+                  totalCount,
+                }
+              })
+            )
           }
         )
       )
@@ -2013,8 +2119,13 @@ export class ShareClass extends Entity {
   }
 
   /** @internal */
-  _tokenInstancePositions() {
-    return this._query(['tokenInstancePositions'], () =>
+  _tokenInstancePositions(options?: { limit: number; offset?: number; balance_gt?: bigint }) {
+    const limit = options?.limit ?? 1000
+    const offset = options?.offset ?? 0
+    const balance_gt = options?.balance_gt
+    const queryParams = `$scId: String!, $limit: Int!, $offset: Int!${balance_gt ? ', $balance_gt: BigInt' : ''}`
+
+    return this._query(['tokenInstancePositions', this.id.raw, limit, offset, balance_gt?.toString()], () =>
       this._root
         ._queryIndexer<{
           tokenInstancePositions: {
@@ -2024,6 +2135,13 @@ export class ShareClass extends Entity {
               balance: bigint
               isFrozen: boolean
             }[]
+            pageInfo: {
+              hasNextPage: boolean
+              hasPreviousPage: boolean
+              startCursor: string
+              endCursor: string
+            }
+            totalCount: number
           }
           assets: {
             items: {
@@ -2032,30 +2150,50 @@ export class ShareClass extends Entity {
             }[]
           }
         }>(
-          `query ($scId: String!) {
-          tokenInstancePositions(where: { tokenId: $scId }, limit: 1000) {
+          `query (${queryParams}) {
+          tokenInstancePositions(
+            where: {
+              tokenId: $scId
+              ${balance_gt ? 'balance_gt: $balance_gt' : ''}
+            }
+            limit: $limit
+            offset: $offset
+          ) {
             items {
               accountAddress
               centrifugeId
               balance
               isFrozen
             }
+            pageInfo {
+              hasNextPage
+              hasPreviousPage
+              startCursor
+              endCursor
+            }
+            totalCount
           }
-
-          assets{
+          assets {
             items {
               decimals
               id
             }
           }
         }`,
-          { scId: this.id.raw }
+          {
+            scId: this.id.raw,
+            limit,
+            offset,
+            ...(balance_gt && { balance_gt: balance_gt.toString() }),
+          }
         )
         .pipe(
           map((data) => {
             return {
               items: data.tokenInstancePositions.items,
               assets: data.assets.items,
+              pageInfo: data.tokenInstancePositions.pageInfo,
+              totalCount: data.tokenInstancePositions.totalCount,
             }
           })
         )
@@ -2063,14 +2201,12 @@ export class ShareClass extends Entity {
   }
 
   /** @internal */
-  _whitelistedInvestors(options?: { limit: number; after: string | undefined }) {
-    const limit = options?.limit ?? 20
-    const after = options?.after
-    const orderBy = 'createdAt'
-    const orderDirection = 'DESC'
+  _whitelistedInvestors(options?: { limit: number; offset?: number }) {
+    const limit = options?.limit ?? 1000
+    const offset = options?.offset ?? 0
     const MAX_CENTRIFUGE_ID = 100n
 
-    return this._query(['whitelistedInvestors', limit, after, orderBy, orderDirection], () =>
+    return this._query(['whitelistedInvestors', this.id.raw, limit, offset], () =>
       this._root
         ._queryIndexer<{
           whitelistedInvestors: {
@@ -2089,32 +2225,46 @@ export class ShareClass extends Entity {
             }
             totalCount: number
           }
-        }>(
-          `query ($tokenId: String!, $limit: Int!, $after: String, $orderBy: String!, $orderDirection: String!) {
-          whitelistedInvestors(
-            where: { tokenId: $tokenId }
-            limit: $limit
-            after: $after
-            orderBy: $orderBy
-            orderDirection: $orderDirection
-          ) {
-            items {
-              accountAddress
-              centrifugeId
-              createdAt
-              isFrozen
-              validUntil
-            }
-            pageInfo {
-              hasNextPage
-              hasPreviousPage
-              startCursor
-              endCursor
-            }
-            totalCount
+          assets: {
+            items: {
+              decimals: number
+              id: string
+            }[]
           }
-        }`,
-          { tokenId: this.id.toString(), limit, after, orderBy, orderDirection }
+        }>(
+          `query ($tokenId: String!, $limit: Int!, $offset: Int!) {
+            whitelistedInvestors(
+            where: { tokenId: $tokenId }
+              limit: $limit
+              offset: $offset
+            ) {
+              items {
+                accountAddress
+                centrifugeId
+                createdAt
+                isFrozen
+                validUntil
+              }
+              pageInfo {
+                hasNextPage
+                hasPreviousPage
+                startCursor
+                endCursor
+              }
+              totalCount
+            }
+            assets {
+              items {
+                id
+                decimals
+              }
+            }
+          }`,
+          {
+            tokenId: this.id.raw,
+            limit,
+            offset,
+          }
         )
         .pipe(
           map((data) => {
@@ -2127,9 +2277,101 @@ export class ShareClass extends Entity {
                 .filter((investor) => BigInt(investor.address) > MAX_CENTRIFUGE_ID),
               pageInfo: data.whitelistedInvestors.pageInfo,
               totalCount: data.whitelistedInvestors.totalCount,
+              assets: data.assets.items,
             }
           })
         )
+    )
+  }
+
+  /** @internal */
+  _whitelistedInvestor(params: { accountAddress: string; centrifugeId: string; tokenId: string }) {
+    return this._query(
+      ['whitelistedInvestor', this.id.raw, params.accountAddress, params.centrifugeId, params.tokenId],
+      () =>
+        this._root
+          ._queryIndexer<{
+            whitelistedInvestor: {
+              accountAddress: HexString
+              centrifugeId: string
+              createdAt: string
+              isFrozen: boolean
+              validUntil: string
+            } | null
+          }>(
+            `query ($accountAddress: String!, $centrifugeId: String!, $tokenId: String!) {
+          whitelistedInvestor(
+            accountAddress: $accountAddress
+            centrifugeId: $centrifugeId
+            tokenId: $tokenId
+          ) {
+            accountAddress
+            centrifugeId
+            createdAt
+            isFrozen
+            validUntil
+          }
+        }`,
+            params
+          )
+          .pipe(
+            map((data) => {
+              if (!data.whitelistedInvestor) return null
+              const { accountAddress, ...rest } = data.whitelistedInvestor
+              return {
+                address: accountAddress.toLowerCase() as HexString,
+                ...rest,
+              }
+            })
+          )
+    )
+  }
+
+  /** @internal */
+  _tokenInstancePosition(params: { accountAddress: string; centrifugeId: string; tokenId: string }) {
+    return this._query(
+      ['tokenInstancePosition', this.id.raw, params.accountAddress, params.centrifugeId, params.tokenId],
+      () =>
+        this._root
+          ._queryIndexer<{
+            tokenInstancePosition: {
+              accountAddress: HexString
+              balance: string
+              centrifugeId: string
+              createdAt: string
+              isFrozen: boolean
+              tokenId: string
+              updatedAt: string
+            } | null
+          }>(
+            `query ($accountAddress: String!, $centrifugeId: String!, $tokenId: String!) {
+            tokenInstancePosition(
+              accountAddress: $accountAddress
+              centrifugeId: $centrifugeId
+              tokenId: $tokenId
+            ) {
+              accountAddress
+              balance
+              centrifugeId
+              createdAt
+              isFrozen
+              tokenId
+              updatedAt
+            }
+          }`,
+            params
+          )
+          .pipe(
+            map((data) => {
+              if (!data.tokenInstancePosition) return null
+              const { accountAddress, balance, ...rest } = data.tokenInstancePosition
+              return {
+                accountAddress: accountAddress.toLowerCase() as HexString,
+                balance: BigInt(balance),
+                ...rest,
+              }
+            })
+          )
     )
   }
 }
