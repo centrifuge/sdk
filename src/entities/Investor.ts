@@ -108,13 +108,12 @@ export class Investor extends Entity {
 
   /**
    * Retrieve the transactions of an investor.
-   * @param address - The address of the investor
    * @param poolId - The pool ID
    */
-  transactions(address: HexString, poolId: PoolId, page: number = 1, pageSize: number = 10) {
+  transactions(poolId: PoolId, page: number = 1, pageSize: number = 10) {
     const offset = (page - 1) * pageSize
 
-    return this._query(['transactions', address.toLowerCase(), poolId.toString(), page, pageSize], () =>
+    return this._query(['transactions', this.address.toLowerCase(), poolId.toString(), page, pageSize], () =>
       combineLatest([
         this._root._deployments(),
         this._root.pool(poolId).pipe(switchMap((pool) => pool.currency())),
@@ -159,7 +158,7 @@ export class Investor extends Entity {
             }
           }`,
           {
-            address: address.toLowerCase(),
+            address: this.address.toLowerCase(),
             poolId: poolId.toString(),
             limit: pageSize,
             offset: offset,
@@ -196,6 +195,6 @@ export class Investor extends Entity {
   }
 
   allTransactions(address: HexString, poolId: PoolId) {
-    return this.transactions(address, poolId, 1, 1000)
+    return this.transactions(poolId, 1, 1000)
   }
 }
