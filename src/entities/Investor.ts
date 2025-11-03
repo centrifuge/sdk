@@ -134,30 +134,29 @@ export class Investor extends Entity {
             totalCount: number
           }
         }>(
-          `query ($address: String!, $poolId: String!, $limit: Int!, $offset: Int!) {
-            investorTransactions(
-              where: { 
-                account: $address,
-                poolId: $poolId
-              } 
-              limit: $limit
-              offset: $offset
-              orderBy: createdAt_DESC
-            ) {
-              items {
-                account
-                createdAt
-                type
-                txHash
-                currencyAmount
-                token { name symbol decimals }
-                tokenAmount
-                centrifugeId
-                poolId
-              }
-              totalCount
+          `query ($address: String!, $poolId: BigInt!, $limit: Int!, $offset: Int!) {
+          investorTransactions(
+            where: { 
+              account: $address,
+              poolId: $poolId
+            } 
+            limit: $limit
+            offset: $offset
+          ) {
+            items {
+              account
+              createdAt
+              type
+              txHash
+              currencyAmount
+              token { name symbol decimals }
+              tokenAmount
+              centrifugeId
+              poolId
             }
-          }`,
+            totalCount
+          }
+        }`,
           {
             address: address.toLowerCase(),
             poolId: poolId.toString(),
@@ -194,7 +193,6 @@ export class Investor extends Entity {
       )
     )
   }
-
   allTransactions(address: HexString, poolId: PoolId) {
     return this.transactions(address, poolId, 1, 1000)
   }
