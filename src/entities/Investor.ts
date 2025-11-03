@@ -106,6 +106,11 @@ export class Investor extends Entity {
     )
   }
 
+  /**
+   * Retrieve the transactions of an investor.
+   * @param address - The address of the investor
+   * @param poolId - The pool ID
+   */
   transactions(address: HexString, poolId: PoolId, page: number = 1, pageSize: number = 10) {
     const offset = (page - 1) * pageSize
 
