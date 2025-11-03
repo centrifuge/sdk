@@ -113,7 +113,7 @@ export class Investor extends Entity {
   transactions(poolId: PoolId, page: number = 1, pageSize: number = 10) {
     const offset = (page - 1) * pageSize
 
-    return this._query(['transactions', this.address.toLowerCase(), poolId.toString(), page, pageSize], () =>
+    return this._query(['transactions', poolId.toString(), page, pageSize], () =>
       combineLatest([
         this._root._deployments(),
         this._root.pool(poolId).pipe(switchMap((pool) => pool.currency())),
@@ -192,7 +192,8 @@ export class Investor extends Entity {
       )
     )
   }
-  allTransactions(address: HexString, poolId: PoolId) {
+
+  allTransactions(poolId: PoolId) {
     return this.transactions(poolId, 1, 1000)
   }
 }
