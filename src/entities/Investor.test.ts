@@ -65,7 +65,6 @@ describe('Investor', () => {
     })
   })
 
-  // TODO: add more robust testing
   describe('Transactions', () => {
     it('should return transactions for an investor', async () => {
       const account = await context.centrifuge.investor(randomAddress())
