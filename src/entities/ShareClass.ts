@@ -2019,7 +2019,7 @@ export class ShareClass extends Entity {
               return data.epochOutstandingInvests.items.map((item) => ({
                 assetId: new AssetId(item.assetId),
                 chainId: Number(chainsById.get(item.asset.centrifugeId)),
-                amount: new Balance(BigInt(item.pendingAssetsAmount || 0), item.asset.decimals),
+                amount: new Balance(item.pendingAssetsAmount || 0, item.asset.decimals),
               }))
             }
           )
@@ -2058,7 +2058,7 @@ export class ShareClass extends Entity {
               return data.epochOutstandingRedeems.items.map((item) => ({
                 assetId: new AssetId(item.assetId),
                 chainId: Number(chainsById.get(item.asset.centrifugeId)),
-                amount: new Balance(BigInt(item.pendingSharesAmount || 0), 18),
+                amount: new Balance(item.pendingSharesAmount || 0, 18),
               }))
             }
           )
