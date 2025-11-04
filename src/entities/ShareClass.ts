@@ -1328,56 +1328,51 @@ export class ShareClass extends Entity {
         switchMap(([orders, vaults]) => {
           if (!vaults.length) return of([])
 
+          const uniqueInvestors = new Set<HexString>()
+          orders.outstandingInvests.forEach((o) => uniqueInvestors.add(o.investor))
+          orders.outstandingRedeems.forEach((o) => uniqueInvestors.add(o.investor))
+
+          if (uniqueInvestors.size === 0) return of([])
+
           return combineLatest(
-            vaults.map((vault) =>
-              combineLatest([
-                vault._investmentCurrency(),
-                vault._shareCurrency(),
-                this.pool.currency(),
-                combineLatest([
-                  ...orders.outstandingInvests
-                    .filter((o) => o.assetId.equals(vault.assetId))
-                    .map((o) => this._investorOrder(o.assetId, o.investor)),
-                  ...orders.outstandingRedeems
-                    .filter((o) => o.assetId.equals(vault.assetId))
-                    .map((o) => this._investorOrder(o.assetId, o.investor)),
-                ]).pipe(catchError(() => of([]))),
-              ]).pipe(
-                map(([investmentCurrency, shareCurrency, poolCurrency, investorOrders]) => {
-                  const investorsMap = new Map<
-                    HexString,
-                    {
-                      investor: HexString
-                      assetId: AssetId
-                      pendingInvestCurrency: Balance
-                      pendingRedeemShares: Balance
-                      claimableInvestShares: Balance
-                      claimableRedeemCurrency: Balance
-                    }
-                  >()
+            vaults.map((vault) => {
+              const vaultInvestors = new Set<HexString>()
+              orders.outstandingInvests
+                .filter((o) => o.assetId.equals(vault.assetId))
+                .forEach((o) => vaultInvestors.add(o.investor))
+              orders.outstandingRedeems
+                .filter((o) => o.assetId.equals(vault.assetId))
+                .forEach((o) => vaultInvestors.add(o.investor))
 
-                  investorOrders.forEach((order) => {
-                    const prev = investorsMap.get(order.investor)
+              if (vaultInvestors.size === 0) return of([])
 
-                    const pendingInvest = new Balance(order.pendingDeposit, investmentCurrency.decimals)
-                    const pendingRedeem = new Balance(order.pendingRedeem, shareCurrency.decimals)
-                    const claimableInvest = new Balance(0n, poolCurrency.decimals)
-                    const claimableRedeem = new Balance(0n, shareCurrency.decimals)
-
-                    investorsMap.set(order.investor, {
-                      investor: order.investor,
+              return combineLatest(
+                Array.from(vaultInvestors).map((investor) =>
+                  vault.investment(investor).pipe(
+                    map((investment) => ({
+                      investor,
                       assetId: vault.assetId,
-                      pendingInvestCurrency: prev ? prev.pendingInvestCurrency.add(pendingInvest) : pendingInvest,
-                      pendingRedeemShares: prev ? prev.pendingRedeemShares.add(pendingRedeem) : pendingRedeem,
-                      claimableInvestShares: claimableInvest,
-                      claimableRedeemCurrency: claimableRedeem,
-                    })
-                  })
-
-                  return Array.from(investorsMap.values())
-                })
+                      chainId: vault.chainId,
+                      pendingInvestCurrency: investment.pendingInvestCurrency,
+                      pendingRedeemShares: investment.pendingRedeemShares,
+                      claimableInvestShares: investment.claimableInvestShares,
+                      claimableRedeemCurrency: investment.claimableRedeemCurrency,
+                    })),
+                    catchError(() =>
+                      of({
+                        investor,
+                        assetId: vault.assetId,
+                        chainId: vault.chainId,
+                        pendingInvestCurrency: new Balance(0n, 18),
+                        pendingRedeemShares: new Balance(0n, 18),
+                        claimableInvestShares: new Balance(0n, 18),
+                        claimableRedeemCurrency: new Balance(0n, 18),
+                      })
+                    )
+                  )
+                )
               )
-            )
+            })
           ).pipe(map((results) => results.flat()))
         })
       )
