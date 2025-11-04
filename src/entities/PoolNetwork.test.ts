@@ -151,6 +151,67 @@ describe('PoolNetwork', () => {
     expect(vaultAddr2).to.equal(NULL_ADDRESS)
   })
 
+  it('links vaults', async () => {
+    const { vaultRouter } = await context.centrifuge._protocolAddresses(chainId)
+
+    context.tenderlyFork.impersonateAddress = poolManager
+    context.centrifuge.setSigner(context.tenderlyFork.signer)
+
+    const scId = ShareClassId.from(poolId, 2)
+    const assetId = AssetId.from(1, 1)
+    const asset = await context.centrifuge.assetCurrency(assetId)
+
+    const initialVaultAddr = await context.centrifuge.getClient(chainId).readContract({
+      address: vaultRouter,
+      abi: ABI.VaultRouter,
+      functionName: 'getVault',
+      args: [poolId.raw, scId.raw, asset.address],
+    })
+    expect(initialVaultAddr).not.to.equal(NULL_ADDRESS)
+
+    const mockUnlink = sinon.mock(poolNetwork)
+    mockUnlink.expects('details').resolves({
+      activeShareClasses: [{ id: scId, vaults: [{ assetId, address: initialVaultAddr }] }],
+    })
+
+    const unlinkResult = await poolNetwork.unlinkVaults([{ shareClassId: scId, assetId }])
+    expect(unlinkResult.type).to.equal('TransactionConfirmed')
+
+    mockUnlink.restore()
+
+    const unlinkedVaultAddr = await context.centrifuge.getClient(chainId).readContract({
+      address: vaultRouter,
+      abi: ABI.VaultRouter,
+      functionName: 'getVault',
+      args: [poolId.raw, scId.raw, asset.address],
+    })
+    expect(unlinkedVaultAddr).to.equal(NULL_ADDRESS)
+
+    const mockLink = sinon.mock(poolNetwork)
+    mockLink.expects('details').resolves({
+      activeShareClasses: [
+        {
+          id: scId,
+          vaults: [{ assetId, address: initialVaultAddr }],
+        },
+      ],
+    })
+
+    const linkResult = await poolNetwork.linkVaults([{ shareClassId: scId, assetId }])
+    expect(linkResult.type).to.equal('TransactionConfirmed')
+
+    mockLink.restore()
+
+    const linkedVaultAddr = await context.centrifuge.getClient(chainId).readContract({
+      address: vaultRouter,
+      abi: ABI.VaultRouter,
+      functionName: 'getVault',
+      args: [poolId.raw, scId.raw, asset.address],
+    })
+    expect(linkedVaultAddr).to.equal(initialVaultAddr)
+    expect(linkedVaultAddr).not.to.equal(NULL_ADDRESS)
+  })
+
   describe('merkleProofManager', () => {
     it('should return merkleProofManager', async () => {
       const result = await poolNetwork.merkleProofManager()
