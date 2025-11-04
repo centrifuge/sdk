@@ -556,6 +556,66 @@ export class PoolNetwork extends Entity {
   }
 
   /**
+   * Link vaults that are already deployed but currently unlinked.
+   * @param vaults - An array of vaults to link
+   */
+  linkVaults(vaults: { shareClassId: ShareClassId; assetId: AssetId }[]) {
+    const self = this
+    return this._transact(async function* (ctx) {
+      if (vaults.length === 0) {
+        throw new Error('No vaults to link')
+      }
+
+      const [{ hub }, id, details] = await Promise.all([
+        self._root._protocolAddresses(self.pool.chainId),
+        self._root.id(self.chainId),
+        self.details(),
+      ])
+
+      const batch: HexString[] = []
+      const messageTypes: MessageTypeWithSubType[] = []
+
+      for (const vault of vaults) {
+        const shareClass = details.activeShareClasses.find((sc) => sc.id.equals(vault.shareClassId))
+
+        if (!shareClass) {
+          throw new Error(`Share class "${vault.shareClassId.raw}" not found`)
+        }
+
+        const existingVault = shareClass.vaults.find((v) => v.assetId.equals(vault.assetId))
+
+        if (!existingVault) {
+          throw new Error(
+            `Vault for share class "${vault.shareClassId.raw}" and asset ID "${vault.assetId.raw}" not found. The vault must be deployed before it can be linked.`
+          )
+        }
+
+        batch.push(
+          encodeFunctionData({
+            abi: ABI.Hub,
+            functionName: 'updateVault',
+            args: [
+              self.pool.id.raw,
+              vault.shareClassId.raw,
+              vault.assetId.raw,
+              addressToBytes32(existingVault.address),
+              VaultUpdateKind.Link,
+              0n, // gas limit
+            ],
+          })
+        )
+        messageTypes.push({ type: MessageType.UpdateVault, subtype: VaultUpdateKind.Link })
+      }
+
+      yield* wrapTransaction(`Link vault${batch.length > 1 ? 's' : ''}`, ctx, {
+        data: batch,
+        contract: hub,
+        messages: { [id]: messageTypes },
+      })
+    }, this.pool.chainId)
+  }
+
+  /**
    * Get the contract address of the share token.
    * @internal
    */
