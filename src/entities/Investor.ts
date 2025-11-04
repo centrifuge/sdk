@@ -109,6 +109,8 @@ export class Investor extends Entity {
   /**
    * Retrieve the transactions of an investor.
    * @param poolId - The pool ID
+   * @param page
+   * @param pageSize
    */
   transactions(poolId: PoolId, page: number = 1, pageSize: number = 10) {
     const offset = (page - 1) * pageSize
