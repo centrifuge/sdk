@@ -50,7 +50,8 @@ export class MerkleProofManager extends Entity {
       this.pool.metadata().pipe(
         switchMap(async (metadata) => {
           const strategists = metadata?.merkleProofManager?.[this.chainId]
-          const { SimpleMerkleTree: SimpleMerkleTreeConstructor } = await import('@openzeppelin/merkle-tree')
+          const importedMerkleTree = await import('@openzeppelin/merkle-tree')
+          const { SimpleMerkleTree: SimpleMerkleTreeConstructor } = importedMerkleTree.default || importedMerkleTree
 
           if (!strategists) return []
 
@@ -73,12 +74,14 @@ export class MerkleProofManager extends Entity {
   ) {
     const self = this
     return this._transact(async function* (ctx) {
-      const [{ hub }, id, poolDetails, { SimpleMerkleTree: SimpleMerkleTreeConstructor }] = await Promise.all([
+      const [{ hub }, id, poolDetails, importedMerkleTree] = await Promise.all([
         self._root._protocolAddresses(self.pool.chainId),
         self._root.id(self.chainId),
         self.pool.details(),
         import('@openzeppelin/merkle-tree'),
       ])
+
+      const { SimpleMerkleTree: SimpleMerkleTreeConstructor } = importedMerkleTree.default || importedMerkleTree
       const { metadata, shareClasses } = poolDetails
       const client = self._root.getClient(self.chainId)
 
@@ -139,7 +142,6 @@ export class MerkleProofManager extends Entity {
           const argsEncoded = await getEncodedArgs(input, policyCombinations)
           return {
             ...input,
-            assetId: input.assetId?.toString(),
             valueNonZero: input.valueNonZero ?? false,
             inputCombinations: policyCombinations.map((inputs, i) => ({
               inputs,
@@ -225,10 +227,12 @@ export class MerkleProofManager extends Entity {
   ) {
     const self = this
     return this._transact(async function* (ctx) {
-      const [metadata, { SimpleMerkleTree: SimpleMerkleTreeConstructor }] = await Promise.all([
+      const [metadata, importedMerkleTree] = await Promise.all([
         self.pool.metadata(),
         import('@openzeppelin/merkle-tree'),
       ])
+
+      const { SimpleMerkleTree: SimpleMerkleTreeConstructor } = importedMerkleTree.default || importedMerkleTree
 
       const policiesForStrategist =
         metadata?.merkleProofManager?.[self.chainId]?.[ctx.signingAddress.toLowerCase() as any]?.policies

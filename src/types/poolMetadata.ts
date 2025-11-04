@@ -3,7 +3,6 @@ import { HexString } from './index.js'
 export type FileType = { uri: string; mime: string }
 
 export type MerkleProofPolicy = {
-  assetId?: string
   decoder: HexString
   target: HexString
   action?: string
@@ -39,7 +38,7 @@ export type MerkleProofPolicy = {
 
 export type MerkleProofPolicyInput = Pick<
   MerkleProofPolicy,
-  'assetId' | 'target' | 'decoder' | 'action' | 'selector' | 'inputs'
+  'target' | 'decoder' | 'action' | 'selector' | 'inputs'
 > & {
   valueNonZero?: boolean
 }

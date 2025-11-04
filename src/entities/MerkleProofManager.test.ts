@@ -10,7 +10,7 @@ import { context } from '../tests/setup.js'
 import { randomAddress } from '../tests/utils.js'
 import { MerkleProofPolicy, MerkleProofPolicyInput } from '../types/poolMetadata.js'
 import { makeThenable } from '../utils/rx.js'
-import { AssetId, PoolId, ShareClassId } from '../utils/types.js'
+import { PoolId, ShareClassId } from '../utils/types.js'
 import { generateCombinations, getMerkleTree, MerkleProofManager } from './MerkleProofManager.js'
 import { Pool } from './Pool.js'
 import { PoolNetwork } from './PoolNetwork.js'
@@ -21,7 +21,6 @@ const centId = 1
 
 const poolId = PoolId.from(centId, 1)
 const scId = ShareClassId.from(poolId, 1)
-const assetId = AssetId.from(centId, 1)
 
 const someErc20 = '0x3aaaa86458d576BafCB1B7eD290434F0696dA65c'
 
@@ -46,7 +45,6 @@ describe('MerkleProofManager', () => {
 
     mockPolicies = [
       {
-        assetId: undefined,
         decoder,
         target: someErc20,
         selector: 'function approve(address,uint256)',
@@ -69,7 +67,6 @@ describe('MerkleProofManager', () => {
         ],
       },
       {
-        assetId: assetId.toString(),
         decoder,
         target,
         selector: 'function cancelDepositRequest(uint256, address controller)',
@@ -92,7 +89,6 @@ describe('MerkleProofManager', () => {
         ],
       },
       {
-        assetId: assetId.toString(),
         decoder,
         target,
         selector: 'function cancelRedeemRequest(uint256, address controller)',
@@ -115,7 +111,6 @@ describe('MerkleProofManager', () => {
         ],
       },
       {
-        assetId: assetId.toString(),
         decoder,
         target,
         selector: 'function claimCancelDepositRequest(uint256, address receiver, address controller)',
@@ -142,7 +137,6 @@ describe('MerkleProofManager', () => {
         ],
       },
       {
-        assetId: assetId.toString(),
         decoder,
         target,
         selector: 'function claimCancelRedeemRequest(uint256, address receiver, address controller)',
@@ -169,7 +163,6 @@ describe('MerkleProofManager', () => {
         ],
       },
       {
-        assetId: assetId.toString(),
         decoder,
         target,
         selector: 'function deposit(uint64 poolId, bytes16 scId, address asset, uint256, uint128)',
@@ -204,7 +197,6 @@ describe('MerkleProofManager', () => {
         ],
       },
       {
-        assetId: assetId.toString(),
         decoder,
         target,
         selector: 'function deposit(uint256, address receiver)',
@@ -227,7 +219,6 @@ describe('MerkleProofManager', () => {
         ],
       },
       {
-        assetId: assetId.toString(),
         decoder,
         target,
         selector: 'function mint(uint256, address receiver)',
@@ -250,7 +241,6 @@ describe('MerkleProofManager', () => {
         ],
       },
       {
-        assetId: assetId.toString(),
         decoder,
         target,
         selector: 'function redeem(uint256, address receiver, address owner)',
@@ -277,7 +267,6 @@ describe('MerkleProofManager', () => {
         ],
       },
       {
-        assetId: assetId.toString(),
         decoder,
         target,
         selector: 'function requestDeposit(uint256, address controller, address owner)',
@@ -304,7 +293,6 @@ describe('MerkleProofManager', () => {
         ],
       },
       {
-        assetId: assetId.toString(),
         decoder,
         target,
         selector: 'function requestRedeem(uint256, address controller, address owner)',
@@ -331,7 +319,6 @@ describe('MerkleProofManager', () => {
         ],
       },
       {
-        assetId: assetId.toString(),
         decoder,
         target,
         selector: 'function withdraw(uint256, address receiver, address owner)',
@@ -358,7 +345,6 @@ describe('MerkleProofManager', () => {
         ],
       },
       {
-        assetId: assetId.toString(),
         decoder,
         target,
         selector: 'function withdraw(uint64,bytes16,address,uint256,address,uint128)',
@@ -418,7 +404,6 @@ describe('MerkleProofManager', () => {
 
     const policies: MerkleProofPolicy[] = [
       {
-        assetId: assetId.toString(),
         decoder,
         target,
         selector: 'function withdraw(uint64,bytes16,address,uint256,address,uint128)',
@@ -457,7 +442,6 @@ describe('MerkleProofManager', () => {
         ],
       },
       {
-        assetId: assetId.toString(),
         decoder,
         target,
         selector: 'function deposit(uint64,bytes16,address,uint256,uint128)',
