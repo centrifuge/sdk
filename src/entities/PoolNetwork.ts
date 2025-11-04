@@ -600,7 +600,7 @@ export class PoolNetwork extends Entity {
               vault.assetId.raw,
               addressToBytes32(existingVault.address),
               VaultUpdateKind.Link,
-              0n, // gas limit
+              0n,
             ],
           })
         )
