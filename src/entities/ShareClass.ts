@@ -1320,12 +1320,12 @@ export class ShareClass extends Entity {
 
   /**
    * Get the pending and claimable investment/redeem amounts for all investors
-   * in a given share class (per vault/chain).
+   * in a given share class (per vault/chain)
    */
   investmentsByVault(chainId: number) {
     return this._query(['investmentsByVault', chainId], () =>
-      combineLatest([this._investorOrders(), this.vaults(chainId)]).pipe(
-        switchMap(([orders, vaults]) => {
+      combineLatest([this._investorOrders(), this.vaults(chainId), this.pendingAmounts()]).pipe(
+        switchMap(([orders, vaults, pendingAmounts]) => {
           if (!vaults.length) return of([])
 
           const uniqueInvestors = new Set<HexString>()
@@ -1346,6 +1346,15 @@ export class ShareClass extends Entity {
 
               if (vaultInvestors.size === 0) return of([])
 
+              const pendingMatch = pendingAmounts.find(
+                (p) => p.assetId.equals(vault.assetId) && p.chainId === vault.chainId
+              )
+
+              const basePendingDeposit = pendingMatch?.pendingDeposit ?? new Balance(0n, 18)
+              const basePendingRedeem = pendingMatch?.pendingRedeem ?? new Balance(0n, 18)
+              const queuedInvest = pendingMatch?.queuedInvest ?? new Balance(0n, 18)
+              const queuedRedeem = pendingMatch?.queuedRedeem ?? new Balance(0n, 18)
+
               return combineLatest(
                 Array.from(vaultInvestors).map((investor) =>
                   vault.investment(investor).pipe(
@@ -1353,10 +1362,16 @@ export class ShareClass extends Entity {
                       investor,
                       assetId: vault.assetId,
                       chainId: vault.chainId,
-                      pendingInvestCurrency: investment.pendingInvestCurrency,
-                      pendingRedeemShares: investment.pendingRedeemShares,
+                      pendingInvestCurrency: investment.pendingInvestCurrency || basePendingDeposit,
+                      pendingRedeemShares: basePendingRedeem,
                       claimableInvestShares: investment.claimableInvestShares,
                       claimableRedeemCurrency: investment.claimableRedeemCurrency,
+                      queuedInvest,
+                      queuedRedeem,
+                      depositEpoch: pendingMatch?.depositEpoch,
+                      redeemEpoch: pendingMatch?.redeemEpoch,
+                      issueEpoch: pendingMatch?.issueEpoch,
+                      revokeEpoch: pendingMatch?.revokeEpoch,
                     })),
                     catchError(() =>
                       of({
@@ -1367,6 +1382,8 @@ export class ShareClass extends Entity {
                         pendingRedeemShares: new Balance(0n, 18),
                         claimableInvestShares: new Balance(0n, 18),
                         claimableRedeemCurrency: new Balance(0n, 18),
+                        queuedInvest: new Balance(0n, 18),
+                        queuedRedeem: new Balance(0n, 18),
                       })
                     )
                   )
