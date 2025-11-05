@@ -1328,11 +1328,11 @@ export class ShareClass extends Entity {
         switchMap(([orders, vaults, pendingAmounts]) => {
           if (!vaults.length) return of([])
 
-          const uniqueInvestors = new Set<HexString>()
-          orders.outstandingInvests.forEach((o) => uniqueInvestors.add(o.investor))
-          orders.outstandingRedeems.forEach((o) => uniqueInvestors.add(o.investor))
+          const allInvestors = new Set<HexString>()
+          orders.outstandingInvests.forEach((o) => allInvestors.add(o.investor))
+          orders.outstandingRedeems.forEach((o) => allInvestors.add(o.investor))
 
-          if (uniqueInvestors.size === 0) return of([])
+          if (allInvestors.size === 0) return of([])
 
           return combineLatest(
             vaults.map((vault) => {
@@ -1355,24 +1355,43 @@ export class ShareClass extends Entity {
               const queuedInvest = pendingMatch?.queuedInvest ?? new Balance(0n, 18)
               const queuedRedeem = pendingMatch?.queuedRedeem ?? new Balance(0n, 18)
 
+              const allPendingIssuances = pendingMatch?.pendingIssuances ?? []
+              const allPendingRevocations = pendingMatch?.pendingRevocations ?? []
+
               return combineLatest(
                 Array.from(vaultInvestors).map((investor) =>
                   vault.investment(investor).pipe(
-                    map((investment) => ({
-                      investor,
-                      assetId: vault.assetId,
-                      chainId: vault.chainId,
-                      pendingInvestCurrency: investment.pendingInvestCurrency || basePendingDeposit,
-                      pendingRedeemShares: basePendingRedeem,
-                      claimableInvestShares: investment.claimableInvestShares,
-                      claimableRedeemCurrency: investment.claimableRedeemCurrency,
-                      queuedInvest,
-                      queuedRedeem,
-                      depositEpoch: pendingMatch?.depositEpoch,
-                      redeemEpoch: pendingMatch?.redeemEpoch,
-                      issueEpoch: pendingMatch?.issueEpoch,
-                      revokeEpoch: pendingMatch?.revokeEpoch,
-                    })),
+                    map((investment) => {
+                      const pendingIssuances = allPendingIssuances.map((epoch) => ({
+                        ...epoch,
+                        assetId: vault.assetId,
+                        chainId: vault.chainId,
+                      }))
+
+                      const pendingRevocations = allPendingRevocations.map((epoch) => ({
+                        ...epoch,
+                        assetId: vault.assetId,
+                        chainId: vault.chainId,
+                      }))
+
+                      return {
+                        investor,
+                        assetId: vault.assetId,
+                        chainId: vault.chainId,
+                        pendingInvestCurrency: investment.pendingInvestCurrency || basePendingDeposit,
+                        pendingRedeemShares: basePendingRedeem,
+                        claimableInvestShares: investment.claimableInvestShares,
+                        claimableRedeemCurrency: investment.claimableRedeemCurrency,
+                        queuedInvest,
+                        queuedRedeem,
+                        depositEpoch: pendingMatch?.depositEpoch,
+                        redeemEpoch: pendingMatch?.redeemEpoch,
+                        issueEpoch: pendingMatch?.issueEpoch,
+                        revokeEpoch: pendingMatch?.revokeEpoch,
+                        pendingIssuances,
+                        pendingRevocations,
+                      }
+                    }),
                     catchError(() =>
                       of({
                         investor,
@@ -1384,6 +1403,8 @@ export class ShareClass extends Entity {
                         claimableRedeemCurrency: new Balance(0n, 18),
                         queuedInvest: new Balance(0n, 18),
                         queuedRedeem: new Balance(0n, 18),
+                        pendingIssuances: [],
+                        pendingRevocations: [],
                       })
                     )
                   )
