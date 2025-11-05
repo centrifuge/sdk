@@ -1320,7 +1320,7 @@ export class ShareClass extends Entity {
 
   /**
    * Get the pending and claimable investment/redeem amounts for all investors
-   * in a given share class (per vault/chain).
+   * in a given share class (per vault/chain)
    */
   investmentsByVault(chainId: number) {
     return this._query(['investmentsByVault', chainId], () =>
