@@ -1,4 +1,16 @@
-import { catchError, combineLatest, defer, EMPTY, expand, filter, firstValueFrom, map, of, switchMap } from 'rxjs'
+import {
+  catchError,
+  combineLatest,
+  defer,
+  EMPTY,
+  expand,
+  filter,
+  firstValueFrom,
+  map,
+  of,
+  switchMap,
+  timeout,
+} from 'rxjs'
 import { encodeFunctionData, encodePacked, getContract } from 'viem'
 import { ABI } from '../abi/index.js'
 import type { Centrifuge } from '../Centrifuge.js'
@@ -1066,15 +1078,27 @@ export class ShareClass extends Entity {
             { outstandingInvests, outstandingRedeems },
             { items: tokenInstancePositions, assets, pageInfo, totalCount },
           ]) => {
-            const chainsById = new Map(deployments.blockchains.items.map((chain) => [chain.centrifugeId, chain.id]))
+            // Handle empty positions case or else combineLatest([]) can hang indefinitely
+            if (tokenInstancePositions.length === 0) {
+              return of({
+                investors: [],
+                pageInfo,
+                totalCount,
+              })
+            }
 
             const whitelistedQueries = tokenInstancePositions.map((position) =>
               this._whitelistedInvestor({
                 accountAddress: position.accountAddress,
                 centrifugeId: position.centrifugeId,
                 tokenId: this.id.raw,
-              }).pipe(catchError(() => of(null)))
+              }).pipe(
+                timeout(4000),
+                catchError(() => of(null))
+              )
             )
+
+            const chainsById = new Map(deployments.blockchains.items.map((chain) => [chain.centrifugeId, chain.id]))
 
             return combineLatest(whitelistedQueries).pipe(
               map((whitelistResults) => {
@@ -1160,15 +1184,26 @@ export class ShareClass extends Entity {
             { outstandingInvests, outstandingRedeems },
             { items: whitelistedInvestors, assets, pageInfo, totalCount },
           ]) => {
-            const chainsById = new Map(deployments.blockchains.items.map((chain) => [chain.centrifugeId, chain.id]))
+            if (whitelistedInvestors.length === 0) {
+              return of({
+                investors: [],
+                pageInfo,
+                totalCount,
+              })
+            }
 
             const positionQueries = whitelistedInvestors.map((investor) =>
               this._tokenInstancePosition({
                 accountAddress: investor.address,
                 centrifugeId: investor.centrifugeId,
                 tokenId: this.id.raw,
-              }).pipe(catchError(() => of(null)))
+              }).pipe(
+                timeout(4000),
+                catchError(() => of(null))
+              )
             )
+
+            const chainsById = new Map(deployments.blockchains.items.map((chain) => [chain.centrifugeId, chain.id]))
 
             return combineLatest(positionQueries).pipe(
               map((positionResults) => {
