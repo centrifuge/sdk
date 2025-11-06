@@ -55,12 +55,14 @@ export class MerkleProofManager extends Entity {
 
           if (!strategists) return []
 
-          return Object.entries(strategists).map(([address, { policies }]) => ({
-            chainId: this.chainId,
-            address,
-            policies,
-            policyRoot: getMerkleTree(SimpleMerkleTreeConstructor, policies),
-          }))
+          return Object.entries(strategists)
+            .filter(([_, { policies }]) => policies.length > 0)
+            .map(([address, { policies }]) => ({
+              chainId: this.chainId,
+              address,
+              policies,
+              policyRoot: getMerkleTree(SimpleMerkleTreeConstructor, policies),
+            }))
         })
       )
     )
