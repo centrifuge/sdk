@@ -1,16 +1,4 @@
-import {
-  catchError,
-  combineLatest,
-  defer,
-  EMPTY,
-  expand,
-  filter,
-  firstValueFrom,
-  map,
-  of,
-  switchMap,
-  timeout,
-} from 'rxjs'
+import { catchError, combineLatest, defer, EMPTY, expand, filter, firstValueFrom, map, of, switchMap } from 'rxjs'
 import { encodeFunctionData, encodePacked, getContract } from 'viem'
 import { ABI } from '../abi/index.js'
 import type { Centrifuge } from '../Centrifuge.js'
