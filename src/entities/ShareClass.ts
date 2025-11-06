@@ -1066,7 +1066,14 @@ export class ShareClass extends Entity {
             { outstandingInvests, outstandingRedeems },
             { items: tokenInstancePositions, assets, pageInfo, totalCount },
           ]) => {
-            const chainsById = new Map(deployments.blockchains.items.map((chain) => [chain.centrifugeId, chain.id]))
+            // Handle empty positions case or else combineLatest([]) can hang indefinitely
+            if (tokenInstancePositions.length === 0) {
+              return of({
+                investors: [],
+                pageInfo,
+                totalCount,
+              })
+            }
 
             const whitelistedQueries = tokenInstancePositions.map((position) =>
               this._whitelistedInvestor({
@@ -1075,6 +1082,8 @@ export class ShareClass extends Entity {
                 tokenId: this.id.raw,
               }).pipe(catchError(() => of(null)))
             )
+
+            const chainsById = new Map(deployments.blockchains.items.map((chain) => [chain.centrifugeId, chain.id]))
 
             return combineLatest(whitelistedQueries).pipe(
               map((whitelistResults) => {
@@ -1160,7 +1169,13 @@ export class ShareClass extends Entity {
             { outstandingInvests, outstandingRedeems },
             { items: whitelistedInvestors, assets, pageInfo, totalCount },
           ]) => {
-            const chainsById = new Map(deployments.blockchains.items.map((chain) => [chain.centrifugeId, chain.id]))
+            if (whitelistedInvestors.length === 0) {
+              return of({
+                investors: [],
+                pageInfo,
+                totalCount,
+              })
+            }
 
             const positionQueries = whitelistedInvestors.map((investor) =>
               this._tokenInstancePosition({
@@ -1169,6 +1184,8 @@ export class ShareClass extends Entity {
                 tokenId: this.id.raw,
               }).pipe(catchError(() => of(null)))
             )
+
+            const chainsById = new Map(deployments.blockchains.items.map((chain) => [chain.centrifugeId, chain.id]))
 
             return combineLatest(positionQueries).pipe(
               map((positionResults) => {
