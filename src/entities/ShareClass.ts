@@ -1092,10 +1092,7 @@ export class ShareClass extends Entity {
                 accountAddress: position.accountAddress,
                 centrifugeId: position.centrifugeId,
                 tokenId: this.id.raw,
-              }).pipe(
-                timeout(4000),
-                catchError(() => of(null))
-              )
+              }).pipe(catchError(() => of(null)))
             )
 
             const chainsById = new Map(deployments.blockchains.items.map((chain) => [chain.centrifugeId, chain.id]))
@@ -1197,10 +1194,7 @@ export class ShareClass extends Entity {
                 accountAddress: investor.address,
                 centrifugeId: investor.centrifugeId,
                 tokenId: this.id.raw,
-              }).pipe(
-                timeout(4000),
-                catchError(() => of(null))
-              )
+              }).pipe(catchError(() => of(null)))
             )
 
             const chainsById = new Map(deployments.blockchains.items.map((chain) => [chain.centrifugeId, chain.id]))
