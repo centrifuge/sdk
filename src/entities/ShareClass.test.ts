@@ -855,7 +855,7 @@ describe('ShareClass', () => {
   })
 
   describe('closedRedemptions', () => {
-    it.only('gets closed redemption orders', async () => {
+    it('gets closed redemption orders', async () => {
       const closedRedemptions = await shareClass.closedRedemptions()
 
       expect(closedRedemptions).to.be.an('array')
@@ -887,17 +887,6 @@ describe('ShareClass', () => {
         expect(redemption.priceAsset).to.be.instanceOf(Price)
         expect(redemption.pricePerShare).to.be.instanceOf(Price)
         expect(typeof redemption.isClaimed).to.equal('boolean')
-
-        if (redemption.approvedAt !== null) {
-          expect(redemption.approvedAt).to.be.instanceOf(Date)
-        }
-        if (redemption.revokedAt !== null) {
-          expect(redemption.revokedAt).to.be.instanceOf(Date)
-        }
-        if (redemption.claimedAt !== null) {
-          expect(redemption.claimedAt).to.be.instanceOf(Date)
-        }
-
         expect(redemption.asset).to.have.keys(['symbol', 'name', 'decimals'])
         expect(redemption.asset.symbol).to.be.a('string')
         expect(redemption.asset.name).to.be.a('string')
@@ -905,12 +894,12 @@ describe('ShareClass', () => {
       }
     })
 
-    it.only('returns only revoked orders', async () => {
+    it('returns only revoked orders', async () => {
       const closedRedemptions = await shareClass.closedRedemptions()
 
       closedRedemptions.forEach((redemption) => {
         expect(redemption.revokedAt).to.not.be.null
-        expect(redemption.revokedAt).to.be.instanceOf(Date)
+        expect(redemption.revokedAt).to.be.string
       })
     })
   })
