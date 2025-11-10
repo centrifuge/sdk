@@ -1435,7 +1435,7 @@ export class ShareClass extends Entity {
   }
 
   /**
-   * Get closed investment orders (deposits that have been issued as shares)
+   * Get closed investment orders
    * @returns Closed investment orders where shares have been issued
    */
   closedInvestments() {
@@ -1519,7 +1519,7 @@ export class ShareClass extends Entity {
   }
 
   /**
-   * Get closed redemption orders (redeems that have been revoked and converted to currency)
+   * Get closed redemption orders
    * @returns Closed redemption orders where shares have been revoked
    */
   closedRedemptions() {
