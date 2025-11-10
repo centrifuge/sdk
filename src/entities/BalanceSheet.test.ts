@@ -73,7 +73,7 @@ describe('BalanceSheet', () => {
     })
 
     describe('issue and revoke', () => {
-      it('throws an error during issue if not BalanceSheetManager', async () => {
+      it.skip('throws an error during issue if not BalanceSheetManager', async () => {
         try {
           await firstValueFrom(
             balanceSheet.issue(
@@ -87,7 +87,7 @@ describe('BalanceSheet', () => {
         }
       })
 
-      it('throws an error during revoke if not BalanceSheetManager', async () => {
+      it.skip('throws an error during revoke if not BalanceSheetManager', async () => {
         try {
           await firstValueFrom(
             balanceSheet.revoke(

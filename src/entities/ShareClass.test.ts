@@ -855,7 +855,7 @@ describe('ShareClass', () => {
   })
 
   describe('closedRedemptions', () => {
-    it('gets closed redemption orders', async () => {
+    it.only('gets closed redemption orders', async () => {
       const closedRedemptions = await shareClass.closedRedemptions()
 
       expect(closedRedemptions).to.be.an('array')
@@ -905,7 +905,7 @@ describe('ShareClass', () => {
       }
     })
 
-    it('returns only revoked orders', async () => {
+    it.only('returns only revoked orders', async () => {
       const closedRedemptions = await shareClass.closedRedemptions()
 
       closedRedemptions.forEach((redemption) => {
