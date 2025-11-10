@@ -1435,10 +1435,11 @@ export class ShareClass extends Entity {
   }
 
   /**
-   * Get closed investment orders
+   * Get closed investment orders (deposits that have been issued as shares)
    * @returns Closed investment orders where shares have been issued
    */
   closedInvestments() {
+    const self = this
     return this._query(['closedInvestments'], () =>
       this._root._queryIndexer(
         `query ($scId: String!) {
@@ -1499,12 +1500,12 @@ export class ShareClass extends Entity {
             index: order.index,
             assetId: new AssetId(order.assetId),
             approvedAmount: new Balance(order.approvedAssetsAmount || 0n, order.asset.decimals),
-            approvedAt: order.approvedAt ? new Date(order.approvedAt) : null,
+            approvedAt: order.approvedAt ? new Date(Number(order.approvedAt)) : null,
             issuedAmount: new Balance(order.issuedSharesAmount || 0n, order.token.decimals),
-            issuedAt: order.issuedAt ? new Date(order.issuedAt) : null,
+            issuedAt: order.issuedAt ? new Date(Number(order.issuedAt)) : null,
             priceAsset: new Price(order.issuedWithNavAssetPerShare || 0n),
             pricePerShare: new Price(order.issuedWithNavPoolPerShare || 0n),
-            claimedAt: order.claimedAt ? new Date(order.claimedAt) : null,
+            claimedAt: order.claimedAt ? new Date(Number(order.claimedAt)) : null,
             isClaimed: !!order.claimedAtBlock,
             asset: {
               symbol: order.asset.symbol,
@@ -1518,10 +1519,11 @@ export class ShareClass extends Entity {
   }
 
   /**
-   * Get closed redemption orders
+   * Get closed redemption orders (redeems that have been revoked and converted to currency)
    * @returns Closed redemption orders where shares have been revoked
    */
   closedRedemptions() {
+    const self = this
     return this._query(['closedRedemptions'], () =>
       this._root._queryIndexer(
         `query ($scId: String!) {
@@ -1582,12 +1584,12 @@ export class ShareClass extends Entity {
             index: order.index,
             assetId: new AssetId(order.assetId),
             approvedAmount: new Balance(order.approvedSharesAmount || 0n, order.token.decimals),
-            approvedAt: order.approvedAt ? new Date(order.approvedAt) : null,
+            approvedAt: order.approvedAt ? new Date(Number(order.approvedAt)) : null,
             payoutAmount: new Balance(order.revokedAssetsAmount || 0n, order.asset.decimals),
-            revokedAt: order.revokedAt ? new Date(order.revokedAt) : null,
+            revokedAt: order.revokedAt ? new Date(Number(order.revokedAt)) : null,
             priceAsset: new Price(order.revokedWithNavAssetPerShare || 0n),
             pricePerShare: new Price(order.revokedWithNavPoolPerShare || 0n),
-            claimedAt: order.claimedAt ? new Date(order.claimedAt) : null,
+            claimedAt: order.claimedAt ? new Date(Number(order.claimedAt)) : null,
             isClaimed: !!order.claimedAtBlock,
             asset: {
               symbol: order.asset.symbol,
