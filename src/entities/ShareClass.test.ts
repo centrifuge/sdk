@@ -794,7 +794,7 @@ describe('ShareClass', () => {
   })
 
   describe('closedInvestments', () => {
-    it.only('gets closed investment orders', async () => {
+    it('gets closed investment orders', async () => {
       const closedInvestments = await shareClass.closedInvestments()
 
       expect(closedInvestments).to.be.an('array')
@@ -855,7 +855,7 @@ describe('ShareClass', () => {
   })
 
   describe('closedRedemptions', () => {
-    it.only('gets closed redemption orders', async () => {
+    it('gets closed redemption orders', async () => {
       const closedRedemptions = await shareClass.closedRedemptions()
 
       expect(closedRedemptions).to.be.an('array')

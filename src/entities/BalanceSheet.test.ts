@@ -101,7 +101,7 @@ describe('BalanceSheet', () => {
         }
       })
 
-      it.only('issues and revokes shares successfully', async () => {
+      it('issues and revokes shares successfully', async () => {
         context.tenderlyFork.impersonateAddress = poolManager
         context.centrifuge.setSigner(context.tenderlyFork.signer)
 
