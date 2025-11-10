@@ -792,6 +792,128 @@ describe('ShareClass', () => {
     expect(item.claimableInvestShares).to.be.instanceOf(Balance)
     expect(item.claimableRedeemCurrency).to.be.instanceOf(Balance)
   })
+
+  describe('closedInvestments', () => {
+    it.only('gets closed investment orders', async () => {
+      const closedInvestments = await shareClass.closedInvestments()
+
+      expect(closedInvestments).to.be.an('array')
+
+      if (closedInvestments.length > 0) {
+        const investment = closedInvestments[0]!
+
+        expect(investment).to.have.keys([
+          'investor',
+          'index',
+          'assetId',
+          'approvedAmount',
+          'approvedAt',
+          'issuedAmount',
+          'issuedAt',
+          'priceAsset',
+          'pricePerShare',
+          'claimedAt',
+          'isClaimed',
+          'asset',
+        ])
+
+        expect(investment.investor).to.be.a('string')
+        expect(investment.investor.toLowerCase()).to.equal(investment.investor)
+        expect(investment.index).to.be.a('number')
+        expect(investment.assetId).to.be.instanceOf(AssetId)
+        expect(investment.approvedAmount).to.be.instanceOf(Balance)
+        expect(investment.issuedAmount).to.be.instanceOf(Balance)
+        expect(investment.priceAsset).to.be.instanceOf(Price)
+        expect(investment.pricePerShare).to.be.instanceOf(Price)
+        expect(typeof investment.isClaimed).to.equal('boolean')
+
+        if (investment.approvedAt !== null) {
+          expect(investment.approvedAt).to.be.instanceOf(Date)
+        }
+        if (investment.issuedAt !== null) {
+          expect(investment.issuedAt).to.be.instanceOf(Date)
+        }
+        if (investment.claimedAt !== null) {
+          expect(investment.claimedAt).to.be.instanceOf(Date)
+        }
+
+        expect(investment.asset).to.have.keys(['symbol', 'name', 'decimals'])
+        expect(investment.asset.symbol).to.be.a('string')
+        expect(investment.asset.name).to.be.a('string')
+        expect(investment.asset.decimals).to.be.a('number')
+      }
+    })
+
+    it('returns only issued orders', async () => {
+      const closedInvestments = await shareClass.closedInvestments()
+
+      closedInvestments.forEach((investment) => {
+        expect(investment.issuedAt).to.not.be.null
+        expect(investment.issuedAt).to.be.instanceOf(Date)
+      })
+    })
+  })
+
+  describe('closedRedemptions', () => {
+    it.only('gets closed redemption orders', async () => {
+      const closedRedemptions = await shareClass.closedRedemptions()
+
+      expect(closedRedemptions).to.be.an('array')
+
+      if (closedRedemptions.length > 0) {
+        const redemption = closedRedemptions[0]!
+
+        expect(redemption).to.have.keys([
+          'investor',
+          'index',
+          'assetId',
+          'approvedAmount',
+          'approvedAt',
+          'payoutAmount',
+          'revokedAt',
+          'priceAsset',
+          'pricePerShare',
+          'claimedAt',
+          'isClaimed',
+          'asset',
+        ])
+
+        expect(redemption.investor).to.be.a('string')
+        expect(redemption.investor.toLowerCase()).to.equal(redemption.investor)
+        expect(redemption.index).to.be.a('number')
+        expect(redemption.assetId).to.be.instanceOf(AssetId)
+        expect(redemption.approvedAmount).to.be.instanceOf(Balance)
+        expect(redemption.payoutAmount).to.be.instanceOf(Balance)
+        expect(redemption.priceAsset).to.be.instanceOf(Price)
+        expect(redemption.pricePerShare).to.be.instanceOf(Price)
+        expect(typeof redemption.isClaimed).to.equal('boolean')
+
+        if (redemption.approvedAt !== null) {
+          expect(redemption.approvedAt).to.be.instanceOf(Date)
+        }
+        if (redemption.revokedAt !== null) {
+          expect(redemption.revokedAt).to.be.instanceOf(Date)
+        }
+        if (redemption.claimedAt !== null) {
+          expect(redemption.claimedAt).to.be.instanceOf(Date)
+        }
+
+        expect(redemption.asset).to.have.keys(['symbol', 'name', 'decimals'])
+        expect(redemption.asset.symbol).to.be.a('string')
+        expect(redemption.asset.name).to.be.a('string')
+        expect(redemption.asset.decimals).to.be.a('number')
+      }
+    })
+
+    it('returns only revoked orders', async () => {
+      const closedRedemptions = await shareClass.closedRedemptions()
+
+      closedRedemptions.forEach((redemption) => {
+        expect(redemption.revokedAt).to.not.be.null
+        expect(redemption.revokedAt).to.be.instanceOf(Date)
+      })
+    })
+  })
 })
 
 async function mint(asset: string, address: string) {

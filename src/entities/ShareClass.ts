@@ -1434,6 +1434,172 @@ export class ShareClass extends Entity {
     )
   }
 
+  /**
+   * Get closed investment orders
+   * @returns Closed investment orders where shares have been issued
+   */
+  closedInvestments() {
+    return this._query(['closedInvestments'], () =>
+      this._root._queryIndexer(
+        `query ($scId: String!) {
+        investOrders(where: { tokenId: $scId, issuedAt_not: null }, limit: 1000) {
+          items {
+            account
+            index
+            assetId
+            approvedAssetsAmount
+            approvedAt
+            issuedSharesAmount
+            issuedAt
+            issuedWithNavAssetPerShare
+            issuedWithNavPoolPerShare
+            claimedAt
+            claimedAtBlock
+            asset {
+              id
+              decimals
+              symbol
+              name
+            }
+            token {
+              decimals
+            }
+          }
+        }
+      }`,
+        { scId: this.id.raw },
+        (data: {
+          investOrders: {
+            items: {
+              account: HexString
+              index: number
+              assetId: string
+              approvedAssetsAmount: string
+              approvedAt: string | null
+              issuedSharesAmount: string
+              issuedAt: string | null
+              issuedWithNavAssetPerShare: string
+              issuedWithNavPoolPerShare: string
+              claimedAt: string | null
+              claimedAtBlock: string | null
+              asset: {
+                id: string
+                decimals: number
+                symbol: string
+                name: string
+              }
+              token: {
+                decimals: number
+              }
+            }[]
+          }
+        }) => {
+          return data.investOrders.items.map((order) => ({
+            investor: order.account.toLowerCase() as HexString,
+            index: order.index,
+            assetId: new AssetId(order.assetId),
+            approvedAmount: new Balance(order.approvedAssetsAmount || 0n, order.asset.decimals),
+            approvedAt: order.approvedAt ? new Date(order.approvedAt) : null,
+            issuedAmount: new Balance(order.issuedSharesAmount || 0n, order.token.decimals),
+            issuedAt: order.issuedAt ? new Date(order.issuedAt) : null,
+            priceAsset: new Price(order.issuedWithNavAssetPerShare || 0n),
+            pricePerShare: new Price(order.issuedWithNavPoolPerShare || 0n),
+            claimedAt: order.claimedAt ? new Date(order.claimedAt) : null,
+            isClaimed: !!order.claimedAtBlock,
+            asset: {
+              symbol: order.asset.symbol,
+              name: order.asset.name,
+              decimals: order.asset.decimals,
+            },
+          }))
+        }
+      )
+    )
+  }
+
+  /**
+   * Get closed redemption orders
+   * @returns Closed redemption orders where shares have been revoked
+   */
+  closedRedemptions() {
+    return this._query(['closedRedemptions'], () =>
+      this._root._queryIndexer(
+        `query ($scId: String!) {
+        redeemOrders(where: { tokenId: $scId, revokedAt_not: null }, limit: 1000) {
+          items {
+            account
+            index
+            assetId
+            approvedSharesAmount
+            approvedAt
+            revokedAssetsAmount
+            revokedAt
+            revokedWithNavAssetPerShare
+            revokedWithNavPoolPerShare
+            claimedAt
+            claimedAtBlock
+            asset {
+              id
+              decimals
+              symbol
+              name
+            }
+            token {
+              decimals
+            }
+          }
+        }
+      }`,
+        { scId: this.id.raw },
+        (data: {
+          redeemOrders: {
+            items: {
+              account: HexString
+              index: number
+              assetId: string
+              approvedSharesAmount: string
+              approvedAt: string | null
+              revokedAssetsAmount: string
+              revokedAt: string | null
+              revokedWithNavAssetPerShare: string
+              revokedWithNavPoolPerShare: string
+              claimedAt: string | null
+              claimedAtBlock: string | null
+              asset: {
+                id: string
+                decimals: number
+                symbol: string
+                name: string
+              }
+              token: {
+                decimals: number
+              }
+            }[]
+          }
+        }) => {
+          return data.redeemOrders.items.map((order) => ({
+            investor: order.account.toLowerCase() as HexString,
+            index: order.index,
+            assetId: new AssetId(order.assetId),
+            approvedAmount: new Balance(order.approvedSharesAmount || 0n, order.token.decimals),
+            approvedAt: order.approvedAt ? new Date(order.approvedAt) : null,
+            payoutAmount: new Balance(order.revokedAssetsAmount || 0n, order.asset.decimals),
+            revokedAt: order.revokedAt ? new Date(order.revokedAt) : null,
+            priceAsset: new Price(order.revokedWithNavAssetPerShare || 0n),
+            pricePerShare: new Price(order.revokedWithNavPoolPerShare || 0n),
+            claimedAt: order.claimedAt ? new Date(order.claimedAt) : null,
+            isClaimed: !!order.claimedAtBlock,
+            asset: {
+              symbol: order.asset.symbol,
+              name: order.asset.name,
+              decimals: order.asset.decimals,
+            },
+          }))
+        }
+      )
+    )
+  }
+
   /** @internal */
   _balances() {
     return this._root._queryIndexer(
