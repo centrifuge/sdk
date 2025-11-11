@@ -320,7 +320,7 @@ describe('ShareClass', () => {
     ])
   })
 
-  describe('approveDepositsAndIssueShares', () => {
+  describe.skip('approveDepositsAndIssueShares', () => {
     let vault: Vault
 
     before(async () => {

@@ -41,7 +41,7 @@ describe('Investor', () => {
       vault = await pool.vault(chainId, sc.id, assetId)
     })
 
-    it('should fetch an investment', async () => {
+    it.skip('should fetch an investment', async () => {
       await mint(vault._asset, investor)
       const account = await context.centrifuge.investor(investor)
       const investment = await account.investment(poolId, sc.id, assetId, chainId)

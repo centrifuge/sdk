@@ -212,7 +212,7 @@ describe.skip('PoolNetwork', () => {
     expect(linkedVaultAddr).not.to.equal(NULL_ADDRESS)
   })
 
-  describe('merkleProofManager', () => {
+  describe.skip('merkleProofManager', () => {
     it('should return merkleProofManager', async () => {
       const result = await poolNetwork.merkleProofManager()
 
@@ -248,7 +248,7 @@ describe.skip('PoolNetwork', () => {
     })
   })
 
-  describe('onOfframpManager', () => {
+  describe.skip('onOfframpManager', () => {
     it.skip('returns onOfframpManager', async () => {
       context.tenderlyFork.impersonateAddress = poolManager
       context.centrifuge.setSigner(context.tenderlyFork.signer)
