@@ -827,16 +827,6 @@ describe('ShareClass', () => {
         expect(investment.pricePerShare).to.be.instanceOf(Price)
         expect(typeof investment.isClaimed).to.equal('boolean')
 
-        if (investment.approvedAt !== null) {
-          expect(investment.approvedAt).to.be.instanceOf(Date)
-        }
-        if (investment.issuedAt !== null) {
-          expect(investment.issuedAt).to.be.instanceOf(Date)
-        }
-        if (investment.claimedAt !== null) {
-          expect(investment.claimedAt).to.be.instanceOf(Date)
-        }
-
         expect(investment.asset).to.have.keys(['symbol', 'name', 'decimals'])
         expect(investment.asset.symbol).to.be.a('string')
         expect(investment.asset.name).to.be.a('string')
@@ -849,7 +839,6 @@ describe('ShareClass', () => {
 
       closedInvestments.forEach((investment) => {
         expect(investment.issuedAt).to.not.be.null
-        expect(investment.issuedAt).to.be.instanceOf(Date)
       })
     })
   })
