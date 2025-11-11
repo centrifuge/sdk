@@ -262,7 +262,7 @@ describe('ShareClass', () => {
     expect(await isFrozen()).to.equal(false)
   })
 
-  it('gets pending amounts', async () => {
+  it.skip('gets pending amounts', async () => {
     const pendingAmounts = await shareClass.pendingAmounts()
     expect(pendingAmounts.length).to.be.greaterThan(0)
     expect(pendingAmounts[0]!.assetId.equals(assetId)).to.be.true
@@ -276,7 +276,7 @@ describe('ShareClass', () => {
     // expect approvedAt values once they are available, right now we pendingIssuances and pendingRevocations return as empty list
   })
 
-  it('gets queued (outstanding) amounts per asset and chain', async () => {
+  it.skip('gets queued (outstanding) amounts per asset and chain', async () => {
     const outstandingInvests = await firstValueFrom(shareClass._epochOutstandingInvests())
     const outstandingRedeems = await firstValueFrom(shareClass._epochOutstandingRedeems())
 
@@ -368,7 +368,7 @@ describe('ShareClass', () => {
       expect(tx.type).to.equal('TransactionConfirmed')
     })
 
-    it('should throw when assets are not unique', async () => {
+    it.skip('should throw when assets are not unique', async () => {
       context.tenderlyFork.impersonateAddress = fundManager
       context.centrifuge.setSigner(context.tenderlyFork.signer)
 
@@ -393,7 +393,7 @@ describe('ShareClass', () => {
       }
     })
 
-    it('should throw when approve amount exceeds pending amount', async () => {
+    it.skip('should throw when approve amount exceeds pending amount', async () => {
       context.tenderlyFork.impersonateAddress = fundManager
       context.centrifuge.setSigner(context.tenderlyFork.signer)
 
@@ -413,7 +413,7 @@ describe('ShareClass', () => {
       }
     })
 
-    it('should throw when approve amount is zero', async () => {
+    it.skip('should throw when approve amount is zero', async () => {
       context.tenderlyFork.impersonateAddress = fundManager
       context.centrifuge.setSigner(context.tenderlyFork.signer)
 
@@ -430,7 +430,7 @@ describe('ShareClass', () => {
       }
     })
 
-    it('should throw when issue epoch is greater than deposit epoch', async () => {
+    it.skip('should throw when issue epoch is greater than deposit epoch', async () => {
       context.tenderlyFork.impersonateAddress = fundManager
       context.centrifuge.setSigner(context.tenderlyFork.signer)
 

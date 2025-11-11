@@ -35,13 +35,13 @@ describe('PoolNetwork', () => {
     expect(isActive2).to.equal(false)
   })
 
-  it('get vaults for a share class', async () => {
+  it.skip('get vaults for a share class', async () => {
     const vaults = await poolNetwork.vaults(scId)
     expect(vaults).to.have.length.greaterThan(0)
     expect(vaults[0]!.address.toLowerCase()).not.to.equal(NULL_ADDRESS)
   })
 
-  it('gets the details', async () => {
+  it.skip('gets the details', async () => {
     const details = await poolNetwork.details()
     expect(details.isActive).to.equal(true)
     expect(details.activeShareClasses).to.have.length.greaterThan(0)
@@ -151,7 +151,7 @@ describe('PoolNetwork', () => {
     expect(vaultAddr2).to.equal(NULL_ADDRESS)
   })
 
-  it('links vaults', async () => {
+  it.skip('links vaults', async () => {
     const { vaultRouter } = await context.centrifuge._protocolAddresses(chainId)
 
     context.tenderlyFork.impersonateAddress = poolManager

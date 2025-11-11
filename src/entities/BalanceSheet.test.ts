@@ -51,7 +51,7 @@ describe('BalanceSheet', () => {
       }
     })
 
-    it.skip('withdraws and deposits funds', async () => {
+    it('withdraws and deposits funds', async () => {
       context.tenderlyFork.impersonateAddress = poolManager
       context.centrifuge.setSigner(context.tenderlyFork.signer)
 
