@@ -1314,7 +1314,7 @@ export class ShareClass extends Entity {
   }
 
   /**
-   * Unfreeze a member of the share class.
+   * Unfreeze a member of the share class
    */
   unfreezeMember(address: HexString, chainId: number) {
     const self = this
@@ -1439,7 +1439,6 @@ export class ShareClass extends Entity {
    * @returns Closed investment orders where shares have been issued
    */
   closedInvestments() {
-    const self = this
     return this._query(['closedInvestments'], () =>
       this._root._queryIndexer(
         `query ($scId: String!) {
@@ -1462,8 +1461,11 @@ export class ShareClass extends Entity {
               symbol
               name
             }
-            token {
+             token {
               decimals
+              blockchain {
+               chainId
+              }
             }
           }
         }
@@ -1491,6 +1493,9 @@ export class ShareClass extends Entity {
               }
               token: {
                 decimals: number
+                blockchain: {
+                  chainId: number
+                }
               }
             }[]
           }
@@ -1512,6 +1517,10 @@ export class ShareClass extends Entity {
               name: order.asset.name,
               decimals: order.asset.decimals,
             },
+            chainId: order.token.blockchain.chainId,
+            token: {
+              decimals: order.token.decimals,
+            },
           }))
         }
       )
@@ -1523,7 +1532,6 @@ export class ShareClass extends Entity {
    * @returns Closed redemption orders where shares have been revoked
    */
   closedRedemptions() {
-    const self = this
     return this._query(['closedRedemptions'], () =>
       this._root._queryIndexer(
         `query ($scId: String!) {
@@ -1548,6 +1556,9 @@ export class ShareClass extends Entity {
             }
             token {
               decimals
+              blockchain {
+               chainId
+              }
             }
           }
         }
@@ -1575,6 +1586,9 @@ export class ShareClass extends Entity {
               }
               token: {
                 decimals: number
+                blockchain: {
+                  chainId: number
+                }
               }
             }[]
           }
@@ -1595,6 +1609,10 @@ export class ShareClass extends Entity {
               symbol: order.asset.symbol,
               name: order.asset.name,
               decimals: order.asset.decimals,
+            },
+            chainId: order.token.blockchain.chainId,
+            token: {
+              decimals: order.token.decimals,
             },
           }))
         }
