@@ -765,7 +765,7 @@ describe('ShareClass', () => {
     })
   })
 
-  // TODO - waiting for indexer.
+  // TODO - waiting for indexer..
   it.skip('gets all investors by vault with pending and claimable balances', async () => {
     const { centrifuge } = context
     const pool = new Pool(centrifuge, poolId.raw, chainId)
