@@ -60,16 +60,15 @@ export class Vault extends Entity {
   details() {
     return this._query(['details'], () =>
       combineLatest([this.isLinked(), this._isSyncDeposit(), this._investmentCurrency(), this._shareCurrency()]).pipe(
-        map(([isLinked, isSyncInvest, investmentCurrency, shareCurrency]) => ({
+        map(([isLinked, isSyncDeposit, assetDetails, shareCurrency]) => ({
           pool: this.pool,
           shareClass: this.shareClass,
           network: this.network,
           address: this.address,
-          asset: this._asset,
+          asset: assetDetails,
           isLinked,
-          isSyncInvest,
+          isSyncDeposit,
           isSyncRedeem: false,
-          investmentCurrency,
           shareCurrency,
         }))
       )
@@ -125,16 +124,16 @@ export class Vault extends Entity {
       ]).pipe(
         switchMap(
           ([
-            investmentCurrency,
+            asset,
             shareCurrency,
             addresses,
             restrictionManagerAddress,
-            isSyncInvest,
+            isSyncDeposit,
             escrowAddress,
             isOperatorEnabled,
           ]) =>
             combineLatest([
-              this._root.balance(investmentCurrency.address, investorAddress, this.chainId),
+              this._root.balance(asset.address, investorAddress, this.chainId),
               this._root.balance(shareCurrency.address, investorAddress, this.chainId),
               this._allowance(investorAddress),
               defer(async () => {
@@ -157,7 +156,7 @@ export class Vault extends Entity {
                 })
 
                 const [
-                  isAllowedToInvest,
+                  isAllowedToDeposit,
                   maxDeposit,
                   maxRedeem,
                   investment,
@@ -177,11 +176,11 @@ export class Vault extends Entity {
                   maxWithdraw,
                   ,
                   ,
-                  pendingInvest,
+                  pendingDeposit,
                   pendingRedeem,
-                  claimableCancelInvestCurrency,
+                  claimableCancelDepositAssets,
                   claimableCancelRedeemShares,
-                  hasPendingCancelInvestRequest,
+                  hasPendingCancelDepositRequest,
                   hasPendingCancelRedeemRequest,
                 ] = investment
 
@@ -193,28 +192,28 @@ export class Vault extends Entity {
                 }
 
                 return {
-                  isAllowedToInvest,
+                  isAllowedToDeposit,
                   isAllowedToRedeem,
-                  isSyncInvest,
+                  isSyncDeposit,
                   isOperatorEnabled,
-                  maxInvest: new Balance(maxDeposit, investmentCurrency.decimals),
-                  claimableInvestShares: new Balance(isSyncInvest ? 0n : maxMint, shareCurrency.decimals),
-                  claimableInvestCurrencyEquivalent: new Balance(
-                    isSyncInvest ? 0n : maxDeposit,
-                    investmentCurrency.decimals
+                  maxDeposit: new Balance(maxDeposit, asset.decimals),
+                  claimableDepositShares: new Balance(isSyncDeposit ? 0n : maxMint, shareCurrency.decimals),
+                  claimableDepositAssetEquivalent: new Balance(
+                    isSyncDeposit ? 0n : maxDeposit,
+                    asset.decimals
                   ),
-                  claimableRedeemCurrency: new Balance(actualMaxWithdraw, investmentCurrency.decimals),
+                  claimableRedeemAssets: new Balance(actualMaxWithdraw, asset.decimals),
                   claimableRedeemSharesEquivalent: new Balance(actualMaxRedeem, shareCurrency.decimals),
-                  pendingInvestCurrency: new Balance(pendingInvest, investmentCurrency.decimals),
+                  pendingDepositAssets: new Balance(pendingDeposit, asset.decimals),
                   pendingRedeemShares: new Balance(pendingRedeem, shareCurrency.decimals),
-                  claimableCancelInvestCurrency: new Balance(
-                    claimableCancelInvestCurrency,
-                    investmentCurrency.decimals
+                  claimableCancelDepositAssets: new Balance(
+                    claimableCancelDepositAssets,
+                    asset.decimals
                   ),
                   claimableCancelRedeemShares: new Balance(claimableCancelRedeemShares, shareCurrency.decimals),
-                  hasPendingCancelInvestRequest,
+                  hasPendingCancelDepositRequest,
                   hasPendingCancelRedeemRequest,
-                  investmentCurrency,
+                  asset,
                   shareCurrency,
                 }
               }).pipe(
@@ -259,18 +258,82 @@ export class Vault extends Entity {
         map(([currencyBalance, shareBalance, allowance, investment]) => ({
           ...investment,
           shareBalance: shareBalance.balance,
-          investmentCurrencyBalance: currencyBalance.balance,
-          investmentCurrencyAllowance: allowance,
+          assetBalance: currencyBalance.balance,
+          assetAllowance: allowance,
         }))
       )
     )
   }
 
   /**
-   * Place an order to invest funds in the vault. If an order exists, it will increase the amount.
-   * @param amount - The amount to invest in the vault
+   * Place a synchronous deposit (ERC-4626 style) in the vault.
+   * @param amount - The amount to deposit in the vault
+   * @throws Error if the vault does not support synchronous deposits
    */
-  increaseInvestOrder(amount: Balance) {
+  syncDeposit(amount: Balance) {
+    const self = this
+    return this._transact(async function* (ctx) {
+      const [investment, { vaultRouter }, isSyncDeposit, signingAddressCode] = await Promise.all([
+        self.investment(ctx.signingAddress),
+        self._root._protocolAddresses(self.chainId),
+        self._isSyncDeposit(),
+        ctx.publicClient.getCode({ address: ctx.signingAddress }),
+      ])
+
+      if (!isSyncDeposit) throw new Error('Vault does not support synchronous deposits')
+
+      const { asset, assetBalance, assetAllowance, isAllowedToDeposit } =
+        investment
+      const supportsPermit = asset.supportsPermit && signingAddressCode === undefined
+      const needsApproval = assetAllowance.lt(amount)
+
+      if (!isAllowedToDeposit) throw new Error('Not allowed to deposit')
+      if (asset.decimals !== amount.decimals) throw new Error('Invalid amount decimals')
+      if (amount.gt(assetBalance)) throw new Error('Insufficient balance')
+      if (!amount.gt(0n)) throw new Error('Order amount must be greater than 0')
+
+      const spender = vaultRouter
+      let permit: Permit | null = null
+      if (needsApproval) {
+        if (supportsPermit) {
+          try {
+            permit = yield* doSignMessage('Sign Permit', () =>
+              signPermit(ctx, asset.address, spender, amount.toBigInt())
+            )
+          } catch (e) {
+            console.warn('Permit signing failed, falling back to approval transaction', e)
+          }
+        }
+        if (!permit) {
+          // Doesn't support permits or permit signing failed, go for a regular approval instead
+          yield* doTransaction('Approve', ctx, () =>
+            ctx.walletClient.writeContract({
+              address: asset.address,
+              abi: ABI.Currency,
+              functionName: 'approve',
+              args: [spender, amount.toBigInt()],
+            })
+          )
+        }
+      }
+
+      yield* doTransaction('Invest', ctx, () =>
+        ctx.walletClient.writeContract({
+          address: vaultRouter,
+          abi: ABI.VaultRouter,
+          functionName: 'deposit',
+          args: [self.address, amount.toBigInt(), ctx.signingAddress, ctx.signingAddress],
+        })
+      )
+    }, this.chainId)
+  }
+
+  /**
+   * Place an asynchronous deposit request (ERC-7540 style) in the vault. If an order exists, it will increase the amount.
+   * @param amount - The amount to deposit in the vault
+   * @throws Error if the vault does not support asynchronous deposits
+   */
+  asyncDeposit(amount: Balance) {
     const self = this
     return this._transact(async function* (ctx) {
       const [estimate, investment, { vaultRouter }, isSyncDeposit, signingAddressCode] = await Promise.all([
@@ -281,24 +344,26 @@ export class Vault extends Entity {
         ctx.publicClient.getCode({ address: ctx.signingAddress }),
       ])
 
-      const { investmentCurrency, investmentCurrencyBalance, investmentCurrencyAllowance, isAllowedToInvest } =
-        investment
-      const supportsPermit = investmentCurrency.supportsPermit && signingAddressCode === undefined
-      const needsApproval = investmentCurrencyAllowance.lt(amount)
+      if (isSyncDeposit) throw new Error('Vault does not support asynchronous deposits')
 
-      if (!isAllowedToInvest) throw new Error('Not allowed to invest')
-      if (investmentCurrency.decimals !== amount.decimals) throw new Error('Invalid amount decimals')
-      if (amount.gt(investmentCurrencyBalance)) throw new Error('Insufficient balance')
+      const { asset, assetBalance, assetAllowance, isAllowedToDeposit } =
+        investment
+      const supportsPermit = asset.supportsPermit && signingAddressCode === undefined
+      const needsApproval = assetAllowance.lt(amount)
+
+      if (!isAllowedToDeposit) throw new Error('Not allowed to deposit')
+      if (asset.decimals !== amount.decimals) throw new Error('Invalid amount decimals')
+      if (amount.gt(assetBalance)) throw new Error('Insufficient balance')
       if (!amount.gt(0n)) throw new Error('Order amount must be greater than 0')
 
-      const spender = isSyncDeposit ? vaultRouter : self.address
+      const spender = self.address
       let permit: Permit | null = null
       if (needsApproval) {
-        // For async deposits, the vault is the spender, for sync deposits, the vault router is the spender
+        // For async deposits, the vault is the spender
         if (supportsPermit) {
           try {
             permit = yield* doSignMessage('Sign Permit', () =>
-              signPermit(ctx, investmentCurrency.address, spender, amount.toBigInt())
+              signPermit(ctx, asset.address, spender, amount.toBigInt())
             )
           } catch (e) {
             console.warn('Permit signing failed, falling back to approval transaction', e)
@@ -308,7 +373,7 @@ export class Vault extends Entity {
           // Doesn't support permits or permit signing failed, go for a regular approval instead
           yield* doTransaction('Approve', ctx, () =>
             ctx.walletClient.writeContract({
-              address: investmentCurrency.address,
+              address: asset.address,
               abi: ABI.Currency,
               functionName: 'approve',
               args: [spender, amount.toBigInt()],
@@ -317,58 +382,47 @@ export class Vault extends Entity {
         }
       }
 
-      if (isSyncDeposit) {
-        yield* doTransaction('Invest', ctx, () =>
-          ctx.walletClient.writeContract({
-            address: vaultRouter,
-            abi: ABI.VaultRouter,
-            functionName: 'deposit',
-            args: [self.address, amount.toBigInt(), ctx.signingAddress, ctx.signingAddress],
-          })
-        )
-      } else {
-        const enableData = encodeFunctionData({
+      const enableData = encodeFunctionData({
+        abi: ABI.VaultRouter,
+        functionName: 'enable',
+        args: [self.address],
+      })
+      const requestData = encodeFunctionData({
+        abi: ABI.VaultRouter,
+        functionName: 'requestDeposit',
+        args: [self.address, amount.toBigInt(), ctx.signingAddress, ctx.signingAddress],
+      })
+      const permitData =
+        permit &&
+        encodeFunctionData({
           abi: ABI.VaultRouter,
-          functionName: 'enable',
-          args: [self.address],
+          functionName: 'permit',
+          args: [
+            asset.address,
+            spender,
+            amount.toBigInt(),
+            permit.deadline,
+            permit.v,
+            permit.r,
+            permit.s,
+          ],
         })
-        const requestData = encodeFunctionData({
+      yield* doTransaction('Invest', ctx, () =>
+        ctx.walletClient.writeContract({
+          address: vaultRouter,
           abi: ABI.VaultRouter,
-          functionName: 'requestDeposit',
-          args: [self.address, amount.toBigInt(), ctx.signingAddress, ctx.signingAddress],
+          functionName: 'multicall',
+          args: [[permitData!, enableData, requestData].filter(Boolean)],
+          value: estimate, // only one message is sent as a result of the multicall
         })
-        const permitData =
-          permit &&
-          encodeFunctionData({
-            abi: ABI.VaultRouter,
-            functionName: 'permit',
-            args: [
-              investmentCurrency.address,
-              spender,
-              amount.toBigInt(),
-              permit.deadline,
-              permit.v,
-              permit.r,
-              permit.s,
-            ],
-          })
-        yield* doTransaction('Invest', ctx, () =>
-          ctx.walletClient.writeContract({
-            address: vaultRouter,
-            abi: ABI.VaultRouter,
-            functionName: 'multicall',
-            args: [[permitData!, enableData, requestData].filter(Boolean)],
-            value: estimate, // only one message is sent as a result of the multicall
-          })
-        )
-      }
+      )
     }, this.chainId)
   }
 
   /**
-   * Cancel an open investment order.
+   * Cancel an open deposit request.
    */
-  cancelInvestOrder() {
+  cancelDepositRequest() {
     const self = this
     return this._transact(async function* (ctx) {
       const [estimate, investment, { vaultRouter }] = await Promise.all([
@@ -377,9 +431,9 @@ export class Vault extends Entity {
         self._root._protocolAddresses(self.chainId),
       ])
 
-      if (investment.pendingInvestCurrency.isZero()) throw new Error('No order to cancel')
+      if (investment.pendingDepositAssets.isZero()) throw new Error('No order to cancel')
 
-      yield* doTransaction('Cancel invest order', ctx, () =>
+      yield* doTransaction('Cancel deposit request', ctx, () =>
         ctx.walletClient.writeContract({
           address: vaultRouter,
           abi: ABI.VaultRouter,
@@ -392,10 +446,10 @@ export class Vault extends Entity {
   }
 
   /**
-   * Place an order to redeem funds from the vault. If an order exists, it will increase the amount.
+   * Place an asynchronous redeem request (ERC-7540 style) in the vault. If an order exists, it will increase the amount.
    * @param sharesAmount - The amount of shares to redeem
    */
-  increaseRedeemOrder(sharesAmount: Balance) {
+  asyncRedeem(sharesAmount: Balance) {
     const self = this
     return this._transact(async function* (ctx) {
       const [estimate, investment, { vaultRouter }, isOperator] = await Promise.all([
@@ -446,9 +500,9 @@ export class Vault extends Entity {
   }
 
   /**
-   * Cancel an open redemption order.
+   * Cancel an open redemption request.
    */
-  cancelRedeemOrder() {
+  cancelRedeemRequest() {
     const self = this
     return this._transact(async function* (ctx) {
       const [estimate, investment, { vaultRouter }] = await Promise.all([
@@ -459,7 +513,7 @@ export class Vault extends Entity {
 
       if (investment.pendingRedeemShares.isZero()) throw new Error('No order to cancel')
 
-      yield* doTransaction('Cancel redeem order', ctx, () =>
+      yield* doTransaction('Cancel redeem request', ctx, () =>
         ctx.walletClient.writeContract({
           address: vaultRouter,
           abi: ABI.VaultRouter,
@@ -490,11 +544,11 @@ export class Vault extends Entity {
 
       let functionName: 'claimCancelDepositRequest' | 'claimCancelRedeemRequest' | 'claimDeposit' | 'claimRedeem'
 
-      if (investment.claimableCancelInvestCurrency.gt(0n)) {
+      if (investment.claimableCancelDepositAssets.gt(0n)) {
         functionName = 'claimCancelDepositRequest'
       } else if (investment.claimableCancelRedeemShares.gt(0n)) {
         functionName = 'claimCancelRedeemRequest'
-      } else if (investment.claimableInvestShares.gt(0n)) {
+      } else if (investment.claimableDepositShares.gt(0n)) {
         if (isOperator) {
           functionName = 'claimDeposit'
         } else {
@@ -518,7 +572,7 @@ export class Vault extends Entity {
           )
           return
         }
-      } else if (investment.claimableRedeemCurrency.gt(0n)) {
+      } else if (investment.claimableRedeemAssets.gt(0n)) {
         functionName = 'claimRedeem'
       } else {
         throw new Error('No claimable funds')
@@ -622,10 +676,10 @@ export class Vault extends Entity {
         this._root._protocolAddresses(this.chainId),
         this._isSyncDeposit(),
       ]).pipe(
-        switchMap(([currency, { vaultRouter }, isSyncDeposit]) =>
+        switchMap(([asset, { vaultRouter }, isSyncDeposit]) =>
           this._root
-            ._allowance(owner, isSyncDeposit ? vaultRouter : this.address, this.chainId, currency.address)
-            .pipe(map((allowance) => new Balance(allowance, currency.decimals)))
+            ._allowance(owner, isSyncDeposit ? vaultRouter : this.address, this.chainId, asset.address)
+            .pipe(map((allowance) => new Balance(allowance, asset.decimals)))
         )
       )
     )

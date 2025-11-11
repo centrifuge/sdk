@@ -106,7 +106,7 @@ describe.skip('PoolNetwork', () => {
     )
 
     const vaultDetails = await vault.details()
-    expect(vaultDetails.isSyncInvest).to.be.true
+    expect(vaultDetails.isSyncDeposit).to.be.true
 
     const maxReserve = await context.centrifuge.getClient(chainId).readContract({
       address: addresses.syncManager,
