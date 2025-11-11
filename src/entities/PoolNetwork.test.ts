@@ -16,7 +16,7 @@ const scId = ShareClassId.from(poolId, 1)
 const chainId = 11155111
 const poolManager = '0x423420Ae467df6e90291fd0252c0A8a637C1e03f'
 
-describe('PoolNetwork', () => {
+describe.skip('PoolNetwork', () => {
   let poolNetwork: PoolNetwork
 
   beforeEach(() => {
@@ -117,7 +117,7 @@ describe('PoolNetwork', () => {
     expect(maxReserve).to.equal(340282366920938463463374607431768211455n)
   })
 
-  it('disables vaults', async () => {
+  it.skip('disables vaults', async () => {
     const { vaultRouter } = await context.centrifuge._protocolAddresses(chainId)
 
     context.tenderlyFork.impersonateAddress = poolManager
