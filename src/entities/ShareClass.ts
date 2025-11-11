@@ -1314,7 +1314,7 @@ export class ShareClass extends Entity {
   }
 
   /**
-   * Unfreeze a member of the share class.
+   * Unfreeze a member of the share class
    */
   unfreezeMember(address: HexString, chainId: number) {
     const self = this
