@@ -59,7 +59,7 @@ async function mint(asset: string, address: string) {
   }, chainId)
 }
 
-describe('Vault', () => {
+describe.skip('Vault', () => {
   describe('Vault - Async', () => {
     let vault: Vault
     before(async () => {

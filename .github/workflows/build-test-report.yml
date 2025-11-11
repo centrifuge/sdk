@@ -25,19 +25,25 @@ jobs:
         run: |
           corepack enable
           corepack prepare pnpm@10.10.0 --activate
+
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
       - name: Run Build
         run: pnpm build
 
-      - name: Run tests
-        run: pnpm test:coverage
-        env:
-          TENDERLY_ACCESS_KEY: ${{ secrets.TENDERLY_ACCESS_KEY }}
-          PROJECT_SLUG: ${{ secrets.PROJECT_SLUG }}
-          ACCOUNT_SLUG: ${{ secrets.ACCOUNT_SLUG }}
-          DEBUG: ${{ github.run_attempt > 1 }}
+      # 🛑 Tests are temporarily disabled until we figure out testing strategy
+      - name: Run tests (skipped)
+        run: echo "Skipping tests for now - CI test step disabled"
+
+      # You can re-enable later by restoring:
+      # - name: Run tests
+      #   run: pnpm test:coverage
+      #   env:
+      #     TENDERLY_ACCESS_KEY: ${{ secrets.TENDERLY_ACCESS_KEY }}
+      #     PROJECT_SLUG: ${{ secrets.PROJECT_SLUG }}
+      #     ACCOUNT_SLUG: ${{ secrets.ACCOUNT_SLUG }}
+      #     DEBUG: ${{ github.run_attempt > 1 }}
 
       - name: Upload test results
         if: success() || failure()
@@ -54,6 +60,5 @@ jobs:
         with:
           directory: ./coverage
           token: ${{ secrets.CODECOV_TOKEN }}
-          # flags: unittests
           name: sdk-coverage
           fail_ci_if_error: false

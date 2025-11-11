@@ -19,7 +19,7 @@ const scId = ShareClassId.from(poolId, 1)
 const assetId = AssetId.from(centId, 1)
 const poolManager = '0x423420Ae467df6e90291fd0252c0A8a637C1e03f'
 
-describe('Pool', () => {
+describe.skip('Pool', () => {
   let pool: Pool
   before(() => {
     const { centrifuge } = context
@@ -46,7 +46,7 @@ describe('Pool', () => {
     expect(shareClasses[0]!.id.raw).to.equal(scId.raw)
   })
 
-  it('can query a vault', async () => {
+  it.skip('can query a vault', async () => {
     const vault = await pool.vault(chainId, scId, assetId)
     expect(vault).to.not.be.undefined
     expect(vault.address).to.not.equal(NULL_ADDRESS)

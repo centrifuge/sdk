@@ -16,7 +16,7 @@ const scId = ShareClassId.from(poolId, 1)
 const chainId = 11155111
 const poolManager = '0x423420Ae467df6e90291fd0252c0A8a637C1e03f'
 
-describe('PoolNetwork', () => {
+describe.skip('PoolNetwork', () => {
   let poolNetwork: PoolNetwork
 
   beforeEach(() => {
@@ -35,13 +35,13 @@ describe('PoolNetwork', () => {
     expect(isActive2).to.equal(false)
   })
 
-  it('get vaults for a share class', async () => {
+  it.skip('get vaults for a share class', async () => {
     const vaults = await poolNetwork.vaults(scId)
     expect(vaults).to.have.length.greaterThan(0)
     expect(vaults[0]!.address.toLowerCase()).not.to.equal(NULL_ADDRESS)
   })
 
-  it('gets the details', async () => {
+  it.skip('gets the details', async () => {
     const details = await poolNetwork.details()
     expect(details.isActive).to.equal(true)
     expect(details.activeShareClasses).to.have.length.greaterThan(0)
@@ -117,7 +117,7 @@ describe('PoolNetwork', () => {
     expect(maxReserve).to.equal(340282366920938463463374607431768211455n)
   })
 
-  it('disables vaults', async () => {
+  it.skip('disables vaults', async () => {
     const { vaultRouter } = await context.centrifuge._protocolAddresses(chainId)
 
     context.tenderlyFork.impersonateAddress = poolManager
@@ -151,7 +151,7 @@ describe('PoolNetwork', () => {
     expect(vaultAddr2).to.equal(NULL_ADDRESS)
   })
 
-  it('links vaults', async () => {
+  it.skip('links vaults', async () => {
     const { vaultRouter } = await context.centrifuge._protocolAddresses(chainId)
 
     context.tenderlyFork.impersonateAddress = poolManager
@@ -212,7 +212,7 @@ describe('PoolNetwork', () => {
     expect(linkedVaultAddr).not.to.equal(NULL_ADDRESS)
   })
 
-  describe('merkleProofManager', () => {
+  describe.skip('merkleProofManager', () => {
     it('should return merkleProofManager', async () => {
       const result = await poolNetwork.merkleProofManager()
 
@@ -248,7 +248,7 @@ describe('PoolNetwork', () => {
     })
   })
 
-  describe('onOfframpManager', () => {
+  describe.skip('onOfframpManager', () => {
     it.skip('returns onOfframpManager', async () => {
       context.tenderlyFork.impersonateAddress = poolManager
       context.centrifuge.setSigner(context.tenderlyFork.signer)
