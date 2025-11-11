@@ -1518,6 +1518,9 @@ export class ShareClass extends Entity {
               decimals: order.asset.decimals,
             },
             chainId: order.token.blockchain.chainId,
+            token: {
+              decimals: order.token.decimals,
+            },
           }))
         }
       )
@@ -1608,6 +1611,9 @@ export class ShareClass extends Entity {
               decimals: order.asset.decimals,
             },
             chainId: order.token.blockchain.chainId,
+            token: {
+              decimals: order.token.decimals,
+            },
           }))
         }
       )
