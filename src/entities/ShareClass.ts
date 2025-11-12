@@ -1047,16 +1047,14 @@ export class ShareClass extends Entity {
    * @param options.offset Offset for pagination (default: 0)
    * @param options.balance_gt Investor minimum position amount filter (default: 0)
    * @param options.holderAddress Filter by holder address (partial text match)
-   * @param options.onlyActive Only return holders with non-zero total balance (default: true)
    */
-  holders(options?: { limit: number; offset?: number; balance_gt?: bigint; holderAddress?: string; onlyActive?: boolean }) {
+  holders(options?: { limit: number; offset?: number; balance_gt?: bigint; holderAddress?: string }) {
     const limit = options?.limit ?? 20
     const offset = options?.offset ?? 0
     const balance_gt = options?.balance_gt ?? 0n
     const holderAddress = options?.holderAddress?.toLowerCase()
-    const onlyActive = options?.onlyActive !== false // default to true
 
-    return this._query(['holders', this.id.raw, limit, offset, balance_gt?.toString(), holderAddress, onlyActive], () =>
+    return this._query(['holders', this.id.raw, limit, offset, balance_gt?.toString(), holderAddress], () =>
       combineLatest([
         this._root._deployments(),
         this.pool.currency(),
@@ -1130,29 +1128,16 @@ export class ShareClass extends Entity {
                   }
                 })
 
-                // Filter by onlyActive if needed
-                const filteredInvestors = onlyActive
-                  ? investors.filter((investor) => {
-                      const totalBalance =
-                        investor.holdings.toBigInt() +
-                        investor.outstandingInvest.toBigInt() +
-                        investor.outstandingRedeem.toBigInt() +
-                        investor.queuedInvest.toBigInt() +
-                        investor.queuedRedeem.toBigInt()
-                      return totalBalance > 0n
-                    })
-                  : investors
-
-                filteredInvestors.sort((a, b) => {
+                investors.sort((a, b) => {
                   const aValue = BigInt(a.holdings.toBigInt())
                   const bValue = BigInt(b.holdings.toBigInt())
                   return aValue > bValue ? -1 : aValue < bValue ? 1 : 0
                 })
 
                 return {
-                  investors: filteredInvestors,
+                  investors,
                   pageInfo,
-                  totalCount: onlyActive ? filteredInvestors.length : totalCount,
+                  totalCount,
                 }
               })
             )
