@@ -1052,7 +1052,7 @@ export class ShareClass extends Entity {
   holders(options?: { limit: number; offset?: number; balance_gt?: bigint; holderAddress?: string; onlyActive?: boolean }) {
     const limit = options?.limit ?? 20
     const offset = options?.offset ?? 0
-    const balance_gt = options?.balance_gt
+    const balance_gt = options?.balance_gt ?? 0n
     const holderAddress = options?.holderAddress?.toLowerCase()
     const onlyActive = options?.onlyActive !== false // default to true
 
