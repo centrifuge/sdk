@@ -1047,19 +1047,21 @@ export class ShareClass extends Entity {
    * @param options.offset Offset for pagination (default: 0)
    * @param options.balance_gt Investor minimum position amount filter (default: 0)
    * @param options.holderAddress Filter by holder address (partial text match)
+   * @param options.centrifugeIds Filter by centrifuge IDs (array of centrifuge IDs)
    */
-  holders(options?: { limit: number; offset?: number; balance_gt?: bigint; holderAddress?: string }) {
+  holders(options?: { limit: number; offset?: number; balance_gt?: bigint; holderAddress?: string; centrifugeIds?: string[] }) {
     const limit = options?.limit ?? 20
     const offset = options?.offset ?? 0
     const balance_gt = options?.balance_gt ?? 0n
     const holderAddress = options?.holderAddress?.toLowerCase()
+    const centrifugeIds = options?.centrifugeIds
 
-    return this._query(['holders', this.id.raw, limit, offset, balance_gt.toString(), holderAddress], () =>
+    return this._query(['holders', this.id.raw, limit, offset, balance_gt.toString(), holderAddress, centrifugeIds?.join(',')], () =>
       combineLatest([
         this._root._deployments(),
         this.pool.currency(),
         this._investorOrders(),
-        this._tokenInstancePositions({ limit, balance_gt, offset, holderAddress }),
+        this._tokenInstancePositions({ limit, balance_gt, offset, holderAddress, centrifugeIds }),
       ]).pipe(
         switchMap(
           ([
@@ -2357,14 +2359,15 @@ export class ShareClass extends Entity {
   }
 
   /** @internal */
-  _tokenInstancePositions(options?: { limit: number; offset?: number; balance_gt?: bigint; holderAddress?: string }) {
+  _tokenInstancePositions(options?: { limit: number; offset?: number; balance_gt?: bigint; holderAddress?: string; centrifugeIds?: string[] }) {
     const limit = options?.limit ?? 1000
     const offset = options?.offset ?? 0
     const balance_gt = options?.balance_gt
     const holderAddress = options?.holderAddress?.toLowerCase()
-    const queryParams = `$scId: String!, $limit: Int!, $offset: Int!${balance_gt !== undefined ? ', $balance_gt: BigInt' : ''}${holderAddress ? ', $holderAddress: String' : ''}, $excludedAddresses: [String!]!`
+    const centrifugeIds = options?.centrifugeIds
+    const queryParams = `$scId: String!, $limit: Int!, $offset: Int!${balance_gt !== undefined ? ', $balance_gt: BigInt' : ''}${holderAddress ? ', $holderAddress: String' : ''}${centrifugeIds ? ', $centrifugeIds: [String!]' : ''}, $excludedAddresses: [String!]!`
 
-    return this._query(['tokenInstancePositions', this.id.raw, limit, offset, balance_gt?.toString(), holderAddress], () =>
+    return this._query(['tokenInstancePositions', this.id.raw, limit, offset, balance_gt?.toString(), holderAddress, centrifugeIds?.join(',')], () =>
       this._root._protocolAddresses(this.pool.chainId).pipe(
         switchMap((protocolAddresses) =>
           this._root
@@ -2397,6 +2400,7 @@ export class ShareClass extends Entity {
               tokenId: $scId
               ${balance_gt !== undefined ? 'balance_gt: $balance_gt' : ''}
               ${holderAddress ? 'accountAddress_contains: $holderAddress' : ''}
+              ${centrifugeIds ? 'centrifugeId_in: $centrifugeIds' : ''}
               accountAddress_not_in: $excludedAddresses
             }
             limit: $limit
@@ -2429,6 +2433,7 @@ export class ShareClass extends Entity {
               offset,
               ...(balance_gt !== undefined && { balance_gt: balance_gt.toString() }),
               ...(holderAddress && { holderAddress }),
+              ...(centrifugeIds && { centrifugeIds }),
               excludedAddresses: [
                 protocolAddresses.globalEscrow.toLowerCase(),
                 protocolAddresses.balanceSheet.toLowerCase(),
