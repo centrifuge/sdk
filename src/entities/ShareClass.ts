@@ -1045,19 +1045,21 @@ export class ShareClass extends Entity {
    * @param options Optional pagination options object for whitelisted investors query
    * @param options.limit Number of results to return (default: 20)
    * @param options.offset Offset for pagination (default: 0)
-   * @param options.balance_gt Ivestor minimum position amount filter (default: 0)
+   * @param options.balance_gt Investor minimum position amount filter (default: 0)
+   * @param options.holderAddress Filter by holder address (partial text match)
    */
-  holders(options?: { limit: number; offset?: number; balance_gt?: bigint }) {
+  holders(options?: { limit: number; offset?: number; balance_gt?: bigint; holderAddress?: string }) {
     const limit = options?.limit ?? 20
     const offset = options?.offset ?? 0
     const balance_gt = options?.balance_gt ?? 0n
+    const holderAddress = options?.holderAddress?.toLowerCase()
 
-    return this._query(['holders', this.id.raw, limit, offset, balance_gt.toString()], () =>
+    return this._query(['holders', this.id.raw, limit, offset, balance_gt?.toString(), holderAddress], () =>
       combineLatest([
         this._root._deployments(),
         this.pool.currency(),
         this._investorOrders(),
-        this._tokenInstancePositions({ limit, balance_gt, offset }),
+        this._tokenInstancePositions({ limit, balance_gt, offset, holderAddress }),
       ]).pipe(
         switchMap(
           ([
@@ -2355,13 +2357,14 @@ export class ShareClass extends Entity {
   }
 
   /** @internal */
-  _tokenInstancePositions(options?: { limit: number; offset?: number; balance_gt?: bigint }) {
+  _tokenInstancePositions(options?: { limit: number; offset?: number; balance_gt?: bigint; holderAddress?: string }) {
     const limit = options?.limit ?? 1000
     const offset = options?.offset ?? 0
     const balance_gt = options?.balance_gt
-    const queryParams = `$scId: String!, $limit: Int!, $offset: Int!${balance_gt ? ', $balance_gt: BigInt' : ''}`
+    const holderAddress = options?.holderAddress?.toLowerCase()
+    const queryParams = `$scId: String!, $limit: Int!, $offset: Int!${balance_gt !== undefined ? ', $balance_gt: BigInt' : ''}${holderAddress ? ', $holderAddress: String' : ''}`
 
-    return this._query(['tokenInstancePositions', this.id.raw, limit, offset, balance_gt?.toString()], () =>
+    return this._query(['tokenInstancePositions', this.id.raw, limit, offset, balance_gt?.toString(), holderAddress], () =>
       this._root
         ._queryIndexer<{
           tokenInstancePositions: {
@@ -2390,7 +2393,8 @@ export class ShareClass extends Entity {
           tokenInstancePositions(
             where: {
               tokenId: $scId
-              ${balance_gt ? 'balance_gt: $balance_gt' : ''}
+              ${balance_gt !== undefined ? 'balance_gt: $balance_gt' : ''}
+              ${holderAddress ? 'accountAddress_contains: $holderAddress' : ''}
             }
             limit: $limit
             offset: $offset
@@ -2420,7 +2424,8 @@ export class ShareClass extends Entity {
             scId: this.id.raw,
             limit,
             offset,
-            ...(balance_gt && { balance_gt: balance_gt.toString() }),
+            ...(balance_gt !== undefined && { balance_gt: balance_gt.toString() }),
+            ...(holderAddress && { holderAddress }),
           }
         )
         .pipe(
