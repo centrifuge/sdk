@@ -1046,18 +1046,20 @@ export class ShareClass extends Entity {
    * @param options.limit Number of results to return (default: 20)
    * @param options.offset Offset for pagination (default: 0)
    * @param options.balance_gt Ivestor minimum position amount filter (default: 0)
+   * @param options.holderAddress Partial address to filter by (case-insensitive)
    */
-  holders(options?: { limit: number; offset?: number; balance_gt?: bigint }) {
+  holders(options?: { limit: number; offset?: number; balance_gt?: bigint; holderAddress?: string }) {
     const limit = options?.limit ?? 20
     const offset = options?.offset ?? 0
     const balance_gt = options?.balance_gt ?? 0n
+    const holderAddress = options?.holderAddress?.toLowerCase()
 
-    return this._query(['holders', this.id.raw, limit, offset, balance_gt.toString()], () =>
+    return this._query(['holders', this.id.raw, limit, offset, balance_gt.toString(), holderAddress], () =>
       combineLatest([
         this._root._deployments(),
         this.pool.currency(),
         this._investorOrders(),
-        this._tokenInstancePositions({ limit, balance_gt, offset }),
+        this._tokenInstancePositions({ limit, balance_gt, offset, holderAddress }),
       ]).pipe(
         switchMap(
           ([
@@ -2355,15 +2357,18 @@ export class ShareClass extends Entity {
   }
 
   /** @internal */
-  _tokenInstancePositions(options?: { limit: number; offset?: number; balance_gt?: bigint }) {
+  _tokenInstancePositions(options?: { limit: number; offset?: number; balance_gt?: bigint; holderAddress?: string }) {
     const limit = options?.limit ?? 1000
     const offset = options?.offset ?? 0
     const balance_gt = options?.balance_gt
-    const queryParams = `$scId: String!, $limit: Int!, $offset: Int!${balance_gt ? ', $balance_gt: BigInt' : ''}`
+    const holderAddress = options?.holderAddress?.toLowerCase()
+    const queryParams = `$scId: String!, $limit: Int!, $offset: Int!${balance_gt !== undefined ? ', $balance_gt: BigInt' : ''}${holderAddress ? ', $holderAddress: String' : ''}, $excludedAddresses: [String!]!`
 
-    return this._query(['tokenInstancePositions', this.id.raw, limit, offset, balance_gt?.toString()], () =>
-      this._root
-        ._queryIndexer<{
+    return this._query(['tokenInstancePositions', this.id.raw, limit, offset, balance_gt?.toString(), holderAddress], () =>
+      this._root._protocolAddresses(this.pool.chainId).pipe(
+        switchMap((protocolAddresses) =>
+          this._root
+            ._queryIndexer<{
           tokenInstancePositions: {
             items: {
               accountAddress: HexString
@@ -2386,11 +2391,13 @@ export class ShareClass extends Entity {
             }[]
           }
         }>(
-          `query (${queryParams}) {
+            `query (${queryParams}) {
           tokenInstancePositions(
             where: {
               tokenId: $scId
-              ${balance_gt ? 'balance_gt: $balance_gt' : ''}
+              ${balance_gt !== undefined ? 'balance_gt: $balance_gt' : ''}
+              ${holderAddress ? 'accountAddress_contains: $holderAddress' : ''}
+              accountAddress_not_in: $excludedAddresses
             }
             limit: $limit
             offset: $offset
@@ -2416,23 +2423,29 @@ export class ShareClass extends Entity {
             }
           }
         }`,
-          {
-            scId: this.id.raw,
-            limit,
-            offset,
-            ...(balance_gt && { balance_gt: balance_gt.toString() }),
-          }
-        )
-        .pipe(
-          map((data) => {
-            return {
+            {
+              scId: this.id.raw,
+              limit,
+              offset,
+              ...(balance_gt !== undefined && { balance_gt: balance_gt.toString() }),
+              ...(holderAddress && { holderAddress }),
+              excludedAddresses: [
+                protocolAddresses.globalEscrow.toLowerCase(),
+                protocolAddresses.balanceSheet.toLowerCase(),
+                protocolAddresses.asyncRequestManager.toLowerCase(),
+                protocolAddresses.syncManager.toLowerCase(),
+              ],
+            }
+          ).pipe(
+            map((data) => ({
               items: data.tokenInstancePositions.items,
               assets: data.assets.items,
               pageInfo: data.tokenInstancePositions.pageInfo,
               totalCount: data.tokenInstancePositions.totalCount,
-            }
-          })
+            }))
+          )
         )
+      )
     )
   }
 
