@@ -1045,8 +1045,8 @@ export class ShareClass extends Entity {
    * @param options Optional pagination options object for whitelisted investors query
    * @param options.limit Number of results to return (default: 20)
    * @param options.offset Offset for pagination (default: 0)
-   * @param options.balance_gt Ivestor minimum position amount filter (default: 0)
-   * @param options.holderAddress Partial address to filter by (case-insensitive)
+   * @param options.balance_gt Investor minimum position amount filter (default: 0)
+   * @param options.holderAddress Filter by holder address (partial text match)
    */
   holders(options?: { limit: number; offset?: number; balance_gt?: bigint; holderAddress?: string }) {
     const limit = options?.limit ?? 20
