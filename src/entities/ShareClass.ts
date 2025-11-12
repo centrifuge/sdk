@@ -1048,20 +1048,24 @@ export class ShareClass extends Entity {
    * @param options.balance_gt Investor minimum position amount filter (default: 0)
    * @param options.holderAddress Filter by holder address (partial text match)
    * @param options.centrifugeIds Filter by centrifuge IDs (array of centrifuge IDs)
+   * @param options.orderBy Order by field (default: "balance")
+   * @param options.orderDirection Order direction (default: "desc")
    */
-  holders(options?: { limit: number; offset?: number; balance_gt?: bigint; holderAddress?: string; centrifugeIds?: string[] }) {
+  holders(options?: { limit: number; offset?: number; balance_gt?: bigint; holderAddress?: string; centrifugeIds?: string[]; orderBy?: string; orderDirection?: string }) {
     const limit = options?.limit ?? 20
     const offset = options?.offset ?? 0
     const balance_gt = options?.balance_gt ?? 0n
     const holderAddress = options?.holderAddress?.toLowerCase()
     const centrifugeIds = options?.centrifugeIds
+    const orderBy = options?.orderBy ?? 'balance'
+    const orderDirection = options?.orderDirection ?? 'desc'
 
-    return this._query(['holders', this.id.raw, limit, offset, balance_gt.toString(), holderAddress, centrifugeIds?.join(',')], () =>
+    return this._query(['holders', this.id.raw, limit, offset, balance_gt.toString(), holderAddress, centrifugeIds?.join(','), orderBy, orderDirection], () =>
       combineLatest([
         this._root._deployments(),
         this.pool.currency(),
         this._investorOrders(),
-        this._tokenInstancePositions({ limit, balance_gt, offset, holderAddress, centrifugeIds }),
+        this._tokenInstancePositions({ limit, balance_gt, offset, holderAddress, centrifugeIds, orderBy, orderDirection }),
       ]).pipe(
         switchMap(
           ([
@@ -2359,15 +2363,17 @@ export class ShareClass extends Entity {
   }
 
   /** @internal */
-  _tokenInstancePositions(options?: { limit: number; offset?: number; balance_gt?: bigint; holderAddress?: string; centrifugeIds?: string[] }) {
+  _tokenInstancePositions(options?: { limit: number; offset?: number; balance_gt?: bigint; holderAddress?: string; centrifugeIds?: string[]; orderBy?: string; orderDirection?: string }) {
     const limit = options?.limit ?? 1000
     const offset = options?.offset ?? 0
     const balance_gt = options?.balance_gt
     const holderAddress = options?.holderAddress?.toLowerCase()
     const centrifugeIds = options?.centrifugeIds
-    const queryParams = `$scId: String!, $limit: Int!, $offset: Int!${balance_gt !== undefined ? ', $balance_gt: BigInt' : ''}${holderAddress ? ', $holderAddress: String' : ''}${centrifugeIds ? ', $centrifugeIds: [String!]' : ''}, $excludedAddresses: [String!]!`
+    const orderBy = options?.orderBy ?? 'balance'
+    const orderDirection = options?.orderDirection ?? 'desc'
+    const queryParams = `$scId: String!, $limit: Int!, $offset: Int!, $orderBy: String!, $orderDirection: String!${balance_gt !== undefined ? ', $balance_gt: BigInt' : ''}${holderAddress ? ', $holderAddress: String' : ''}${centrifugeIds ? ', $centrifugeIds: [String!]' : ''}, $excludedAddresses: [String!]!`
 
-    return this._query(['tokenInstancePositions', this.id.raw, limit, offset, balance_gt?.toString(), holderAddress, centrifugeIds?.join(',')], () =>
+    return this._query(['tokenInstancePositions', this.id.raw, limit, offset, balance_gt?.toString(), holderAddress, centrifugeIds?.join(','), orderBy, orderDirection], () =>
       this._root._protocolAddresses(this.pool.chainId).pipe(
         switchMap((protocolAddresses) =>
           this._root
@@ -2403,6 +2409,8 @@ export class ShareClass extends Entity {
               ${centrifugeIds ? 'centrifugeId_in: $centrifugeIds' : ''}
               accountAddress_not_in: $excludedAddresses
             }
+            orderBy: $orderBy
+            orderDirection: $orderDirection
             limit: $limit
             offset: $offset
           ) {
@@ -2431,6 +2439,8 @@ export class ShareClass extends Entity {
               scId: this.id.raw,
               limit,
               offset,
+              orderBy,
+              orderDirection,
               ...(balance_gt !== undefined && { balance_gt: balance_gt.toString() }),
               ...(holderAddress && { holderAddress }),
               ...(centrifugeIds && { centrifugeIds }),
