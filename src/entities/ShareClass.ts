@@ -2460,9 +2460,7 @@ export class ShareClass extends Entity {
             }>(
               `query (${queryParams.join(', ')}) {
                 tokenInstancePositions(
-                  where: {
-                    ${whereConditions.join('\n                    ')}
-                  }
+                  where: { ${whereConditions.join(', ')} }
                   orderBy: $orderBy
                   orderDirection: $orderDirection
                   limit: $limit
