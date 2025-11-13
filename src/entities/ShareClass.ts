@@ -1042,24 +1042,39 @@ export class ShareClass extends Entity {
 
   /**
    * Retrieve all holders of the share class.
-   * @param options Optional pagination options object for whitelisted investors query
+   * @param options Optional pagination and filter options object
    * @param options.limit Number of results to return (default: 20)
    * @param options.offset Offset for pagination (default: 0)
-   * @param options.balance_gt Investor minimum position amount filter (default: 0)
-   * @param options.holderAddress Filter by holder address (partial text match)
+   * @param options.orderBy Order by field (default: "balance")
+   * @param options.orderDirection Order direction (default: "desc")
+   * @param options.filter Optional filter criteria
+   * @param options.filter.balance_gt Investor minimum position amount filter
+   * @param options.filter.holderAddress Filter by holder address (partial text match)
+   * @param options.filter.centrifugeIds Filter by centrifuge IDs (array of centrifuge IDs)
    */
-  holders(options?: { limit: number; offset?: number; balance_gt?: bigint; holderAddress?: string }) {
+  holders(options?: { 
+    limit?: number; 
+    offset?: number; 
+    orderBy?: string; 
+    orderDirection?: string;
+    filter?: {
+      balance_gt?: bigint;
+      holderAddress?: string;
+      centrifugeIds?: string[];
+    };
+  }) {
     const limit = options?.limit ?? 20
     const offset = options?.offset ?? 0
-    const balance_gt = options?.balance_gt ?? 0n
-    const holderAddress = options?.holderAddress?.toLowerCase()
+    const orderBy = options?.orderBy ?? 'balance'
+    const orderDirection = options?.orderDirection ?? 'desc'
+    const filter = options?.filter
 
-    return this._query(['holders', this.id.raw, limit, offset, balance_gt?.toString(), holderAddress], () =>
+    return this._query(['holders', this.id.raw, limit, offset, filter?.balance_gt?.toString(), filter?.holderAddress, filter?.centrifugeIds?.join(','), orderBy, orderDirection], () =>
       combineLatest([
         this._root._deployments(),
         this.pool.currency(),
         this._investorOrders(),
-        this._tokenInstancePositions({ limit, balance_gt, offset, holderAddress }),
+        this._tokenInstancePositions({ limit, offset, orderBy, orderDirection, filter }),
       ]).pipe(
         switchMap(
           ([
@@ -2357,87 +2372,132 @@ export class ShareClass extends Entity {
   }
 
   /** @internal */
-  _tokenInstancePositions(options?: { limit: number; offset?: number; balance_gt?: bigint; holderAddress?: string }) {
+  _tokenInstancePositions(options?: { 
+    limit?: number; 
+    offset?: number; 
+    orderBy?: string; 
+    orderDirection?: string;
+    filter?: {
+      balance_gt?: bigint;
+      holderAddress?: string;
+      centrifugeIds?: string[];
+    };
+  }) {
     const limit = options?.limit ?? 1000
     const offset = options?.offset ?? 0
-    const balance_gt = options?.balance_gt
-    const holderAddress = options?.holderAddress?.toLowerCase()
-    const queryParams = `$scId: String!, $limit: Int!, $offset: Int!${balance_gt !== undefined ? ', $balance_gt: BigInt' : ''}${holderAddress ? ', $holderAddress: String' : ''}`
+    const orderBy = options?.orderBy ?? 'balance'
+    const orderDirection = options?.orderDirection ?? 'desc'
+    const balance_gt = options?.filter?.balance_gt
+    const holderAddress = options?.filter?.holderAddress?.toLowerCase()
+    const centrifugeIds = options?.filter?.centrifugeIds
 
-    return this._query(['tokenInstancePositions', this.id.raw, limit, offset, balance_gt?.toString(), holderAddress], () =>
-      this._root
-        ._queryIndexer<{
-          tokenInstancePositions: {
-            items: {
-              accountAddress: HexString
-              centrifugeId: string
-              balance: bigint
-              isFrozen: boolean
-            }[]
-            pageInfo: {
-              hasNextPage: boolean
-              hasPreviousPage: boolean
-              startCursor: string
-              endCursor: string
-            }
-            totalCount: number
-          }
-          assets: {
-            items: {
-              decimals: number
-              id: string
-            }[]
-          }
-        }>(
-          `query (${queryParams}) {
-          tokenInstancePositions(
-            where: {
-              tokenId: $scId
-              ${balance_gt !== undefined ? 'balance_gt: $balance_gt' : ''}
-              ${holderAddress ? 'accountAddress_contains: $holderAddress' : ''}
-            }
-            limit: $limit
-            offset: $offset
-          ) {
-            items {
-              accountAddress
-              centrifugeId
-              balance
-              isFrozen
-            }
-            pageInfo {
-              hasNextPage
-              hasPreviousPage
-              startCursor
-              endCursor
-            }
-            totalCount
-          }
-          assets {
-            items {
-              decimals
-              id
-            }
-          }
-        }`,
-          {
+    return this._query(['tokenInstancePositions', this.id.raw, limit, offset, balance_gt?.toString(), holderAddress, centrifugeIds?.join(','), orderBy, orderDirection], () =>
+      this._root._protocolAddresses(this.pool.chainId).pipe(
+        switchMap((protocolAddresses) => {
+          // Build where clause dynamically based on which filters are provided
+          const whereConditions = [
+            'tokenId: $scId',
+            'accountAddress_not_in: $excludedAddresses',
+          ]
+          if (balance_gt !== undefined) whereConditions.push('balance_gt: $balance_gt')
+          if (holderAddress) whereConditions.push('accountAddress_contains: $holderAddress')
+          if (centrifugeIds) whereConditions.push('centrifugeId_in: $centrifugeIds')
+
+          // Build query parameters dynamically
+          const queryParams = [
+            '$scId: String!',
+            '$limit: Int!',
+            '$offset: Int!',
+            '$orderBy: String!',
+            '$orderDirection: String!',
+            '$excludedAddresses: [String!]!',
+          ]
+          if (balance_gt !== undefined) queryParams.push('$balance_gt: BigInt')
+          if (holderAddress) queryParams.push('$holderAddress: String')
+          if (centrifugeIds) queryParams.push('$centrifugeIds: [String!]')
+
+          // Build variables object
+          const variables: Record<string, any> = {
             scId: this.id.raw,
             limit,
             offset,
-            ...(balance_gt !== undefined && { balance_gt: balance_gt.toString() }),
-            ...(holderAddress && { holderAddress }),
+            orderBy,
+            orderDirection,
+            excludedAddresses: [
+              protocolAddresses.globalEscrow.toLowerCase(),
+              protocolAddresses.balanceSheet.toLowerCase(),
+              protocolAddresses.asyncRequestManager.toLowerCase(),
+              protocolAddresses.syncManager.toLowerCase(),
+            ],
           }
-        )
-        .pipe(
-          map((data) => {
-            return {
-              items: data.tokenInstancePositions.items,
-              assets: data.assets.items,
-              pageInfo: data.tokenInstancePositions.pageInfo,
-              totalCount: data.tokenInstancePositions.totalCount,
-            }
-          })
-        )
+          if (balance_gt !== undefined) variables.balance_gt = balance_gt.toString()
+          if (holderAddress) variables.holderAddress = holderAddress
+          if (centrifugeIds) variables.centrifugeIds = centrifugeIds
+
+          return this._root
+            ._queryIndexer<{
+              tokenInstancePositions: {
+                items: {
+                  accountAddress: HexString
+                  centrifugeId: string
+                  balance: bigint
+                  isFrozen: boolean
+                }[]
+                pageInfo: {
+                  hasNextPage: boolean
+                  hasPreviousPage: boolean
+                  startCursor: string
+                  endCursor: string
+                }
+                totalCount: number
+              }
+              assets: {
+                items: {
+                  decimals: number
+                  id: string
+                }[]
+              }
+            }>(
+              `query (${queryParams.join(', ')}) {
+                tokenInstancePositions(
+                  where: { ${whereConditions.join(', ')} }
+                  orderBy: $orderBy
+                  orderDirection: $orderDirection
+                  limit: $limit
+                  offset: $offset
+                ) {
+                  items {
+                    accountAddress
+                    centrifugeId
+                    balance
+                    isFrozen
+                  }
+                  pageInfo {
+                    hasNextPage
+                    hasPreviousPage
+                    startCursor
+                    endCursor
+                  }
+                  totalCount
+                }
+                assets {
+                  items {
+                    decimals
+                    id
+                  }
+                }
+              }`,
+              variables
+            ).pipe(
+              map((data) => ({
+                items: data.tokenInstancePositions.items,
+                assets: data.assets.items,
+                pageInfo: data.tokenInstancePositions.pageInfo,
+                totalCount: data.tokenInstancePositions.totalCount,
+              }))
+            )
+        })
+      )
     )
   }
 
