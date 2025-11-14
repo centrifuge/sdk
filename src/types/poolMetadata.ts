@@ -4,7 +4,11 @@ export type FileType = { uri: string; mime: string }
 
 export type MerkleProofPolicy = {
   decoder: HexString
+  /** hash of the target (Vault, Asset) */
   target: HexString
+  /** e.g. Vault */
+  targetName?: string
+  /** e.g. Request Deposit */
   action?: string
   /** e.g. 'function requestDeposit(uint256 assets, address controller, address owner) returns (uint256)' */
   selector: string
@@ -28,6 +32,8 @@ export type MerkleProofPolicy = {
    */
   inputs: {
     parameter: string
+    /** Optional label for the input to be displayed in the form */
+    label?: string
     input: HexString[]
   }[]
   inputCombinations: {
