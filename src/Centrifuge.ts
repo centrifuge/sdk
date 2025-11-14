@@ -35,6 +35,7 @@ import { chains } from './config/chains.js'
 import { PERMIT_TYPEHASH } from './constants.js'
 import { Investor } from './entities/Investor.js'
 import { Pool } from './entities/Pool.js'
+import { SolanaManager } from './solana/SolanaManager.js'
 import type {
   Client,
   CurrencyDetails,
@@ -117,6 +118,15 @@ export class Centrifuge {
     return this.#signer
   }
 
+  #solanaManager: SolanaManager | null = null
+  /**
+   * Access Solana functionality
+   * Returns null if Solana was not configured in the constructor
+   */
+  get solana(): SolanaManager | null {
+    return this.#solanaManager
+  }
+
   #isBatching = new WeakSet<Transaction>()
 
   constructor(config: UserProvidedConfig = {}) {
@@ -155,6 +165,11 @@ export class Centrifuge {
           })
         )
       })
+
+    // Initialize Solana manager if config is provided
+    if (this.#config.solana) {
+      this.#solanaManager = new SolanaManager(this, this.#config.solana)
+    }
   }
 
   /**
