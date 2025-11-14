@@ -1477,11 +1477,14 @@ export class ShareClass extends Entity {
               decimals
               symbol
               name
+              blockchain {
+                chainId
+              }
             }
-             token {
+            token {
               decimals
               blockchain {
-               chainId
+                chainId
               }
             }
           }
@@ -1507,6 +1510,9 @@ export class ShareClass extends Entity {
                 decimals: number
                 symbol: string
                 name: string
+                blockchain: {
+                  chainId: number
+                }
               }
               token: {
                 decimals: number
@@ -1534,7 +1540,7 @@ export class ShareClass extends Entity {
               name: order.asset.name,
               decimals: order.asset.decimals,
             },
-            chainId: order.token.blockchain.chainId,
+            chainId: order.asset.blockchain.chainId,
             token: {
               decimals: order.token.decimals,
             },
@@ -1570,11 +1576,14 @@ export class ShareClass extends Entity {
               decimals
               symbol
               name
+              blockchain {
+                chainId
+              }
             }
             token {
               decimals
               blockchain {
-               chainId
+                chainId
               }
             }
           }
@@ -1600,6 +1609,9 @@ export class ShareClass extends Entity {
                 decimals: number
                 symbol: string
                 name: string
+                blockchain: {
+                  chainId: number
+                }
               }
               token: {
                 decimals: number
@@ -1627,7 +1639,7 @@ export class ShareClass extends Entity {
               name: order.asset.name,
               decimals: order.asset.decimals,
             },
-            chainId: order.token.blockchain.chainId,
+            chainId: order.asset.blockchain.chainId,
             token: {
               decimals: order.token.decimals,
             },
