@@ -2,6 +2,19 @@ import { HexString } from './index.js'
 
 export type FileType = { uri: string; mime: string }
 
+export type MerkleProofTemplate = {
+  id: string
+  name: string
+  actions: MerkleProofTemplateAction[]
+  createdAt: string
+  updatedAt?: string
+}
+
+export type MerkleProofTemplateAction = {
+  /** index of the policy in manager.policies[] */
+  policyIndex: number
+}
+
 export type MerkleProofPolicy = {
   decoder: HexString
   /** hash of the target (Vault, Asset) */
@@ -129,6 +142,7 @@ export type PoolMetadata = {
       HexString,
       {
         policies: MerkleProofPolicy[]
+        templates?: MerkleProofTemplate[]
       }
     >
   >
