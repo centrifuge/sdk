@@ -2,9 +2,26 @@ import { HexString } from './index.js'
 
 export type FileType = { uri: string; mime: string }
 
+export type MerkleProofTemplate = {
+  id: string
+  name: string
+  actions: MerkleProofTemplateAction[]
+  createdAt: string
+  updatedAt?: string
+}
+
+export type MerkleProofTemplateAction = {
+  /** index of the policy in manager.policies[] */
+  policyIndex: number
+}
+
 export type MerkleProofPolicy = {
   decoder: HexString
+  /** hash of the target (Vault, Asset) */
   target: HexString
+  /** e.g. Vault */
+  targetName?: string
+  /** e.g. Request Deposit */
   action?: string
   /** e.g. 'function requestDeposit(uint256 assets, address controller, address owner) returns (uint256)' */
   selector: string
@@ -28,6 +45,8 @@ export type MerkleProofPolicy = {
    */
   inputs: {
     parameter: string
+    /** Optional label for the input to be displayed in the form */
+    label?: string
     input: HexString[]
   }[]
   inputCombinations: {
@@ -123,6 +142,7 @@ export type PoolMetadata = {
       HexString,
       {
         policies: MerkleProofPolicy[]
+        templates?: MerkleProofTemplate[]
       }
     >
   >

@@ -5,7 +5,7 @@ import { ABI } from '../abi/index.js'
 import type { Centrifuge } from '../Centrifuge.js'
 import { NULL_ADDRESS } from '../constants.js'
 import type { HexString } from '../types/index.js'
-import { MerkleProofPolicy, MerkleProofPolicyInput } from '../types/poolMetadata.js'
+import { MerkleProofPolicy, MerkleProofPolicyInput, MerkleProofTemplate } from '../types/poolMetadata.js'
 import { MessageType } from '../types/transaction.js'
 import { Balance, BigIntWrapper, Price } from '../utils/BigInt.js'
 import { addressToBytes32 } from '../utils/index.js'
@@ -37,8 +37,8 @@ export class MerkleProofManager extends Entity {
     this.address = address.toLowerCase() as HexString
   }
 
-  policies(strategist: HexString) {
-    return this._query(['policies', strategist.toLowerCase()], () =>
+  policiesAndTemplates(strategist: HexString) {
+    return this._query(['policiesAndTemplates', strategist.toLowerCase()], () =>
       this.pool
         .metadata()
         .pipe(map((metadata) => metadata?.merkleProofManager?.[this.chainId]?.[strategist.toLowerCase() as any] ?? []))
@@ -66,6 +66,43 @@ export class MerkleProofManager extends Entity {
         })
       )
     )
+  }
+
+  setTemplates(strategist: HexString, templates: MerkleProofTemplate[]) {
+    const self = this
+    return this._transact(async function* (ctx) {
+      const [{ hub }, poolDetails] = await Promise.all([
+        self._root._protocolAddresses(self.pool.chainId),
+        self.pool.details(),
+      ])
+
+      const { metadata } = poolDetails
+      const policies = metadata?.merkleProofManager?.[self.chainId]?.[strategist.toLowerCase() as any]?.policies || []
+
+      const newMetadata = {
+        ...metadata,
+        merkleProofManager: {
+          ...metadata?.merkleProofManager,
+          [self.chainId]: {
+            ...metadata?.merkleProofManager?.[self.chainId],
+            [strategist.toLowerCase()]: { policies, templates: templates satisfies MerkleProofTemplate[] },
+          },
+        },
+      }
+
+      const cid = await self._root.config.pinJson(newMetadata)
+
+      yield* wrapTransaction('Set metadata templates', ctx, {
+        contract: hub,
+        data: [
+          encodeFunctionData({
+            abi: ABI.Hub,
+            functionName: 'setPoolMetadata',
+            args: [self.pool.id.raw, toHex(cid)],
+          }),
+        ],
+      })
+    }, this.pool.chainId)
   }
 
   setPolicies(
@@ -163,13 +200,15 @@ export class MerkleProofManager extends Entity {
         rootHash = tree.root as HexString
       }
 
+      const templates = metadata?.merkleProofManager?.[self.chainId]?.[strategist.toLowerCase() as any]?.templates || []
+
       const newMetadata = {
         ...metadata,
         merkleProofManager: {
           ...metadata?.merkleProofManager,
           [self.chainId]: {
             ...metadata?.merkleProofManager?.[self.chainId],
-            [strategist.toLowerCase()]: { policies: policies satisfies MerkleProofPolicy[] },
+            [strategist.toLowerCase()]: { templates, policies: policies satisfies MerkleProofPolicy[] },
           },
         },
       }
