@@ -1,4 +1,11 @@
 import { Chain, PublicClient } from 'viem'
+import type { Commitment } from '@solana/web3.js'
+
+export type SolanaConfig = {
+  rpcUrl: string
+  commitment?: Commitment
+  wsEndpoint?: string
+}
 
 export type Config = {
   environment: 'mainnet' | 'testnet'
@@ -14,6 +21,10 @@ export type Config = {
   indexerPollingInterval?: number
   pinJson?: (json: any) => Promise<string>
   pinFile?: (b64URI: string) => Promise<string>
+  /**
+   * Optional Solana configuration
+   */
+  solana?: SolanaConfig
 }
 
 export type UserProvidedConfig = Partial<Config>
