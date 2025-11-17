@@ -517,16 +517,13 @@ export class Centrifuge {
               return data.assetRegistrations.items
                 .filter((assetReg) => assetReg.asset && Number(assetReg.asset.centrifugeId) === spokeCentId)
                 .map((assetReg) => {
-                  const assetTokenId = assetReg.asset!.assetTokenId
-                  const tokenId = assetTokenId && BigInt(assetTokenId) !== 0n ? BigInt(assetTokenId) : undefined
-
                   return {
                     id: new AssetId(assetReg.assetId),
                     address: assetReg.asset!.address,
                     name: assetReg.asset!.name,
                     symbol: assetReg.asset!.symbol,
                     decimals: assetReg.asset!.decimals,
-                    tokenId,
+                    tokenId: assetReg.asset!.assetTokenId ? BigInt(assetReg.asset!.assetTokenId) : undefined,
                   }
                 })
             })
