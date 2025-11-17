@@ -284,29 +284,56 @@ export class ShareClass extends Entity {
             combineLatest(vaults.map((v) => this._epoch(v.assetId))),
             this._epochOutstandingInvests(),
             this._epochOutstandingRedeems(),
+            this._balances(),
           ]).pipe(
-            map(([epochs, outInv, outRed]) => {
-              const invByKey = new Map<string, Balance>()
-              outInv.forEach((o) => invByKey.set(`${o.assetId.toString()}-${o.chainId}`, o.amount))
+            switchMap(([epochs, outInv, outRed, balancesData]) => {
+              const holdingQueries = vaults.map((v) => {
+                const holdingExists = balancesData.some((b) => b.assetId === v.assetId.toString())
 
-              const redByKey = new Map<string, Balance>()
-              outRed.forEach((o) => redByKey.set(`${o.assetId.toString()}-${o.chainId}`, o.amount))
-
-              return epochs.map((epoch, i) => {
-                const vault = vaults[i]!
-                const key = `${vault.assetId.toString()}-${vault.chainId}`
-
-                const queuedInvest = invByKey.get(key) ?? new Balance(0n, 18)
-                const queuedRedeem = redByKey.get(key) ?? new Balance(0n, 18)
-
-                return {
-                  assetId: vault.assetId,
-                  chainId: vault.chainId,
-                  queuedInvest,
-                  queuedRedeem,
-                  ...epoch,
+                if (!holdingExists) {
+                  return of({ assetId: v.assetId, price: Price.fromFloat(1) })
                 }
+
+                return this._holding(v.assetId).pipe(
+                  map((holding) => ({
+                    assetId: v.assetId,
+                    price: holding.amount.gt(0n)
+                      ? Price.fromFloat(holding.value.toDecimal().div(holding.amount.toDecimal()))
+                      : Price.fromFloat(1),
+                  }))
+                )
               })
+
+              return combineLatest(holdingQueries).pipe(
+                map((holdingPrices) => {
+                  const invByKey = new Map<string, Balance>()
+                  outInv.forEach((o) => invByKey.set(`${o.assetId.toString()}-${o.chainId}`, o.amount))
+
+                  const redByKey = new Map<string, Balance>()
+                  outRed.forEach((o) => redByKey.set(`${o.assetId.toString()}-${o.chainId}`, o.amount))
+
+                  const priceByAsset = new Map<string, Price>()
+                  holdingPrices.forEach((hp) => priceByAsset.set(hp.assetId.toString(), hp.price))
+
+                  return epochs.map((epoch, i) => {
+                    const vault = vaults[i]!
+                    const key = `${vault.assetId.toString()}-${vault.chainId}`
+
+                    const queuedInvest = invByKey.get(key) ?? new Balance(0n, 18)
+                    const queuedRedeem = redByKey.get(key) ?? new Balance(0n, 18)
+                    const assetPrice = priceByAsset.get(vault.assetId.toString()) ?? Price.fromFloat(1)
+
+                    return {
+                      assetId: vault.assetId,
+                      chainId: vault.chainId,
+                      queuedInvest,
+                      queuedRedeem,
+                      assetPrice,
+                      ...epoch,
+                    }
+                  })
+                })
+              )
             })
           )
         })
