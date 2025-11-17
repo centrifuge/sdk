@@ -491,6 +491,7 @@ export class Centrifuge {
                   name: string
                   symbol: string
                   decimals: number
+                  assetTokenId: string | null
                 } | null
               }[]
             }
@@ -505,6 +506,7 @@ export class Centrifuge {
                     name
                     symbol
                     decimals
+                    assetTokenId
                   }
                 }
               }
@@ -515,12 +517,16 @@ export class Centrifuge {
               return data.assetRegistrations.items
                 .filter((assetReg) => assetReg.asset && Number(assetReg.asset.centrifugeId) === spokeCentId)
                 .map((assetReg) => {
+                  const assetTokenId = assetReg.asset!.assetTokenId
+                  const tokenId = assetTokenId && BigInt(assetTokenId) !== 0n ? BigInt(assetTokenId) : undefined
+
                   return {
                     id: new AssetId(assetReg.assetId),
                     address: assetReg.asset!.address,
                     name: assetReg.asset!.name,
                     symbol: assetReg.asset!.symbol,
                     decimals: assetReg.asset!.decimals,
+                    tokenId,
                   }
                 })
             })
@@ -1244,7 +1250,7 @@ export class Centrifuge {
                 id
               }
             }
-            deployments { 
+            deployments {
               items {
                 accounting
                 asyncRequestManager
