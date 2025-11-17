@@ -284,13 +284,17 @@ export class ShareClass extends Entity {
             combineLatest(vaults.map((v) => this._epoch(v.assetId))),
             this._epochOutstandingInvests(),
             this._epochOutstandingRedeems(),
+            this.balances(),
           ]).pipe(
-            map(([epochs, outInv, outRed]) => {
+            map(([epochs, outInv, outRed, balancesData]) => {
               const invByKey = new Map<string, Balance>()
               outInv.forEach((o) => invByKey.set(`${o.assetId.toString()}-${o.chainId}`, o.amount))
 
               const redByKey = new Map<string, Balance>()
               outRed.forEach((o) => redByKey.set(`${o.assetId.toString()}-${o.chainId}`, o.amount))
+
+              const priceByAsset = new Map<string, Price>()
+              balancesData.forEach((b) => priceByAsset.set(b.assetId.toString(), b.price))
 
               return epochs.map((epoch, i) => {
                 const vault = vaults[i]!
@@ -298,12 +302,14 @@ export class ShareClass extends Entity {
 
                 const queuedInvest = invByKey.get(key) ?? new Balance(0n, 18)
                 const queuedRedeem = redByKey.get(key) ?? new Balance(0n, 18)
+                const assetPrice = priceByAsset.get(vault.assetId.toString()) ?? Price.fromFloat(1)
 
                 return {
                   assetId: vault.assetId,
                   chainId: vault.chainId,
                   queuedInvest,
                   queuedRedeem,
+                  assetPrice,
                   ...epoch,
                 }
               })
