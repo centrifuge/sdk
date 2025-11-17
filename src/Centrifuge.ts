@@ -491,7 +491,7 @@ export class Centrifuge {
                   name: string
                   symbol: string
                   decimals: number
-                  assetTokenId: string | null
+                  assetTokenId: bigint | null
                 } | null
               }[]
             }
@@ -518,7 +518,7 @@ export class Centrifuge {
                 .filter((assetReg) => assetReg.asset && Number(assetReg.asset.centrifugeId) === spokeCentId)
                 .map((assetReg) => {
                   const assetTokenId = assetReg.asset!.assetTokenId
-                  const tokenId = assetTokenId && BigInt(assetTokenId) !== 0n ? BigInt(assetTokenId) : undefined
+                  const tokenId = assetTokenId && assetTokenId !== 0n ? assetTokenId : undefined
 
                   return {
                     id: new AssetId(assetReg.assetId),
