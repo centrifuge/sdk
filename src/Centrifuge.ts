@@ -519,6 +519,7 @@ export class Centrifuge {
                 .map((assetReg) => {
                   const assetTokenId = assetReg.asset!.assetTokenId
                   const tokenId = assetTokenId && BigInt(assetTokenId) !== 0n ? BigInt(assetTokenId) : undefined
+
                   return {
                     id: new AssetId(assetReg.assetId),
                     address: assetReg.asset!.address,
@@ -1249,7 +1250,7 @@ export class Centrifuge {
                 id
               }
             }
-            deployments { 
+            deployments {
               items {
                 accounting
                 asyncRequestManager
