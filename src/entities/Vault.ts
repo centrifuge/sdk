@@ -125,7 +125,7 @@ export class Vault extends Entity {
         switchMap(
           ([
             asset,
-            shareCurrency,
+            share,
             addresses,
             restrictionManagerAddress,
             isSyncDeposit,
@@ -134,7 +134,7 @@ export class Vault extends Entity {
           ]) =>
             combineLatest([
               this._root.balance(asset.address, investorAddress, this.chainId),
-              this._root.balance(shareCurrency.address, investorAddress, this.chainId),
+              this._root.balance(share.address, investorAddress, this.chainId),
               this._allowance(investorAddress),
               defer(async () => {
                 const client = this._root.getClient(this.chainId)
@@ -144,8 +144,8 @@ export class Vault extends Entity {
                   abi: ABI.AsyncRequests,
                   client,
                 })
-                const share = getContract({
-                  address: shareCurrency.address,
+                const shareToken = getContract({
+                  address: share.address,
                   abi: ABI.Currency,
                   client,
                 })
@@ -167,7 +167,7 @@ export class Vault extends Entity {
                   vault.read.maxDeposit!([investorAddress]),
                   vault.read.maxRedeem!([investorAddress]),
                   investmentManager.read.investments!([this.address, investorAddress]),
-                  share.read.checkTransferRestriction!([investorAddress, ESCROW_HOOK_ID, 0n]),
+                  shareToken.read.checkTransferRestriction!([investorAddress, ESCROW_HOOK_ID, 0n]),
                   escrow.read.holding([this.shareClass.id.raw, this._asset, 0n]),
                 ])
 
@@ -197,24 +197,24 @@ export class Vault extends Entity {
                   isSyncDeposit,
                   isOperatorEnabled,
                   maxDeposit: new Balance(maxDeposit, asset.decimals),
-                  claimableDepositShares: new Balance(isSyncDeposit ? 0n : maxMint, shareCurrency.decimals),
+                  claimableDepositShares: new Balance(isSyncDeposit ? 0n : maxMint, share.decimals),
                   claimableDepositAssetEquivalent: new Balance(
                     isSyncDeposit ? 0n : maxDeposit,
                     asset.decimals
                   ),
                   claimableRedeemAssets: new Balance(actualMaxWithdraw, asset.decimals),
-                  claimableRedeemSharesEquivalent: new Balance(actualMaxRedeem, shareCurrency.decimals),
+                  claimableRedeemSharesEquivalent: new Balance(actualMaxRedeem, share.decimals),
                   pendingDepositAssets: new Balance(pendingDeposit, asset.decimals),
-                  pendingRedeemShares: new Balance(pendingRedeem, shareCurrency.decimals),
+                  pendingRedeemShares: new Balance(pendingRedeem, share.decimals),
                   claimableCancelDepositAssets: new Balance(
                     claimableCancelDepositAssets,
                     asset.decimals
                   ),
-                  claimableCancelRedeemShares: new Balance(claimableCancelRedeemShares, shareCurrency.decimals),
+                  claimableCancelRedeemShares: new Balance(claimableCancelRedeemShares, share.decimals),
                   hasPendingCancelDepositRequest,
                   hasPendingCancelRedeemRequest,
                   asset,
-                  shareCurrency,
+                  share,
                 }
               }).pipe(
                 repeatOnEvents(
@@ -245,7 +245,7 @@ export class Vault extends Entity {
                           event.args.owner?.toLowerCase() === investorAddress ||
                           // UpdateMember event
                           (event.args.user?.toLowerCase() === investorAddress &&
-                            event.args.token?.toLowerCase() === shareCurrency.address) ||
+                            event.args.token?.toLowerCase() === share.address) ||
                           // PoolEscrow events
                           (event.args.scId === this.shareClass.id.raw && event.args.asset.toLowerCase() === this._asset)
                       ),
