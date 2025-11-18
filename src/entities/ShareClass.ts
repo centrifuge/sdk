@@ -284,13 +284,17 @@ export class ShareClass extends Entity {
             combineLatest(vaults.map((v) => this._epoch(v.assetId))),
             this._epochOutstandingInvests(),
             this._epochOutstandingRedeems(),
+            this.balances(),
           ]).pipe(
-            map(([epochs, outInv, outRed]) => {
+            map(([epochs, outInv, outRed, balancesData]) => {
               const invByKey = new Map<string, Balance>()
               outInv.forEach((o) => invByKey.set(`${o.assetId.toString()}-${o.chainId}`, o.amount))
 
               const redByKey = new Map<string, Balance>()
               outRed.forEach((o) => redByKey.set(`${o.assetId.toString()}-${o.chainId}`, o.amount))
+
+              const priceByAsset = new Map<string, Price>()
+              balancesData.forEach((b) => priceByAsset.set(b.assetId.toString(), b.price))
 
               return epochs.map((epoch, i) => {
                 const vault = vaults[i]!
@@ -298,12 +302,14 @@ export class ShareClass extends Entity {
 
                 const queuedInvest = invByKey.get(key) ?? new Balance(0n, 18)
                 const queuedRedeem = redByKey.get(key) ?? new Balance(0n, 18)
+                const assetPrice = priceByAsset.get(vault.assetId.toString()) ?? Price.fromFloat(1)
 
                 return {
                   assetId: vault.assetId,
                   chainId: vault.chainId,
                   queuedInvest,
                   queuedRedeem,
+                  assetPrice,
                   ...epoch,
                 }
               })
@@ -1052,16 +1058,16 @@ export class ShareClass extends Entity {
    * @param options.filter.holderAddress Filter by holder address (partial text match)
    * @param options.filter.centrifugeIds Filter by centrifuge IDs (array of centrifuge IDs)
    */
-  holders(options?: { 
-    limit?: number; 
-    offset?: number; 
-    orderBy?: string; 
-    orderDirection?: string;
+  holders(options?: {
+    limit?: number
+    offset?: number
+    orderBy?: string
+    orderDirection?: string
     filter?: {
-      balance_gt?: bigint;
-      holderAddress?: string;
-      centrifugeIds?: string[];
-    };
+      balance_gt?: bigint
+      holderAddress?: string
+      centrifugeIds?: string[]
+    }
   }) {
     const limit = options?.limit ?? 20
     const offset = options?.offset ?? 0
@@ -1069,96 +1075,108 @@ export class ShareClass extends Entity {
     const orderDirection = options?.orderDirection ?? 'desc'
     const filter = options?.filter
 
-    return this._query(['holders', this.id.raw, limit, offset, filter?.balance_gt?.toString(), filter?.holderAddress, filter?.centrifugeIds?.join(','), orderBy, orderDirection], () =>
-      combineLatest([
-        this._root._deployments(),
-        this.pool.currency(),
-        this._investorOrders(),
-        this._tokenInstancePositions({ limit, offset, orderBy, orderDirection, filter }),
-      ]).pipe(
-        switchMap(
-          ([
-            deployments,
-            poolCurrency,
-            { outstandingInvests, outstandingRedeems },
-            { items: tokenInstancePositions, assets, pageInfo, totalCount },
-          ]) => {
-            // Handle empty positions case or else combineLatest([]) can hang indefinitely
-            if (tokenInstancePositions.length === 0) {
-              return of({
-                investors: [],
-                pageInfo,
-                totalCount,
-              })
-            }
-
-            const whitelistedQueries = tokenInstancePositions.map((position) =>
-              this._whitelistedInvestor({
-                accountAddress: position.accountAddress,
-                centrifugeId: position.centrifugeId,
-                tokenId: this.id.raw,
-              }).pipe(catchError(() => of(null)))
-            )
-
-            const chainsById = new Map(deployments.blockchains.items.map((chain) => [chain.centrifugeId, chain.id]))
-
-            return combineLatest(whitelistedQueries).pipe(
-              map((whitelistResults) => {
-                const investors = tokenInstancePositions.map((position, i) => {
-                  const whitelistData = whitelistResults[i]
-                  const chainId = Number(chainsById.get(position.centrifugeId)!)
-                  const outstandingInvest = outstandingInvests.find(
-                    (order) => order.investor === position.accountAddress
-                  )
-                  const outstandingRedeem = outstandingRedeems.find(
-                    (order) => order.investor === position.accountAddress
-                  )
-                  const assetId = outstandingInvest?.assetId.toString()
-                  const assetDecimals =
-                    assets.find((asset: { id: string; decimals: number }) => asset.id === assetId)?.decimals ?? 18
-                  const isWhitelistedStatus = whitelistData
-                    ? parseInt(whitelistData.validUntil, 10) > Date.now()
-                    : false
-
-                  return {
-                    address: position.accountAddress,
-                    amount: new Balance(outstandingInvest?.pendingAmount ?? 0n, assetDecimals),
-                    chainId,
-                    createdAt: whitelistData?.createdAt ?? '',
-                    holdings: new Balance(position.balance, poolCurrency.decimals),
-                    isFrozen: whitelistData?.isFrozen ?? position.isFrozen,
-                    outstandingInvest: outstandingInvest
-                      ? new Balance(outstandingInvest.pendingAmount, assetDecimals).scale(poolCurrency.decimals)
-                      : new Balance(0n, poolCurrency.decimals),
-                    outstandingRedeem: outstandingRedeem
-                      ? new Balance(outstandingRedeem.pendingAmount, poolCurrency.decimals)
-                      : new Balance(0n, poolCurrency.decimals),
-                    queuedInvest: outstandingInvest
-                      ? new Balance(outstandingInvest.queuedAmount, assetDecimals).scale(poolCurrency.decimals)
-                      : new Balance(0n, poolCurrency.decimals),
-                    queuedRedeem: outstandingRedeem
-                      ? new Balance(outstandingRedeem.queuedAmount, poolCurrency.decimals)
-                      : new Balance(0n, poolCurrency.decimals),
-                    isWhitelisted: isWhitelistedStatus,
-                  }
-                })
-
-                investors.sort((a, b) => {
-                  const aValue = BigInt(a.holdings.toBigInt())
-                  const bValue = BigInt(b.holdings.toBigInt())
-                  return aValue > bValue ? -1 : aValue < bValue ? 1 : 0
-                })
-
-                return {
-                  investors,
+    return this._query(
+      [
+        'holders',
+        this.id.raw,
+        limit,
+        offset,
+        filter?.balance_gt?.toString(),
+        filter?.holderAddress,
+        filter?.centrifugeIds?.join(','),
+        orderBy,
+        orderDirection,
+      ],
+      () =>
+        combineLatest([
+          this._root._deployments(),
+          this.pool.currency(),
+          this._investorOrders(),
+          this._tokenInstancePositions({ limit, offset, orderBy, orderDirection, filter }),
+        ]).pipe(
+          switchMap(
+            ([
+              deployments,
+              poolCurrency,
+              { outstandingInvests, outstandingRedeems },
+              { items: tokenInstancePositions, assets, pageInfo, totalCount },
+            ]) => {
+              // Handle empty positions case or else combineLatest([]) can hang indefinitely
+              if (tokenInstancePositions.length === 0) {
+                return of({
+                  investors: [],
                   pageInfo,
                   totalCount,
-                }
-              })
-            )
-          }
+                })
+              }
+
+              const whitelistedQueries = tokenInstancePositions.map((position) =>
+                this._whitelistedInvestor({
+                  accountAddress: position.accountAddress,
+                  centrifugeId: position.centrifugeId,
+                  tokenId: this.id.raw,
+                }).pipe(catchError(() => of(null)))
+              )
+
+              const chainsById = new Map(deployments.blockchains.items.map((chain) => [chain.centrifugeId, chain.id]))
+
+              return combineLatest(whitelistedQueries).pipe(
+                map((whitelistResults) => {
+                  const investors = tokenInstancePositions.map((position, i) => {
+                    const whitelistData = whitelistResults[i]
+                    const chainId = Number(chainsById.get(position.centrifugeId)!)
+                    const outstandingInvest = outstandingInvests.find(
+                      (order) => order.investor === position.accountAddress
+                    )
+                    const outstandingRedeem = outstandingRedeems.find(
+                      (order) => order.investor === position.accountAddress
+                    )
+                    const assetId = outstandingInvest?.assetId.toString()
+                    const assetDecimals =
+                      assets.find((asset: { id: string; decimals: number }) => asset.id === assetId)?.decimals ?? 18
+                    const isWhitelistedStatus = whitelistData
+                      ? parseInt(whitelistData.validUntil, 10) > Date.now()
+                      : false
+
+                    return {
+                      address: position.accountAddress,
+                      amount: new Balance(outstandingInvest?.pendingAmount ?? 0n, assetDecimals),
+                      chainId,
+                      createdAt: whitelistData?.createdAt ?? '',
+                      holdings: new Balance(position.balance, poolCurrency.decimals),
+                      isFrozen: whitelistData?.isFrozen ?? position.isFrozen,
+                      outstandingInvest: outstandingInvest
+                        ? new Balance(outstandingInvest.pendingAmount, assetDecimals).scale(poolCurrency.decimals)
+                        : new Balance(0n, poolCurrency.decimals),
+                      outstandingRedeem: outstandingRedeem
+                        ? new Balance(outstandingRedeem.pendingAmount, poolCurrency.decimals)
+                        : new Balance(0n, poolCurrency.decimals),
+                      queuedInvest: outstandingInvest
+                        ? new Balance(outstandingInvest.queuedAmount, assetDecimals).scale(poolCurrency.decimals)
+                        : new Balance(0n, poolCurrency.decimals),
+                      queuedRedeem: outstandingRedeem
+                        ? new Balance(outstandingRedeem.queuedAmount, poolCurrency.decimals)
+                        : new Balance(0n, poolCurrency.decimals),
+                      isWhitelisted: isWhitelistedStatus,
+                    }
+                  })
+
+                  investors.sort((a, b) => {
+                    const aValue = BigInt(a.holdings.toBigInt())
+                    const bValue = BigInt(b.holdings.toBigInt())
+                    return aValue > bValue ? -1 : aValue < bValue ? 1 : 0
+                  })
+
+                  return {
+                    investors,
+                    pageInfo,
+                    totalCount,
+                  }
+                })
+              )
+            }
+          )
         )
-      )
     )
   }
 
@@ -1477,11 +1495,14 @@ export class ShareClass extends Entity {
               decimals
               symbol
               name
+              blockchain {
+                chainId
+              }
             }
-             token {
+            token {
               decimals
               blockchain {
-               chainId
+                chainId
               }
             }
           }
@@ -1507,6 +1528,9 @@ export class ShareClass extends Entity {
                 decimals: number
                 symbol: string
                 name: string
+                blockchain: {
+                  chainId: number
+                }
               }
               token: {
                 decimals: number
@@ -1534,7 +1558,7 @@ export class ShareClass extends Entity {
               name: order.asset.name,
               decimals: order.asset.decimals,
             },
-            chainId: order.token.blockchain.chainId,
+            chainId: order.asset.blockchain.chainId,
             token: {
               decimals: order.token.decimals,
             },
@@ -1570,11 +1594,14 @@ export class ShareClass extends Entity {
               decimals
               symbol
               name
+              blockchain {
+                chainId
+              }
             }
             token {
               decimals
               blockchain {
-               chainId
+                chainId
               }
             }
           }
@@ -1600,6 +1627,9 @@ export class ShareClass extends Entity {
                 decimals: number
                 symbol: string
                 name: string
+                blockchain: {
+                  chainId: number
+                }
               }
               token: {
                 decimals: number
@@ -1627,7 +1657,7 @@ export class ShareClass extends Entity {
               name: order.asset.name,
               decimals: order.asset.decimals,
             },
-            chainId: order.token.blockchain.chainId,
+            chainId: order.asset.blockchain.chainId,
             token: {
               decimals: order.token.decimals,
             },
@@ -2372,16 +2402,16 @@ export class ShareClass extends Entity {
   }
 
   /** @internal */
-  _tokenInstancePositions(options?: { 
-    limit?: number; 
-    offset?: number; 
-    orderBy?: string; 
-    orderDirection?: string;
+  _tokenInstancePositions(options?: {
+    limit?: number
+    offset?: number
+    orderBy?: string
+    orderDirection?: string
     filter?: {
-      balance_gt?: bigint;
-      holderAddress?: string;
-      centrifugeIds?: string[];
-    };
+      balance_gt?: bigint
+      holderAddress?: string
+      centrifugeIds?: string[]
+    }
   }) {
     const limit = options?.limit ?? 1000
     const offset = options?.offset ?? 0
@@ -2391,74 +2421,83 @@ export class ShareClass extends Entity {
     const holderAddress = options?.filter?.holderAddress?.toLowerCase()
     const centrifugeIds = options?.filter?.centrifugeIds
 
-    return this._query(['tokenInstancePositions', this.id.raw, limit, offset, balance_gt?.toString(), holderAddress, centrifugeIds?.join(','), orderBy, orderDirection], () =>
-      this._root._protocolAddresses(this.pool.chainId).pipe(
-        switchMap((protocolAddresses) => {
-          // Build where clause dynamically based on which filters are provided
-          const whereConditions = [
-            'tokenId: $scId',
-            'accountAddress_not_in: $excludedAddresses',
-          ]
-          if (balance_gt !== undefined) whereConditions.push('balance_gt: $balance_gt')
-          if (holderAddress) whereConditions.push('accountAddress_contains: $holderAddress')
-          if (centrifugeIds) whereConditions.push('centrifugeId_in: $centrifugeIds')
+    return this._query(
+      [
+        'tokenInstancePositions',
+        this.id.raw,
+        limit,
+        offset,
+        balance_gt?.toString(),
+        holderAddress,
+        centrifugeIds?.join(','),
+        orderBy,
+        orderDirection,
+      ],
+      () =>
+        this._root._protocolAddresses(this.pool.chainId).pipe(
+          switchMap((protocolAddresses) => {
+            // Build where clause dynamically based on which filters are provided
+            const whereConditions = ['tokenId: $scId', 'accountAddress_not_in: $excludedAddresses']
+            if (balance_gt !== undefined) whereConditions.push('balance_gt: $balance_gt')
+            if (holderAddress) whereConditions.push('accountAddress_contains: $holderAddress')
+            if (centrifugeIds) whereConditions.push('centrifugeId_in: $centrifugeIds')
 
-          // Build query parameters dynamically
-          const queryParams = [
-            '$scId: String!',
-            '$limit: Int!',
-            '$offset: Int!',
-            '$orderBy: String!',
-            '$orderDirection: String!',
-            '$excludedAddresses: [String!]!',
-          ]
-          if (balance_gt !== undefined) queryParams.push('$balance_gt: BigInt')
-          if (holderAddress) queryParams.push('$holderAddress: String')
-          if (centrifugeIds) queryParams.push('$centrifugeIds: [String!]')
+            // Build query parameters dynamically
+            const queryParams = [
+              '$scId: String!',
+              '$limit: Int!',
+              '$offset: Int!',
+              '$orderBy: String!',
+              '$orderDirection: String!',
+              '$excludedAddresses: [String!]!',
+            ]
+            if (balance_gt !== undefined) queryParams.push('$balance_gt: BigInt')
+            if (holderAddress) queryParams.push('$holderAddress: String')
+            if (centrifugeIds) queryParams.push('$centrifugeIds: [String!]')
 
-          // Build variables object
-          const variables: Record<string, any> = {
-            scId: this.id.raw,
-            limit,
-            offset,
-            orderBy,
-            orderDirection,
-            excludedAddresses: [
-              protocolAddresses.globalEscrow.toLowerCase(),
-              protocolAddresses.balanceSheet.toLowerCase(),
-              protocolAddresses.asyncRequestManager.toLowerCase(),
-              protocolAddresses.syncManager.toLowerCase(),
-            ],
-          }
-          if (balance_gt !== undefined) variables.balance_gt = balance_gt.toString()
-          if (holderAddress) variables.holderAddress = holderAddress
-          if (centrifugeIds) variables.centrifugeIds = centrifugeIds
+            // Build variables object
+            const variables: Record<string, any> = {
+              scId: this.id.raw,
+              limit,
+              offset,
+              orderBy,
+              orderDirection,
+              excludedAddresses: [
+                protocolAddresses.globalEscrow.toLowerCase(),
+                protocolAddresses.balanceSheet.toLowerCase(),
+                protocolAddresses.asyncRequestManager.toLowerCase(),
+                protocolAddresses.syncManager.toLowerCase(),
+              ],
+            }
+            if (balance_gt !== undefined) variables.balance_gt = balance_gt.toString()
+            if (holderAddress) variables.holderAddress = holderAddress
+            if (centrifugeIds) variables.centrifugeIds = centrifugeIds
 
-          return this._root
-            ._queryIndexer<{
-              tokenInstancePositions: {
-                items: {
-                  accountAddress: HexString
-                  centrifugeId: string
-                  balance: bigint
-                  isFrozen: boolean
-                }[]
-                pageInfo: {
-                  hasNextPage: boolean
-                  hasPreviousPage: boolean
-                  startCursor: string
-                  endCursor: string
+            return this._root
+              ._queryIndexer<{
+                tokenInstancePositions: {
+                  items: {
+                    accountAddress: HexString
+                    centrifugeId: string
+                    balance: bigint
+                    isFrozen: boolean
+                  }[]
+                  pageInfo: {
+                    hasNextPage: boolean
+                    hasPreviousPage: boolean
+                    startCursor: string
+                    endCursor: string
+                  }
+                  totalCount: number
                 }
-                totalCount: number
-              }
-              assets: {
-                items: {
-                  decimals: number
-                  id: string
-                }[]
-              }
-            }>(
-              `query (${queryParams.join(', ')}) {
+                assets: {
+                  items: {
+                    decimals: number
+                    id: string
+                  }[]
+                }
+              }>(
+                `query (${queryParams.join(', ')}) {
                 tokenInstancePositions(
                   where: { ${whereConditions.join(', ')} }
                   orderBy: $orderBy
@@ -2487,17 +2526,18 @@ export class ShareClass extends Entity {
                   }
                 }
               }`,
-              variables
-            ).pipe(
-              map((data) => ({
-                items: data.tokenInstancePositions.items,
-                assets: data.assets.items,
-                pageInfo: data.tokenInstancePositions.pageInfo,
-                totalCount: data.tokenInstancePositions.totalCount,
-              }))
-            )
-        })
-      )
+                variables
+              )
+              .pipe(
+                map((data) => ({
+                  items: data.tokenInstancePositions.items,
+                  assets: data.assets.items,
+                  pageInfo: data.tokenInstancePositions.pageInfo,
+                  totalCount: data.tokenInstancePositions.totalCount,
+                }))
+              )
+          })
+        )
     )
   }
 
