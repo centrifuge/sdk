@@ -1329,9 +1329,8 @@ export class ShareClass extends Entity {
    * @param address Address to freeze
    * @param centrifugeId Centrifuge ID of the network on which to freeze the member
    */
-  async freezeMember(address: HexString, centrifugeId: CentrifugeId) {
+  freezeMember(address: HexString, centrifugeId: CentrifugeId) {
     const self = this
-    const chainId = await firstValueFrom(this._root._idToChain(centrifugeId))
     
     return this._transact(async function* (ctx) {
       const [share, restrictionManager] = await Promise.all([
@@ -1347,7 +1346,7 @@ export class ShareClass extends Entity {
           args: [share, address],
         }),
       })
-    }, chainId)
+    }, centrifugeId)
   }
 
   /**
@@ -1355,9 +1354,8 @@ export class ShareClass extends Entity {
    * @param address Address to unfreeze
    * @param centrifugeId Centrifuge ID of the network on which to unfreeze the member
    */
-  async unfreezeMember(address: HexString, centrifugeId: CentrifugeId) {
+  unfreezeMember(address: HexString, centrifugeId: CentrifugeId) {
     const self = this
-    const chainId = await firstValueFrom(this._root._idToChain(centrifugeId))
     
     return this._transact(async function* (ctx) {
       const [share, restrictionManager] = await Promise.all([
@@ -1373,7 +1371,7 @@ export class ShareClass extends Entity {
           args: [share, address],
         }),
       })
-    }, chainId)
+    }, centrifugeId)
   }
 
   /**

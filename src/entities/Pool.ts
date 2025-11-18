@@ -28,6 +28,10 @@ export class Pool extends Entity {
     this.id = id instanceof PoolId ? id : new PoolId(id)
   }
 
+  get centrifugeId(): CentrifugeId {
+    return this.id.centrifugeId
+  }
+
   get reports() {
     return new PoolReports(this._root, this)
   }
@@ -56,7 +60,7 @@ export class Pool extends Entity {
 
   metadata() {
     return this._query(['metadata', this.id.toString()], () =>
-      this._root._protocolAddresses(this.chainId).pipe(
+      this._root._protocolAddresses(this.centrifugeId).pipe(
         switchMap(({ hubRegistry }) =>
           defer(() => {
             return this._root.getClient(this.chainId).readContract({
@@ -147,7 +151,7 @@ export class Pool extends Entity {
    */
   balanceSheetManagers() {
     return this._query(null, () => {
-      return combineLatest([this._managers(), this._root._protocolAddresses(this.chainId)]).pipe(
+      return combineLatest([this._managers(), this._root._protocolAddresses(this.centrifugeId)]).pipe(
         map(([managers, { asyncRequestManager, syncManager }]) => {
           return managers
             .filter((manager) => manager.isBalancesheetManager)
@@ -273,7 +277,7 @@ export class Pool extends Entity {
    */
   currency() {
     return this._query(['currency', this.id.toString()], () => {
-      return this._root._protocolAddresses(this.chainId).pipe(
+      return this._root._protocolAddresses(this.centrifugeId).pipe(
         switchMap(({ hubRegistry }) => {
           return this._root.getClient(this.chainId).readContract({
             address: hubRegistry,
@@ -314,7 +318,7 @@ export class Pool extends Entity {
     return this._transact(async function* (ctx) {
       const cid = await self._root.config.pinJson(metadata)
 
-      const { hub } = await self._root._protocolAddresses(self.chainId)
+      const { hub } = await self._root._protocolAddresses(self.centrifugeId)
       yield* wrapTransaction('Update metadata', ctx, {
         contract: hub,
         data: encodeFunctionData({
@@ -334,7 +338,7 @@ export class Pool extends Entity {
     const self = this
 
     return this._transact(async function* (ctx) {
-      const [{ hub }] = await Promise.all([self._root._protocolAddresses(self.chainId)])
+      const [{ hub }] = await Promise.all([self._root._protocolAddresses(self.centrifugeId)])
 
       const existingPool = await self._root.pool(self.id)
 

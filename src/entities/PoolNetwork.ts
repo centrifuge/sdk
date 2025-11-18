@@ -8,7 +8,7 @@ import { MessageType, MessageTypeWithSubType, VaultUpdateKind } from '../types/t
 import { addressToBytes32 } from '../utils/index.js'
 import { repeatOnEvents } from '../utils/rx.js'
 import { doTransaction, wrapTransaction } from '../utils/transaction.js'
-import { AssetId, ShareClassId } from '../utils/types.js'
+import { AssetId, CentrifugeId, ShareClassId } from '../utils/types.js'
 import { BalanceSheet } from './BalanceSheet.js'
 import { Entity } from './Entity.js'
 import { MerkleProofManager } from './MerkleProofManager.js'
@@ -27,6 +27,10 @@ export class PoolNetwork extends Entity {
     public chainId: number
   ) {
     super(_root, ['poolnetwork', pool.id.toString(), chainId])
+  }
+
+  get centrifugeId(): CentrifugeId {
+    return this.pool.centrifugeId
   }
 
   /**
@@ -122,7 +126,7 @@ export class PoolNetwork extends Entity {
    */
   isActive() {
     return this._query(['isActive'], () =>
-      this._root._protocolAddresses(this.chainId).pipe(
+      this._root._protocolAddresses(this.centrifugeId).pipe(
         switchMap(({ spoke }) => {
           return defer(
             () =>
@@ -193,7 +197,7 @@ export class PoolNetwork extends Entity {
     const self = this
 
     return this._transact(async function* (ctx) {
-      const { merkleProofManagerFactory } = await self._root._protocolAddresses(self.chainId)
+      const { merkleProofManagerFactory } = await self._root._protocolAddresses(self.centrifugeId)
 
       yield* doTransaction('AddMerkleProofManager', ctx, () =>
         ctx.walletClient.writeContract({
@@ -203,7 +207,7 @@ export class PoolNetwork extends Entity {
           args: [self.pool.id.raw],
         })
       )
-    }, self.chainId)
+    }, self.centrifugeId)
   }
 
   /**
@@ -330,7 +334,7 @@ export class PoolNetwork extends Entity {
     const self = this
 
     return this._transact(async function* (ctx) {
-      const { onOfframpManagerFactory } = await self._root._protocolAddresses(self.chainId)
+      const { onOfframpManagerFactory } = await self._root._protocolAddresses(self.centrifugeId)
 
       yield* doTransaction('DeployOnOfframpManager', ctx, () =>
         ctx.walletClient.writeContract({
@@ -340,7 +344,7 @@ export class PoolNetwork extends Entity {
           args: [self.pool.id.raw, scId.raw],
         })
       )
-    }, self.chainId)
+    }, self.centrifugeId)
   }
 
   /**
@@ -360,8 +364,8 @@ export class PoolNetwork extends Entity {
         id,
         details,
       ] = await Promise.all([
-        self._root._protocolAddresses(self.pool.chainId),
-        self._root._protocolAddresses(self.chainId),
+        self._root._protocolAddresses(self.pool.centrifugeId),
+        self._root._protocolAddresses(self.centrifugeId),
         self._root.id(self.chainId),
         self.details(),
       ])
@@ -513,7 +517,7 @@ export class PoolNetwork extends Entity {
       }
 
       const [{ hub }, id, details] = await Promise.all([
-        self._root._protocolAddresses(self.pool.chainId),
+        self._root._protocolAddresses(self.pool.centrifugeId),
         self._root.id(self.chainId),
         self.details(),
       ])
@@ -567,7 +571,7 @@ export class PoolNetwork extends Entity {
       }
 
       const [{ hub }, id, details] = await Promise.all([
-        self._root._protocolAddresses(self.pool.chainId),
+        self._root._protocolAddresses(self.pool.centrifugeId),
         self._root.id(self.chainId),
         self.details(),
       ])
@@ -621,7 +625,7 @@ export class PoolNetwork extends Entity {
    */
   _share(scId: ShareClassId, throwOnNullAddress = true) {
     return this._query(['share', scId.toString(), throwOnNullAddress], () =>
-      this._root._protocolAddresses(this.chainId).pipe(
+      this._root._protocolAddresses(this.centrifugeId).pipe(
         switchMap(({ spoke }) =>
           defer(async () => {
             try {
