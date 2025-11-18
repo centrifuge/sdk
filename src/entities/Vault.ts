@@ -60,7 +60,7 @@ export class Vault extends Entity {
   details() {
     return this._query(['details'], () =>
       combineLatest([this.isLinked(), this._isSyncDeposit(), this._investmentCurrency(), this._shareCurrency()]).pipe(
-        map(([isLinked, isSyncDeposit, assetDetails, shareCurrency]) => ({
+        map(([isLinked, isSyncDeposit, assetDetails, share]) => ({
           pool: this.pool,
           shareClass: this.shareClass,
           network: this.network,
@@ -69,7 +69,7 @@ export class Vault extends Entity {
           isLinked,
           isSyncDeposit,
           isSyncRedeem: false,
-          shareCurrency,
+          share,
         }))
       )
     )
