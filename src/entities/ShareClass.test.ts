@@ -481,13 +481,13 @@ describe('ShareClass', () => {
 
       // Invest
       ;[, investment] = await Promise.all([
-        lastValueFrom(vault.increaseInvestOrder(defaultAssetsAmount).pipe(toArray())),
+        lastValueFrom(vault.asyncDeposit(defaultAssetsAmount).pipe(toArray())),
         firstValueFrom(
-          vault.investment(investor).pipe(skipWhile((i) => !i.pendingInvestCurrency.eq(defaultAssetsAmount.toBigInt())))
+          vault.investment(investor).pipe(skipWhile((i) => !i.pendingDepositAssets.eq(defaultAssetsAmount.toBigInt())))
         ),
       ])
 
-      expect(investment.pendingInvestCurrency.toBigInt()).to.equal(defaultAssetsAmount.toBigInt())
+      expect(investment.pendingDepositAssets.toBigInt()).to.equal(defaultAssetsAmount.toBigInt())
 
       context.tenderlyFork.impersonateAddress = fundManager
       context.centrifuge.setSigner(context.tenderlyFork.signer)
@@ -506,7 +506,7 @@ describe('ShareClass', () => {
       ;[, investment] = await Promise.all([
         vault.shareClass.claimDeposit(assetId, investor),
         firstValueFrom(
-          vault.investment(investor).pipe(skipWhile((i) => !i.claimableInvestShares.eq(defaultSharesAmount.toBigInt())))
+          vault.investment(investor).pipe(skipWhile((i) => !i.claimableDepositShares.eq(defaultSharesAmount.toBigInt())))
         ),
       ])
 
@@ -516,12 +516,12 @@ describe('ShareClass', () => {
       // Claim shares
       ;[, investment] = await Promise.all([
         vault.claim(),
-        firstValueFrom(vault.investment(investor).pipe(skipWhile((i) => !i.claimableInvestShares.eq(0n)))),
+        firstValueFrom(vault.investment(investor).pipe(skipWhile((i) => !i.claimableDepositShares.eq(0n)))),
       ])
 
       const redeemShares = Balance.fromFloat(40, 18)
       ;[, investment, pendingAmounts] = await Promise.all([
-        vault.increaseRedeemOrder(redeemShares),
+        vault.asyncRedeem(redeemShares),
         firstValueFrom(
           vault.investment(investor).pipe(skipWhile((i) => !i.pendingRedeemShares.eq(redeemShares.toBigInt())))
         ),
@@ -657,13 +657,13 @@ describe('ShareClass', () => {
 
       // Invest
       ;[, investment] = await Promise.all([
-        lastValueFrom(vault.increaseInvestOrder(defaultAssetsAmount).pipe(toArray())),
+        lastValueFrom(vault.asyncDeposit(defaultAssetsAmount).pipe(toArray())),
         firstValueFrom(
-          vault.investment(investor).pipe(skipWhile((i) => !i.pendingInvestCurrency.eq(defaultAssetsAmount.toBigInt())))
+          vault.investment(investor).pipe(skipWhile((i) => !i.pendingDepositAssets.eq(defaultAssetsAmount.toBigInt())))
         ),
       ])
 
-      expect(investment.pendingInvestCurrency.toBigInt()).to.equal(defaultAssetsAmount.toBigInt())
+      expect(investment.pendingDepositAssets.toBigInt()).to.equal(defaultAssetsAmount.toBigInt())
 
       context.tenderlyFork.impersonateAddress = fundManager
       context.centrifuge.setSigner(context.tenderlyFork.signer)
@@ -683,7 +683,7 @@ describe('ShareClass', () => {
       ;[, investment] = await Promise.all([
         shareClass.claimDeposit(assetId, investor),
         firstValueFrom(
-          vault.investment(investor).pipe(skipWhile((i) => !i.claimableInvestShares.eq(defaultSharesAmount.toBigInt())))
+          vault.investment(investor).pipe(skipWhile((i) => !i.claimableDepositShares.eq(defaultSharesAmount.toBigInt())))
         ),
       ])
 
@@ -693,12 +693,12 @@ describe('ShareClass', () => {
       // Claim shares
       ;[, investment] = await Promise.all([
         vault.claim(),
-        firstValueFrom(vault.investment(investor).pipe(skipWhile((i) => !i.claimableInvestShares.eq(0n)))),
+        firstValueFrom(vault.investment(investor).pipe(skipWhile((i) => !i.claimableDepositShares.eq(0n)))),
       ])
 
       const redeemShares = Balance.fromFloat(40, 18)
       ;[, investment, pendingAmounts] = await Promise.all([
-        vault.increaseRedeemOrder(redeemShares),
+        vault.asyncRedeem(redeemShares),
         firstValueFrom(
           vault.investment(investor).pipe(skipWhile((i) => !i.pendingRedeemShares.eq(redeemShares.toBigInt())))
         ),
@@ -725,7 +725,7 @@ describe('ShareClass', () => {
       // Approve redeems
       const [result] = await Promise.all([
         shareClass.claimRedeem(assetId, investor),
-        firstValueFrom(vault.investment(investor).pipe(skipWhile((i) => i.claimableRedeemCurrency.eq(0n)))),
+        firstValueFrom(vault.investment(investor).pipe(skipWhile((i) => i.claimableRedeemAssets.eq(0n)))),
       ])
 
       expect(result.type).to.equal('TransactionConfirmed')
@@ -780,17 +780,17 @@ describe('ShareClass', () => {
     expect(item).to.have.keys([
       'investor',
       'assetId',
-      'pendingInvestCurrency',
+      'pendingDepositAssets',
       'pendingRedeemShares',
-      'claimableInvestShares',
-      'claimableRedeemCurrency',
+      'claimableDepositShares',
+      'claimableRedeemAssets',
     ])
 
     expect(item.assetId).to.be.instanceOf(AssetId)
-    expect(item.pendingInvestCurrency).to.be.instanceOf(Balance)
+    expect(item.pendingDepositAssets).to.be.instanceOf(Balance)
     expect(item.pendingRedeemShares).to.be.instanceOf(Balance)
-    expect(item.claimableInvestShares).to.be.instanceOf(Balance)
-    expect(item.claimableRedeemCurrency).to.be.instanceOf(Balance)
+    expect(item.claimableDepositShares).to.be.instanceOf(Balance)
+    expect(item.claimableRedeemAssets).to.be.instanceOf(Balance)
   })
 
   describe('closedInvestments', () => {
