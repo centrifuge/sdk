@@ -121,10 +121,7 @@ export class Centrifuge {
     return this.getClient(centrifugeId).chain
   }
 
-  /** @internal */
-  _getClientByCentrifugeId(centrifugeId: CentrifugeId) {
-    return this._query(['clientByCentrifugeId', centrifugeId], () => of(this.getClient(centrifugeId)))
-  }
+
 
   #signer: Signer | null = null
   setSigner(signer: Signer | null) {
@@ -420,7 +417,7 @@ export class Centrifuge {
   assetCurrency(assetId: AssetId) {
     return this._query(['asset', assetId.toString()], () =>
       combineLatest([
-        this._getClientByCentrifugeId(assetId.centrifugeId),
+        of(this.getClient(assetId.centrifugeId)),
         this._idToChain(assetId.centrifugeId),
       ]).pipe(
         switchMap(([client, chainId]) =>

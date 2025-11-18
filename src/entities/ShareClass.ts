@@ -339,7 +339,7 @@ export class ShareClass extends Entity {
       combineLatest([
         this._share(centrifugeId),
         this._restrictionManager(centrifugeId),
-        this._root._getClientByCentrifugeId(centrifugeId),
+        of(this._root.getClient(centrifugeId)),
         this._root._idToChain(centrifugeId),
       ]).pipe(
         switchMap(([share, restrictionManager, client, chainId]) =>
@@ -2368,7 +2368,7 @@ export class ShareClass extends Entity {
   /** @internal */
   _restrictionManager(centrifugeId: CentrifugeId) {
     return this._query(['restrictionManager', centrifugeId], () =>
-      combineLatest([this._share(centrifugeId), this._root._getClientByCentrifugeId(centrifugeId)]).pipe(
+      combineLatest([this._share(centrifugeId), of(this._root.getClient(centrifugeId))]).pipe(
         switchMap(([share, client]) =>
           defer(async () => {
             const address = await client.readContract({
