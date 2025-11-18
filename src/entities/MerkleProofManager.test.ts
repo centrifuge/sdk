@@ -47,15 +47,19 @@ describe('MerkleProofManager', () => {
       {
         decoder,
         target: someErc20,
+        targetName: 'Some ERC20 Token',
+        name: 'Approve spending',
         selector: 'function approve(address,uint256)',
         valueNonZero: false,
         inputs: [
           {
             parameter: 'address',
+            label: 'Vault Router',
             input: [vaultRouter],
           },
           {
             parameter: 'uint256',
+            label: 'Amount',
             input: [],
           },
         ],
@@ -473,6 +477,33 @@ describe('MerkleProofManager', () => {
     expect(tree.root).to.equal(expectedRootHash)
   })
 
+  // TODO: Finish once pool tests are working and we can setup pool metadata and read it
+  it.skip('sets templates', async () => {
+    const centrifugeWithPin = new Centrifuge({
+      environment: 'testnet',
+      pinJson: async () => {
+        return 'abc'
+      },
+      rpcUrls: {
+        11155111: context.tenderlyFork.rpcUrl,
+      },
+    })
+    const mpm = new MerkleProofManager(centrifugeWithPin, merkleProofManager.network, mpmAddress)
+
+    context.tenderlyFork.impersonateAddress = fundManager
+    centrifugeWithPin.setSigner(context.tenderlyFork.signer)
+
+    const template = {
+      id: 'template-1',
+      name: 'Default Template',
+      actions: [{ policyIndex: 0 }, { policyIndex: 1 }],
+      createdAt: new Date().toISOString(),
+      updatedAt: undefined,
+    }
+
+    await mpm.setTemplates(strategist, [template])
+  })
+
   it('sets policies', async () => {
     const centrifugeWithPin = new Centrifuge({
       environment: 'testnet',
@@ -598,7 +629,7 @@ describe('MerkleProofManager', () => {
       const policyInput: MerkleProofPolicyInput = {
         decoder: '0xDecoder',
         target: '0xTarget',
-        action: 'someAction',
+        name: 'someAction',
         selector: 'function doSomething(uint256 a, address b, uint256 c)',
         inputs: [
           {
@@ -631,7 +662,7 @@ describe('MerkleProofManager', () => {
       const policyInput: MerkleProofPolicyInput = {
         decoder: '0xDecoder',
         target: '0xTarget',
-        action: 'someAction',
+        name: 'someAction',
         selector: 'function doSomething()',
         inputs: [
           {
@@ -662,7 +693,7 @@ describe('MerkleProofManager', () => {
       const policyInput: MerkleProofPolicyInput = {
         decoder: '0xDecoder',
         target: '0xTarget',
-        action: 'someAction',
+        name: 'someAction',
         selector: 'function doSomething()',
         inputs: [
           {
@@ -705,7 +736,7 @@ describe('MerkleProofManager', () => {
       const policyInput: MerkleProofPolicyInput = {
         decoder: '0xDecoder',
         target: '0xTarget',
-        action: 'someAction',
+        name: 'someAction',
         selector: 'function doSomething()',
         inputs: [],
       }
