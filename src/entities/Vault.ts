@@ -460,7 +460,7 @@ export class Vault extends Entity {
       ])
 
       if (!investment.isAllowedToRedeem) throw new Error('Not allowed to redeem')
-      if (investment.shareCurrency.decimals !== sharesAmount.decimals) throw new Error('Invalid amount decimals')
+      if (investment.share.decimals !== sharesAmount.decimals) throw new Error('Invalid amount decimals')
       if (sharesAmount.gt(investment.shareBalance)) throw new Error('Insufficient balance')
       if (!sharesAmount.gt(0n)) throw new Error('Order amount must be greater than 0')
 
