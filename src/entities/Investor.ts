@@ -1,7 +1,7 @@
 import { combineLatest, map, of, switchMap } from 'rxjs'
 import { Centrifuge } from '../Centrifuge.js'
 import type { HexString } from '../types/index.js'
-import { AssetId, PoolId, ShareClassId } from '../utils/types.js'
+import { AssetId, CentrifugeId, PoolId, ShareClassId } from '../utils/types.js'
 import { Entity } from './Entity.js'
 import { Balance } from '../utils/BigInt.js'
 
@@ -80,14 +80,14 @@ export class Investor extends Entity {
    * @param poolId - The pool ID
    * @param scId - The share class ID
    * @param asset - The asset ID
-   * @param chainId - The chain ID
+   * @param centrifugeId - The centrifuge ID of the network
    */
-  investment(poolId: PoolId, scId: ShareClassId, asset: HexString | AssetId, chainId: number) {
+  investment(poolId: PoolId, scId: ShareClassId, asset: HexString | AssetId, centrifugeId: CentrifugeId) {
     return this._query(
-      ['investment', poolId.toString(), scId.toString(), asset.toString().toLowerCase(), chainId],
+      ['investment', poolId.toString(), scId.toString(), asset.toString().toLowerCase(), centrifugeId],
       () =>
         this._root.pool(poolId).pipe(
-          switchMap((pool) => pool.vault(chainId, scId, asset)),
+          switchMap((pool) => pool.vault(centrifugeId, scId, asset)),
           switchMap((vault) => vault.investment(this.address))
         )
     )
@@ -95,12 +95,14 @@ export class Investor extends Entity {
 
   /**
    * Retrieve if an account is a member of a share class.
+   * @param scId - The share class ID
+   * @param centrifugeId - The centrifuge ID of the network
    */
-  isMember(scId: ShareClassId, chainId: number) {
-    return this._query(['isMember', scId.toString(), chainId], () =>
+  isMember(scId: ShareClassId, centrifugeId: CentrifugeId) {
+    return this._query(['isMember', scId.toString(), centrifugeId], () =>
       this._root.pool(scId.poolId).pipe(
         switchMap((pool) => pool.shareClass(scId)),
-        switchMap((shareClass) => shareClass.member(this.address, chainId)),
+        switchMap((shareClass) => shareClass.member(this.address, centrifugeId)),
         map(({ isMember }) => isMember)
       )
     )

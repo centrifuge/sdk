@@ -105,7 +105,7 @@ describe('ShareClass', () => {
 
   it('updates a member', async () => {
     const investor = randomAddress()
-    const memberBefore = await shareClass.member(investor, chainId)
+    const memberBefore = await shareClass.member(investor, centId)
 
     expect(memberBefore.isMember).to.equal(false)
 
@@ -113,8 +113,8 @@ describe('ShareClass', () => {
     context.centrifuge.setSigner(context.tenderlyFork.signer)
 
     const [, memberAfter] = await Promise.all([
-      shareClass.updateMember(investor, 1800000000, chainId),
-      firstValueFrom(shareClass.member(investor, chainId).pipe(skipWhile((m) => !m.isMember))),
+      shareClass.updateMember(investor, 1800000000, centId),
+      firstValueFrom(shareClass.member(investor, centId).pipe(skipWhile((m) => !m.isMember))),
     ])
 
     expect(memberAfter.isMember).to.equal(true)
@@ -126,8 +126,8 @@ describe('ShareClass', () => {
     const investor2 = randomAddress()
 
     const membersBefore = await Promise.all([
-      shareClass.member(investor1, chainId),
-      shareClass.member(investor2, chainId),
+      shareClass.member(investor1, centId),
+      shareClass.member(investor2, centId),
     ])
 
     expect(membersBefore[0]!.isMember).to.equal(false)
@@ -138,12 +138,12 @@ describe('ShareClass', () => {
 
     const [, membersAfter] = await Promise.all([
       shareClass.updateMembers([
-        { address: investor1, validUntil: 1800000000, chainId },
-        { address: investor2, validUntil: 1800000000, chainId },
+        { address: investor1, validUntil: 1800000000, centrifugeId: centId },
+        { address: investor2, validUntil: 1800000000, centrifugeId: centId },
       ]),
       Promise.all([
-        firstValueFrom(shareClass.member(investor1, chainId).pipe(skipWhile((m) => !m.isMember))),
-        firstValueFrom(shareClass.member(investor2, chainId).pipe(skipWhile((m) => !m.isMember))),
+        firstValueFrom(shareClass.member(investor1, centId).pipe(skipWhile((m) => !m.isMember))),
+        firstValueFrom(shareClass.member(investor2, centId).pipe(skipWhile((m) => !m.isMember))),
       ]),
     ])
 

@@ -10,7 +10,7 @@ import { NATIONAL_CURRENCY_METADATA } from '../utils/currencies.js'
 import { addressToBytes32, randomUint } from '../utils/index.js'
 import { repeatOnEvents } from '../utils/rx.js'
 import { wrapTransaction } from '../utils/transaction.js'
-import { AssetId, PoolId, ShareClassId } from '../utils/types.js'
+import { AssetId, CentrifugeId, PoolId, ShareClassId } from '../utils/types.js'
 import { Entity } from './Entity.js'
 import { PoolNetwork } from './PoolNetwork.js'
 import { PoolReports } from './Reports/PoolReports.js'
@@ -216,13 +216,14 @@ export class Pool extends Entity {
 
   /**
    * Get a specific network where a pool can potentially be deployed.
+   * @param centrifugeId - The centrifuge ID of the network
    */
-  network(chainId: number) {
-    return this._query(['poolNetwork', chainId, this.id.toString()], () => {
-      return this.networks().pipe(
-        map((networks) => {
+  network(centrifugeId: CentrifugeId) {
+    return this._query(['poolNetwork', centrifugeId, this.id.toString()], () => {
+      return combineLatest([this.networks(), this._root._idToChain(centrifugeId)]).pipe(
+        map(([networks, chainId]) => {
           const network = networks.find((network) => network.chainId === chainId)
-          if (!network) throw new Error(`Network ${chainId} not found`)
+          if (!network) throw new Error(`Network with centrifuge ID ${centrifugeId} (chain ID ${chainId}) not found`)
           return network
         })
       )
@@ -255,9 +256,15 @@ export class Pool extends Entity {
     })
   }
 
-  vault(chainId: number, scId: ShareClassId, asset: HexString | AssetId) {
-    return this._query(['vault', chainId, scId.toString(), asset.toString().toLowerCase()], () =>
-      this.network(chainId).pipe(switchMap((network) => network.vault(scId, asset)))
+  /**
+   * Get a specific vault for a given network, share class, and asset.
+   * @param centrifugeId - The centrifuge ID of the network
+   * @param scId - The share class ID
+   * @param asset - The asset address or ID
+   */
+  vault(centrifugeId: CentrifugeId, scId: ShareClassId, asset: HexString | AssetId) {
+    return this._query(['vault', centrifugeId, scId.toString(), asset.toString().toLowerCase()], () =>
+      this.network(centrifugeId).pipe(switchMap((network) => network.vault(scId, asset)))
     )
   }
 

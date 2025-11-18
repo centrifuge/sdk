@@ -109,6 +109,13 @@ export class Centrifuge {
     return this.getClient(chainId).chain
   }
 
+  /** @internal */
+  _getClientByCentrifugeId(centrifugeId: number) {
+    return this._query(['clientByCentrifugeId', centrifugeId], () =>
+      this._idToChain(centrifugeId).pipe(map((chainId) => this.getClient(chainId)))
+    )
+  }
+
   #signer: Signer | null = null
   setSigner(signer: Signer | null) {
     this.#signer = signer
@@ -410,10 +417,15 @@ export class Centrifuge {
    */
   assetCurrency(assetId: AssetId) {
     return this._query(['asset', assetId.toString()], () =>
-      this._idToChain(assetId.centrifugeId).pipe(
-        switchMap((chainId) => this._protocolAddresses(chainId).pipe(map(({ spoke }) => ({ chainId, spoke })))),
-        switchMap(async ({ spoke, chainId }) => {
-          const [assetAddress, tokenId] = await this.getClient(chainId).readContract({
+      combineLatest([
+        this._getClientByCentrifugeId(assetId.centrifugeId),
+        this._idToChain(assetId.centrifugeId),
+      ]).pipe(
+        switchMap(([client, chainId]) =>
+          this._protocolAddresses(chainId).pipe(map(({ spoke }) => ({ chainId, spoke, client })))
+        ),
+        switchMap(async ({ spoke, chainId, client }) => {
+          const [assetAddress, tokenId] = await client.readContract({
             address: spoke,
             abi: ABI.Spoke,
             functionName: 'idToAsset',

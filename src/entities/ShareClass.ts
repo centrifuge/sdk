@@ -9,7 +9,7 @@ import { Balance, Price } from '../utils/BigInt.js'
 import { addressToBytes32, randomUint } from '../utils/index.js'
 import { repeatOnEvents } from '../utils/rx.js'
 import { wrapTransaction } from '../utils/transaction.js'
-import { AssetId, ShareClassId } from '../utils/types.js'
+import { AssetId, CentrifugeId, ShareClassId } from '../utils/types.js'
 import { BalanceSheet } from './BalanceSheet.js'
 import { Entity } from './Entity.js'
 import type { Pool } from './Pool.js'
@@ -82,16 +82,20 @@ export class ShareClass extends Entity {
     )
   }
 
-  balanceSheet(chainId: number) {
-    return this._query(['balanceSheet', chainId], () =>
+  balanceSheet(centrifugeId: CentrifugeId) {
+    return this._query(['balanceSheet', centrifugeId], () =>
       this.pool.activeNetworks().pipe(
-        map((networks) => {
-          const network = networks.find((n) => n.chainId === chainId)
-          if (!network) {
-            throw new Error(`No active network found for chain ID ${chainId}`)
-          }
-          return new BalanceSheet(this._root, network, this)
-        })
+        switchMap((networks) =>
+          this._root._idToChain(centrifugeId).pipe(
+            map((chainId) => {
+              const network = networks.find((n) => n.chainId === chainId)
+              if (!network) {
+                throw new Error(`No active network found for centrifuge ID ${centrifugeId}`)
+              }
+              return new BalanceSheet(this._root, network, this)
+            })
+          )
+        )
       )
     )
   }
@@ -104,11 +108,15 @@ export class ShareClass extends Entity {
 
           return combineLatest(
             networks.map((network) =>
-              combineLatest([
-                this._share(network.chainId).pipe(catchError(() => of(null))),
-                this._restrictionManager(network.chainId).pipe(catchError(() => of(null))),
-                of(network),
-              ])
+              this._root.id(network.chainId).pipe(
+                switchMap((centrifugeId) =>
+                  combineLatest([
+                    this._share(centrifugeId).pipe(catchError(() => of(null))),
+                    this._restrictionManager(centrifugeId).pipe(catchError(() => of(null))),
+                    of(network),
+                  ])
+                )
+              )
             )
           )
         }),
@@ -323,15 +331,20 @@ export class ShareClass extends Entity {
   /**
    * Check if an address is a member of the share class.
    * @param address Address to check
-   * @param chainId Chain ID of the network on which to check the member
+   * @param centrifugeId Centrifuge ID of the network on which to check the member
    */
-  member(address: HexString, chainId: number) {
+  member(address: HexString, centrifugeId: CentrifugeId) {
     const addr = address.toLowerCase() as HexString
-    return this._query(['member', addr, chainId], () =>
-      combineLatest([this._share(chainId), this._restrictionManager(chainId)]).pipe(
-        switchMap(([share, restrictionManager]) =>
+    return this._query(['member', addr, centrifugeId], () =>
+      combineLatest([
+        this._share(centrifugeId),
+        this._restrictionManager(centrifugeId),
+        this._root._getClientByCentrifugeId(centrifugeId),
+        this._root._idToChain(centrifugeId),
+      ]).pipe(
+        switchMap(([share, restrictionManager, client, chainId]) =>
           defer(async () => {
-            const res = await this._root.getClient(chainId).readContract({
+            const res = await client.readContract({
               address: restrictionManager,
               abi: ABI.RestrictionManager,
               functionName: 'isMember',
@@ -548,22 +561,19 @@ export class ShareClass extends Entity {
     }, this.pool.chainId)
   }
 
-  setMaxSharePriceAge(chainId: number, maxPriceAge: number) {
+  setMaxSharePriceAge(centrifugeId: CentrifugeId, maxPriceAge: number) {
     const self = this
     return this._transact(async function* (ctx) {
-      const [{ hub }, id] = await Promise.all([
-        self._root._protocolAddresses(self.pool.chainId),
-        self._root.id(chainId),
-      ])
+      const { hub } = await self._root._protocolAddresses(self.pool.chainId)
       yield* wrapTransaction('Set max share price age', ctx, {
         contract: hub,
         data: encodeFunctionData({
           abi: ABI.Hub,
           functionName: 'setMaxSharePriceAge',
-          args: [id, self.pool.id.raw, self.id.raw, BigInt(maxPriceAge)],
+          args: [centrifugeId, self.pool.id.raw, self.id.raw, BigInt(maxPriceAge)],
         }),
         messages: {
-          [id]: [MessageType.MaxSharePriceAge],
+          [centrifugeId]: [MessageType.MaxSharePriceAge],
         },
       })
     }, this.pool.chainId)
@@ -587,22 +597,19 @@ export class ShareClass extends Entity {
     }, this.pool.chainId)
   }
 
-  notifySharePrice(chainId: number) {
+  notifySharePrice(centrifugeId: CentrifugeId) {
     const self = this
     return this._transact(async function* (ctx) {
-      const [{ hub }, id] = await Promise.all([
-        self._root._protocolAddresses(self.pool.chainId),
-        self._root.id(chainId),
-      ])
+      const { hub } = await self._root._protocolAddresses(self.pool.chainId)
       yield* wrapTransaction('Notify share price', ctx, {
         contract: hub,
         data: encodeFunctionData({
           abi: ABI.Hub,
           functionName: 'notifySharePrice',
-          args: [self.pool.id.raw, self.id.raw, id],
+          args: [self.pool.id.raw, self.id.raw, centrifugeId],
         }),
         messages: {
-          [id]: [MessageType.NotifyPricePoolPerShare],
+          [centrifugeId]: [MessageType.NotifyPricePoolPerShare],
         },
       })
     }, this.pool.chainId)
@@ -979,27 +986,24 @@ export class ShareClass extends Entity {
    * Update a member of the share class.
    * @param address Address of the investor
    * @param validUntil Time in seconds from Unix epoch until the investor is valid
-   * @param chainId Chain ID of the network on which to update the member
+   * @param centrifugeId Centrifuge ID of the network on which to update the member
    */
-  updateMember(address: HexString, validUntil: number, chainId: number) {
-    return this.updateMembers([{ address, validUntil, chainId }])
+  updateMember(address: HexString, validUntil: number, centrifugeId: CentrifugeId) {
+    return this.updateMembers([{ address, validUntil, centrifugeId }])
   }
 
   /**
    * Batch update a list of members of the share class.
-   * @param members Array of members to update, each with address, validUntil and chainId
+   * @param members Array of members to update, each with address, validUntil and centrifugeId
    * @param members.address Address of the investor
    * @param members.validUntil Time in seconds from Unix epoch until the investor is valid
-   * @param members.chainId Chain ID of the network on which to update the member
+   * @param members.centrifugeId Centrifuge ID of the network on which to update the member
    */
-  updateMembers(members: { address: HexString; validUntil: number; chainId: number }[]) {
+  updateMembers(members: { address: HexString; validUntil: number; centrifugeId: CentrifugeId }[]) {
     const self = this
 
     return this._transact(async function* (ctx) {
-      const [{ hub }, ...ids] = await Promise.all([
-        self._root._protocolAddresses(self.pool.chainId),
-        ...members.map((m) => self._root.id(m.chainId)),
-      ])
+      const { hub } = await self._root._protocolAddresses(self.pool.chainId)
 
       const batch: HexString[] = []
       const messages: Record<number, MessageType[]> = {}
@@ -1008,13 +1012,7 @@ export class ShareClass extends Entity {
         messages[centId].push(message)
       }
 
-      members.forEach((member, index) => {
-        const id = ids[index]
-
-        if (!id) {
-          return
-        }
-
+      members.forEach((member) => {
         batch.push(
           encodeFunctionData({
             abi: ABI.Hub,
@@ -1022,7 +1020,7 @@ export class ShareClass extends Entity {
             args: [
               self.pool.id.raw,
               self.id.raw,
-              id,
+              member.centrifugeId,
               encodePacked(
                 ['uint8', 'bytes32', 'uint64'],
                 [/* UpdateRestrictionType.Member */ 1, addressToBytes32(member.address), BigInt(member.validUntil)]
@@ -1031,7 +1029,7 @@ export class ShareClass extends Entity {
             ],
           })
         )
-        addMessage(id, MessageType.UpdateRestriction)
+        addMessage(member.centrifugeId, MessageType.UpdateRestriction)
       })
 
       if (batch.length === 0) {
@@ -1328,13 +1326,17 @@ export class ShareClass extends Entity {
 
   /**
    * Freeze a member of the share class.
+   * @param address Address to freeze
+   * @param centrifugeId Centrifuge ID of the network on which to freeze the member
    */
-  freezeMember(address: HexString, chainId: number) {
+  async freezeMember(address: HexString, centrifugeId: CentrifugeId) {
     const self = this
+    const chainId = await firstValueFrom(this._root._idToChain(centrifugeId))
+    
     return this._transact(async function* (ctx) {
       const [share, restrictionManager] = await Promise.all([
-        firstValueFrom(self._share(chainId)),
-        firstValueFrom(self._restrictionManager(chainId)),
+        firstValueFrom(self._share(centrifugeId)),
+        firstValueFrom(self._restrictionManager(centrifugeId)),
       ])
 
       yield* wrapTransaction('Freeze member', ctx, {
@@ -1350,13 +1352,17 @@ export class ShareClass extends Entity {
 
   /**
    * Unfreeze a member of the share class
+   * @param address Address to unfreeze
+   * @param centrifugeId Centrifuge ID of the network on which to unfreeze the member
    */
-  unfreezeMember(address: HexString, chainId: number) {
+  async unfreezeMember(address: HexString, centrifugeId: CentrifugeId) {
     const self = this
+    const chainId = await firstValueFrom(this._root._idToChain(centrifugeId))
+    
     return this._transact(async function* (ctx) {
       const [share, restrictionManager] = await Promise.all([
-        firstValueFrom(self._share(chainId)),
-        firstValueFrom(self._restrictionManager(chainId)),
+        firstValueFrom(self._share(centrifugeId)),
+        firstValueFrom(self._restrictionManager(centrifugeId)),
       ])
 
       yield* wrapTransaction('Unfreeze member', ctx, {
@@ -2351,19 +2357,19 @@ export class ShareClass extends Entity {
   }
 
   /** @internal */
-  _share(chainId: number) {
-    return this._query(['share', chainId], () =>
-      this.pool.network(chainId).pipe(switchMap((network) => network._share(this.id)))
+  _share(centrifugeId: CentrifugeId) {
+    return this._query(['share', centrifugeId], () =>
+      this.pool.network(centrifugeId).pipe(switchMap((network) => network._share(this.id)))
     )
   }
 
   /** @internal */
-  _restrictionManager(chainId: number) {
-    return this._query(['restrictionManager', chainId], () =>
-      this._share(chainId).pipe(
-        switchMap((share) =>
+  _restrictionManager(centrifugeId: CentrifugeId) {
+    return this._query(['restrictionManager', centrifugeId], () =>
+      combineLatest([this._share(centrifugeId), this._root._getClientByCentrifugeId(centrifugeId)]).pipe(
+        switchMap(([share, client]) =>
           defer(async () => {
-            const address = await this._root.getClient(chainId).readContract({
+            const address = await client.readContract({
               address: share,
               abi: ABI.Currency,
               functionName: 'hook',
