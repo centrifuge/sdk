@@ -37,7 +37,7 @@ describe.skip('Pool', () => {
   it('gets active networks of a pool', async () => {
     const networks = await pool.activeNetworks()
     expect(networks).to.have.length.greaterThan(0)
-    expect(networks.some((n) => n.chainId === chainId)).to.equal(true)
+    expect(networks.some((n) => n.centrifugeId === centId)).to.equal(true)
   })
 
   it('gets share class IDs of a pool', async () => {
@@ -156,7 +156,7 @@ describe.skip('Pool', () => {
     context.centrifuge.setSigner(context.tenderlyFork.signer)
 
     const newManager = randomAddress()
-    const result = await pool.updateBalanceSheetManagers([{ chainId, address: newManager, canManage: true }])
+    const result = await pool.updateBalanceSheetManagers([{ centrifugeId: centId, address: newManager, canManage: true }])
     expect(result.type).to.equal('TransactionConfirmed')
 
     const { balanceSheet } = await context.centrifuge._protocolAddresses(chainId)

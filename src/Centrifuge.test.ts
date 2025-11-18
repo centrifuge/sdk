@@ -14,6 +14,7 @@ import { doSignMessage, doTransaction } from './utils/transaction.js'
 import { AssetId, PoolId } from './utils/types.js'
 
 const chainId = 11155111
+const centId = 1
 const poolId = PoolId.from(1, 1)
 const assetId = AssetId.from(1, 1)
 const poolManager = '0x423420Ae467df6e90291fd0252c0A8a637C1e03f'
@@ -478,7 +479,7 @@ describe('Centrifuge', () => {
       const newManager2 = randomAddress()
       const result = await context.centrifuge._experimental_batch('Test', [
         pool.updatePoolManagers([{ address: newManager, canManage: true }]),
-        pool.updateBalanceSheetManagers([{ chainId, address: newManager2, canManage: true }]),
+        pool.updateBalanceSheetManagers([{ centrifugeId: centId, address: newManager2, canManage: true }]),
       ])
       expect(result.type).to.equal('TransactionConfirmed')
       expect((result as any).title).to.equal('Test')

@@ -79,7 +79,7 @@ export class PoolSharePricesReport extends Entity {
                     .filter((id) => !filter.shareClassId || filter.shareClassId.equals(id))
                     .map((id) => id.toString()),
                   trigger_ends_with: 'NewPeriod',
-                  triggerChainId: String(activeNetworks[0]?.chainId ?? this.pool.chainId),
+                  triggerChainId: String(activeNetworks[0]?.centrifugeId ?? this.pool.centrifugeId),
                   // TODO from/to
                 } satisfies TokenInstanceSnapshotFilter,
               },

@@ -24,22 +24,22 @@ export class BalanceSheet extends Entity {
     public network: PoolNetwork,
     public shareClass: ShareClass
   ) {
-    super(_root, ['balancesheet', shareClass.id.toString(), network.chainId])
-    this.chainId = network.chainId
+    super(_root, ['balancesheet', shareClass.id.toString(), network.centrifugeId])
+    this.chainId = 0 // Deprecated, will be removed
     this.pool = network.pool
   }
 
   balances() {
-    return this.shareClass.balances(this.chainId)
+    return this.shareClass.balances(this.network.centrifugeId)
   }
 
   deposit(assetId: AssetId, amount: Balance) {
     const self = this
     return this._transact(async function* (ctx) {
-      const client = self._root.getClient(self.chainId)
+      const client = self._root.getClient(self.network.centrifugeId)
       const [{ balanceSheet, spoke }, isBalanceSheetManager] = await Promise.all([
-        self._root._protocolAddresses(self.chainId),
-        self.pool.isBalanceSheetManager(self.chainId, ctx.signingAddress),
+        self._root._protocolAddresses(self.network.centrifugeId),
+        self.pool.isBalanceSheetManager(self.network.centrifugeId, ctx.signingAddress),
       ])
 
       if (!isBalanceSheetManager) {
@@ -56,7 +56,7 @@ export class BalanceSheet extends Entity {
       const allowance = await self._root._allowance(
         ctx.signingAddress,
         balanceSheet,
-        self.chainId,
+        self.network.centrifugeId,
         assetAddress,
         tokenId
       )
@@ -102,7 +102,7 @@ export class BalanceSheet extends Entity {
               params: [
                 {
                   version: '1.0',
-                  chainId: toHex(self.chainId),
+                  chainId: toHex(self.network.centrifugeId),
                   from: ctx.signingAddress,
                   calls,
                 },

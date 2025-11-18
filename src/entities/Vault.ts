@@ -47,11 +47,15 @@ export class Vault extends Entity {
     address: HexString,
     public assetId: AssetId
   ) {
-    super(_root, ['vault', network.chainId, shareClass.id.toString(), asset.toLowerCase()])
-    this.chainId = network.chainId
+    super(_root, ['vault', network.centrifugeId, shareClass.id.toString(), asset.toLowerCase()])
+    this.chainId = 0 // Deprecated, will be removed
     this.pool = network.pool
     this._asset = asset.toLowerCase() as HexString
     this.address = address.toLowerCase() as HexString
+  }
+
+  get centrifugeId() {
+    return this.assetId.centrifugeId
   }
 
   /**

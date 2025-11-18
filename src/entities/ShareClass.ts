@@ -85,17 +85,13 @@ export class ShareClass extends Entity {
   balanceSheet(centrifugeId: CentrifugeId) {
     return this._query(['balanceSheet', centrifugeId], () =>
       this.pool.activeNetworks().pipe(
-        switchMap((networks) =>
-          this._root._idToChain(centrifugeId).pipe(
-            map((chainId) => {
-              const network = networks.find((n) => n.chainId === chainId)
-              if (!network) {
-                throw new Error(`No active network found for centrifuge ID ${centrifugeId}`)
-              }
-              return new BalanceSheet(this._root, network, this)
-            })
-          )
-        )
+        map((networks) => {
+          const network = networks.find((n) => n.centrifugeId === centrifugeId)
+          if (!network) {
+            throw new Error(`No active network found for centrifuge ID ${centrifugeId}`)
+          }
+          return new BalanceSheet(this._root, network, this)
+        })
       )
     )
   }
@@ -108,15 +104,11 @@ export class ShareClass extends Entity {
 
           return combineLatest(
             networks.map((network) =>
-              this._root.id(network.chainId).pipe(
-                switchMap((centrifugeId) =>
-                  combineLatest([
-                    this._share(centrifugeId).pipe(catchError(() => of(null))),
-                    this._restrictionManager(centrifugeId).pipe(catchError(() => of(null))),
-                    of(network),
-                  ])
-                )
-              )
+              combineLatest([
+                this._share(network.centrifugeId).pipe(catchError(() => of(null))),
+                this._restrictionManager(network.centrifugeId).pipe(catchError(() => of(null))),
+                of(network),
+              ])
             )
           )
         }),
@@ -124,7 +116,7 @@ export class ShareClass extends Entity {
           data
             .filter(([, restrictionManager]) => restrictionManager != null)
             .map(([share, restrictionManager, network]) => ({
-              chainId: network.chainId,
+              centrifugeId: network.centrifugeId,
               shareTokenAddress: share!,
               restrictionManagerAddress: restrictionManager!,
             }))
@@ -162,7 +154,7 @@ export class ShareClass extends Entity {
               }
             }) =>
               data.tokenInstances.items.map((item) => ({
-                chainId: Number(item.blockchain.id),
+                centrifugeId: Number(item.blockchain.id),
                 totalIssuance: new Balance(item.totalIssuance, poolCurrency.decimals),
                 pricePerShare: new Price(item.tokenPrice),
                 nav: new Balance(item.totalIssuance, poolCurrency.decimals).mul(new Price(item.tokenPrice)),
@@ -176,31 +168,33 @@ export class ShareClass extends Entity {
 
   /**
    * Query the vaults of the share class.
-   * @param chainId The optional chain ID to query the vaults on.
+   * @param centrifugeId The optional centrifuge ID to query the vaults on.
    * @param includeUnlinked Whether to include unlinked vaults.
    * @returns Vaults of the share class.
    */
-  vaults(chainId?: number, includeUnlinked = false) {
-    return this._query(['vaults', chainId, includeUnlinked.toString()], () =>
+  vaults(centrifugeId?: CentrifugeId, includeUnlinked = false) {
+    return this._query(['vaults', centrifugeId, includeUnlinked.toString()], () =>
       this._allVaults().pipe(
         map((allVaults) => {
-          const vaults = allVaults.filter((vault) => {
-            if (chainId && vault.chainId !== chainId) return false
+          return allVaults.filter((vault) => {
+            if (centrifugeId !== undefined && vault.centrifugeId !== centrifugeId) return false
             if (!includeUnlinked && vault.status === 'Unlinked') return false
             return true
           })
-          return vaults.map(
+        }),
+        map((vaults) =>
+          vaults.map(
             (vault) =>
               new Vault(
                 this._root,
-                new PoolNetwork(this._root, this.pool, vault.chainId),
+                new PoolNetwork(this._root, this.pool, vault.centrifugeId),
                 this,
                 vault.assetAddress,
                 vault.address,
                 vault.assetId
               )
           )
-        })
+        )
       )
     )
   }
@@ -260,8 +254,8 @@ export class ShareClass extends Entity {
                     tokenId: BigInt(data.asset.assetTokenId),
                     name: data.asset.name,
                     symbol: data.asset.symbol,
-                    chainId: Number(data.asset.blockchain.id),
-                  } satisfies Omit<CurrencyDetails, 'supportsPermit'>,
+                    centrifugeId: Number(data.asset.blockchain.centrifugeId) as CentrifugeId,
+                  },
                   holding: holding && {
                     valuation: holding.valuation,
                     amount: holding.amount,
@@ -296,17 +290,17 @@ export class ShareClass extends Entity {
           ]).pipe(
             map(([epochs, outInv, outRed, balancesData]) => {
               const invByKey = new Map<string, Balance>()
-              outInv.forEach((o) => invByKey.set(`${o.assetId.toString()}-${o.chainId}`, o.amount))
+              outInv.forEach((o) => invByKey.set(`${o.assetId.toString()}-${o.centrifugeId}`, o.amount))
 
               const redByKey = new Map<string, Balance>()
-              outRed.forEach((o) => redByKey.set(`${o.assetId.toString()}-${o.chainId}`, o.amount))
+              outRed.forEach((o) => redByKey.set(`${o.assetId.toString()}-${o.centrifugeId}`, o.amount))
 
               const priceByAsset = new Map<string, Price>()
               balancesData.forEach((b) => priceByAsset.set(b.assetId.toString(), b.price))
 
               return epochs.map((epoch, i) => {
                 const vault = vaults[i]!
-                const key = `${vault.assetId.toString()}-${vault.chainId}`
+                const key = `${vault.assetId.toString()}-${vault.centrifugeId}`
 
                 const queuedInvest = invByKey.get(key) ?? new Balance(0n, 18)
                 const queuedRedeem = redByKey.get(key) ?? new Balance(0n, 18)
@@ -314,7 +308,7 @@ export class ShareClass extends Entity {
 
                 return {
                   assetId: vault.assetId,
-                  chainId: vault.chainId,
+                  centrifugeId: vault.centrifugeId,
                   queuedInvest,
                   queuedRedeem,
                   assetPrice,
@@ -516,7 +510,7 @@ export class ShareClass extends Entity {
       await Promise.all(
         activeNetworks.map(async (activeNetwork) => {
           const networkDetails = await activeNetwork.details()
-          const id = await self._root.id(activeNetwork.chainId)
+          const id = activeNetwork.centrifugeId
 
           const isShareClassInNetwork = networkDetails.activeShareClasses.find((shareClass) =>
             shareClass.id.equals(self.id)
@@ -1116,13 +1110,11 @@ export class ShareClass extends Entity {
                 }).pipe(catchError(() => of(null)))
               )
 
-              const chainsById = new Map(deployments.blockchains.items.map((chain) => [chain.centrifugeId, chain.id]))
-
               return combineLatest(whitelistedQueries).pipe(
                 map((whitelistResults) => {
                   const investors = tokenInstancePositions.map((position, i) => {
                     const whitelistData = whitelistResults[i]
-                    const chainId = Number(chainsById.get(position.centrifugeId)!)
+                    const centrifugeId = Number(position.centrifugeId) as CentrifugeId
                     const outstandingInvest = outstandingInvests.find(
                       (order) => order.investor === position.accountAddress
                     )
@@ -1139,7 +1131,7 @@ export class ShareClass extends Entity {
                     return {
                       address: position.accountAddress,
                       amount: new Balance(outstandingInvest?.pendingAmount ?? 0n, assetDecimals),
-                      chainId,
+                      centrifugeId,
                       createdAt: whitelistData?.createdAt ?? '',
                       holdings: new Balance(position.balance, poolCurrency.decimals),
                       isFrozen: whitelistData?.isFrozen ?? position.isFrozen,
@@ -1380,9 +1372,7 @@ export class ShareClass extends Entity {
    */
   investmentsByVault(centrifugeId: CentrifugeId) {
     return this._query(['investmentsByVault', centrifugeId], () =>
-      this._root._idToChain(centrifugeId).pipe(
-        switchMap((chainId) =>
-          combineLatest([this._investorOrders(), this.vaults(chainId), this.pendingAmounts()]).pipe(
+      combineLatest([this._investorOrders(), this.vaults(centrifugeId), this.pendingAmounts()]).pipe(
         switchMap(([orders, vaults, pendingAmounts]) => {
           if (!vaults.length) return of([])
 
@@ -1405,7 +1395,7 @@ export class ShareClass extends Entity {
               if (vaultInvestors.size === 0) return of([])
 
               const pendingMatch = pendingAmounts.find(
-                (p) => p.assetId.equals(vault.assetId) && p.chainId === vault.chainId
+                (p) => p.assetId.equals(vault.assetId) && p.centrifugeId === vault.centrifugeId
               )
 
               const basePendingDeposit = pendingMatch?.pendingDeposit ?? new Balance(0n, 18)
@@ -1423,19 +1413,19 @@ export class ShareClass extends Entity {
                       const pendingIssuances = allPendingIssuances.map((epoch) => ({
                         ...epoch,
                         assetId: vault.assetId,
-                        chainId: vault.chainId,
+                        centrifugeId: vault.centrifugeId,
                       }))
 
                       const pendingRevocations = allPendingRevocations.map((epoch) => ({
                         ...epoch,
                         assetId: vault.assetId,
-                        chainId: vault.chainId,
+                        centrifugeId: vault.centrifugeId,
                       }))
 
                       return {
                         investor,
                         assetId: vault.assetId,
-                        chainId: vault.chainId,
+                        centrifugeId: vault.centrifugeId,
                         pendingDepositAssets: investment.pendingDepositAssets || basePendingDeposit,
                         pendingRedeemShares: basePendingRedeem,
                         claimableDepositShares: investment.claimableDepositShares,
@@ -1454,7 +1444,7 @@ export class ShareClass extends Entity {
                       of({
                         investor,
                         assetId: vault.assetId,
-                        chainId: vault.chainId,
+                        centrifugeId: vault.centrifugeId,
                         pendingDepositAssets: new Balance(0n, 18),
                         pendingRedeemShares: new Balance(0n, 18),
                         claimableDepositShares: new Balance(0n, 18),
@@ -1471,8 +1461,6 @@ export class ShareClass extends Entity {
             })
           ).pipe(map((results) => results.flat()))
         })
-          )
-        )
       )
     )
   }
@@ -1566,7 +1554,7 @@ export class ShareClass extends Entity {
               name: order.asset.name,
               decimals: order.asset.decimals,
             },
-            chainId: order.asset.blockchain.chainId,
+            centrifugeId: order.asset.blockchain.chainId,
             token: {
               decimals: order.token.decimals,
             },
@@ -1665,7 +1653,7 @@ export class ShareClass extends Entity {
               name: order.asset.name,
               decimals: order.asset.decimals,
             },
-            chainId: order.asset.blockchain.chainId,
+            centrifugeId: order.asset.blockchain.chainId,
             token: {
               decimals: order.token.decimals,
             },
@@ -1695,6 +1683,7 @@ export class ShareClass extends Entity {
               symbol
               blockchain {
                 id
+                centrifugeId
               }
             }
           }
@@ -1718,7 +1707,7 @@ export class ShareClass extends Entity {
               address: HexString
               name: string
               symbol: string
-              blockchain: { id: string }
+              blockchain: { id: string; centrifugeId: string }
             }
           }[]
         }
@@ -1994,7 +1983,7 @@ export class ShareClass extends Entity {
       }) =>
         data.vaults.items.map(({ blockchain, asset, ...rest }) => ({
           ...rest,
-          chainId: Number(blockchain.id),
+          centrifugeId: Number(blockchain.id),
           assetId: new AssetId(asset.id),
         }))
     )
@@ -2305,11 +2294,9 @@ export class ShareClass extends Entity {
                 }[]
               }
             }) => {
-              const chainsById = new Map(deployments.blockchains.items.map((c) => [c.centrifugeId, c.id]))
-
               return data.epochOutstandingInvests.items.map((item) => ({
                 assetId: new AssetId(item.assetId),
-                chainId: Number(chainsById.get(item.asset.centrifugeId)),
+                centrifugeId: item.asset.centrifugeId,
                 amount: new Balance(item.pendingAssetsAmount || 0, item.asset.decimals),
               }))
             }
@@ -2344,11 +2331,9 @@ export class ShareClass extends Entity {
                 }[]
               }
             }) => {
-              const chainsById = new Map(deployments.blockchains.items.map((c) => [c.centrifugeId, c.id]))
-
               return data.epochOutstandingRedeems.items.map((item) => ({
                 assetId: new AssetId(item.assetId),
-                chainId: Number(chainsById.get(item.asset.centrifugeId)),
+                centrifugeId: item.asset.centrifugeId,
                 amount: new Balance(item.pendingSharesAmount || 0, 18),
               }))
             }

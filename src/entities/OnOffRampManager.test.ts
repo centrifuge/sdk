@@ -158,7 +158,7 @@ describe('OnOffRampManager', () => {
       const allowance = new Balance(100n, 6)
       const amount = new Balance(56n, 6)
 
-      await pool.updateBalanceSheetManagers([{ chainId, address: onOffRampManager.onrampAddress, canManage: true }])
+      await pool.updateBalanceSheetManagers([{ centrifugeId: centId, address: onOffRampManager.onrampAddress, canManage: true }])
 
       await context.centrifuge._transact(async function* (ctx) {
         yield* doTransaction('Approve transfer', ctx, async () => {
@@ -204,7 +204,7 @@ describe('OnOffRampManager', () => {
 
       await context.tenderlyFork.fundAccountEth(relayer, 10n ** 18n)
 
-      await pool.updateBalanceSheetManagers([{ chainId, address: onOffRampManager.onrampAddress, canManage: true }])
+      await pool.updateBalanceSheetManagers([{ centrifugeId: centId, address: onOffRampManager.onrampAddress, canManage: true }])
       await onOffRampManager.setReceiver(assetId, receiver)
       await onOffRampManager.setRelayer(relayer)
 

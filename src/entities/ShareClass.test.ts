@@ -58,7 +58,7 @@ describe('ShareClass', () => {
   })
 
   it('gets the vaults', async () => {
-    const vaults = await shareClass.vaults(chainId)
+    const vaults = await shareClass.vaults(centId)
     expect(vaults).to.have.length.greaterThan(0)
     expect(vaults[0]!.shareClass.id.raw).to.equal(scId.raw)
   })
@@ -266,7 +266,7 @@ describe('ShareClass', () => {
     const pendingAmounts = await shareClass.pendingAmounts()
     expect(pendingAmounts.length).to.be.greaterThan(0)
     expect(pendingAmounts[0]!.assetId.equals(assetId)).to.be.true
-    expect(pendingAmounts[0]!.chainId).to.equal(chainId)
+    expect(pendingAmounts[0]!.centrifugeId).to.equal(centId)
     expect(pendingAmounts[0]!.pendingDeposit).to.be.instanceOf(Balance)
     expect(pendingAmounts[0]!.pendingRedeem).to.be.instanceOf(Balance)
     expect(pendingAmounts[0]!.pendingIssuancesTotal).to.be.instanceOf(Balance)
@@ -285,14 +285,14 @@ describe('ShareClass', () => {
 
     expect(outstandingInvests[0]!.assetId).to.be.instanceOf(AssetId)
     expect(outstandingInvests[0]!.amount).to.be.instanceOf(Balance)
-    expect(outstandingInvests[0]!.chainId).to.be.a('number')
+    expect(outstandingInvests[0]!.centrifugeId).to.be.a('string')
 
     expect(outstandingRedeems[0]!.assetId).to.be.instanceOf(AssetId)
     expect(outstandingRedeems[0]!.amount).to.be.instanceOf(Balance)
-    expect(outstandingRedeems[0]!.chainId).to.be.a('number')
+    expect(outstandingRedeems[0]!.centrifugeId).to.be.a('string')
 
     const pendingAmounts = await shareClass.pendingAmounts()
-    const row = pendingAmounts.find((r) => r.assetId.equals(assetId) && r.chainId === chainId)!
+    const row = pendingAmounts.find((r) => r.assetId.equals(assetId) && r.centrifugeId === centId)!
     expect(row.queuedInvest).to.be.instanceOf(Balance)
     expect(row.queuedRedeem).to.be.instanceOf(Balance)
   })

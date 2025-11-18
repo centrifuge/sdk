@@ -394,7 +394,7 @@ describe('MerkleProofManager', () => {
     context.tenderlyFork.impersonateAddress = fundManager
     context.centrifuge.setSigner(context.tenderlyFork.signer)
 
-    await pool.updateBalanceSheetManagers([{ chainId, address: mpmAddress, canManage: true }])
+    await pool.updateBalanceSheetManagers([{ centrifugeId: centId, address: mpmAddress, canManage: true }])
   })
 
   it('correctly constructs the merkle tree', async () => {
