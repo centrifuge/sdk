@@ -771,7 +771,7 @@ describe('ShareClass', () => {
     const pool = new Pool(centrifuge, poolId.raw, chainId)
     const shareClass = new ShareClass(centrifuge, pool, scId.raw)
 
-    const result = await firstValueFrom(shareClass.investmentsByVault(chainId))
+    const result = await firstValueFrom(shareClass.investmentsByVault(centId))
 
     expect(result).to.be.an('array')
     expect(result.length).to.be.greaterThan(0)

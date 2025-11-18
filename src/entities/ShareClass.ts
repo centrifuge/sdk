@@ -1378,9 +1378,11 @@ export class ShareClass extends Entity {
    * Get the pending and claimable investment/redeem amounts for all investors
    * in a given share class (per vault/chain)
    */
-  investmentsByVault(chainId: number) {
-    return this._query(['investmentsByVault', chainId], () =>
-      combineLatest([this._investorOrders(), this.vaults(chainId), this.pendingAmounts()]).pipe(
+  investmentsByVault(centrifugeId: CentrifugeId) {
+    return this._query(['investmentsByVault', centrifugeId], () =>
+      this._root._idToChain(centrifugeId).pipe(
+        switchMap((chainId) =>
+          combineLatest([this._investorOrders(), this.vaults(chainId), this.pendingAmounts()]).pipe(
         switchMap(([orders, vaults, pendingAmounts]) => {
           if (!vaults.length) return of([])
 
@@ -1469,6 +1471,8 @@ export class ShareClass extends Entity {
             })
           ).pipe(map((results) => results.flat()))
         })
+          )
+        )
       )
     )
   }
