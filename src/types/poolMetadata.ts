@@ -22,7 +22,7 @@ export type MerkleProofPolicy = {
   /** e.g. Vault */
   targetName?: string
   /** e.g. Request Deposit */
-  action?: string
+  name?: string
   /** e.g. 'function requestDeposit(uint256 assets, address controller, address owner) returns (uint256)' */
   selector: string
   valueNonZero: boolean
@@ -55,10 +55,7 @@ export type MerkleProofPolicy = {
   }[]
 }
 
-export type MerkleProofPolicyInput = Pick<
-  MerkleProofPolicy,
-  'target' | 'decoder' | 'action' | 'selector' | 'inputs'
-> & {
+export type MerkleProofPolicyInput = Pick<MerkleProofPolicy, 'target' | 'decoder' | 'name' | 'selector' | 'inputs'> & {
   valueNonZero?: boolean
 }
 

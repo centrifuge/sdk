@@ -48,7 +48,7 @@ describe('MerkleProofManager', () => {
         decoder,
         target: someErc20,
         targetName: 'Some ERC20 Token',
-        action: 'Approve spending',
+        name: 'Approve spending',
         selector: 'function approve(address,uint256)',
         valueNonZero: false,
         inputs: [
@@ -629,7 +629,7 @@ describe('MerkleProofManager', () => {
       const policyInput: MerkleProofPolicyInput = {
         decoder: '0xDecoder',
         target: '0xTarget',
-        action: 'someAction',
+        name: 'someAction',
         selector: 'function doSomething(uint256 a, address b, uint256 c)',
         inputs: [
           {
@@ -662,7 +662,7 @@ describe('MerkleProofManager', () => {
       const policyInput: MerkleProofPolicyInput = {
         decoder: '0xDecoder',
         target: '0xTarget',
-        action: 'someAction',
+        name: 'someAction',
         selector: 'function doSomething()',
         inputs: [
           {
@@ -693,7 +693,7 @@ describe('MerkleProofManager', () => {
       const policyInput: MerkleProofPolicyInput = {
         decoder: '0xDecoder',
         target: '0xTarget',
-        action: 'someAction',
+        name: 'someAction',
         selector: 'function doSomething()',
         inputs: [
           {
@@ -736,7 +736,7 @@ describe('MerkleProofManager', () => {
       const policyInput: MerkleProofPolicyInput = {
         decoder: '0xDecoder',
         target: '0xTarget',
-        action: 'someAction',
+        name: 'someAction',
         selector: 'function doSomething()',
         inputs: [],
       }
