@@ -100,7 +100,7 @@ describe.skip('Vault', () => {
 
       let investment = await vault.investment(investorA)
       expect(investment.isAllowedToRedeem).to.equal(false)
-      expect(investment.isSyncInvest).to.equal(false)
+      expect(investment.isSyncDeposit).to.equal(false)
 
       context.tenderlyFork.impersonateAddress = fundManager
       context.centrifuge.setSigner(context.tenderlyFork.signer)
@@ -116,13 +116,13 @@ describe.skip('Vault', () => {
         firstValueFrom(vault.investment(investorA).pipe(skip(1))),
       ])
 
-      expect(investment.isAllowedToInvest).to.equal(true)
+      expect(investment.isAllowedToDeposit).to.equal(true)
       expect(investment.isAllowedToRedeem).to.equal(true)
       expect(investment.shareBalance.toBigInt()).to.equal(0n)
-      expect(investment.pendingInvestCurrency.toBigInt()).to.equal(0n)
+      expect(investment.pendingDepositAssets.toBigInt()).to.equal(0n)
       expect(investment.pendingRedeemShares.toBigInt()).to.equal(0n)
-      expect(investment.claimableInvestShares.toBigInt()).to.equal(0n)
-      expect(investment.claimableInvestCurrencyEquivalent.toBigInt()).to.equal(0n)
+      expect(investment.claimableDepositShares.toBigInt()).to.equal(0n)
+      expect(investment.claimableDepositAssetEquivalent.toBigInt()).to.equal(0n)
 
       context.tenderlyFork.impersonateAddress = investorA
       context.centrifuge.setSigner(context.tenderlyFork.signer)
@@ -130,11 +130,11 @@ describe.skip('Vault', () => {
       // Invest
       let result
       ;[result, investment] = await Promise.all([
-        lastValueFrom(vault.increaseInvestOrder(defaultAssetsAmount).pipe(toArray())),
+        lastValueFrom(vault.asyncDeposit(defaultAssetsAmount).pipe(toArray())),
         firstValueFrom(
           vault
             .investment(investorA)
-            .pipe(skipWhile((i) => !i.pendingInvestCurrency.eq(defaultAssetsAmount.toBigInt())))
+            .pipe(skipWhile((i) => !i.pendingDepositAssets.eq(defaultAssetsAmount.toBigInt())))
         ),
       ])
 
@@ -142,7 +142,7 @@ describe.skip('Vault', () => {
       expect((result[3] as any).title).to.equal('Approve')
       expect(result[6]!.type).to.equal('TransactionConfirmed')
       expect((result[6] as any).title).to.equal('Invest')
-      expect(investment.pendingInvestCurrency.toBigInt()).to.equal(defaultAssetsAmount.toBigInt())
+      expect(investment.pendingDepositAssets.toBigInt()).to.equal(defaultAssetsAmount.toBigInt())
 
       context.tenderlyFork.impersonateAddress = fundManager
       context.centrifuge.setSigner(context.tenderlyFork.signer)
@@ -162,11 +162,11 @@ describe.skip('Vault', () => {
         firstValueFrom(
           vault
             .investment(investorA)
-            .pipe(skipWhile((i) => !i.claimableInvestShares.eq(defaultSharesAmount.toBigInt())))
+            .pipe(skipWhile((i) => !i.claimableDepositShares.eq(defaultSharesAmount.toBigInt())))
         ),
       ])
 
-      expect(investment.claimableInvestCurrencyEquivalent.toBigInt()).to.equal(defaultAssetsAmount.toBigInt())
+      expect(investment.claimableDepositAssetEquivalent.toBigInt()).to.equal(defaultAssetsAmount.toBigInt())
 
       context.tenderlyFork.impersonateAddress = investorA
       context.centrifuge.setSigner(context.tenderlyFork.signer)
@@ -174,14 +174,14 @@ describe.skip('Vault', () => {
       // Claim shares
       ;[, investment] = await Promise.all([
         vault.claim(),
-        firstValueFrom(vault.investment(investorA).pipe(skipWhile((i) => !i.claimableInvestShares.eq(0n)))),
+        firstValueFrom(vault.investment(investorA).pipe(skipWhile((i) => !i.claimableDepositShares.eq(0n)))),
       ])
 
       expect(investment.shareBalance.toBigInt()).to.equal(defaultSharesAmount.toBigInt())
 
       const redeemShares = Balance.fromFloat(40, 18)
       ;[, investment, pendingAmounts] = await Promise.all([
-        vault.increaseRedeemOrder(redeemShares),
+        vault.asyncRedeem(redeemShares),
         firstValueFrom(
           vault.investment(investorA).pipe(skipWhile((i) => !i.pendingRedeemShares.eq(redeemShares.toBigInt())))
         ),
@@ -209,7 +209,7 @@ describe.skip('Vault', () => {
             revokePricePerShare: Price.fromFloat(1),
           },
         ]),
-        firstValueFrom(vault.investment(investorA).pipe(skipWhile((i) => i.claimableRedeemCurrency.eq(0n)))),
+        firstValueFrom(vault.investment(investorA).pipe(skipWhile((i) => i.claimableRedeemAssets.eq(0n)))),
       ])
 
       context.tenderlyFork.impersonateAddress = investorA
@@ -218,7 +218,7 @@ describe.skip('Vault', () => {
       // Claim assets
       ;[result, investment] = await Promise.all([
         vault.claim(),
-        firstValueFrom(vault.investment(investorA).pipe(skipWhile((i) => i.claimableRedeemCurrency.gt(0n)))),
+        firstValueFrom(vault.investment(investorA).pipe(skipWhile((i) => i.claimableRedeemAssets.gt(0n)))),
       ])
 
       expect(result.type).to.equal('TransactionConfirmed')
@@ -238,7 +238,7 @@ describe.skip('Vault', () => {
       let emittedSigningStatus = false
       try {
         await lastValueFrom(
-          vault.increaseInvestOrder(Balance.fromFloat(100000000000, 6)).pipe(tap(() => (emittedSigningStatus = true)))
+          vault.asyncDeposit(Balance.fromFloat(100000000000, 6)).pipe(tap(() => (emittedSigningStatus = true)))
         )
       } catch (e: any) {
         error = e
@@ -261,11 +261,11 @@ describe.skip('Vault', () => {
     //   let error: Error | null = null
     //   let emittedSigningStatus = false
     //   try {
-    //     await lastValueFrom(vault.increaseInvestOrder(defaultAssetsAmount).pipe(tap(() => (emittedSigningStatus = true))))
+    //     await lastValueFrom(vault.asyncDeposit(defaultAssetsAmount).pipe(tap(() => (emittedSigningStatus = true))))
     //   } catch (e: any) {
     //     error = e
     //   }
-    //   expect(error?.message).to.equal('Not allowed to invest')
+    //   expect(error?.message).to.equal('Not allowed to deposit')
     //   expect(emittedSigningStatus).to.equal(false)
     // })
 
@@ -282,29 +282,29 @@ describe.skip('Vault', () => {
       let investment = await vault.investment(investorC)
 
       ;[, investment] = await Promise.all([
-        lastValueFrom(vault.increaseInvestOrder(defaultAssetsAmount).pipe(toArray())),
+        lastValueFrom(vault.asyncDeposit(defaultAssetsAmount).pipe(toArray())),
         firstValueFrom(
           vault
             .investment(investorC)
-            .pipe(skipWhile((i) => !i.pendingInvestCurrency.eq(defaultAssetsAmount.toBigInt())))
+            .pipe(skipWhile((i) => !i.pendingDepositAssets.eq(defaultAssetsAmount.toBigInt())))
         ),
       ])
 
-      expect(investment.hasPendingCancelInvestRequest).to.equal(false)
+      expect(investment.hasPendingCancelDepositRequest).to.equal(false)
       ;[, investment] = await Promise.all([
-        vault.cancelInvestOrder(),
+        vault.cancelDepositRequest(),
         firstValueFrom(vault.investment(investorC).pipe(skip(1))),
       ])
 
       // Same chain so cancellation is immediate
-      expect(investment.hasPendingCancelInvestRequest).to.equal(false)
-      expect(investment.claimableCancelInvestCurrency.toBigInt()).to.equal(defaultAssetsAmount.toBigInt())
+      expect(investment.hasPendingCancelDepositRequest).to.equal(false)
+      expect(investment.claimableCancelDepositAssets.toBigInt()).to.equal(defaultAssetsAmount.toBigInt())
       ;[, investment] = await Promise.all([
         vault.claim(),
-        firstValueFrom(vault.investment(investorC).pipe(skipWhile((i) => !i.claimableCancelInvestCurrency.isZero()))),
+        firstValueFrom(vault.investment(investorC).pipe(skipWhile((i) => !i.claimableCancelDepositAssets.isZero()))),
       ])
 
-      expect(investment.claimableCancelInvestCurrency.toBigInt()).to.equal(0n)
+      expect(investment.claimableCancelDepositAssets.toBigInt()).to.equal(0n)
     })
 
     it('throws when trying to cancel a non-existing order', async () => {
@@ -315,7 +315,7 @@ describe.skip('Vault', () => {
       let thrown = ''
       let emittedSigningStatus = false
       try {
-        await lastValueFrom(vault.cancelRedeemOrder().pipe(tap(() => (emittedSigningStatus = true))))
+        await lastValueFrom(vault.cancelRedeemRequest().pipe(tap(() => (emittedSigningStatus = true))))
       } catch (e: any) {
         thrown = e.message
       }
@@ -363,21 +363,21 @@ describe.skip('Vault', () => {
       await vault.shareClass.notifyAssetPrice(assetId)
       await vault.shareClass.notifySharePrice(11155111)
 
-      expect(investmentBefore.isSyncInvest).to.equal(true)
-      expect(investmentBefore.isAllowedToInvest).to.equal(true)
+      expect(investmentBefore.isSyncDeposit).to.equal(true)
+      expect(investmentBefore.isAllowedToDeposit).to.equal(true)
       expect(investmentBefore.shareBalance.toBigInt()).to.equal(0n)
-      expect(investmentBefore.pendingInvestCurrency.toBigInt()).to.equal(0n)
+      expect(investmentBefore.pendingDepositAssets.toBigInt()).to.equal(0n)
       expect(investmentBefore.pendingRedeemShares.toBigInt()).to.equal(0n)
-      expect(investmentBefore.claimableInvestShares.toBigInt()).to.equal(0n)
-      expect(investmentBefore.claimableInvestCurrencyEquivalent.toBigInt()).to.equal(0n)
-      expect(investmentBefore.maxInvest.toFloat()).to.be.gt(0)
+      expect(investmentBefore.claimableDepositShares.toBigInt()).to.equal(0n)
+      expect(investmentBefore.claimableDepositAssetEquivalent.toBigInt()).to.equal(0n)
+      expect(investmentBefore.maxDeposit.toFloat()).to.be.gt(0)
 
       context.tenderlyFork.impersonateAddress = investorA
       context.centrifuge.setSigner(context.tenderlyFork.signer)
 
       // Invest
       const [result, investmentAfter] = await Promise.all([
-        lastValueFrom(vault.increaseInvestOrder(defaultAssetsAmount).pipe(toArray())),
+        lastValueFrom(vault.asyncDeposit(defaultAssetsAmount).pipe(toArray())),
         firstValueFrom(vault.investment(investorA).pipe(skipWhile((i) => i.shareBalance.eq(0n)))),
       ])
 

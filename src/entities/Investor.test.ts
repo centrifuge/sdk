@@ -47,7 +47,7 @@ describe('Investor', () => {
       const investment = await account.investment(poolId, sc.id, assetId, chainId)
 
       expect(investment).to.not.be.undefined
-      expect(investment.investmentCurrency.address).to.equal(vault._asset)
+      expect(investment.asset.address).to.equal(vault._asset)
     })
   })
 
