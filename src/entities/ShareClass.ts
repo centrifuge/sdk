@@ -224,7 +224,7 @@ export class ShareClass extends Entity {
             combineLatest(
               items.map((holding) => {
                 const assetId = new AssetId(holding.assetId)
-                return this._balance(Number(holding.asset.blockchain.id), {
+                return this._balance(Number(holding.asset.blockchain.centrifugeId), {
                   address: holding.asset.address,
                   assetTokenId: BigInt(holding.asset.assetTokenId),
                   id: assetId,
@@ -1783,26 +1783,30 @@ export class ShareClass extends Entity {
   }
 
   /** @internal */
-  _balance(chainId: number, asset: { address: HexString; assetTokenId?: bigint; id: AssetId; decimals: number }) {
+  _balance(centrifugeId: CentrifugeId, asset: { address: HexString; assetTokenId?: bigint; id: AssetId; decimals: number }) {
     return this._query(['balance', asset.id.toString()], () =>
-      combineLatest([this._root._protocolAddresses(chainId), this.pool.currency()]).pipe(
-        switchMap(([addresses, poolCurrency]) =>
+      combineLatest([
+        this._root._protocolAddresses(centrifugeId),
+        this.pool.currency(),
+        this._root.getClient(centrifugeId),
+        this._root._idToChain(centrifugeId),
+      ]).pipe(
+        switchMap(([addresses, poolCurrency, client, chainId]) =>
           defer(async () => {
-            const client = this._root.getClient(chainId)
-            const [amountBn, priceBn] = await Promise.all([
-              client.readContract({
-                address: addresses.balanceSheet,
-                abi: ABI.BalanceSheet,
-                functionName: 'availableBalanceOf',
-                args: [this.pool.id.raw, this.id.raw, asset.address, BigInt(asset.assetTokenId ?? 0n)],
-              }),
-              client.readContract({
-                address: addresses.spoke,
-                abi: ABI.Spoke,
-                functionName: 'pricePoolPerAsset',
-                args: [this.pool.id.raw, this.id.raw, asset.id.raw, false],
-              }),
-            ])
+                const [amountBn, priceBn] = await Promise.all([
+                  client.readContract({
+                    address: addresses.balanceSheet,
+                    abi: ABI.BalanceSheet,
+                    functionName: 'availableBalanceOf',
+                    args: [this.pool.id.raw, this.id.raw, asset.address, BigInt(asset.assetTokenId ?? 0n)],
+                  }),
+                  client.readContract({
+                    address: addresses.spoke,
+                    abi: ABI.Spoke,
+                    functionName: 'pricePoolPerAsset',
+                    args: [this.pool.id.raw, this.id.raw, asset.id.raw, false],
+                  }),
+                ])
 
             const amount = new Balance(amountBn, asset.decimals)
             const price = new Price(priceBn)
@@ -2358,7 +2362,7 @@ export class ShareClass extends Entity {
   /** @internal */
   _restrictionManager(centrifugeId: CentrifugeId) {
     return this._query(['restrictionManager', centrifugeId], () =>
-      combineLatest([this._share(centrifugeId), of(this._root.getClient(centrifugeId))]).pipe(
+      combineLatest([this._share(centrifugeId), this._root.getClient(centrifugeId)]).pipe(
         switchMap(([share, client]) =>
           defer(async () => {
             const address = await client.readContract({

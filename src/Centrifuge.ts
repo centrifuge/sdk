@@ -1218,9 +1218,8 @@ export class Centrifuge {
   /** @internal */
   _maxBatchGasLimit(centrifugeId: CentrifugeId) {
     return this._query(['maxBatchGasLimit', centrifugeId], () =>
-      this._protocolAddresses(centrifugeId).pipe(
-        switchMap(async ({ gasService }) => {
-          const client = this.getClient(centrifugeId)
+      combineLatest([this._protocolAddresses(centrifugeId), this.getClient(centrifugeId)]).pipe(
+        switchMap(async ([{ gasService }, client]) => {
           try {
             // `batchGasLimit` was renamed to `maxBatchGasLimit`, support both for backwards compatibility,
             // until all chains are updated
