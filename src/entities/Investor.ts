@@ -16,7 +16,7 @@ export class Investor extends Entity {
   }
 
   /**
-   * Retrieve the portfolio of an investor.
+   * Retrieve the portfolio of an investor
    * @param chainId - The chain ID
    */
   portfolio(chainId?: number) {
@@ -105,10 +105,9 @@ export class Investor extends Entity {
       )
     )
   }
-
   /**
    * Retrieve the transactions of an investor.
-   * @param poolId - The pool ID
+   * @param poolId
    * @param page
    * @param pageSize
    */
@@ -118,7 +117,6 @@ export class Investor extends Entity {
     return this._query(['transactions', poolId.toString(), page, pageSize], () =>
       combineLatest([
         this._root._deployments(),
-        this._root.pool(poolId).pipe(switchMap((pool) => pool.currency())),
         this._root._queryIndexer<{
           investorTransactions: {
             items: {
@@ -127,6 +125,12 @@ export class Investor extends Entity {
               type: string
               txHash: HexString
               currencyAmount: string
+              currencyAsset: {
+                decimals: number
+                symbol: string
+                id: string
+                address: string
+              } | null
               token: { name: string; symbol: string; decimals: string }
               tokenAmount: string
               centrifugeId: string
@@ -136,28 +140,34 @@ export class Investor extends Entity {
           }
         }>(
           `query ($address: String!, $poolId: BigInt!, $limit: Int!, $offset: Int!) {
-          investorTransactions(
-            where: { 
-              account: $address,
-              poolId: $poolId
-            } 
-            limit: $limit
-            offset: $offset
-          ) {
-            items {
-              account
-              createdAt
-              type
-              txHash
-              currencyAmount
-              token { name symbol decimals }
-              tokenAmount
-              centrifugeId
-              poolId
+            investorTransactions(
+              where: { 
+                account: $address,
+                poolId: $poolId
+              } 
+              limit: $limit
+              offset: $offset
+            ) {
+              items {
+                account
+                createdAt
+                type
+                txHash
+                currencyAmount
+                currencyAsset {
+                  decimals
+                  symbol
+                  id
+                  address
+                }
+                token { name symbol decimals }
+                tokenAmount
+                centrifugeId
+                poolId
+              }
+              totalCount
             }
-            totalCount
-          }
-        }`,
+          }`,
           {
             address: this.address.toLowerCase(),
             poolId: poolId.toString(),
@@ -166,26 +176,39 @@ export class Investor extends Entity {
           }
         ),
       ]).pipe(
-        map(([deployments, currency, { investorTransactions }]) => {
+        map(([deployments, { investorTransactions }]) => {
           const chainsById = new Map(deployments.blockchains.items.map((chain) => [chain.centrifugeId, chain.id]))
 
           return {
             transactions: investorTransactions.items
-              .filter((item) => item.poolId === poolId.toString())
+              .filter((item) => item.poolId === poolId.toString() && item.currencyAsset !== null)
               .map((item) => {
-                const chainId = chainsById.get(item.centrifugeId)!
+                const chainId = chainsById.get(item.centrifugeId)
+                if (!chainId) return null
+                if (!item.currencyAsset) return null
+
                 return {
                   type: item.type,
                   txHash: item.txHash,
                   createdAt: item.createdAt,
-                  token: item.token.name,
-                  tokenSymbol: item.token.symbol,
-                  tokenAmount: new Balance(item.tokenAmount, Number(item.token.decimals)),
-                  currencyAmount: new Balance(item.currencyAmount, currency.decimals),
+                  currency: {
+                    amount: new Balance(item.currencyAmount, item.currencyAsset.decimals),
+                    symbol: item.currencyAsset.symbol,
+                    decimals: item.currencyAsset.decimals,
+                    id: item.currencyAsset.id,
+                    address: item.currencyAsset.address,
+                  },
+                  token: {
+                    name: item.token.name,
+                    symbol: item.token.symbol,
+                    decimals: Number(item.token.decimals),
+                    amount: new Balance(item.tokenAmount, Number(item.token.decimals)),
+                  },
                   chainId: Number(chainId),
                   poolId: item.poolId,
                 }
-              }),
+              })
+              .filter((item): item is NonNullable<typeof item> => item !== null),
             totalCount: investorTransactions.totalCount || investorTransactions.items.length,
             page,
             pageSize,
