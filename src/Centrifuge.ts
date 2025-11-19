@@ -76,12 +76,12 @@ const PINNING_API_DEMO = 'https://europe-central2-peak-vista-185616.cloudfunctio
 const envConfig = {
   mainnet: {
     indexerUrl: 'https://api.centrifuge.io',
-    ipfsUrl: 'https://centrifuge.mypinata.cloud',
+    ipfsUrl: 'https://ipfs.centrifuge.io',
     ...createPinning(PINNING_API_DEMO),
   },
   testnet: {
     indexerUrl: 'https://api-v3-hitz.marble.live/graphql',
-    ipfsUrl: 'https://centrifuge.mypinata.cloud',
+    ipfsUrl: 'https://ipfs.centrifuge.io',
     ...createPinning(PINNING_API_DEMO),
   },
 } satisfies Record<string, EnvConfig>
@@ -105,11 +105,11 @@ export class Centrifuge {
       const item = data.blockchains.items.find((b) => Number(b.centrifugeId) === centrifugeId)
       if (item) chainId = Number(item.id)
     }).unsubscribe()
-    
+
     if (chainId === undefined) {
       throw new Error(`No chain found for centrifuge ID "${centrifugeId}"`)
     }
-    
+
     const client = this.#clients.get(chainId)
     if (!client) throw new Error(`No client found for chain ID "${chainId}"`)
     return client
