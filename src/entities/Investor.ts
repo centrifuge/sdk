@@ -16,7 +16,7 @@ export class Investor extends Entity {
   }
 
   /**
-   * Retrieve the portfolio of an investor.
+   * Retrieve the portfolio of an investor
    * @param chainId - The chain ID
    */
   portfolio(chainId?: number) {
