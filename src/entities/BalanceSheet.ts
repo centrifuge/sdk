@@ -1,4 +1,5 @@
 import { encodeFunctionData, toHex } from 'viem'
+import { firstValueFrom } from 'rxjs'
 import { ABI } from '../abi/index.js'
 import type { Centrifuge } from '../Centrifuge.js'
 import type { HexString } from '../types/index.js'
@@ -36,8 +37,8 @@ export class BalanceSheet extends Entity {
   deposit(assetId: AssetId, amount: Balance) {
     const self = this
     return this._transact(async function* (ctx) {
-      const client = self._root.getClient(self.network.centrifugeId)
-      const [{ balanceSheet, spoke }, isBalanceSheetManager] = await Promise.all([
+      const [client, { balanceSheet, spoke }, isBalanceSheetManager] = await Promise.all([
+        firstValueFrom(self._root.getClient(self.network.centrifugeId)),
         self._root._protocolAddresses(self.network.centrifugeId),
         self.pool.isBalanceSheetManager(self.network.centrifugeId, ctx.signingAddress),
       ])

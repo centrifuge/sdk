@@ -333,7 +333,7 @@ export class ShareClass extends Entity {
       combineLatest([
         this._share(centrifugeId),
         this._restrictionManager(centrifugeId),
-        of(this._root.getClient(centrifugeId)),
+        this._root.getClient(centrifugeId),
         this._root._idToChain(centrifugeId),
       ]).pipe(
         switchMap(([share, restrictionManager, client, chainId]) =>
@@ -394,7 +394,7 @@ export class ShareClass extends Entity {
     const self = this
     return this._transact(async function* (ctx) {
       const [{ hub }, metadata] = await Promise.all([
-        self._root._protocolAddresses(self.pool.chainId),
+        self._root._protocolAddresses(self.pool.centrifugeId),
         self.pool.metadata(),
       ])
 
@@ -482,14 +482,14 @@ export class ShareClass extends Entity {
         contract: hub,
         data,
       })
-    }, this.pool.chainId)
+    }, this.pool.centrifugeId)
   }
 
   updateSharePrice(pricePerShare: Price) {
     const self = this
     return this._transact(async function* (ctx) {
       const [{ hub }, activeNetworks] = await Promise.all([
-        self._root._protocolAddresses(self.pool.chainId),
+        self._root._protocolAddresses(self.pool.centrifugeId),
         self.pool.activeNetworks(),
       ])
       const batch: HexString[] = []
@@ -534,13 +534,13 @@ export class ShareClass extends Entity {
         data: batch,
         messages,
       })
-    }, this.pool.chainId)
+    }, this.pool.centrifugeId)
   }
 
   setMaxAssetPriceAge(assetId: AssetId, maxPriceAge: number) {
     const self = this
     return this._transact(async function* (ctx) {
-      const { hub } = await self._root._protocolAddresses(self.pool.chainId)
+      const { hub } = await self._root._protocolAddresses(self.pool.centrifugeId)
       yield* wrapTransaction('Set max asset price age', ctx, {
         contract: hub,
         data: encodeFunctionData({
@@ -552,13 +552,13 @@ export class ShareClass extends Entity {
           [assetId.centrifugeId]: [MessageType.MaxAssetPriceAge],
         },
       })
-    }, this.pool.chainId)
+    }, this.pool.centrifugeId)
   }
 
   setMaxSharePriceAge(centrifugeId: CentrifugeId, maxPriceAge: number) {
     const self = this
     return this._transact(async function* (ctx) {
-      const { hub } = await self._root._protocolAddresses(self.pool.chainId)
+      const { hub } = await self._root._protocolAddresses(self.pool.centrifugeId)
       yield* wrapTransaction('Set max share price age', ctx, {
         contract: hub,
         data: encodeFunctionData({
@@ -570,13 +570,13 @@ export class ShareClass extends Entity {
           [centrifugeId]: [MessageType.MaxSharePriceAge],
         },
       })
-    }, this.pool.chainId)
+    }, this.pool.centrifugeId)
   }
 
   notifyAssetPrice(assetId: AssetId) {
     const self = this
     return this._transact(async function* (ctx) {
-      const { hub } = await self._root._protocolAddresses(self.pool.chainId)
+      const { hub } = await self._root._protocolAddresses(self.pool.centrifugeId)
       yield* wrapTransaction('Notify asset price', ctx, {
         contract: hub,
         data: encodeFunctionData({
@@ -588,13 +588,13 @@ export class ShareClass extends Entity {
           [assetId.centrifugeId]: [MessageType.NotifyPricePoolPerAsset],
         },
       })
-    }, this.pool.chainId)
+    }, this.pool.centrifugeId)
   }
 
   notifySharePrice(centrifugeId: CentrifugeId) {
     const self = this
     return this._transact(async function* (ctx) {
-      const { hub } = await self._root._protocolAddresses(self.pool.chainId)
+      const { hub } = await self._root._protocolAddresses(self.pool.centrifugeId)
       yield* wrapTransaction('Notify share price', ctx, {
         contract: hub,
         data: encodeFunctionData({
@@ -606,7 +606,7 @@ export class ShareClass extends Entity {
           [centrifugeId]: [MessageType.NotifyPricePoolPerShare],
         },
       })
-    }, this.pool.chainId)
+    }, this.pool.centrifugeId)
   }
 
   /**
@@ -620,8 +620,8 @@ export class ShareClass extends Entity {
     const self = this
     return this._transact(async function* (ctx) {
       const [{ hub }, id, pendingAmounts, orders, maxBatchGasLimit] = await Promise.all([
-        self._root._protocolAddresses(self.pool.chainId),
-        self._root.id(self.pool.chainId),
+        self._root._protocolAddresses(self.pool.centrifugeId),
+        self._root.id(self.pool.centrifugeId),
         self.pendingAmounts(),
         firstValueFrom(
           self._investorOrders().pipe(
@@ -634,7 +634,7 @@ export class ShareClass extends Entity {
             })
           )
         ),
-        self._root._maxBatchGasLimit(self.pool.chainId),
+        self._root._maxBatchGasLimit(self.pool.centrifugeId),
       ])
       const assetsWithApprove = assets.filter((a) => a.approveAssetAmount).length
       const assetsWithIssue = assets.filter((a) => a.issuePricePerShare).length
@@ -764,7 +764,7 @@ export class ShareClass extends Entity {
         data: batch,
         messages,
       })
-    }, this.pool.chainId)
+    }, this.pool.centrifugeId)
   }
 
   /**
@@ -778,8 +778,8 @@ export class ShareClass extends Entity {
     const self = this
     return this._transact(async function* (ctx) {
       const [{ hub }, id, pendingAmounts, orders, maxBatchGasLimit] = await Promise.all([
-        self._root._protocolAddresses(self.pool.chainId),
-        self._root.id(self.pool.chainId),
+        self._root._protocolAddresses(self.pool.centrifugeId),
+        self._root.id(self.pool.centrifugeId),
         self.pendingAmounts(),
         firstValueFrom(
           self._investorOrders().pipe(
@@ -792,7 +792,7 @@ export class ShareClass extends Entity {
             })
           )
         ),
-        self._root._maxBatchGasLimit(self.pool.chainId),
+        self._root._maxBatchGasLimit(self.pool.centrifugeId),
       ])
 
       const assetsWithApprove = assets.filter((a) => a.approveShareAmount).length
@@ -921,7 +921,7 @@ export class ShareClass extends Entity {
         data: batch,
         messages,
       })
-    }, this.pool.chainId)
+    }, this.pool.centrifugeId)
   }
 
   /**
@@ -932,7 +932,7 @@ export class ShareClass extends Entity {
     const self = this
     return this._transact(async function* (ctx) {
       const [{ hub }, investorOrder] = await Promise.all([
-        self._root._protocolAddresses(self.pool.chainId),
+        self._root._protocolAddresses(self.pool.centrifugeId),
         self._investorOrder(assetId, investor),
       ])
       yield* wrapTransaction('Claim deposit', ctx, {
@@ -950,7 +950,7 @@ export class ShareClass extends Entity {
         }),
         messages: { [assetId.centrifugeId]: [MessageType.RequestCallback] },
       })
-    }, this.pool.chainId)
+    }, this.pool.centrifugeId)
   }
 
   /**
@@ -961,7 +961,7 @@ export class ShareClass extends Entity {
     const self = this
     return this._transact(async function* (ctx) {
       const [{ hub }, investorOrder] = await Promise.all([
-        self._root._protocolAddresses(self.pool.chainId),
+        self._root._protocolAddresses(self.pool.centrifugeId),
         self._investorOrder(assetId, investor),
       ])
       yield* wrapTransaction('Claim redeem', ctx, {
@@ -973,7 +973,7 @@ export class ShareClass extends Entity {
         }),
         messages: { [assetId.centrifugeId]: [MessageType.RequestCallback] },
       })
-    }, this.pool.chainId)
+    }, this.pool.centrifugeId)
   }
 
   /**
@@ -997,7 +997,7 @@ export class ShareClass extends Entity {
     const self = this
 
     return this._transact(async function* (ctx) {
-      const { hub } = await self._root._protocolAddresses(self.pool.chainId)
+      const { hub } = await self._root._protocolAddresses(self.pool.centrifugeId)
 
       const batch: HexString[] = []
       const messages: Record<number, MessageType[]> = {}
@@ -1035,7 +1035,7 @@ export class ShareClass extends Entity {
         data: batch,
         messages,
       })
-    }, this.pool.chainId)
+    }, this.pool.centrifugeId)
   }
 
   /**
@@ -1719,16 +1719,17 @@ export class ShareClass extends Entity {
   _holding(assetId: AssetId) {
     return this._query(['holding', assetId.toString()], () =>
       combineLatest([
-        this._root._protocolAddresses(this.pool.chainId),
+        this._root._protocolAddresses(this.pool.centrifugeId),
         this.pool.currency(),
-        this._root._assetDecimals(assetId, this.pool.chainId),
+        this._root._assetDecimals(assetId, this.pool.centrifugeId),
       ]).pipe(
         switchMap(([{ holdings: holdingsAddr }, poolCurrency, assetDecimals]) =>
           defer(async () => {
+            const client = await firstValueFrom(this._root.getClient(this.pool.centrifugeId))
             const holdings = getContract({
               address: holdingsAddr,
               abi: ABI.Holdings,
-              client: this._root.getClient(this.pool.chainId),
+              client,
             })
 
             const [valuation, amount, value, isLiability, ...accounts] = await Promise.all([
@@ -1773,7 +1774,7 @@ export class ShareClass extends Entity {
                   })
                 },
               },
-              this.pool.chainId
+              this.pool.centrifugeId
             )
           )
         )
@@ -1896,13 +1897,14 @@ export class ShareClass extends Entity {
   /** @internal */
   _investorOrder(assetId: AssetId, investor: HexString) {
     return this._query(['investorOrder', assetId.toString(), investor.toLowerCase()], () =>
-      this._root._protocolAddresses(this.pool.chainId).pipe(
+      this._root._protocolAddresses(this.pool.centrifugeId).pipe(
         switchMap(({ shareClassManager }) =>
           defer(async () => {
+            const client = await firstValueFrom(this._root.getClient(this.pool.centrifugeId))
             const contract = getContract({
               address: shareClassManager,
               abi: ABI.ShareClassManager,
-              client: this._root.getClient(this.pool.chainId),
+              client,
             })
 
             const [maxDepositClaims, maxRedeemClaims, [pendingDeposit], [pendingRedeem]] = await Promise.all([
@@ -1941,7 +1943,7 @@ export class ShareClass extends Entity {
                   )
                 },
               },
-              this.pool.chainId
+              this.pool.centrifugeId
             )
           )
         )
@@ -1992,10 +1994,11 @@ export class ShareClass extends Entity {
   /** @internal */
   _metadata() {
     return this._query(['metadata'], () =>
-      this._root._protocolAddresses(this.pool.chainId).pipe(
+      this._root._protocolAddresses(this.pool.centrifugeId).pipe(
         switchMap(({ shareClassManager }) =>
           defer(async () => {
-            const [name, symbol] = await this._root.getClient(this.pool.chainId).readContract({
+            const client = await firstValueFrom(this._root.getClient(this.pool.centrifugeId))
+            const [name, symbol] = await client.readContract({
               address: shareClassManager,
               abi: ABI.ShareClassManager,
               functionName: 'metadata',
@@ -2017,7 +2020,7 @@ export class ShareClass extends Entity {
                   })
                 },
               },
-              this.pool.chainId
+              this.pool.centrifugeId
             )
           )
         )
@@ -2028,10 +2031,11 @@ export class ShareClass extends Entity {
   /** @internal */
   _metrics() {
     return this._query(['metrics'], () =>
-      this._root._protocolAddresses(this.pool.chainId).pipe(
+      this._root._protocolAddresses(this.pool.centrifugeId).pipe(
         switchMap(({ shareClassManager }) =>
           defer(async () => {
-            const [totalIssuance, pricePerShare] = await this._root.getClient(this.pool.chainId).readContract({
+            const client = await firstValueFrom(this._root.getClient(this.pool.centrifugeId))
+            const [totalIssuance, pricePerShare] = await client.readContract({
               address: shareClassManager,
               abi: ABI.ShareClassManager,
               functionName: 'metrics',
@@ -2059,7 +2063,7 @@ export class ShareClass extends Entity {
                   })
                 },
               },
-              this.pool.chainId
+              this.pool.centrifugeId
             )
           )
         )
@@ -2159,18 +2163,19 @@ export class ShareClass extends Entity {
   _epoch(assetId: AssetId) {
     return this._query(['epoch', assetId.toString()], () =>
       combineLatest([
-        this._root._protocolAddresses(this.pool.chainId),
+        this._root._protocolAddresses(this.pool.centrifugeId),
         this.pool.currency(),
-        this._root._assetDecimals(assetId, this.pool.chainId),
+        this._root._assetDecimals(assetId, this.pool.centrifugeId),
         this._epochInvestOrders(),
         this._epochRedeemOrders(),
       ]).pipe(
         switchMap(([{ shareClassManager }, poolCurrency, assetDecimals, epochInvestOrders, epochRedeemOrders]) =>
           defer(async () => {
+            const client = await firstValueFrom(this._root.getClient(this.pool.centrifugeId))
             const scm = getContract({
               address: shareClassManager,
               abi: ABI.ShareClassManager,
-              client: this._root.getClient(this.pool.chainId),
+              client,
             })
 
             const [epoch, pendingDeposit, pendingRedeem] = await Promise.all([
@@ -2241,7 +2246,7 @@ export class ShareClass extends Entity {
                   })
                 },
               },
-              this.pool.chainId
+              this.pool.centrifugeId
             )
           )
         )
@@ -2255,7 +2260,7 @@ export class ShareClass extends Entity {
     return this._transact(async function* (ctx) {
       const [id, { hub }] = await Promise.all([
         self._root.id(chainId),
-        self._root._protocolAddresses(self.pool.chainId),
+        self._root._protocolAddresses(self.pool.centrifugeId),
       ])
       yield* wrapTransaction('Update contract', ctx, {
         contract: hub,
@@ -2266,7 +2271,7 @@ export class ShareClass extends Entity {
         }),
         messages: { [id]: [MessageType.UpdateContract] },
       })
-    }, this.pool.chainId)
+    }, this.pool.centrifugeId)
   }
 
   /** @internal */
@@ -2371,7 +2376,7 @@ export class ShareClass extends Entity {
   /** @internal */
   _getFreeAccountId() {
     return this._query(['getFreeAccountId'], () =>
-      this._root._protocolAddresses(this.pool.chainId).pipe(
+      this._root._protocolAddresses(this.pool.centrifugeId).pipe(
         map(({ accounting }) => ({ accounting, id: null, triesLeft: 10 })),
         expand(({ accounting, triesLeft }) => {
           const id = Number(randomUint(32))
@@ -2379,7 +2384,8 @@ export class ShareClass extends Entity {
           if (triesLeft <= 0) return EMPTY
 
           return defer(async () => {
-            const exists = await this._root.getClient(this.pool.chainId).readContract({
+            const client = await firstValueFrom(this._root.getClient(this.pool.centrifugeId))
+            const exists = await client.readContract({
               address: accounting,
               abi: ABI.Accounting,
               functionName: 'exists',
@@ -2427,7 +2433,7 @@ export class ShareClass extends Entity {
         orderDirection,
       ],
       () =>
-        this._root._protocolAddresses(this.pool.chainId).pipe(
+        this._root._protocolAddresses(this.pool.centrifugeId).pipe(
           switchMap((protocolAddresses) => {
             // Build where clause dynamically based on which filters are provided
             const whereConditions = ['tokenId: $scId', 'accountAddress_not_in: $excludedAddresses']

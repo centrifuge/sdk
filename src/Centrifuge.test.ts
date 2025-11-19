@@ -39,7 +39,8 @@ describe('Centrifuge', () => {
   })
 
   it('should be connected to sepolia', async () => {
-    const client = context.centrifuge.getClient(chainId)
+    const centId = await context.centrifuge.id(chainId)
+    const client = await firstValueFrom(context.centrifuge.getClient(centId))
     expect(client?.chain.id).to.equal(chainId)
     const chains = context.centrifuge.chains
     expect(chains).to.include(chainId)
@@ -484,16 +485,20 @@ describe('Centrifuge', () => {
       expect(result.type).to.equal('TransactionConfirmed')
       expect((result as any).title).to.equal('Test')
 
-      const { hubRegistry, balanceSheet } = await context.centrifuge._protocolAddresses(chainId)
+      const centId = await context.centrifuge.id(chainId)
+      const [{ hubRegistry, balanceSheet }, client] = await Promise.all([
+        context.centrifuge._protocolAddresses(centId),
+        firstValueFrom(context.centrifuge.getClient(centId)),
+      ])
 
-      const isNewManager = await context.centrifuge.getClient(chainId).readContract({
+      const isNewManager = await client.readContract({
         address: hubRegistry,
         abi: ABI.HubRegistry,
         functionName: 'manager',
         args: [poolId.raw, newManager],
       })
 
-      const isNewManager2 = await context.centrifuge.getClient(chainId).readContract({
+      const isNewManager2 = await client.readContract({
         address: balanceSheet,
         abi: ABI.BalanceSheet,
         functionName: 'manager',

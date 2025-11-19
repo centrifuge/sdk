@@ -60,10 +60,10 @@ export class Pool extends Entity {
 
   metadata() {
     return this._query(['metadata', this.id.toString()], () =>
-      this._root._protocolAddresses(this.centrifugeId).pipe(
-        switchMap(({ hubRegistry }) =>
+      combineLatest([this._root._protocolAddresses(this.centrifugeId), this._root.getClient(this.centrifugeId)]).pipe(
+        switchMap(([{ hubRegistry }, client]) =>
           defer(() => {
-            return this._root.getClient(this.chainId).readContract({
+            return client.readContract({
               address: hubRegistry,
               abi: ABI.HubRegistry,
               functionName: 'metadata',
@@ -277,9 +277,9 @@ export class Pool extends Entity {
    */
   currency() {
     return this._query(['currency', this.id.toString()], () => {
-      return this._root._protocolAddresses(this.centrifugeId).pipe(
-        switchMap(({ hubRegistry }) => {
-          return this._root.getClient(this.chainId).readContract({
+      return combineLatest([this._root._protocolAddresses(this.centrifugeId), this._root.getClient(this.centrifugeId)]).pipe(
+        switchMap(([{ hubRegistry }, client]) => {
+          return client.readContract({
             address: hubRegistry,
             abi: ABI.HubRegistry,
             functionName: 'currency',
@@ -712,10 +712,14 @@ export class Pool extends Entity {
    */
   _shareClassIds() {
     return this._query(['shareClasses', this.id.toString()], () =>
-      this._root._protocolAddresses(this.chainId).pipe(
-        switchMap(({ shareClassManager }) =>
+      combineLatest([
+        this._root._protocolAddresses(this.centrifugeId),
+        this._root.getClient(this.centrifugeId),
+        this._root._idToChain(this.centrifugeId),
+      ]).pipe(
+        switchMap(([{ shareClassManager }, client, chainId]) =>
           defer(async () => {
-            const count = await this._root.getClient(this.chainId).readContract({
+            const count = await client.readContract({
               address: shareClassManager,
               abi: ABI.ShareClassManager,
               functionName: 'shareClassCount',
@@ -732,7 +736,7 @@ export class Pool extends Entity {
                   return events.some((event) => event.args.poolId === this.id.raw)
                 },
               },
-              this.chainId
+              chainId
             )
           )
         )
@@ -743,9 +747,9 @@ export class Pool extends Entity {
   /** @internal */
   _escrow() {
     return this._query(['escrow', this.id.toString()], () =>
-      this._root._protocolAddresses(this.chainId).pipe(
-        switchMap(({ poolEscrowFactory }) => {
-          return this._root.getClient(this.chainId).readContract({
+      combineLatest([this._root._protocolAddresses(this.centrifugeId), this._root.getClient(this.centrifugeId)]).pipe(
+        switchMap(([{ poolEscrowFactory }, client]) => {
+          return client.readContract({
             address: poolEscrowFactory,
             abi: ABI.PoolEscrowFactory,
             functionName: 'escrow',

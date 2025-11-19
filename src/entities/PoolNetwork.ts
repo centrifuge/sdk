@@ -122,11 +122,15 @@ export class PoolNetwork extends Entity {
    */
   isActive() {
     return this._query(['isActive'], () =>
-      this._root._protocolAddresses(this.centrifugeId).pipe(
-        switchMap(({ spoke }) => {
+      combineLatest([
+        this._root._protocolAddresses(this.centrifugeId),
+        this._root.getClient(this.centrifugeId),
+        this._root._idToChain(this.centrifugeId),
+      ]).pipe(
+        switchMap(([{ spoke }, client, chainId]) => {
           return defer(
             () =>
-              this._root.getClient(this.centrifugeId).readContract({
+              client.readContract({
                 address: spoke,
                 abi: ABI.Spoke,
                 functionName: 'isPoolActive',
@@ -144,7 +148,7 @@ export class PoolNetwork extends Entity {
                   })
                 },
               },
-              this.centrifugeId
+              chainId
             )
           )
         })
@@ -609,11 +613,15 @@ export class PoolNetwork extends Entity {
    */
   _share(scId: ShareClassId, throwOnNullAddress = true) {
     return this._query(['share', scId.toString(), throwOnNullAddress], () =>
-      this._root._protocolAddresses(this.centrifugeId).pipe(
-        switchMap(({ spoke }) =>
+      combineLatest([
+        this._root._protocolAddresses(this.centrifugeId),
+        this._root.getClient(this.centrifugeId),
+        this._root._idToChain(this.centrifugeId),
+      ]).pipe(
+        switchMap(([{ spoke }, client, chainId]) =>
           defer(async () => {
             try {
-              const address = await this._root.getClient(this.centrifugeId).readContract({
+              const address = await client.readContract({
                 address: spoke,
                 abi: ABI.Spoke,
                 functionName: 'shareToken',
@@ -636,7 +644,7 @@ export class PoolNetwork extends Entity {
                   return events.some((event) => event.args.poolId === this.pool.id.raw && event.args.scId === scId.raw)
                 },
               },
-              this.centrifugeId
+              chainId
             )
           )
         )

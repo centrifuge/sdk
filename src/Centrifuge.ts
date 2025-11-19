@@ -98,27 +98,20 @@ export class Centrifuge {
   }
 
   #clients = new Map<number, Client>()
-  getClient(centrifugeId: CentrifugeId): Client {
-    // Find chainId from deployments synchronously by checking the cache
-    let chainId: number | undefined
-    this._deployments().subscribe((data) => {
-      const item = data.blockchains.items.find((b) => Number(b.centrifugeId) === centrifugeId)
-      if (item) chainId = Number(item.id)
-    }).unsubscribe()
-
-    if (chainId === undefined) {
-      throw new Error(`No chain found for centrifuge ID "${centrifugeId}"`)
-    }
-
-    const client = this.#clients.get(chainId)
-    if (!client) throw new Error(`No client found for chain ID "${chainId}"`)
-    return client
+  getClient(centrifugeId: CentrifugeId): Query<Client> {
+    return this._idToChain(centrifugeId).pipe(
+      map((chainId) => {
+        const client = this.#clients.get(chainId)
+        if (!client) throw new Error(`No client found for chain ID "${chainId}"`)
+        return client
+      })
+    )
   }
   get chains() {
     return [...this.#clients.keys()]
   }
   getChainConfig(centrifugeId: CentrifugeId) {
-    return this.getClient(centrifugeId).chain
+    return this.getClient(centrifugeId).pipe(map((client) => client.chain))
   }
 
 
@@ -365,48 +358,50 @@ export class Centrifuge {
   currency(address: HexString, centrifugeId: CentrifugeId, tokenId = 0n): Query<CurrencyDetails> {
     const curAddress = address.toLowerCase() as HexString
     return this._query(['currency', curAddress, centrifugeId, tokenId], () =>
-      defer(async () => {
-        let decimals: number, name: string, symbol: string, supportsPermit: boolean
-        const client = this.getClient(centrifugeId)
-        const chainId = await firstValueFrom(this._idToChain(centrifugeId))
-        if (tokenId) {
-          const contract = getContract({
-            address: curAddress,
-            abi: ABI.ERC6909,
-            client,
-          })
+      combineLatest([this.getClient(centrifugeId), this._idToChain(centrifugeId)]).pipe(
+        switchMap(([client, chainId]) =>
+          defer(async () => {
+            let decimals: number, name: string, symbol: string, supportsPermit: boolean
+            if (tokenId) {
+              const contract = getContract({
+                address: curAddress,
+                abi: ABI.ERC6909,
+                client,
+              })
               ;[decimals, name, symbol] = await Promise.all([
                 contract.read.decimals([tokenId]),
                 contract.read.name([tokenId]),
                 contract.read.symbol([tokenId]),
               ])
-          supportsPermit = false
-        } else {
-          const contract = getContract({
-            address: curAddress,
-            abi: ABI.Currency,
-            client,
+              supportsPermit = false
+            } else {
+              const contract = getContract({
+                address: curAddress,
+                abi: ABI.Currency,
+                client,
+              })
+              ;[decimals, name, symbol, supportsPermit] = await Promise.all([
+                contract.read.decimals(),
+                contract.read.name(),
+                contract.read.symbol(),
+                contract.read
+                  .PERMIT_TYPEHASH()
+                  .then((hash) => hash === PERMIT_TYPEHASH)
+                  .catch(() => false),
+              ])
+            }
+            return {
+              address: curAddress,
+              tokenId,
+              decimals,
+              name,
+              symbol,
+              chainId,
+              supportsPermit,
+            }
           })
-          ;[decimals, name, symbol, supportsPermit] = await Promise.all([
-            contract.read.decimals(),
-            contract.read.name(),
-            contract.read.symbol(),
-            contract.read
-              .PERMIT_TYPEHASH()
-              .then((hash) => hash === PERMIT_TYPEHASH)
-              .catch(() => false),
-          ])
-        }
-        return {
-          address: curAddress,
-          tokenId,
-          decimals,
-          name,
-          symbol,
-          chainId,
-          supportsPermit,
-        }
-      })
+        )
+      )
     )
   }
 
@@ -417,20 +412,20 @@ export class Centrifuge {
   assetCurrency(assetId: AssetId) {
     return this._query(['asset', assetId.toString()], () =>
       combineLatest([
-        of(this.getClient(assetId.centrifugeId)),
+        this.getClient(assetId.centrifugeId),
         this._idToChain(assetId.centrifugeId),
       ]).pipe(
         switchMap(([client, chainId]) =>
-          this._protocolAddresses(chainId).pipe(map(({ spoke }) => ({ chainId, spoke, client })))
+          this._protocolAddresses(chainId).pipe(map(({ spoke }) => ({ spoke, client })))
         ),
-        switchMap(async ({ spoke, chainId, client }) => {
+        switchMap(async ({ spoke, client }) => {
           const [assetAddress, tokenId] = await client.readContract({
             address: spoke,
             abi: ABI.Spoke,
             functionName: 'idToAsset',
             args: [assetId.raw],
           })
-          return this.currency(assetAddress as HexString, chainId, tokenId)
+          return this.currency(assetAddress as HexString, assetId.centrifugeId, tokenId)
         })
       )
     )
@@ -449,37 +444,37 @@ export class Centrifuge {
   balance(currency: HexString, owner: HexString, centrifugeId: CentrifugeId) {
     const address = owner.toLowerCase() as HexString
     return this._query(['balance', currency, owner, centrifugeId], () => {
-      return this.currency(currency, centrifugeId).pipe(
-        switchMap((currencyMeta) =>
-          this._idToChain(centrifugeId).pipe(
-            switchMap((chainId) =>
-              defer(async () => {
-                const val = await this.getClient(centrifugeId).readContract({
-                  address: currency,
-                  abi: ABI.Currency,
-                  functionName: 'balanceOf',
-                  args: [address],
-                })
+      return combineLatest([
+        this.currency(currency, centrifugeId),
+        this._idToChain(centrifugeId),
+        this.getClient(centrifugeId),
+      ]).pipe(
+        switchMap(([currencyMeta, chainId, client]) =>
+          defer(async () => {
+            const val = await client.readContract({
+              address: currency,
+              abi: ABI.Currency,
+              functionName: 'balanceOf',
+              args: [address],
+            })
 
-                return {
-                  balance: new Balance(val, currencyMeta.decimals),
-                  currency: currencyMeta,
-                }
-              }).pipe(
-                repeatOnEvents(
-                  this,
-                  {
-                    address: currency,
-                    eventName: 'Transfer',
-                    filter: (events) => {
-                      return events.some((event) => {
-                        return event.args.from?.toLowerCase() === address || event.args.to?.toLowerCase() === address
-                      })
-                    },
-                  },
-                  chainId
-                )
-              )
+            return {
+              balance: new Balance(val, currencyMeta.decimals),
+              currency: currencyMeta,
+            }
+          }).pipe(
+            repeatOnEvents(
+              this,
+              {
+                address: currency,
+                eventName: 'Transfer',
+                filter: (events) => {
+                  return events.some((event) => {
+                    return event.args.from?.toLowerCase() === address || event.args.to?.toLowerCase() === address
+                  })
+                },
+              },
+              chainId
             )
           )
         )
@@ -618,11 +613,12 @@ export class Centrifuge {
   repayBatch(fromChain: number, to: { chainId: number } | { centId: number }, batch: HexString, extraPayment = 0n) {
     const self = this
     return this._transact(async function* (ctx) {
-      const [addresses, toCentId] = await Promise.all([
+      const [addresses, toCentId, fromCentId] = await Promise.all([
         self._protocolAddresses(fromChain),
         'chainId' in to ? self.id(to.chainId) : to.centId,
+        self.id(fromChain),
       ])
-      const client = self.getClient(fromChain)
+      const client = await firstValueFrom(self.getClient(fromCentId))
       const batchHash = keccak256(batch)
       const [counter, gasLimit] = await client.readContract({
         address: addresses.gateway,
@@ -676,9 +672,9 @@ export class Centrifuge {
    */
   _assetDecimals(assetId: AssetId, centrifugeId: CentrifugeId) {
     return this._query(['assetDecimals', assetId.toString()], () =>
-      this._protocolAddresses(centrifugeId).pipe(
-        switchMap(({ hubRegistry }) =>
-          this.getClient(centrifugeId).readContract({
+      combineLatest([this._protocolAddresses(centrifugeId), this.getClient(centrifugeId)]).pipe(
+        switchMap(([{ hubRegistry }, client]) =>
+          client.readContract({
             address: hubRegistry,
             // Use inline ABI because of function overload
             abi: parseAbi(['function decimals(uint128) view returns (uint8)']),
@@ -704,10 +700,9 @@ export class Centrifuge {
     return this._query(
       ['allowance', owner.toLowerCase(), spender.toLowerCase(), asset.toLowerCase(), centrifugeId, tokenId],
       () =>
-        this._idToChain(centrifugeId).pipe(
-          switchMap((chainId) =>
+        combineLatest([this._idToChain(centrifugeId), this.getClient(centrifugeId)]).pipe(
+          switchMap(([chainId, client]) =>
             defer(async () => {
-              const client = this.getClient(centrifugeId)
               if (tokenId) {
                 return client.readContract({
                   address: asset,
@@ -754,12 +749,16 @@ export class Centrifuge {
     return this._query(
       ['events', centrifugeId],
       () =>
-        new Observable<WatchEventOnLogsParameter>((subscriber) => {
-          const unwatch = this.getClient(centrifugeId).watchEvent({
-            onLogs: (logs) => subscriber.next(logs),
-          })
-          return unwatch
-        }).pipe(
+        this.getClient(centrifugeId).pipe(
+          switchMap(
+            (client) =>
+              new Observable<WatchEventOnLogsParameter>((subscriber) => {
+                const unwatch = client.watchEvent({
+                  onLogs: (logs) => subscriber.next(logs),
+                })
+                return unwatch
+              })
+          ),
           filter((logs) => logs.length > 0),
           shareReplay({ bufferSize: 1, refCount: true }) // ensures only one watcher per centrifugeId
         ),
@@ -1014,8 +1013,8 @@ export class Centrifuge {
 
       const chainId = await firstValueFrom(self._idToChain(centrifugeId))
       resolvedChainId = chainId
-      const publicClient = self.getClient(centrifugeId)
-      const chain = self.getChainConfig(centrifugeId)
+      const publicClient = await firstValueFrom(self.getClient(centrifugeId))
+      const chain = await firstValueFrom(self.getChainConfig(centrifugeId))
       let walletClient: WalletClient<any, Chain, Account> = isLocalAccount(signer)
         ? createWalletClient({
             account: signer,
@@ -1144,10 +1143,9 @@ export class Centrifuge {
   ) {
     return this._query(['getQuote', baseAmount, baseAssetId.toString(), quoteAssetId.toString()], () =>
       timer(0, 60_000).pipe(
-        switchMap(() => this._protocolAddresses(centrifugeId)),
-        switchMap(({ hubRegistry }) =>
+        switchMap(() => combineLatest([this._protocolAddresses(centrifugeId), this.getClient(centrifugeId)])),
+        switchMap(([{ hubRegistry }, client]) =>
           defer(async () => {
-            const client = this.getClient(centrifugeId)
             const [quote, quoteDecimals] = await Promise.all([
               client.readContract({
                 address: valuationAddress,
@@ -1181,34 +1179,38 @@ export class Centrifuge {
     messageType: MessageTypeWithSubType | MessageTypeWithSubType[]
   ) {
     return this._query(['estimate', fromChain, to, messageType], () =>
-      this._protocolAddresses(fromChain).pipe(
-        switchMap(({ multiAdapter, gasService }) => {
-          const types = Array.isArray(messageType) ? messageType : [messageType]
-          return combineLatest([
-            'chainId' in to ? this.id(to.chainId) : of(to.centId),
-            ...types.map((typeAndMaybeSubtype) => {
-              const type = typeof typeAndMaybeSubtype === 'number' ? typeAndMaybeSubtype : typeAndMaybeSubtype.type
-              const subtype = typeof typeAndMaybeSubtype === 'number' ? undefined : typeAndMaybeSubtype.subtype
-              const data = emptyMessage(type, subtype)
-              return this.getClient(fromChain).readContract({
-                address: gasService,
-                abi: ABI.GasService,
-                functionName: 'messageGasLimit',
-                args: [0, data],
-              })
-            }),
-          ]).pipe(
-            switchMap(async ([toCentId, ...gasLimits]) => {
-              const estimate = await this.getClient(fromChain).readContract({
-                address: multiAdapter,
-                abi: ABI.MultiAdapter,
-                functionName: 'estimate',
-                args: [toCentId, '0x0', gasLimits.reduce((acc, val) => acc + val, 0n)],
-              })
-              return (estimate * 3n) / 2n // Add 50% buffer to the estimate
+      combineLatest([this._protocolAddresses(fromChain), this.id(fromChain)]).pipe(
+        switchMap(([{ multiAdapter, gasService }, fromCentId]) =>
+          this.getClient(fromCentId).pipe(
+            switchMap((client) => {
+              const types = Array.isArray(messageType) ? messageType : [messageType]
+              return combineLatest([
+                'chainId' in to ? this.id(to.chainId) : of(to.centId),
+                ...types.map((typeAndMaybeSubtype) => {
+                  const type = typeof typeAndMaybeSubtype === 'number' ? typeAndMaybeSubtype : typeAndMaybeSubtype.type
+                  const subtype = typeof typeAndMaybeSubtype === 'number' ? undefined : typeAndMaybeSubtype.subtype
+                  const data = emptyMessage(type, subtype)
+                  return client.readContract({
+                    address: gasService,
+                    abi: ABI.GasService,
+                    functionName: 'messageGasLimit',
+                    args: [0, data],
+                  })
+                }),
+              ]).pipe(
+                switchMap(async ([toCentId, ...gasLimits]) => {
+                  const estimate = await client.readContract({
+                    address: multiAdapter,
+                    abi: ABI.MultiAdapter,
+                    functionName: 'estimate',
+                    args: [toCentId, '0x0', gasLimits.reduce((acc, val) => acc + val, 0n)],
+                  })
+                  return (estimate * 3n) / 2n // Add 50% buffer to the estimate
+                })
+              )
             })
           )
-        })
+        )
       )
     )
   }

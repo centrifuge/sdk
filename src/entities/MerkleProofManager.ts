@@ -1,5 +1,5 @@
 import type { SimpleMerkleTree } from '@openzeppelin/merkle-tree'
-import { map, switchMap } from 'rxjs'
+import { firstValueFrom, map, switchMap } from 'rxjs'
 import { AbiFunction, encodeFunctionData, encodePacked, keccak256, parseAbiItem, toFunctionSelector, toHex } from 'viem'
 import { ABI } from '../abi/index.js'
 import type { Centrifuge } from '../Centrifuge.js'
@@ -115,16 +115,16 @@ export class MerkleProofManager extends Entity {
   ) {
     const self = this
     return this._transact(async function* (ctx) {
-      const [{ hub }, id, poolDetails, importedMerkleTree] = await Promise.all([
-        self._root._protocolAddresses(self.pool.chainId),
+      const [{ hub }, id, poolDetails, importedMerkleTree, client] = await Promise.all([
+        self._root._protocolAddresses(self.pool.centrifugeId),
         Promise.resolve(self.network.centrifugeId),
         self.pool.details(),
         import('@openzeppelin/merkle-tree'),
+        firstValueFrom(self._root.getClient(self.network.centrifugeId)),
       ])
 
       const { SimpleMerkleTree: SimpleMerkleTreeConstructor } = importedMerkleTree.default || importedMerkleTree
       const { metadata, shareClasses } = poolDetails
-      const client = self._root.getClient(self.network.centrifugeId)
 
       // Get the encoded args from chain by calling the decoder contract.
       async function getEncodedArgs(policy: MerkleProofPolicyInput, policyCombinations: (string | null)[][]) {
