@@ -166,7 +166,6 @@ export class Centrifuge {
         )
       })
 
-    // Initialize Solana manager if config is provided
     if (this.#config.solana) {
       this.#solanaManager = new SolanaManager(this, this.#config.solana)
     }
