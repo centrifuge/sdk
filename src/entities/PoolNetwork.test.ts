@@ -14,6 +14,7 @@ import { Centrifuge } from '../Centrifuge.js'
 const poolId = PoolId.from(1, 1)
 const scId = ShareClassId.from(poolId, 1)
 const chainId = 11155111
+const centId = 1
 const poolManager = '0x423420Ae467df6e90291fd0252c0A8a637C1e03f'
 
 describe.skip('PoolNetwork', () => {
@@ -255,7 +256,7 @@ describe.skip('PoolNetwork', () => {
 
       await context.tenderlyFork.fundAccountEth(poolManager, 10n ** 18n)
       await poolNetwork.pool.updateBalanceSheetManagers([
-        { chainId, address: '0x8c0E6DC2461c6190A3e5703B714942cacfCb3C14', canManage: true },
+        { centrifugeId: centId, address: '0x8c0E6DC2461c6190A3e5703B714942cacfCb3C14', canManage: true },
       ])
 
       // TODO: Needs data in indexer for manager to be balance sheet manager
@@ -278,7 +279,7 @@ describe.skip('PoolNetwork', () => {
 
       await context.tenderlyFork.fundAccountEth(poolManager, 10n ** 18n)
       await poolNetwork.pool.updateBalanceSheetManagers([
-        { chainId, address: '0x8c0E6DC2461c6190A3e5703B714942cacfCb3C14', canManage: true },
+        { centrifugeId: centId, address: '0x8c0E6DC2461c6190A3e5703B714942cacfCb3C14', canManage: true },
       ])
 
       try {

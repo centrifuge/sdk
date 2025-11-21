@@ -3,6 +3,7 @@ import {
   defer,
   filter,
   first,
+  firstValueFrom,
   identity,
   isObservable,
   map,
@@ -68,19 +69,19 @@ import {
   parseEventLogs,
   wrapTransaction,
 } from './utils/transaction.js'
-import { AssetId, PoolId, ShareClassId } from './utils/types.js'
+import { AssetId, CentrifugeId, PoolId, ShareClassId } from './utils/types.js'
 
 const PINNING_API_DEMO = 'https://europe-central2-peak-vista-185616.cloudfunctions.net/pinning-api-demo'
 
 const envConfig = {
   mainnet: {
     indexerUrl: 'https://api.centrifuge.io',
-    ipfsUrl: 'https://centrifuge.mypinata.cloud',
+    ipfsUrl: 'https://ipfs.centrifuge.io',
     ...createPinning(PINNING_API_DEMO),
   },
   testnet: {
     indexerUrl: 'https://api-v3-hitz.marble.live/graphql',
-    ipfsUrl: 'https://centrifuge.mypinata.cloud',
+    ipfsUrl: 'https://ipfs.centrifuge.io',
     ...createPinning(PINNING_API_DEMO),
   },
 } satisfies Record<string, EnvConfig>
@@ -97,17 +98,23 @@ export class Centrifuge {
   }
 
   #clients = new Map<number, Client>()
-  getClient(chainId: number): Client {
-    const client = this.#clients.get(chainId)
-    if (!client) throw new Error(`No client found for chain ID "${chainId}"`)
-    return client
+  getClient(centrifugeId: CentrifugeId): Query<Client> {
+    return this._idToChain(centrifugeId).pipe(
+      map((chainId) => {
+        const client = this.#clients.get(chainId)
+        if (!client) throw new Error(`No client found for chain ID "${chainId}"`)
+        return client
+      })
+    )
   }
   get chains() {
     return [...this.#clients.keys()]
   }
-  getChainConfig(chainId: number) {
-    return this.getClient(chainId).chain
+  getChainConfig(centrifugeId: CentrifugeId) {
+    return this.getClient(centrifugeId).pipe(map((client) => client.chain))
   }
+
+
 
   #signer: Signer | null = null
   setSigner(signer: Signer | null) {
@@ -164,11 +171,11 @@ export class Centrifuge {
    * @param chainId - The chain ID to create the pool on
    * @param counter - The pool counter, used to create a unique pool ID (uint48)
    */
-  createPool(metadataInput: PoolMetadataInput, currencyCode = 840, chainId: number, counter?: number | bigint) {
+  createPool(metadataInput: PoolMetadataInput, currencyCode = 840, centrifugeId: CentrifugeId, counter?: number | bigint) {
     const self = this
     return this._transact(async function* (ctx) {
-      const [addresses, id] = await Promise.all([self._protocolAddresses(chainId), self.id(chainId)])
-      const poolId = PoolId.from(id, counter ?? randomUint(48))
+      const addresses = await self._protocolAddresses(centrifugeId)
+      const poolId = PoolId.from(centrifugeId, counter ?? randomUint(48))
 
       const createPoolData = encodeFunctionData({
         abi: ABI.Hub,
@@ -299,21 +306,11 @@ export class Centrifuge {
           args: [[createPoolData, setMetadataData, ...addScData, ...createAccountsData]],
         })
       })
-    }, chainId)
+    }, centrifugeId)
   }
 
   id(chainId: number) {
-    return this._query(['centrifugeId', chainId], () =>
-      this._protocolAddresses(chainId).pipe(
-        switchMap(({ messageDispatcher }) => {
-          return this.getClient(chainId).readContract({
-            address: messageDispatcher,
-            abi: ABI.MessageDispatcher,
-            functionName: 'localCentrifugeId',
-          })
-        })
-      )
-    )
+    return this._chainToId(chainId)
   }
 
   /**
@@ -358,49 +355,53 @@ export class Centrifuge {
    * @param address - The token address
    * @param chainId - The chain ID
    */
-  currency(address: HexString, chainId: number, tokenId = 0n): Query<CurrencyDetails> {
+  currency(address: HexString, centrifugeId: CentrifugeId, tokenId = 0n): Query<CurrencyDetails> {
     const curAddress = address.toLowerCase() as HexString
-    return this._query(['currency', curAddress, chainId, tokenId], () =>
-      defer(async () => {
-        let decimals: number, name: string, symbol: string, supportsPermit: boolean
-        if (tokenId) {
-          const contract = getContract({
-            address: curAddress,
-            abi: ABI.ERC6909,
-            client: this.getClient(chainId),
+    return this._query(['currency', curAddress, centrifugeId, tokenId], () =>
+      combineLatest([this.getClient(centrifugeId), this._idToChain(centrifugeId)]).pipe(
+        switchMap(([client, chainId]) =>
+          defer(async () => {
+            let decimals: number, name: string, symbol: string, supportsPermit: boolean
+            if (tokenId) {
+              const contract = getContract({
+                address: curAddress,
+                abi: ABI.ERC6909,
+                client,
+              })
+              ;[decimals, name, symbol] = await Promise.all([
+                contract.read.decimals([tokenId]),
+                contract.read.name([tokenId]),
+                contract.read.symbol([tokenId]),
+              ])
+              supportsPermit = false
+            } else {
+              const contract = getContract({
+                address: curAddress,
+                abi: ABI.Currency,
+                client,
+              })
+              ;[decimals, name, symbol, supportsPermit] = await Promise.all([
+                contract.read.decimals(),
+                contract.read.name(),
+                contract.read.symbol(),
+                contract.read
+                  .PERMIT_TYPEHASH()
+                  .then((hash) => hash === PERMIT_TYPEHASH)
+                  .catch(() => false),
+              ])
+            }
+            return {
+              address: curAddress,
+              tokenId,
+              decimals,
+              name,
+              symbol,
+              chainId,
+              supportsPermit,
+            }
           })
-          ;[decimals, name, symbol] = await Promise.all([
-            contract.read.decimals([tokenId]),
-            contract.read.name([tokenId]),
-            contract.read.symbol([tokenId]),
-          ])
-          supportsPermit = false
-        } else {
-          const contract = getContract({
-            address: curAddress,
-            abi: ABI.Currency,
-            client: this.getClient(chainId),
-          })
-          ;[decimals, name, symbol, supportsPermit] = await Promise.all([
-            contract.read.decimals(),
-            contract.read.name(),
-            contract.read.symbol(),
-            contract.read
-              .PERMIT_TYPEHASH()
-              .then((hash) => hash === PERMIT_TYPEHASH)
-              .catch(() => false),
-          ])
-        }
-        return {
-          address: curAddress,
-          tokenId,
-          decimals,
-          name,
-          symbol,
-          chainId,
-          supportsPermit,
-        }
-      })
+        )
+      )
     )
   }
 
@@ -410,16 +411,21 @@ export class Centrifuge {
    */
   assetCurrency(assetId: AssetId) {
     return this._query(['asset', assetId.toString()], () =>
-      this._idToChain(assetId.centrifugeId).pipe(
-        switchMap((chainId) => this._protocolAddresses(chainId).pipe(map(({ spoke }) => ({ chainId, spoke })))),
-        switchMap(async ({ spoke, chainId }) => {
-          const [assetAddress, tokenId] = await this.getClient(chainId).readContract({
+      combineLatest([
+        this.getClient(assetId.centrifugeId),
+        this._idToChain(assetId.centrifugeId),
+      ]).pipe(
+        switchMap(([client, chainId]) =>
+          this._protocolAddresses(chainId).pipe(map(({ spoke }) => ({ spoke, client })))
+        ),
+        switchMap(async ({ spoke, client }) => {
+          const [assetAddress, tokenId] = await client.readContract({
             address: spoke,
             abi: ABI.Spoke,
             functionName: 'idToAsset',
             args: [assetId.raw],
           })
-          return this.currency(assetAddress as HexString, chainId, tokenId)
+          return this.currency(assetAddress as HexString, assetId.centrifugeId, tokenId)
         })
       )
     )
@@ -435,13 +441,17 @@ export class Centrifuge {
    * @param owner - The owner address
    * @param chainId - The chain ID
    */
-  balance(currency: HexString, owner: HexString, chainId: number) {
+  balance(currency: HexString, owner: HexString, centrifugeId: CentrifugeId) {
     const address = owner.toLowerCase() as HexString
-    return this._query(['balance', currency, owner, chainId], () => {
-      return this.currency(currency, chainId).pipe(
-        switchMap((currencyMeta) =>
+    return this._query(['balance', currency, owner, centrifugeId], () => {
+      return combineLatest([
+        this.currency(currency, centrifugeId),
+        this._idToChain(centrifugeId),
+        this.getClient(centrifugeId),
+      ]).pipe(
+        switchMap(([currencyMeta, chainId, client]) =>
           defer(async () => {
-            const val = await this.getClient(chainId).readContract({
+            const val = await client.readContract({
               address: currency,
               abi: ABI.Currency,
               functionName: 'balanceOf',
@@ -536,9 +546,9 @@ export class Centrifuge {
   /**
    * Get the valuation addresses that can be used for holdings.
    */
-  valuations(chainId: number) {
-    return this._query(['valuations', chainId], () =>
-      this._protocolAddresses(chainId).pipe(
+  valuations(centrifugeId: CentrifugeId) {
+    return this._query(['valuations', centrifugeId], () =>
+      this._protocolAddresses(centrifugeId).pipe(
         map(({ identityValuation }) => {
           return {
             identityValuation,
@@ -551,9 +561,9 @@ export class Centrifuge {
   /**
    * Get the restriction hook addresses that can be used for share tokens.
    */
-  restrictionHooks(chainId: number) {
-    return this._query(['restrictionHooks', chainId], () =>
-      this._protocolAddresses(chainId).pipe(
+  restrictionHooks(centrifugeId: CentrifugeId) {
+    return this._query(['restrictionHooks', centrifugeId], () =>
+      this._protocolAddresses(centrifugeId).pipe(
         map(({ freezeOnlyHook, redemptionRestrictionsHook, fullRestrictionsHook /* freelyTransferableHook */ }) => {
           return {
             freezeOnlyHook,
@@ -603,11 +613,12 @@ export class Centrifuge {
   repayBatch(fromChain: number, to: { chainId: number } | { centId: number }, batch: HexString, extraPayment = 0n) {
     const self = this
     return this._transact(async function* (ctx) {
-      const [addresses, toCentId] = await Promise.all([
+      const [addresses, toCentId, fromCentId] = await Promise.all([
         self._protocolAddresses(fromChain),
         'chainId' in to ? self.id(to.chainId) : to.centId,
+        self.id(fromChain),
       ])
-      const client = self.getClient(fromChain)
+      const client = await firstValueFrom(self.getClient(fromCentId))
       const batchHash = keccak256(batch)
       const [counter, gasLimit] = await client.readContract({
         address: addresses.gateway,
@@ -659,11 +670,11 @@ export class Centrifuge {
    * Get the decimals of asset on the Hub side
    * @internal
    */
-  _assetDecimals(assetId: AssetId, chainId: number) {
+  _assetDecimals(assetId: AssetId, centrifugeId: CentrifugeId) {
     return this._query(['assetDecimals', assetId.toString()], () =>
-      this._protocolAddresses(chainId).pipe(
-        switchMap(({ hubRegistry }) =>
-          this.getClient(chainId).readContract({
+      combineLatest([this._protocolAddresses(centrifugeId), this.getClient(centrifugeId)]).pipe(
+        switchMap(([{ hubRegistry }, client]) =>
+          client.readContract({
             address: hubRegistry,
             // Use inline ABI because of function overload
             abi: parseAbi(['function decimals(uint128) view returns (uint8)']),
@@ -680,48 +691,51 @@ export class Centrifuge {
    * which is the contract that moves funds into the vault on behalf of the investor.
    * @param owner - The address of the owner
    * @param spender - The address of the spender
-   * @param chainId - The chain ID where the asset is located
+   * @param centrifugeId - The centrifuge ID where the asset is located
    * @param asset - The address of the asset
    * @param tokenId - Optional token ID for ERC6909 assets
    * @internal
    */
-  _allowance(owner: HexString, spender: HexString, chainId: number, asset: HexString, tokenId?: bigint) {
+  _allowance(owner: HexString, spender: HexString, centrifugeId: CentrifugeId, asset: HexString, tokenId?: bigint) {
     return this._query(
-      ['allowance', owner.toLowerCase(), spender.toLowerCase(), asset.toLowerCase(), chainId, tokenId],
+      ['allowance', owner.toLowerCase(), spender.toLowerCase(), asset.toLowerCase(), centrifugeId, tokenId],
       () =>
-        defer(async () => {
-          const client = this.getClient(chainId)
-          if (tokenId) {
-            return client.readContract({
-              address: asset,
-              abi: ABI.ERC6909,
-              functionName: 'allowance',
-              args: [owner, spender, tokenId],
-            })
-          }
-          return client.readContract({
-            address: asset,
-            abi: ABI.Currency,
-            functionName: 'allowance',
-            args: [owner, spender],
-          })
-        }).pipe(
-          repeatOnEvents(
-            this,
-            {
-              address: asset,
-              eventName: ['Approval', 'Transfer'],
-              filter: (events) => {
-                return events.some((event) => {
-                  return (
-                    event.args.owner?.toLowerCase() === owner.toLowerCase() ||
-                    event.args.spender?.toLowerCase() === owner.toLowerCase() ||
-                    event.args.from?.toLowerCase() === owner.toLowerCase()
-                  )
+        combineLatest([this._idToChain(centrifugeId), this.getClient(centrifugeId)]).pipe(
+          switchMap(([chainId, client]) =>
+            defer(async () => {
+              if (tokenId) {
+                return client.readContract({
+                  address: asset,
+                  abi: ABI.ERC6909,
+                  functionName: 'allowance',
+                  args: [owner, spender, tokenId],
                 })
-              },
-            },
-            chainId
+              }
+              return client.readContract({
+                address: asset,
+                abi: ABI.Currency,
+                functionName: 'allowance',
+                args: [owner, spender],
+              })
+            }).pipe(
+              repeatOnEvents(
+                this,
+                {
+                  address: asset,
+                  eventName: ['Approval', 'Transfer'],
+                  filter: (events) => {
+                    return events.some((event) => {
+                      return (
+                        event.args.owner?.toLowerCase() === owner.toLowerCase() ||
+                        event.args.spender?.toLowerCase() === owner.toLowerCase() ||
+                        event.args.from?.toLowerCase() === owner.toLowerCase()
+                      )
+                    })
+                  },
+                },
+                chainId
+              )
+            )
           )
         )
     )
@@ -731,18 +745,22 @@ export class Centrifuge {
    * Returns an observable of all events on a given chain.
    * @internal
    */
-  _events(chainId: number) {
+  _events(centrifugeId: CentrifugeId) {
     return this._query(
-      ['events', chainId],
+      ['events', centrifugeId],
       () =>
-        new Observable<WatchEventOnLogsParameter>((subscriber) => {
-          const unwatch = this.getClient(chainId).watchEvent({
-            onLogs: (logs) => subscriber.next(logs),
-          })
-          return unwatch
-        }).pipe(
+        this.getClient(centrifugeId).pipe(
+          switchMap(
+            (client) =>
+              new Observable<WatchEventOnLogsParameter>((subscriber) => {
+                const unwatch = client.watchEvent({
+                  onLogs: (logs) => subscriber.next(logs),
+                })
+                return unwatch
+              })
+          ),
           filter((logs) => logs.length > 0),
-          shareReplay({ bufferSize: 1, refCount: true }) // ensures only one watcher per chainId
+          shareReplay({ bufferSize: 1, refCount: true }) // ensures only one watcher per centrifugeId
         ),
       { cache: true }
     )
@@ -752,8 +770,8 @@ export class Centrifuge {
    * Returns an observable of events on a given chain, filtered by name(s) and address(es).
    * @internal
    */
-  _filteredEvents(address: HexString | HexString[], eventName: string | string[], chainId: number) {
-    return this._events(chainId).pipe(
+  _filteredEvents(address: HexString | HexString[], eventName: string | string[], centrifugeId: CentrifugeId) {
+    return this._events(centrifugeId).pipe(
       map((logs) => {
         return parseEventLogs({
           address,
@@ -981,9 +999,10 @@ export class Centrifuge {
     transactionCallback: (
       params: TransactionContext
     ) => AsyncGenerator<OperationStatus | BatchTransactionData> | Observable<OperationStatus | BatchTransactionData>,
-    chainId: number
+    centrifugeId: CentrifugeId
   ): Transaction {
     const self = this
+    let resolvedChainId: number | undefined
     async function* transact() {
       let isBatching = false
       if (self.#isBatching.has($tx)) {
@@ -992,8 +1011,10 @@ export class Centrifuge {
       const { signer } = self
       if (!signer) throw new Error('Signer not set')
 
-      const publicClient = self.getClient(chainId)
-      const chain = self.getChainConfig(chainId)
+      const chainId = await firstValueFrom(self._idToChain(centrifugeId))
+      resolvedChainId = chainId
+      const publicClient = await firstValueFrom(self.getClient(centrifugeId))
+      const chain = await firstValueFrom(self.getChainConfig(centrifugeId))
       let walletClient: WalletClient<any, Chain, Account> = isLocalAccount(signer)
         ? createWalletClient({
             account: signer,
@@ -1040,7 +1061,7 @@ export class Centrifuge {
     const $tx = defer(transact).pipe(mergeMap((d) => (isObservable(d) ? d : of(d)))) as Transaction
     makeThenable($tx, true)
     Object.assign($tx, {
-      chainId,
+      chainId: resolvedChainId,
     })
     return $tx
   }
@@ -1098,16 +1119,13 @@ export class Centrifuge {
   }
 
   /** @internal */
-  _protocolAddresses(chainId: number) {
-    return this._query(['protocolAddresses', chainId], () =>
+  _protocolAddresses(centrifugeId: CentrifugeId) {
+    return this._query(['protocolAddresses', centrifugeId], () =>
       this._deployments().pipe(
         map((data) => {
-          if (!this.chains.includes(chainId)) {
-            throw new Error(`Chain ID "${chainId}" not supported`)
-          }
-          const deployment = data.deployments.items.find((d) => Number(d.chainId) === chainId)
+          const deployment = data.deployments.items.find((d) => Number(d.centrifugeId) === centrifugeId)
           if (!deployment) {
-            throw new Error(`No protocol contracts found for chain ID "${chainId}"`)
+            throw new Error(`No protocol contracts found for centrifuge ID "${centrifugeId}"`)
           }
           return deployment as ProtocolContracts
         })
@@ -1121,21 +1139,21 @@ export class Centrifuge {
     baseAmount: Balance,
     baseAssetId: AssetId,
     quoteAssetId: AssetId,
-    chainId: number
+    centrifugeId: CentrifugeId
   ) {
     return this._query(['getQuote', baseAmount, baseAssetId.toString(), quoteAssetId.toString()], () =>
       timer(0, 60_000).pipe(
-        switchMap(() => this._protocolAddresses(chainId)),
-        switchMap(({ hubRegistry }) =>
+        switchMap(() => combineLatest([this._protocolAddresses(centrifugeId), this.getClient(centrifugeId)])),
+        switchMap(([{ hubRegistry }, client]) =>
           defer(async () => {
             const [quote, quoteDecimals] = await Promise.all([
-              this.getClient(chainId).readContract({
+              client.readContract({
                 address: valuationAddress,
                 abi: ABI.Valuation,
                 functionName: 'getQuote',
                 args: [baseAmount.toBigInt(), baseAssetId.raw, quoteAssetId.raw],
               }),
-              this.getClient(chainId).readContract({
+              client.readContract({
                 address: hubRegistry,
                 // Use inline ABI because of function overload
                 abi: parseAbi(['function decimals(uint256) view returns (uint8)']),
@@ -1161,54 +1179,58 @@ export class Centrifuge {
     messageType: MessageTypeWithSubType | MessageTypeWithSubType[]
   ) {
     return this._query(['estimate', fromChain, to, messageType], () =>
-      this._protocolAddresses(fromChain).pipe(
-        switchMap(({ multiAdapter, gasService }) => {
-          const types = Array.isArray(messageType) ? messageType : [messageType]
-          return combineLatest([
-            'chainId' in to ? this.id(to.chainId) : of(to.centId),
-            ...types.map((typeAndMaybeSubtype) => {
-              const type = typeof typeAndMaybeSubtype === 'number' ? typeAndMaybeSubtype : typeAndMaybeSubtype.type
-              const subtype = typeof typeAndMaybeSubtype === 'number' ? undefined : typeAndMaybeSubtype.subtype
-              const data = emptyMessage(type, subtype)
-              return this.getClient(fromChain).readContract({
-                address: gasService,
-                abi: ABI.GasService,
-                functionName: 'messageGasLimit',
-                args: [0, data],
-              })
-            }),
-          ]).pipe(
-            switchMap(async ([toCentId, ...gasLimits]) => {
-              const estimate = await this.getClient(fromChain).readContract({
-                address: multiAdapter,
-                abi: ABI.MultiAdapter,
-                functionName: 'estimate',
-                args: [toCentId, '0x0', gasLimits.reduce((acc, val) => acc + val, 0n)],
-              })
-              return (estimate * 3n) / 2n // Add 50% buffer to the estimate
+      combineLatest([this._protocolAddresses(fromChain), this.id(fromChain)]).pipe(
+        switchMap(([{ multiAdapter, gasService }, fromCentId]) =>
+          this.getClient(fromCentId).pipe(
+            switchMap((client) => {
+              const types = Array.isArray(messageType) ? messageType : [messageType]
+              return combineLatest([
+                'chainId' in to ? this.id(to.chainId) : of(to.centId),
+                ...types.map((typeAndMaybeSubtype) => {
+                  const type = typeof typeAndMaybeSubtype === 'number' ? typeAndMaybeSubtype : typeAndMaybeSubtype.type
+                  const subtype = typeof typeAndMaybeSubtype === 'number' ? undefined : typeAndMaybeSubtype.subtype
+                  const data = emptyMessage(type, subtype)
+                  return client.readContract({
+                    address: gasService,
+                    abi: ABI.GasService,
+                    functionName: 'messageGasLimit',
+                    args: [0, data],
+                  })
+                }),
+              ]).pipe(
+                switchMap(async ([toCentId, ...gasLimits]) => {
+                  const estimate = await client.readContract({
+                    address: multiAdapter,
+                    abi: ABI.MultiAdapter,
+                    functionName: 'estimate',
+                    args: [toCentId, '0x0', gasLimits.reduce((acc, val) => acc + val, 0n)],
+                  })
+                  return (estimate * 3n) / 2n // Add 50% buffer to the estimate
+                })
+              )
             })
           )
-        })
+        )
       )
     )
   }
 
   /** @internal */
-  _maxBatchGasLimit(chainId: number) {
-    return this._query(['maxBatchGasLimit', chainId], () =>
-      this._protocolAddresses(chainId).pipe(
-        switchMap(async ({ gasService }) => {
+  _maxBatchGasLimit(centrifugeId: CentrifugeId) {
+    return this._query(['maxBatchGasLimit', centrifugeId], () =>
+      combineLatest([this._protocolAddresses(centrifugeId), this.getClient(centrifugeId)]).pipe(
+        switchMap(async ([{ gasService }, client]) => {
           try {
             // `batchGasLimit` was renamed to `maxBatchGasLimit`, support both for backwards compatibility,
             // until all chains are updated
-            return await this.getClient(chainId).readContract({
+            return await client.readContract({
               address: gasService,
               abi: ABI.GasService,
               functionName: 'maxBatchGasLimit',
               args: [0],
             })
           } catch {
-            return await this.getClient(chainId).readContract({
+            return await client.readContract({
               address: gasService,
               abi: ABI.GasService,
               functionName: 'batchGasLimit',
@@ -1234,11 +1256,24 @@ export class Centrifuge {
   }
 
   /** @internal */
+  _chainToId(chainId: number) {
+    return this._query(['chainToId', chainId], () =>
+      this._deployments().pipe(
+        map((data) => {
+          const item = data.blockchains.items.find((b) => Number(b.id) === chainId)
+          if (!item) throw new Error(`Blockchain with chain ID "${chainId}" not found`)
+          return Number(item.centrifugeId) as CentrifugeId
+        })
+      )
+    )
+  }
+
+  /** @internal */
   _deployments() {
     return this._query(['deployments'], () =>
       this._getIndexerObservable<{
         blockchains: { items: { id: string; centrifugeId: string; name: string; icon: string }[] }
-        deployments: { items: (ProtocolContracts & { chainId?: string })[] }
+        deployments: { items: (ProtocolContracts & { chainId?: string; centrifugeId?: string })[] }
       }>(
         `{
             blockchains {

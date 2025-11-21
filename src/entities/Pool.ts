@@ -10,7 +10,7 @@ import { NATIONAL_CURRENCY_METADATA } from '../utils/currencies.js'
 import { addressToBytes32, randomUint } from '../utils/index.js'
 import { repeatOnEvents } from '../utils/rx.js'
 import { wrapTransaction } from '../utils/transaction.js'
-import { AssetId, PoolId, ShareClassId } from '../utils/types.js'
+import { AssetId, CentrifugeId, PoolId, ShareClassId } from '../utils/types.js'
 import { Entity } from './Entity.js'
 import { PoolNetwork } from './PoolNetwork.js'
 import { PoolReports } from './Reports/PoolReports.js'
@@ -26,6 +26,10 @@ export class Pool extends Entity {
   ) {
     super(_root, ['pool', String(id)])
     this.id = id instanceof PoolId ? id : new PoolId(id)
+  }
+
+  get centrifugeId(): CentrifugeId {
+    return this.id.centrifugeId
   }
 
   get reports() {
@@ -56,10 +60,10 @@ export class Pool extends Entity {
 
   metadata() {
     return this._query(['metadata', this.id.toString()], () =>
-      this._root._protocolAddresses(this.chainId).pipe(
-        switchMap(({ hubRegistry }) =>
+      combineLatest([this._root._protocolAddresses(this.centrifugeId), this._root.getClient(this.centrifugeId)]).pipe(
+        switchMap(([{ hubRegistry }, client]) =>
           defer(() => {
-            return this._root.getClient(this.chainId).readContract({
+            return client.readContract({
               address: hubRegistry,
               abi: ABI.HubRegistry,
               functionName: 'metadata',
@@ -147,7 +151,7 @@ export class Pool extends Entity {
    */
   balanceSheetManagers() {
     return this._query(null, () => {
-      return combineLatest([this._managers(), this._root._protocolAddresses(this.chainId)]).pipe(
+      return combineLatest([this._managers(), this._root._protocolAddresses(this.centrifugeId)]).pipe(
         map(([managers, { asyncRequestManager, syncManager }]) => {
           return managers
             .filter((manager) => manager.isBalancesheetManager)
@@ -161,7 +165,7 @@ export class Pool extends Entity {
 
               return {
                 address: manager.address,
-                chainId: manager.chainId,
+                centrifugeId: manager.centrifugeId,
                 type,
               }
             })
@@ -187,15 +191,15 @@ export class Pool extends Entity {
 
   /**
    * Check if an address is a Balance Sheet manager of the pool.
-   * @param chainId - The chain ID of the Spoke to check
+   * @param centrifugeId - The centrifuge ID of the network to check
    * @param address - The address to check
    */
-  isBalanceSheetManager(chainId: number, address: HexString) {
+  isBalanceSheetManager(centrifugeId: CentrifugeId, address: HexString) {
     const addr = address.toLowerCase()
-    return this._query(['isBalanceSheetManager', chainId, this.id.toString(), addr], () => {
+    return this._query(['isBalanceSheetManager', centrifugeId, this.id.toString(), addr], () => {
       return this.balanceSheetManagers().pipe(
         map((managers) => {
-          return managers.some((manager) => manager.chainId === chainId && manager.address === addr)
+          return managers.some((manager) => manager.centrifugeId === centrifugeId && manager.address === addr)
         })
       )
     })
@@ -216,13 +220,14 @@ export class Pool extends Entity {
 
   /**
    * Get a specific network where a pool can potentially be deployed.
+   * @param centrifugeId - The centrifuge ID of the network
    */
-  network(chainId: number) {
-    return this._query(['poolNetwork', chainId, this.id.toString()], () => {
+  network(centrifugeId: CentrifugeId) {
+    return this._query(['poolNetwork', centrifugeId, this.id.toString()], () => {
       return this.networks().pipe(
         map((networks) => {
-          const network = networks.find((network) => network.chainId === chainId)
-          if (!network) throw new Error(`Network ${chainId} not found`)
+          const network = networks.find((network) => network.centrifugeId === centrifugeId)
+          if (!network) throw new Error(`Network with centrifuge ID ${centrifugeId} not found`)
           return network
         })
       )
@@ -255,9 +260,15 @@ export class Pool extends Entity {
     })
   }
 
-  vault(chainId: number, scId: ShareClassId, asset: HexString | AssetId) {
-    return this._query(['vault', chainId, scId.toString(), asset.toString().toLowerCase()], () =>
-      this.network(chainId).pipe(switchMap((network) => network.vault(scId, asset)))
+  /**
+   * Get a specific vault for a given network, share class, and asset.
+   * @param centrifugeId - The centrifuge ID of the network
+   * @param scId - The share class ID
+   * @param asset - The asset address or ID
+   */
+  vault(centrifugeId: CentrifugeId, scId: ShareClassId, asset: HexString | AssetId) {
+    return this._query(['vault', centrifugeId, scId.toString(), asset.toString().toLowerCase()], () =>
+      this.network(centrifugeId).pipe(switchMap((network) => network.vault(scId, asset)))
     )
   }
 
@@ -266,9 +277,9 @@ export class Pool extends Entity {
    */
   currency() {
     return this._query(['currency', this.id.toString()], () => {
-      return this._root._protocolAddresses(this.chainId).pipe(
-        switchMap(({ hubRegistry }) => {
-          return this._root.getClient(this.chainId).readContract({
+      return combineLatest([this._root._protocolAddresses(this.centrifugeId), this._root.getClient(this.centrifugeId)]).pipe(
+        switchMap(([{ hubRegistry }, client]) => {
+          return client.readContract({
             address: hubRegistry,
             abi: ABI.HubRegistry,
             functionName: 'currency',
@@ -307,7 +318,7 @@ export class Pool extends Entity {
     return this._transact(async function* (ctx) {
       const cid = await self._root.config.pinJson(metadata)
 
-      const { hub } = await self._root._protocolAddresses(self.chainId)
+      const { hub } = await self._root._protocolAddresses(self.centrifugeId)
       yield* wrapTransaction('Update metadata', ctx, {
         contract: hub,
         data: encodeFunctionData({
@@ -327,7 +338,7 @@ export class Pool extends Entity {
     const self = this
 
     return this._transact(async function* (ctx) {
-      const [{ hub }] = await Promise.all([self._root._protocolAddresses(self.chainId)])
+      const [{ hub }] = await Promise.all([self._root._protocolAddresses(self.centrifugeId)])
 
       const existingPool = await self._root.pool(self.id)
 
@@ -451,7 +462,7 @@ export class Pool extends Entity {
             return
           }
           shareClassesToBeUpdatedPerNetwork.set(
-            poolNetwork.chainId,
+            poolNetwork.centrifugeId,
             shareClassesToUpdate.map((sc) => sc.shareClass)
           )
         }
@@ -650,25 +661,23 @@ export class Pool extends Entity {
   /**
    * Update balance sheet managers.
    */
-  updateBalanceSheetManagers(updates: { chainId: number; address: HexString; canManage: boolean }[]) {
+  updateBalanceSheetManagers(updates: { centrifugeId: CentrifugeId; address: HexString; canManage: boolean }[]) {
     const self = this
     return this._transact(async function* (ctx) {
-      const [{ hub }, centIds] = await Promise.all([
+      const [{ hub }] = await Promise.all([
         self._root._protocolAddresses(self.chainId),
-        Promise.all(updates.map(({ chainId }) => self._root.id(chainId))),
       ])
-      const batch = updates.map(({ address, canManage }, i) =>
+      const batch = updates.map(({ centrifugeId, address, canManage }) =>
         encodeFunctionData({
           abi: ABI.Hub,
           functionName: 'updateBalanceSheetManager',
-          args: [centIds[i]!, self.id.raw, addressToBytes32(address), canManage],
+          args: [centrifugeId, self.id.raw, addressToBytes32(address), canManage],
         })
       )
       const messages: Record<number, MessageType[]> = {}
-      updates.forEach((_, i) => {
-        const centId = centIds[i]!
-        if (!messages[centId]) messages[centId] = []
-        messages[centId].push(MessageType.UpdateBalanceSheetManager)
+      updates.forEach(({ centrifugeId }) => {
+        if (!messages[centrifugeId]) messages[centrifugeId] = []
+        messages[centrifugeId].push(MessageType.UpdateBalanceSheetManager)
       })
 
       yield* wrapTransaction('Update balance sheet managers', ctx, {
@@ -703,10 +712,14 @@ export class Pool extends Entity {
    */
   _shareClassIds() {
     return this._query(['shareClasses', this.id.toString()], () =>
-      this._root._protocolAddresses(this.chainId).pipe(
-        switchMap(({ shareClassManager }) =>
+      combineLatest([
+        this._root._protocolAddresses(this.centrifugeId),
+        this._root.getClient(this.centrifugeId),
+        this._root._idToChain(this.centrifugeId),
+      ]).pipe(
+        switchMap(([{ shareClassManager }, client, chainId]) =>
           defer(async () => {
-            const count = await this._root.getClient(this.chainId).readContract({
+            const count = await client.readContract({
               address: shareClassManager,
               abi: ABI.ShareClassManager,
               functionName: 'shareClassCount',
@@ -723,7 +736,7 @@ export class Pool extends Entity {
                   return events.some((event) => event.args.poolId === this.id.raw)
                 },
               },
-              this.chainId
+              chainId
             )
           )
         )
@@ -734,9 +747,9 @@ export class Pool extends Entity {
   /** @internal */
   _escrow() {
     return this._query(['escrow', this.id.toString()], () =>
-      this._root._protocolAddresses(this.chainId).pipe(
-        switchMap(({ poolEscrowFactory }) => {
-          return this._root.getClient(this.chainId).readContract({
+      combineLatest([this._root._protocolAddresses(this.centrifugeId), this._root.getClient(this.centrifugeId)]).pipe(
+        switchMap(([{ poolEscrowFactory }, client]) => {
+          return client.readContract({
             address: poolEscrowFactory,
             abi: ABI.PoolEscrowFactory,
             functionName: 'escrow',
@@ -781,15 +794,12 @@ export class Pool extends Entity {
         ),
       ]).pipe(
         map(([deployments, { poolManagers }]) => {
-          const chainsById = new Map(deployments.blockchains.items.map((chain) => [chain.centrifugeId, chain.id]))
           return poolManagers.items.map((manager) => {
-            const chainId = chainsById.get(manager.centrifugeId)!
             return {
               address: manager.address.toLowerCase() as HexString,
               isHubManager: manager.isHubManager,
               isBalancesheetManager: manager.isBalancesheetManager,
               centrifugeId: Number(manager.centrifugeId),
-              chainId: Number(chainId),
             }
           })
         })

@@ -14,6 +14,7 @@ import { doSignMessage, doTransaction } from './utils/transaction.js'
 import { AssetId, PoolId } from './utils/types.js'
 
 const chainId = 11155111
+const centId = 1
 const poolId = PoolId.from(1, 1)
 const assetId = AssetId.from(1, 1)
 const poolManager = '0x423420Ae467df6e90291fd0252c0A8a637C1e03f'
@@ -38,7 +39,8 @@ describe('Centrifuge', () => {
   })
 
   it('should be connected to sepolia', async () => {
-    const client = context.centrifuge.getClient(chainId)
+    const centId = await context.centrifuge.id(chainId)
+    const client = await firstValueFrom(context.centrifuge.getClient(centId))
     expect(client?.chain.id).to.equal(chainId)
     const chains = context.centrifuge.chains
     expect(chains).to.include(chainId)
@@ -478,21 +480,25 @@ describe('Centrifuge', () => {
       const newManager2 = randomAddress()
       const result = await context.centrifuge._experimental_batch('Test', [
         pool.updatePoolManagers([{ address: newManager, canManage: true }]),
-        pool.updateBalanceSheetManagers([{ chainId, address: newManager2, canManage: true }]),
+        pool.updateBalanceSheetManagers([{ centrifugeId: centId, address: newManager2, canManage: true }]),
       ])
       expect(result.type).to.equal('TransactionConfirmed')
       expect((result as any).title).to.equal('Test')
 
-      const { hubRegistry, balanceSheet } = await context.centrifuge._protocolAddresses(chainId)
+      const centId = await context.centrifuge.id(chainId)
+      const [{ hubRegistry, balanceSheet }, client] = await Promise.all([
+        context.centrifuge._protocolAddresses(centId),
+        firstValueFrom(context.centrifuge.getClient(centId)),
+      ])
 
-      const isNewManager = await context.centrifuge.getClient(chainId).readContract({
+      const isNewManager = await client.readContract({
         address: hubRegistry,
         abi: ABI.HubRegistry,
         functionName: 'manager',
         args: [poolId.raw, newManager],
       })
 
-      const isNewManager2 = await context.centrifuge.getClient(chainId).readContract({
+      const isNewManager2 = await client.readContract({
         address: balanceSheet,
         abi: ABI.BalanceSheet,
         functionName: 'manager',

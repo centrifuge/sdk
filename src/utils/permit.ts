@@ -1,5 +1,6 @@
 import type { PublicClient, TypedDataDomain } from 'viem'
 import { hexToNumber, maxUint256, slice } from 'viem'
+import { firstValueFrom } from 'rxjs'
 import { ABI } from '../abi/index.js'
 import { HexString } from '../types/index.js'
 import { TransactionContext } from '../types/transaction.js'
@@ -24,9 +25,13 @@ export async function signPermit(
   if (currencyAddress.toLowerCase() === USDC) {
     // USDC has a custom version
     domainOrCurrency = { name: 'USD Coin', version: '2', chainId: ctx.chainId, verifyingContract: currencyAddress }
-  } else if (ctx.root.getChainConfig(ctx.chainId).testnet) {
-    // Assume that the currencies used on testnets have our custom domain
-    domainOrCurrency = { name: 'Centrifuge', version: '1', chainId: ctx.chainId, verifyingContract: currencyAddress }
+  } else {
+    const centId = await ctx.root.id(ctx.chainId)
+    const chainConfig = await firstValueFrom(ctx.root.getChainConfig(centId))
+    if (chainConfig.testnet) {
+      // Assume that the currencies used on testnets have our custom domain
+      domainOrCurrency = { name: 'Centrifuge', version: '1', chainId: ctx.chainId, verifyingContract: currencyAddress }
+    }
   }
 
   const deadline = Math.floor(Date.now() / 1000) + 3600 // 1 hour
