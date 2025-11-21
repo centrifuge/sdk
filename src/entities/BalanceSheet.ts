@@ -225,6 +225,13 @@ export class BalanceSheet extends Entity {
     }, this.chainId)
   }
 
+  /**
+   * Revokes shares from a specific user in the balance sheet.
+   * * Calculates the number of shares to revoke.
+   * @param user - The address of the user from whom shares will be revoked.
+   * @param amount - The monetary value (currency amount) to revoke.
+   * @param pricePerShare - The price per share used to calculate the number of shares to revoke.
+   */
   revoke(user: HexString, amount: Balance, pricePerShare: Price) {
     const self = this
     return this._transact(async function* (ctx) {
@@ -240,14 +247,7 @@ export class BalanceSheet extends Entity {
       const transferTx = encodeFunctionData({
         abi: ABI.BalanceSheet,
         functionName: 'transferSharesFrom',
-        args: [
-          self.pool.id.raw,
-          self.shareClass.id.raw,
-          ctx.signingAddress,
-          user,
-          ctx.signingAddress,
-          shares.toBigInt(),
-        ],
+        args: [self.pool.id.raw, self.shareClass.id.raw, user, ctx.signingAddress, user, shares.toBigInt()],
       })
 
       const overrideTx = encodeFunctionData({
