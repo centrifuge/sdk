@@ -73,12 +73,13 @@ export class MerkleProofManager extends Entity {
     const self = this
     return this._transact(async function* (ctx) {
       const [{ hub }, poolDetails] = await Promise.all([
-        self._root._protocolAddresses(self.pool.chainId),
+        self._root._protocolAddresses(self.pool.centrifugeId),
         self.pool.details(),
       ])
 
       const { metadata } = poolDetails
-      const policies = metadata?.merkleProofManager?.[self.network.centrifugeId]?.[strategist.toLowerCase() as any]?.policies || []
+      const policies =
+        metadata?.merkleProofManager?.[self.network.centrifugeId]?.[strategist.toLowerCase() as any]?.policies || []
 
       const newMetadata = {
         ...metadata,
@@ -103,7 +104,7 @@ export class MerkleProofManager extends Entity {
           }),
         ],
       })
-    }, this.pool.chainId)
+    }, this.pool.centrifugeId)
   }
 
   setPolicies(
@@ -201,7 +202,8 @@ export class MerkleProofManager extends Entity {
         rootHash = tree.root as HexString
       }
 
-      const templates = metadata?.merkleProofManager?.[self.network.centrifugeId]?.[strategist.toLowerCase() as any]?.templates || []
+      const templates =
+        metadata?.merkleProofManager?.[self.network.centrifugeId]?.[strategist.toLowerCase() as any]?.templates || []
 
       const newMetadata = {
         ...metadata,
@@ -247,7 +249,7 @@ export class MerkleProofManager extends Entity {
         },
         options && { simulate: options.simulate }
       )
-    }, this.pool.chainId)
+    }, this.pool.centrifugeId)
   }
 
   /**
@@ -281,7 +283,9 @@ export class MerkleProofManager extends Entity {
         metadata?.merkleProofManager?.[self.network.centrifugeId]?.[ctx.signingAddress.toLowerCase() as any]?.policies
 
       if (!policiesForStrategist) {
-        throw new Error(`No policies found for strategist "${ctx.signingAddress}" on centrifuge network "${self.network.centrifugeId}"`)
+        throw new Error(
+          `No policies found for strategist "${ctx.signingAddress}" on centrifuge network "${self.network.centrifugeId}"`
+        )
       }
 
       const tree = getMerkleTree(SimpleMerkleTreeConstructor, policiesForStrategist)

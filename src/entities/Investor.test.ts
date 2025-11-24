@@ -36,7 +36,7 @@ describe('Investor', () => {
 
     before(async () => {
       const { centrifuge } = context
-      const pool = new Pool(centrifuge, poolId.raw, chainId)
+      const pool = new Pool(centrifuge, poolId.raw)
       sc = new ShareClass(centrifuge, pool, scId.raw)
       vault = await pool.vault(chainId, sc.id, assetId)
     })

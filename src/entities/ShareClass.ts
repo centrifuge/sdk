@@ -3,8 +3,9 @@ import { encodeFunctionData, encodePacked, getContract } from 'viem'
 import { ABI } from '../abi/index.js'
 import type { Centrifuge } from '../Centrifuge.js'
 import { AccountType } from '../types/holdings.js'
-import { CurrencyDetails, HexString } from '../types/index.js'
+import { HexString } from '../types/index.js'
 import { MessageType } from '../types/transaction.js'
+import { AddressMap } from '../utils/AddressMap.js'
 import { Balance, Price } from '../utils/BigInt.js'
 import { addressToBytes32, randomUint } from '../utils/index.js'
 import { repeatOnEvents } from '../utils/rx.js'
@@ -15,7 +16,6 @@ import { Entity } from './Entity.js'
 import type { Pool } from './Pool.js'
 import { PoolNetwork } from './PoolNetwork.js'
 import { Vault } from './Vault.js'
-import { AddressMap } from '../utils/AddressMap.js'
 
 /**
  * Query and interact with a share class, which allows querying total issuance, NAV per share,
@@ -334,9 +334,8 @@ export class ShareClass extends Entity {
         this._share(centrifugeId),
         this._restrictionManager(centrifugeId),
         this._root.getClient(centrifugeId),
-        this._root._idToChain(centrifugeId),
       ]).pipe(
-        switchMap(([share, restrictionManager, client, chainId]) =>
+        switchMap(([share, restrictionManager, client]) =>
           defer(async () => {
             const res = await client.readContract({
               address: restrictionManager,
@@ -359,7 +358,7 @@ export class ShareClass extends Entity {
                     (event) => event.args.user?.toLowerCase() === addr && event.args.token?.toLowerCase() === share
                   ),
               },
-              chainId
+              centrifugeId
             ),
             catchError((e) => {
               console.warn('Error checking member status', e)
@@ -1081,14 +1080,12 @@ export class ShareClass extends Entity {
       ],
       () =>
         combineLatest([
-          this._root._deployments(),
           this.pool.currency(),
           this._investorOrders(),
           this._tokenInstancePositions({ limit, offset, orderBy, orderDirection, filter }),
         ]).pipe(
           switchMap(
             ([
-              deployments,
               poolCurrency,
               { outstandingInvests, outstandingRedeems },
               { items: tokenInstancePositions, assets, pageInfo, totalCount },
@@ -1323,7 +1320,7 @@ export class ShareClass extends Entity {
    */
   freezeMember(address: HexString, centrifugeId: CentrifugeId) {
     const self = this
-    
+
     return this._transact(async function* (ctx) {
       const [share, restrictionManager] = await Promise.all([
         firstValueFrom(self._share(centrifugeId)),
@@ -1348,7 +1345,7 @@ export class ShareClass extends Entity {
    */
   unfreezeMember(address: HexString, centrifugeId: CentrifugeId) {
     const self = this
-    
+
     return this._transact(async function* (ctx) {
       const [share, restrictionManager] = await Promise.all([
         firstValueFrom(self._share(centrifugeId)),
@@ -1783,30 +1780,32 @@ export class ShareClass extends Entity {
   }
 
   /** @internal */
-  _balance(centrifugeId: CentrifugeId, asset: { address: HexString; assetTokenId?: bigint; id: AssetId; decimals: number }) {
+  _balance(
+    centrifugeId: CentrifugeId,
+    asset: { address: HexString; assetTokenId?: bigint; id: AssetId; decimals: number }
+  ) {
     return this._query(['balance', asset.id.toString()], () =>
       combineLatest([
         this._root._protocolAddresses(centrifugeId),
         this.pool.currency(),
         this._root.getClient(centrifugeId),
-        this._root._idToChain(centrifugeId),
       ]).pipe(
-        switchMap(([addresses, poolCurrency, client, chainId]) =>
+        switchMap(([addresses, poolCurrency, client]) =>
           defer(async () => {
-                const [amountBn, priceBn] = await Promise.all([
-                  client.readContract({
-                    address: addresses.balanceSheet,
-                    abi: ABI.BalanceSheet,
-                    functionName: 'availableBalanceOf',
-                    args: [this.pool.id.raw, this.id.raw, asset.address, BigInt(asset.assetTokenId ?? 0n)],
-                  }),
-                  client.readContract({
-                    address: addresses.spoke,
-                    abi: ABI.Spoke,
-                    functionName: 'pricePoolPerAsset',
-                    args: [this.pool.id.raw, this.id.raw, asset.id.raw, false],
-                  }),
-                ])
+            const [amountBn, priceBn] = await Promise.all([
+              client.readContract({
+                address: addresses.balanceSheet,
+                abi: ABI.BalanceSheet,
+                functionName: 'availableBalanceOf',
+                args: [this.pool.id.raw, this.id.raw, asset.address, BigInt(asset.assetTokenId ?? 0n)],
+              }),
+              client.readContract({
+                address: addresses.spoke,
+                abi: ABI.Spoke,
+                functionName: 'pricePoolPerAsset',
+                args: [this.pool.id.raw, this.id.raw, asset.id.raw, false],
+              }),
+            ])
 
             const amount = new Balance(amountBn, asset.decimals)
             const price = new Price(priceBn)
@@ -1834,7 +1833,7 @@ export class ShareClass extends Entity {
                   )
                 },
               },
-              chainId
+              centrifugeId
             )
           )
         )
@@ -2281,10 +2280,8 @@ export class ShareClass extends Entity {
   /** @internal */
   _epochOutstandingInvests() {
     return this._query(['epochOutstandingInvests'], () =>
-      combineLatest([this._root._deployments()]).pipe(
-        switchMap(([deployments]) =>
-          this._root._queryIndexer(
-            `query ($scId: String!) {
+      this._root._queryIndexer(
+        `query ($scId: String!) {
             epochOutstandingInvests(where: { tokenId: $scId }, limit: 1000) {
               items {
                 assetId
@@ -2293,24 +2290,22 @@ export class ShareClass extends Entity {
               }
             }
           }`,
-            { scId: this.id.raw },
-            (data: {
-              epochOutstandingInvests: {
-                items: {
-                  assetId: string
-                  pendingAssetsAmount: string
-                  asset: { decimals: number; centrifugeId: string }
-                }[]
-              }
-            }) => {
-              return data.epochOutstandingInvests.items.map((item) => ({
-                assetId: new AssetId(item.assetId),
-                centrifugeId: item.asset.centrifugeId,
-                amount: new Balance(item.pendingAssetsAmount || 0, item.asset.decimals),
-              }))
-            }
-          )
-        )
+        { scId: this.id.raw },
+        (data: {
+          epochOutstandingInvests: {
+            items: {
+              assetId: string
+              pendingAssetsAmount: string
+              asset: { decimals: number; centrifugeId: string }
+            }[]
+          }
+        }) => {
+          return data.epochOutstandingInvests.items.map((item) => ({
+            assetId: new AssetId(item.assetId),
+            centrifugeId: item.asset.centrifugeId,
+            amount: new Balance(item.pendingAssetsAmount || 0, item.asset.decimals),
+          }))
+        }
       )
     )
   }
@@ -2318,10 +2313,8 @@ export class ShareClass extends Entity {
   /** @internal */
   _epochOutstandingRedeems() {
     return this._query(['epochOutstandingRedeems'], () =>
-      combineLatest([this._root._deployments()]).pipe(
-        switchMap(([deployments]) =>
-          this._root._queryIndexer(
-            `query ($scId: String!) {
+      this._root._queryIndexer(
+        `query ($scId: String!) {
             epochOutstandingRedeems(where: { tokenId: $scId }, limit: 1000) {
               items {
                 assetId
@@ -2330,24 +2323,22 @@ export class ShareClass extends Entity {
               }
             }
           }`,
-            { scId: this.id.raw },
-            (data: {
-              epochOutstandingRedeems: {
-                items: {
-                  assetId: string
-                  pendingSharesAmount: string
-                  asset: { decimals: number; centrifugeId: string }
-                }[]
-              }
-            }) => {
-              return data.epochOutstandingRedeems.items.map((item) => ({
-                assetId: new AssetId(item.assetId),
-                centrifugeId: item.asset.centrifugeId,
-                amount: new Balance(item.pendingSharesAmount || 0, 18),
-              }))
-            }
-          )
-        )
+        { scId: this.id.raw },
+        (data: {
+          epochOutstandingRedeems: {
+            items: {
+              assetId: string
+              pendingSharesAmount: string
+              asset: { decimals: number; centrifugeId: string }
+            }[]
+          }
+        }) => {
+          return data.epochOutstandingRedeems.items.map((item) => ({
+            assetId: new AssetId(item.assetId),
+            centrifugeId: item.asset.centrifugeId,
+            amount: new Balance(item.pendingSharesAmount || 0, 18),
+          }))
+        }
       )
     )
   }

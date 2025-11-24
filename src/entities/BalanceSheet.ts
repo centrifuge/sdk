@@ -1,16 +1,16 @@
-import { encodeFunctionData, toHex } from 'viem'
 import { firstValueFrom } from 'rxjs'
+import { encodeFunctionData, toHex } from 'viem'
 import { ABI } from '../abi/index.js'
 import type { Centrifuge } from '../Centrifuge.js'
 import type { HexString } from '../types/index.js'
 import { Balance, Price } from '../utils/BigInt.js'
+import { isEIP1193ProviderLike } from '../utils/isEIP1193ProviderLike.js'
 import { doTransaction, wrapTransaction } from '../utils/transaction.js'
 import { AssetId } from '../utils/types.js'
 import { Entity } from './Entity.js'
 import type { Pool } from './Pool.js'
 import { PoolNetwork } from './PoolNetwork.js'
 import { ShareClass } from './ShareClass.js'
-import { isEIP1193ProviderLike } from '../utils/isEIP1193ProviderLike.js'
 
 /**
  * Query and interact with the balanceSheet, which is the main entry point for withdrawing and depositing funds.
@@ -18,7 +18,6 @@ import { isEIP1193ProviderLike } from '../utils/isEIP1193ProviderLike.js'
  */
 export class BalanceSheet extends Entity {
   pool: Pool
-  chainId: number
   /** @internal */
   constructor(
     _root: Centrifuge,
@@ -26,8 +25,11 @@ export class BalanceSheet extends Entity {
     public shareClass: ShareClass
   ) {
     super(_root, ['balancesheet', shareClass.id.toString(), network.centrifugeId])
-    this.chainId = 0 // Deprecated, will be removed
     this.pool = network.pool
+  }
+
+  get centrifugeId() {
+    return this.network.centrifugeId
   }
 
   balances() {
@@ -155,15 +157,15 @@ export class BalanceSheet extends Entity {
           args: [self.pool.id.raw, self.shareClass.id.raw, assetAddress, tokenId, amount.toBigInt()],
         })
       })
-    }, this.chainId)
+    }, this.centrifugeId)
   }
 
   withdraw(assetId: AssetId, to: HexString, amount: Balance) {
     const self = this
     return this._transact(async function* (ctx) {
       const [{ balanceSheet }, isBalanceSheetManager] = await Promise.all([
-        self._root._protocolAddresses(self.chainId),
-        self.pool.isBalanceSheetManager(self.chainId, ctx.signingAddress),
+        self._root._protocolAddresses(self.centrifugeId),
+        self.pool.isBalanceSheetManager(self.centrifugeId, ctx.signingAddress),
       ])
 
       if (!isBalanceSheetManager) {
@@ -182,7 +184,7 @@ export class BalanceSheet extends Entity {
         contract: balanceSheet,
         data: tx,
       })
-    }, this.chainId)
+    }, this.centrifugeId)
   }
 
   /**
@@ -195,8 +197,8 @@ export class BalanceSheet extends Entity {
     const self = this
     return this._transact(async function* (ctx) {
       const [{ balanceSheet }, isManager] = await Promise.all([
-        self._root._protocolAddresses(self.chainId),
-        self.pool.isBalanceSheetManager(self.chainId, ctx.signingAddress),
+        self._root._protocolAddresses(self.centrifugeId),
+        self.pool.isBalanceSheetManager(self.centrifugeId, ctx.signingAddress),
       ])
       if (!isManager) throw new Error('Signing address is not a BalanceSheetManager')
 
@@ -223,15 +225,15 @@ export class BalanceSheet extends Entity {
           args: [[overrideTx, issueTx]],
         })
       )
-    }, this.chainId)
+    }, this.centrifugeId)
   }
 
   revoke(user: HexString, amount: Balance, pricePerShare: Price) {
     const self = this
     return this._transact(async function* (ctx) {
       const [{ balanceSheet }, isManager] = await Promise.all([
-        self._root._protocolAddresses(self.chainId),
-        self.pool.isBalanceSheetManager(self.chainId, ctx.signingAddress),
+        self._root._protocolAddresses(self.centrifugeId),
+        self.pool.isBalanceSheetManager(self.centrifugeId, ctx.signingAddress),
       ])
       if (!isManager) throw new Error('Signing address is not a BalanceSheetManager')
 
@@ -271,6 +273,6 @@ export class BalanceSheet extends Entity {
           args: [[transferTx, overrideTx, revokeTx]],
         })
       )
-    }, this.chainId)
+    }, this.centrifugeId)
   }
 }

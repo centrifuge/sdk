@@ -23,7 +23,7 @@ describe.skip('Pool', () => {
   let pool: Pool
   before(() => {
     const { centrifuge } = context
-    pool = new Pool(centrifuge, poolId.raw, chainId)
+    pool = new Pool(centrifuge, poolId.raw)
   })
 
   it('gets whether an address is manager', async () => {
@@ -160,7 +160,9 @@ describe.skip('Pool', () => {
     context.centrifuge.setSigner(context.tenderlyFork.signer)
 
     const newManager = randomAddress()
-    const result = await pool.updateBalanceSheetManagers([{ centrifugeId: centId, address: newManager, canManage: true }])
+    const result = await pool.updateBalanceSheetManagers([
+      { centrifugeId: centId, address: newManager, canManage: true },
+    ])
     expect(result.type).to.equal('TransactionConfirmed')
 
     const [{ balanceSheet }, client] = await Promise.all([

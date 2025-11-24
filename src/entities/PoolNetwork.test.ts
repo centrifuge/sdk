@@ -1,15 +1,15 @@
 import { expect } from 'chai'
 import sinon from 'sinon'
 import { ABI } from '../abi/index.js'
+import { Centrifuge } from '../Centrifuge.js'
 import { NULL_ADDRESS } from '../constants.js'
 import { context } from '../tests/setup.js'
 import { doTransaction } from '../utils/transaction.js'
 import { AssetId, PoolId, ShareClassId } from '../utils/types.js'
+import { MerkleProofManager } from './MerkleProofManager.js'
 import { Pool } from './Pool.js'
 import { PoolNetwork } from './PoolNetwork.js'
 import { Vault } from './Vault.js'
-import { MerkleProofManager } from './MerkleProofManager.js'
-import { Centrifuge } from '../Centrifuge.js'
 
 const poolId = PoolId.from(1, 1)
 const scId = ShareClassId.from(poolId, 1)
@@ -22,8 +22,8 @@ describe.skip('PoolNetwork', () => {
 
   beforeEach(() => {
     const { centrifuge } = context
-    const pool = new Pool(centrifuge, poolId.raw, 11155111)
-    poolNetwork = new PoolNetwork(centrifuge, pool, 11155111)
+    const pool = new Pool(centrifuge, poolId.raw)
+    poolNetwork = new PoolNetwork(centrifuge, pool, centId)
   })
 
   it('should get whether a pool is deployed to a network', async () => {
@@ -31,7 +31,7 @@ describe.skip('PoolNetwork', () => {
     expect(isActive).to.equal(true)
 
     // non-active pool/network
-    const poolNetwork2 = new PoolNetwork(context.centrifuge, new Pool(context.centrifuge, '123', 11155111), 11155111)
+    const poolNetwork2 = new PoolNetwork(context.centrifuge, new Pool(context.centrifuge, '123'), centId)
     const isActive2 = await poolNetwork2.isActive()
     expect(isActive2).to.equal(false)
   })
@@ -52,7 +52,7 @@ describe.skip('PoolNetwork', () => {
   })
 
   it.skip('deploys share classes and vaults', async () => {
-    const { hub, freezeOnlyHook, vaultRouter } = await context.centrifuge._protocolAddresses(chainId)
+    const { hub, freezeOnlyHook, vaultRouter } = await context.centrifuge._protocolAddresses(centId)
 
     context.tenderlyFork.impersonateAddress = poolManager
     context.centrifuge.setSigner(context.tenderlyFork.signer)
@@ -66,10 +66,11 @@ describe.skip('PoolNetwork', () => {
           args: [poolId.raw, 'Test Share Class', 'TSC', '0x123'.padEnd(66, '0') as any],
         })
       })
-    }, chainId)
+    }, centId)
 
-    const addresses = await context.centrifuge._protocolAddresses(chainId)
-    const shareClassCount = await context.centrifuge.getClient(chainId).readContract({
+    const addresses = await context.centrifuge._protocolAddresses(centId)
+    const client = await context.centrifuge.getClient(centId)
+    const shareClassCount = await client.readContract({
       address: addresses.shareClassManager,
       abi: ABI.ShareClassManager,
       functionName: 'shareClassCount',
@@ -90,7 +91,7 @@ describe.skip('PoolNetwork', () => {
     expect(details.activeShareClasses.some((sc) => sc.id.equals(scId))).to.be.true
 
     const asset = await context.centrifuge.assetCurrency(assetId)
-    const vaultAddr = await context.centrifuge.getClient(chainId).readContract({
+    const vaultAddr = await client.readContract({
       address: vaultRouter,
       abi: ABI.VaultRouter,
       functionName: 'getVault',
@@ -99,7 +100,7 @@ describe.skip('PoolNetwork', () => {
 
     const vault = new Vault(
       context.centrifuge,
-      new PoolNetwork(context.centrifuge, new Pool(context.centrifuge, poolId.raw, chainId), chainId),
+      new PoolNetwork(context.centrifuge, new Pool(context.centrifuge, poolId.raw), centId),
       details.activeShareClasses.find((sc) => sc.id.equals(scId))!.shareClass,
       asset.address,
       vaultAddr as any,
@@ -109,7 +110,7 @@ describe.skip('PoolNetwork', () => {
     const vaultDetails = await vault.details()
     expect(vaultDetails.isSyncDeposit).to.be.true
 
-    const maxReserve = await context.centrifuge.getClient(chainId).readContract({
+    const maxReserve = await client.readContract({
       address: addresses.syncManager,
       abi: ABI.SyncRequests,
       functionName: 'maxReserve',
@@ -119,7 +120,8 @@ describe.skip('PoolNetwork', () => {
   })
 
   it.skip('disables vaults', async () => {
-    const { vaultRouter } = await context.centrifuge._protocolAddresses(chainId)
+    const { vaultRouter } = await context.centrifuge._protocolAddresses(centId)
+    const client = await context.centrifuge.getClient(centId)
 
     context.tenderlyFork.impersonateAddress = poolManager
     context.centrifuge.setSigner(context.tenderlyFork.signer)
@@ -128,7 +130,7 @@ describe.skip('PoolNetwork', () => {
     const assetId = AssetId.from(1, 1)
     const asset = await context.centrifuge.assetCurrency(assetId)
 
-    const vaultAddr = await context.centrifuge.getClient(chainId).readContract({
+    const vaultAddr = await client.readContract({
       address: vaultRouter,
       abi: ABI.VaultRouter,
       functionName: 'getVault',
@@ -143,7 +145,7 @@ describe.skip('PoolNetwork', () => {
     const result = await poolNetwork.unlinkVaults([{ shareClassId: scId, assetId }])
     expect(result.type).to.equal('TransactionConfirmed')
 
-    const vaultAddr2 = await context.centrifuge.getClient(chainId).readContract({
+    const vaultAddr2 = await client.readContract({
       address: vaultRouter,
       abi: ABI.VaultRouter,
       functionName: 'getVault',
@@ -153,7 +155,8 @@ describe.skip('PoolNetwork', () => {
   })
 
   it.skip('links vaults', async () => {
-    const { vaultRouter } = await context.centrifuge._protocolAddresses(chainId)
+    const { vaultRouter } = await context.centrifuge._protocolAddresses(centId)
+    const client = await context.centrifuge.getClient(centId)
 
     context.tenderlyFork.impersonateAddress = poolManager
     context.centrifuge.setSigner(context.tenderlyFork.signer)
@@ -162,7 +165,7 @@ describe.skip('PoolNetwork', () => {
     const assetId = AssetId.from(1, 1)
     const asset = await context.centrifuge.assetCurrency(assetId)
 
-    const initialVaultAddr = await context.centrifuge.getClient(chainId).readContract({
+    const initialVaultAddr = await client.readContract({
       address: vaultRouter,
       abi: ABI.VaultRouter,
       functionName: 'getVault',
@@ -180,7 +183,7 @@ describe.skip('PoolNetwork', () => {
 
     mockUnlink.restore()
 
-    const unlinkedVaultAddr = await context.centrifuge.getClient(chainId).readContract({
+    const unlinkedVaultAddr = await client.readContract({
       address: vaultRouter,
       abi: ABI.VaultRouter,
       functionName: 'getVault',
@@ -203,7 +206,7 @@ describe.skip('PoolNetwork', () => {
 
     mockLink.restore()
 
-    const linkedVaultAddr = await context.centrifuge.getClient(chainId).readContract({
+    const linkedVaultAddr = await client.readContract({
       address: vaultRouter,
       abi: ABI.VaultRouter,
       functionName: 'getVault',
@@ -228,8 +231,8 @@ describe.skip('PoolNetwork', () => {
 
       const poolId = PoolId.from(1, 10)
       const { centrifuge } = context
-      const pool = new Pool(centrifuge, poolId.raw, 11155111)
-      const poolNetwork = new PoolNetwork(centrifuge, pool, 11155111)
+      const pool = new Pool(centrifuge, poolId.raw)
+      const poolNetwork = new PoolNetwork(centrifuge, pool, centId)
 
       const result = await poolNetwork.deployMerkleProofManager()
 
@@ -239,8 +242,8 @@ describe.skip('PoolNetwork', () => {
     it('should throw when it does not find merkleProofManager', async () => {
       const poolId = PoolId.from(1, 10)
       const { centrifuge } = context
-      const pool = new Pool(centrifuge, poolId.raw, 11155111)
-      const poolNetwork = new PoolNetwork(centrifuge, pool, 11155111)
+      const pool = new Pool(centrifuge, poolId.raw)
+      const poolNetwork = new PoolNetwork(centrifuge, pool, centId)
       try {
         await poolNetwork.merkleProofManager()
       } catch (error: any) {
@@ -305,13 +308,14 @@ describe.skip('PoolNetwork', () => {
 
       await context.tenderlyFork.fundAccountEth(poolManager, 10n ** 18n)
 
-      const pool = new Pool(centrifugeWithPin, poolId.raw, 11155111)
+      const pool = new Pool(centrifugeWithPin, poolId.raw)
 
       await pool.update({}, [], [{ tokenName: 'DummyShareClass', symbolName: 'DSC' }])
 
-      const addresses = await centrifugeWithPin._protocolAddresses(11155111)
+      const addresses = await centrifugeWithPin._protocolAddresses(centId)
+      const client = await centrifugeWithPin.getClient(centId)
 
-      const shareClassesCount = await centrifugeWithPin.getClient(11155111).readContract({
+      const shareClassesCount = await client.readContract({
         address: addresses.shareClassManager,
         abi: ABI.ShareClassManager,
         functionName: 'shareClassCount',
@@ -341,13 +345,14 @@ describe.skip('PoolNetwork', () => {
 
       await context.tenderlyFork.fundAccountEth(poolManager, 10n ** 18n)
 
-      const pool = new Pool(centrifugeWithPin, poolId.raw, 11155111)
+      const pool = new Pool(centrifugeWithPin, poolId.raw)
 
       await pool.update({}, [], [{ tokenName: 'DummyShareClass', symbolName: 'DSC' }])
 
-      const addresses = await centrifugeWithPin._protocolAddresses(11155111)
+      const addresses = await centrifugeWithPin._protocolAddresses(centId)
+      const client = await centrifugeWithPin.getClient(centId)
 
-      const shareClassesCount = await centrifugeWithPin.getClient(11155111).readContract({
+      const shareClassesCount = await client.readContract({
         address: addresses.shareClassManager,
         abi: ABI.ShareClassManager,
         functionName: 'shareClassCount',

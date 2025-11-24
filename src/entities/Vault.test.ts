@@ -64,7 +64,7 @@ describe.skip('Vault', () => {
     let vault: Vault
     before(async () => {
       const { centrifuge } = context
-      const pool = new Pool(centrifuge, poolId.raw, chainId)
+      const pool = new Pool(centrifuge, poolId.raw)
       const sc = new ShareClass(centrifuge, pool, scId.raw)
       vault = await pool.vault(chainId, sc.id, assetId)
     })
@@ -132,9 +132,7 @@ describe.skip('Vault', () => {
       ;[result, investment] = await Promise.all([
         lastValueFrom(vault.asyncDeposit(defaultAssetsAmount).pipe(toArray())),
         firstValueFrom(
-          vault
-            .investment(investorA)
-            .pipe(skipWhile((i) => !i.pendingDepositAssets.eq(defaultAssetsAmount.toBigInt())))
+          vault.investment(investorA).pipe(skipWhile((i) => !i.pendingDepositAssets.eq(defaultAssetsAmount.toBigInt())))
         ),
       ])
 
@@ -284,9 +282,7 @@ describe.skip('Vault', () => {
       ;[, investment] = await Promise.all([
         lastValueFrom(vault.asyncDeposit(defaultAssetsAmount).pipe(toArray())),
         firstValueFrom(
-          vault
-            .investment(investorC)
-            .pipe(skipWhile((i) => !i.pendingDepositAssets.eq(defaultAssetsAmount.toBigInt())))
+          vault.investment(investorC).pipe(skipWhile((i) => !i.pendingDepositAssets.eq(defaultAssetsAmount.toBigInt())))
         ),
       ])
 
@@ -343,7 +339,7 @@ describe.skip('Vault', () => {
     let vault: Vault
     before(async () => {
       const { centrifuge } = context
-      const pool = new Pool(centrifuge, poolId2.raw, chainId)
+      const pool = new Pool(centrifuge, poolId2.raw)
       const sc = new ShareClass(centrifuge, pool, scId2.raw)
       vault = await pool.vault(chainId, sc.id, assetId)
     })

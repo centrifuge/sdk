@@ -33,10 +33,10 @@ describe('ShareClass', () => {
   let shareClass2: ShareClass
   beforeEach(() => {
     const { centrifuge } = context
-    const pool = new Pool(centrifuge, poolId.raw, chainId)
+    const pool = new Pool(centrifuge, poolId.raw)
     shareClass = new ShareClass(centrifuge, pool, scId.raw)
 
-    const pool2 = new Pool(centrifuge, poolId2.raw, chainId)
+    const pool2 = new Pool(centrifuge, poolId2.raw)
     shareClass2 = new ShareClass(centrifuge, pool2, scId2.raw)
   })
 
@@ -77,9 +77,11 @@ describe('ShareClass', () => {
     context.tenderlyFork.impersonateAddress = fundManager
     context.centrifuge.setSigner(context.tenderlyFork.signer)
 
-    const { identityValuation, accounting } = await context.centrifuge._protocolAddresses(chainId)
+    const { identityValuation, accounting } = await context.centrifuge._protocolAddresses(centId)
 
-    const accountExists = await context.centrifuge.getClient(chainId).readContract({
+    const accountExists = await (
+      await context.centrifuge.getClient(centId)
+    ).readContract({
       address: accounting,
       abi: ABI.Accounting,
       functionName: 'exists',
@@ -238,7 +240,7 @@ describe('ShareClass', () => {
       firstValueFrom(shareClass._restrictionManager(chainId)),
     ])
 
-    const client = context.centrifuge.getClient(chainId)
+    const client = await context.centrifuge.getClient(chainId)
 
     const isFrozen = async () => {
       return await client.readContract({
@@ -325,7 +327,7 @@ describe('ShareClass', () => {
 
     before(async () => {
       const { centrifuge } = context
-      const pool = new Pool(centrifuge, poolId.raw, chainId)
+      const pool = new Pool(centrifuge, poolId.raw)
       const shareClass = new ShareClass(centrifuge, pool, scId.raw)
       vault = await pool.vault(chainId, shareClass.id, assetId)
     })
@@ -453,7 +455,7 @@ describe('ShareClass', () => {
 
     before(async () => {
       const { centrifuge } = context
-      const pool = new Pool(centrifuge, poolId.raw, chainId)
+      const pool = new Pool(centrifuge, poolId.raw)
       const sc = new ShareClass(centrifuge, pool, scId.raw)
       vault = await pool.vault(chainId, sc.id, assetId)
       const defaultSharesAmount = Balance.fromFloat(100, 18)
@@ -506,7 +508,9 @@ describe('ShareClass', () => {
       ;[, investment] = await Promise.all([
         vault.shareClass.claimDeposit(assetId, investor),
         firstValueFrom(
-          vault.investment(investor).pipe(skipWhile((i) => !i.claimableDepositShares.eq(defaultSharesAmount.toBigInt())))
+          vault
+            .investment(investor)
+            .pipe(skipWhile((i) => !i.claimableDepositShares.eq(defaultSharesAmount.toBigInt())))
         ),
       ])
 
@@ -626,7 +630,7 @@ describe('ShareClass', () => {
   describe('claimRedeem', () => {
     it.skip('should be able to claim a redemption', async () => {
       const { centrifuge } = context
-      const pool = new Pool(centrifuge, poolId.raw, chainId)
+      const pool = new Pool(centrifuge, poolId.raw)
       const sc = new ShareClass(centrifuge, pool, scId.raw)
       const vault = await pool.vault(chainId, sc.id, assetId)
       const defaultSharesAmount = Balance.fromFloat(100, 18)
@@ -683,7 +687,9 @@ describe('ShareClass', () => {
       ;[, investment] = await Promise.all([
         shareClass.claimDeposit(assetId, investor),
         firstValueFrom(
-          vault.investment(investor).pipe(skipWhile((i) => !i.claimableDepositShares.eq(defaultSharesAmount.toBigInt())))
+          vault
+            .investment(investor)
+            .pipe(skipWhile((i) => !i.claimableDepositShares.eq(defaultSharesAmount.toBigInt())))
         ),
       ])
 
@@ -738,7 +744,7 @@ describe('ShareClass', () => {
 
     before(() => {
       const { centrifuge } = context
-      pool = new Pool(centrifuge, poolId.raw, chainId)
+      pool = new Pool(centrifuge, poolId.raw)
       shareClass = new ShareClass(centrifuge, pool, scId.raw)
     })
 
@@ -752,9 +758,11 @@ describe('ShareClass', () => {
 
       expect(tx.type).to.equal('TransactionConfirmed')
 
-      const protocolAddress = await context.centrifuge._protocolAddresses(chainId)
+      const protocolAddress = await context.centrifuge._protocolAddresses(centId)
 
-      const result = await context.centrifuge.getClient(chainId).readContract({
+      const result = await (
+        await context.centrifuge.getClient(centId)
+      ).readContract({
         address: protocolAddress.spoke,
         abi: ABI.Spoke,
         functionName: 'pricePoolPerShare',
@@ -768,7 +776,7 @@ describe('ShareClass', () => {
   // TODO - waiting for indexer.
   it.skip('gets all investors by vault with pending and claimable balances', async () => {
     const { centrifuge } = context
-    const pool = new Pool(centrifuge, poolId.raw, chainId)
+    const pool = new Pool(centrifuge, poolId.raw)
     const shareClass = new ShareClass(centrifuge, pool, scId.raw)
 
     const result = await firstValueFrom(shareClass.investmentsByVault(centId))

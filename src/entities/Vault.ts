@@ -28,7 +28,6 @@ const ESCROW_HOOK_ID = '0x000000000000000000000000000000000001cf60'
  */
 export class Vault extends Entity {
   pool: Pool
-  chainId: number
   /**
    * The contract address of the investment currency.
    * @internal
@@ -48,7 +47,6 @@ export class Vault extends Entity {
     public assetId: AssetId
   ) {
     super(_root, ['vault', network.centrifugeId, shareClass.id.toString(), asset.toLowerCase()])
-    this.chainId = 0 // Deprecated, will be removed
     this.pool = network.pool
     this._asset = asset.toLowerCase() as HexString
     this.address = address.toLowerCase() as HexString
@@ -84,12 +82,8 @@ export class Vault extends Entity {
    */
   isLinked() {
     return this._query(['linked'], () =>
-      combineLatest([
-        this._root._protocolAddresses(this.centrifugeId),
-        this._root.getClient(this.centrifugeId),
-        this._root._idToChain(this.centrifugeId),
-      ]).pipe(
-        switchMap(([{ spoke }, client, chainId]) =>
+      combineLatest([this._root._protocolAddresses(this.centrifugeId), this._root.getClient(this.centrifugeId)]).pipe(
+        switchMap(([{ spoke }, client]) =>
           defer(async () => {
             const details = await client.readContract({
               address: spoke,
@@ -106,7 +100,7 @@ export class Vault extends Entity {
                 eventName: ['LinkVault', 'UnlinkVault'],
                 filter: (events) => events.some((event) => event.args.vault.toLowerCase() === this.address),
               },
-              chainId
+              this.centrifugeId
             )
           )
         )
@@ -130,7 +124,6 @@ export class Vault extends Entity {
         this.pool._escrow(),
         this._isOperator(investorAddress),
         this._root.getClient(this.centrifugeId),
-        this._root._idToChain(this.centrifugeId),
       ]).pipe(
         switchMap(
           ([
@@ -142,7 +135,6 @@ export class Vault extends Entity {
             escrowAddress,
             isOperatorEnabled,
             client,
-            chainId,
           ]) =>
             combineLatest([
               this._root.balance(asset.address, investorAddress, this.centrifugeId),
@@ -209,18 +201,12 @@ export class Vault extends Entity {
                   isOperatorEnabled,
                   maxDeposit: new Balance(maxDeposit, asset.decimals),
                   claimableDepositShares: new Balance(isSyncDeposit ? 0n : maxMint, share.decimals),
-                  claimableDepositAssetEquivalent: new Balance(
-                    isSyncDeposit ? 0n : maxDeposit,
-                    asset.decimals
-                  ),
+                  claimableDepositAssetEquivalent: new Balance(isSyncDeposit ? 0n : maxDeposit, asset.decimals),
                   claimableRedeemAssets: new Balance(actualMaxWithdraw, asset.decimals),
                   claimableRedeemSharesEquivalent: new Balance(actualMaxRedeem, share.decimals),
                   pendingDepositAssets: new Balance(pendingDeposit, asset.decimals),
                   pendingRedeemShares: new Balance(pendingRedeem, share.decimals),
-                  claimableCancelDepositAssets: new Balance(
-                    claimableCancelDepositAssets,
-                    asset.decimals
-                  ),
+                  claimableCancelDepositAssets: new Balance(claimableCancelDepositAssets, asset.decimals),
                   claimableCancelRedeemShares: new Balance(claimableCancelRedeemShares, share.decimals),
                   hasPendingCancelDepositRequest,
                   hasPendingCancelRedeemRequest,
@@ -261,7 +247,7 @@ export class Vault extends Entity {
                           (event.args.scId === this.shareClass.id.raw && event.args.asset.toLowerCase() === this._asset)
                       ),
                   },
-                  chainId
+                  this.centrifugeId
                 )
               ),
             ])
@@ -286,15 +272,14 @@ export class Vault extends Entity {
     return this._transact(async function* (ctx) {
       const [investment, { vaultRouter }, isSyncDeposit, signingAddressCode] = await Promise.all([
         self.investment(ctx.signingAddress),
-        self._root._protocolAddresses(self.chainId),
+        self._root._protocolAddresses(self.centrifugeId),
         self._isSyncDeposit(),
         ctx.publicClient.getCode({ address: ctx.signingAddress }),
       ])
 
       if (!isSyncDeposit) throw new Error('Vault does not support synchronous deposits')
 
-      const { asset, assetBalance, assetAllowance, isAllowedToDeposit } =
-        investment
+      const { asset, assetBalance, assetAllowance, isAllowedToDeposit } = investment
       const supportsPermit = asset.supportsPermit && signingAddressCode === undefined
       const needsApproval = assetAllowance.lt(amount)
 
@@ -348,17 +333,16 @@ export class Vault extends Entity {
     const self = this
     return this._transact(async function* (ctx) {
       const [estimate, investment, { vaultRouter }, isSyncDeposit, signingAddressCode] = await Promise.all([
-        self._root._estimate(self.chainId, { centId: self.pool.id.centrifugeId }, MessageType.Request),
+        self._root._estimate(self.centrifugeId, { centId: self.pool.id.centrifugeId }, MessageType.Request),
         self.investment(ctx.signingAddress),
-        self._root._protocolAddresses(self.chainId),
+        self._root._protocolAddresses(self.centrifugeId),
         self._isSyncDeposit(),
         ctx.publicClient.getCode({ address: ctx.signingAddress }),
       ])
 
       if (isSyncDeposit) throw new Error('Vault does not support asynchronous deposits')
 
-      const { asset, assetBalance, assetAllowance, isAllowedToDeposit } =
-        investment
+      const { asset, assetBalance, assetAllowance, isAllowedToDeposit } = investment
       const supportsPermit = asset.supportsPermit && signingAddressCode === undefined
       const needsApproval = assetAllowance.lt(amount)
 
@@ -408,15 +392,7 @@ export class Vault extends Entity {
         encodeFunctionData({
           abi: ABI.VaultRouter,
           functionName: 'permit',
-          args: [
-            asset.address,
-            spender,
-            amount.toBigInt(),
-            permit.deadline,
-            permit.v,
-            permit.r,
-            permit.s,
-          ],
+          args: [asset.address, spender, amount.toBigInt(), permit.deadline, permit.v, permit.r, permit.s],
         })
       yield* doTransaction('Invest', ctx, () =>
         ctx.walletClient.writeContract({
@@ -437,9 +413,9 @@ export class Vault extends Entity {
     const self = this
     return this._transact(async function* (ctx) {
       const [estimate, investment, { vaultRouter }] = await Promise.all([
-        self._root._estimate(self.chainId, { centId: self.pool.id.centrifugeId }, MessageType.Request),
+        self._root._estimate(self.centrifugeId, { centId: self.pool.id.centrifugeId }, MessageType.Request),
         self.investment(ctx.signingAddress),
-        self._root._protocolAddresses(self.chainId),
+        self._root._protocolAddresses(self.centrifugeId),
       ])
 
       if (investment.pendingDepositAssets.isZero()) throw new Error('No order to cancel')
@@ -464,9 +440,9 @@ export class Vault extends Entity {
     const self = this
     return this._transact(async function* (ctx) {
       const [estimate, investment, { vaultRouter }, isOperator] = await Promise.all([
-        self._root._estimate(self.chainId, { centId: self.pool.id.centrifugeId }, MessageType.Request),
+        self._root._estimate(self.centrifugeId, { centId: self.pool.id.centrifugeId }, MessageType.Request),
         self.investment(ctx.signingAddress),
-        self._root._protocolAddresses(self.chainId),
+        self._root._protocolAddresses(self.centrifugeId),
         self._isOperator(ctx.signingAddress),
       ])
 
@@ -517,9 +493,9 @@ export class Vault extends Entity {
     const self = this
     return this._transact(async function* (ctx) {
       const [estimate, investment, { vaultRouter }] = await Promise.all([
-        self._root._estimate(self.chainId, { centId: self.pool.id.centrifugeId }, MessageType.Request),
+        self._root._estimate(self.centrifugeId, { centId: self.pool.id.centrifugeId }, MessageType.Request),
         self.investment(ctx.signingAddress),
-        self._root._protocolAddresses(self.chainId),
+        self._root._protocolAddresses(self.centrifugeId),
       ])
 
       if (investment.pendingRedeemShares.isZero()) throw new Error('No order to cancel')
@@ -547,7 +523,7 @@ export class Vault extends Entity {
     return this._transact(async function* (ctx) {
       const [investment, { vaultRouter }, isOperator] = await Promise.all([
         self.investment(ctx.signingAddress),
-        self._root._protocolAddresses(self.chainId),
+        self._root._protocolAddresses(self.centrifugeId),
         self._isOperator(ctx.signingAddress),
       ])
       const receiverAddress = receiver || ctx.signingAddress

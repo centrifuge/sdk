@@ -40,7 +40,7 @@ describe('Centrifuge', () => {
 
   it('should be connected to sepolia', async () => {
     const centId = await context.centrifuge.id(chainId)
-    const client = await firstValueFrom(context.centrifuge.getClient(centId))
+    const client = await context.centrifuge.getClient(centId)
     expect(client?.chain.id).to.equal(chainId)
     const chains = context.centrifuge.chains
     expect(chains).to.include(chainId)
@@ -77,7 +77,7 @@ describe('Centrifuge', () => {
       'balanceSheet',
     ] satisfies (keyof ProtocolContracts)[]
 
-    const result = await context.centrifuge._protocolAddresses(chainId)
+    const result = await context.centrifuge._protocolAddresses(centId)
 
     for (const key of expectedContractKeys) {
       expect(result[key].startsWith('0x'), `Expected key ${key} to be a contract address`).to.be.true
@@ -91,11 +91,11 @@ describe('Centrifuge', () => {
     })
 
     it('should fetch a currency', async () => {
-      const currency = await context.centrifuge.currency(someErc20, chainId)
+      const currency = await context.centrifuge.currency(someErc20, centId)
       expect(currency.decimals).to.equal(6)
       expect(currency.symbol).to.equal('USDC')
       expect(currency.name).to.equal('USD Coin')
-      expect(currency.chainId).to.equal(chainId)
+      expect(currency.centrifugeId).to.equal(centId)
       expect(currency.address.toLowerCase()).to.equal(someErc20.toLowerCase())
       expect(currency.supportsPermit).to.be.true
     })
@@ -115,20 +115,20 @@ describe('Centrifuge', () => {
     })
 
     it('should estimate the gas for a bridge transaction', async () => {
-      const estimate = await context.centrifuge._estimate(chainId, { chainId }, MessageType.NotifyPool)
+      const estimate = await context.centrifuge._estimate(centId, { chainId }, MessageType.NotifyPool)
       expect(estimate).to.equal(0n)
 
-      const estimate2 = await context.centrifuge._estimate(chainId, { centId: 2 }, MessageType.NotifyPool)
+      const estimate2 = await context.centrifuge._estimate(centId, { centId: 2 }, MessageType.NotifyPool)
       expect(typeof estimate2).to.equal('bigint')
     })
 
     it('should fetch the value of an asset in relation to another one', async () => {
       const quote = await context.centrifuge._getQuote(
-        (await context.centrifuge._protocolAddresses(chainId)).identityValuation,
+        (await context.centrifuge._protocolAddresses(centId)).identityValuation,
         Balance.fromFloat(100, 6),
         assetId,
         AssetId.fromIso(840),
-        chainId
+        centId
       )
       expect(quote).to.instanceOf(Balance)
       expect(quote.decimals).to.equal(18)
@@ -348,7 +348,7 @@ describe('Centrifuge', () => {
       const centrifuge = new Centrifuge({ environment: 'testnet' })
       const tUSD = '0x8503b4452Bf6238cC76CdbEE223b46d7196b1c93'
       const user = '0x423420Ae467df6e90291fd0252c0A8a637C1e03f'
-      await centrifuge.balance(tUSD, user, chainId)
+      await centrifuge.balance(tUSD, user, centId)
       // One call to get the metadata, one to get the balance, and one to poll events
       expect(fetchSpy.getCalls().length).to.equal(3)
     })
@@ -363,7 +363,7 @@ describe('Centrifuge', () => {
 
       const tx = cent._transact(async function* (ctx) {
         yield* doTransaction('Test', { ...ctx, publicClient }, async () => '0x1')
-      }, chainId)
+      }, centId)
       let error
       try {
         await tx
@@ -383,7 +383,7 @@ describe('Centrifuge', () => {
 
       const tx = cent._transact(async function* (ctx) {
         yield* doTransaction('Test', { ...ctx, publicClient }, async () => '0x1')
-      }, chainId)
+      }, centId)
 
       const statuses: any = await firstValueFrom(tx.pipe(take(2), toArray()))
       expect(statuses[0]).to.eql({
@@ -471,13 +471,14 @@ describe('Centrifuge', () => {
   describe('Batch', () => {
     it('can batch transactions', async () => {
       const { centrifuge } = context
-      const pool = new Pool(centrifuge, poolId.raw, chainId)
+      const pool = new Pool(centrifuge, poolId.raw)
 
       context.tenderlyFork.impersonateAddress = poolManager
       context.centrifuge.setSigner(context.tenderlyFork.signer)
 
       const newManager = randomAddress()
       const newManager2 = randomAddress()
+      const centId = await context.centrifuge.id(chainId)
       const result = await context.centrifuge._experimental_batch('Test', [
         pool.updatePoolManagers([{ address: newManager, canManage: true }]),
         pool.updateBalanceSheetManagers([{ centrifugeId: centId, address: newManager2, canManage: true }]),
@@ -485,7 +486,6 @@ describe('Centrifuge', () => {
       expect(result.type).to.equal('TransactionConfirmed')
       expect((result as any).title).to.equal('Test')
 
-      const centId = await context.centrifuge.id(chainId)
       const [{ hubRegistry, balanceSheet }, client] = await Promise.all([
         context.centrifuge._protocolAddresses(centId),
         firstValueFrom(context.centrifuge.getClient(centId)),
@@ -522,12 +522,12 @@ describe('Centrifuge', () => {
       context.tenderlyFork.impersonateAddress = poolManager
       centrifuge.setSigner(context.tenderlyFork.signer)
 
-      const result = await centrifuge.registerAsset(chainId, chainId, assetAddress)
+      const result = await centrifuge.registerAsset(centId, centId, assetAddress)
       expect(result.type).to.equal('TransactionConfirmed')
     })
 
     it('should create a pool', async () => {
-      const { guardian } = await context.centrifuge._protocolAddresses(chainId)
+      const { guardian } = await context.centrifuge._protocolAddresses(centId)
       const centrifugeWithPin = new Centrifuge({
         environment: 'testnet',
         pinJson: async () => {

@@ -249,7 +249,7 @@ const account = privateKeyToAccount('0xPrivateKey')
 cent.setSigner(account)
 
 async function main() {
-  const client = cent.getClient(chainId)
+  const client = cent.getClient(centrifugeId)
 
   const pool = await cent.pool(new PoolId('PoolId'))
   const scId = new ShareClassId('0x00010000000000010000000000000001')

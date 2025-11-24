@@ -122,12 +122,8 @@ export class PoolNetwork extends Entity {
    */
   isActive() {
     return this._query(['isActive'], () =>
-      combineLatest([
-        this._root._protocolAddresses(this.centrifugeId),
-        this._root.getClient(this.centrifugeId),
-        this._root._idToChain(this.centrifugeId),
-      ]).pipe(
-        switchMap(([{ spoke }, client, chainId]) => {
+      combineLatest([this._root._protocolAddresses(this.centrifugeId), this._root.getClient(this.centrifugeId)]).pipe(
+        switchMap(([{ spoke }, client]) => {
           return defer(
             () =>
               client.readContract({
@@ -148,7 +144,7 @@ export class PoolNetwork extends Entity {
                   })
                 },
               },
-              chainId
+              this.centrifugeId
             )
           )
         })
@@ -613,12 +609,8 @@ export class PoolNetwork extends Entity {
    */
   _share(scId: ShareClassId, throwOnNullAddress = true) {
     return this._query(['share', scId.toString(), throwOnNullAddress], () =>
-      combineLatest([
-        this._root._protocolAddresses(this.centrifugeId),
-        this._root.getClient(this.centrifugeId),
-        this._root._idToChain(this.centrifugeId),
-      ]).pipe(
-        switchMap(([{ spoke }, client, chainId]) =>
+      combineLatest([this._root._protocolAddresses(this.centrifugeId), this._root.getClient(this.centrifugeId)]).pipe(
+        switchMap(([{ spoke }, client]) =>
           defer(async () => {
             try {
               const address = await client.readContract({
@@ -630,7 +622,9 @@ export class PoolNetwork extends Entity {
               return address.toLowerCase() as HexString
             } catch {
               if (throwOnNullAddress) {
-                throw new Error(`Share class ${scId} not found for pool ${this.pool.id} on centrifuge network ${this.centrifugeId}`)
+                throw new Error(
+                  `Share class ${scId} not found for pool ${this.pool.id} on centrifuge network ${this.centrifugeId}`
+                )
               }
               return NULL_ADDRESS
             }
@@ -644,7 +638,7 @@ export class PoolNetwork extends Entity {
                   return events.some((event) => event.args.poolId === this.pool.id.raw && event.args.scId === scId.raw)
                 },
               },
-              chainId
+              this.centrifugeId
             )
           )
         )

@@ -19,11 +19,7 @@ export class Pool extends Entity {
   id: PoolId
 
   /** @internal */
-  constructor(
-    _root: Centrifuge,
-    id: string | bigint | PoolId,
-    public chainId: number
-  ) {
+  constructor(_root: Centrifuge, id: string | bigint | PoolId) {
     super(_root, ['pool', String(id)])
     this.id = id instanceof PoolId ? id : new PoolId(id)
   }
@@ -88,7 +84,7 @@ export class Pool extends Entity {
                   })
                 },
               },
-              this.chainId
+              this.centrifugeId
             )
           )
         )
@@ -210,9 +206,11 @@ export class Pool extends Entity {
    */
   networks() {
     return this._query(['poolNetworks', this.id.toString()], () => {
-      return of(
-        this._root.chains.map((chainId) => {
-          return new PoolNetwork(this._root, this, chainId)
+      return this._root._deployments().pipe(
+        map((deployments) => {
+          return deployments.blockchains.items.map(
+            (chain) => new PoolNetwork(this._root, this, Number(chain.centrifugeId))
+          )
         })
       )
     })
@@ -277,7 +275,10 @@ export class Pool extends Entity {
    */
   currency() {
     return this._query(['currency', this.id.toString()], () => {
-      return combineLatest([this._root._protocolAddresses(this.centrifugeId), this._root.getClient(this.centrifugeId)]).pipe(
+      return combineLatest([
+        this._root._protocolAddresses(this.centrifugeId),
+        this._root.getClient(this.centrifugeId),
+      ]).pipe(
         switchMap(([{ hubRegistry }, client]) => {
           return client.readContract({
             address: hubRegistry,
@@ -327,7 +328,7 @@ export class Pool extends Entity {
           args: [self.id.raw, toHex(cid)],
         }),
       })
-    }, this.chainId)
+    }, this.centrifugeId)
   }
 
   update(
@@ -601,7 +602,7 @@ export class Pool extends Entity {
         data: batch,
         messages,
       })
-    }, this.chainId)
+    }, this.centrifugeId)
   }
 
   /**
@@ -610,7 +611,7 @@ export class Pool extends Entity {
   updatePoolManagers(updates: { address: HexString; canManage: boolean }[]) {
     const self = this
     return this._transact(async function* (ctx) {
-      const { hub } = await self._root._protocolAddresses(self.chainId)
+      const { hub } = await self._root._protocolAddresses(self.centrifugeId)
 
       const existingManagers = await self.poolManagers()
       const leftManagers = new Map<string, boolean>()
@@ -655,7 +656,7 @@ export class Pool extends Entity {
         contract: hub,
         data: batch,
       })
-    }, this.chainId)
+    }, this.centrifugeId)
   }
 
   /**
@@ -664,9 +665,7 @@ export class Pool extends Entity {
   updateBalanceSheetManagers(updates: { centrifugeId: CentrifugeId; address: HexString; canManage: boolean }[]) {
     const self = this
     return this._transact(async function* (ctx) {
-      const [{ hub }] = await Promise.all([
-        self._root._protocolAddresses(self.chainId),
-      ])
+      const [{ hub }] = await Promise.all([self._root._protocolAddresses(self.centrifugeId)])
       const batch = updates.map(({ centrifugeId, address, canManage }) =>
         encodeFunctionData({
           abi: ABI.Hub,
@@ -685,13 +684,13 @@ export class Pool extends Entity {
         data: batch,
         messages,
       })
-    }, this.chainId)
+    }, this.centrifugeId)
   }
 
   createAccounts(accounts: { accountId: number; isDebitNormal: boolean }[]) {
     const self = this
     return this._transact(async function* (ctx) {
-      const { hub } = await self._root._protocolAddresses(self.chainId)
+      const { hub } = await self._root._protocolAddresses(self.centrifugeId)
       const txBatch = accounts.map(({ accountId, isDebitNormal }) =>
         encodeFunctionData({
           abi: ABI.Hub,
@@ -704,7 +703,7 @@ export class Pool extends Entity {
         contract: hub,
         data: txBatch,
       })
-    }, this.chainId)
+    }, this.centrifugeId)
   }
 
   /**
@@ -712,12 +711,8 @@ export class Pool extends Entity {
    */
   _shareClassIds() {
     return this._query(['shareClasses', this.id.toString()], () =>
-      combineLatest([
-        this._root._protocolAddresses(this.centrifugeId),
-        this._root.getClient(this.centrifugeId),
-        this._root._idToChain(this.centrifugeId),
-      ]).pipe(
-        switchMap(([{ shareClassManager }, client, chainId]) =>
+      combineLatest([this._root._protocolAddresses(this.centrifugeId), this._root.getClient(this.centrifugeId)]).pipe(
+        switchMap(([{ shareClassManager }, client]) =>
           defer(async () => {
             const count = await client.readContract({
               address: shareClassManager,
@@ -736,7 +731,7 @@ export class Pool extends Entity {
                   return events.some((event) => event.args.poolId === this.id.raw)
                 },
               },
-              chainId
+              this.centrifugeId
             )
           )
         )
@@ -764,9 +759,8 @@ export class Pool extends Entity {
   /** @internal */
   _managers() {
     return this._query(null, () =>
-      combineLatest([
-        this._root._deployments(),
-        this._root._queryIndexer<{
+      this._root
+        ._queryIndexer<{
           poolManagers: {
             items: {
               isHubManager: boolean
@@ -791,19 +785,19 @@ export class Pool extends Entity {
           {
             poolId: this.id.toString(),
           }
-        ),
-      ]).pipe(
-        map(([deployments, { poolManagers }]) => {
-          return poolManagers.items.map((manager) => {
-            return {
-              address: manager.address.toLowerCase() as HexString,
-              isHubManager: manager.isHubManager,
-              isBalancesheetManager: manager.isBalancesheetManager,
-              centrifugeId: Number(manager.centrifugeId),
-            }
+        )
+        .pipe(
+          map(({ poolManagers }) => {
+            return poolManagers.items.map((manager) => {
+              return {
+                address: manager.address.toLowerCase() as HexString,
+                isHubManager: manager.isHubManager,
+                isBalancesheetManager: manager.isBalancesheetManager,
+                centrifugeId: Number(manager.centrifugeId),
+              }
+            })
           })
-        })
-      )
+        )
     )
   }
 }

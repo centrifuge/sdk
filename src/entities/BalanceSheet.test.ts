@@ -21,7 +21,7 @@ describe('BalanceSheet', () => {
 
   beforeEach(() => {
     const { centrifuge } = context
-    const pool = new Pool(centrifuge, poolId.raw, chainId)
+    const pool = new Pool(centrifuge, poolId.raw)
     const poolNetwork = new PoolNetwork(centrifuge, pool, centId)
     const shareClass = new ShareClass(centrifuge, pool, scId.raw)
     balanceSheet = new BalanceSheet(centrifuge, poolNetwork, shareClass)
@@ -61,7 +61,9 @@ describe('BalanceSheet', () => {
       await balanceSheet.shareClass.setMaxAssetPriceAge(assetId, 9999999999999)
       await balanceSheet.shareClass.notifyAssetPrice(assetId)
 
-      await balanceSheet.pool.updateBalanceSheetManagers([{ centrifugeId: centId, address: poolManager, canManage: true }])
+      await balanceSheet.pool.updateBalanceSheetManagers([
+        { centrifugeId: centId, address: poolManager, canManage: true },
+      ])
 
       await balanceSheet.withdraw(assetId, poolManager, amount)
 
@@ -106,7 +108,9 @@ describe('BalanceSheet', () => {
         context.tenderlyFork.impersonateAddress = poolManager
         context.centrifuge.setSigner(context.tenderlyFork.signer)
 
-        await balanceSheet.pool.updateBalanceSheetManagers([{ centrifugeId: centId, address: poolManager, canManage: true }])
+        await balanceSheet.pool.updateBalanceSheetManagers([
+          { centrifugeId: centId, address: poolManager, canManage: true },
+        ])
 
         const amount = Balance.fromFloat(100, 18)
         const pricePerShare = Price.fromFloat(1)

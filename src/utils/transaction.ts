@@ -69,7 +69,7 @@ export async function* wrapTransaction(
     const messagesEstimates = messages
       ? await Promise.all(
           Object.entries(messages).map(async ([centId, messageTypes]) =>
-            ctx.root._estimate(ctx.chainId, { centId: Number(centId) }, messageTypes)
+            ctx.root._estimate(ctx.centrifugeId, { centId: Number(centId) }, messageTypes)
           )
         )
       : []
@@ -173,8 +173,9 @@ async function* waitForSafeTransaction(
   hash: HexString,
   ctx: TransactionContext
 ): AsyncGenerator<OperationStatus> {
+  const chainId = await ctx.root._idToChain(ctx.centrifugeId)
   // First check if tx is actually a safe tx
-  let safeTx = await withRetry(() => getSafeTransaction(hash, ctx.chainId), {
+  let safeTx = await withRetry(() => getSafeTransaction(hash, chainId), {
     retryCount: 5,
     delay: 5000,
   })
@@ -183,7 +184,7 @@ async function* waitForSafeTransaction(
 
   safeTx = await withRetry(
     async () => {
-      const status = await getSafeTransaction(hash, ctx.chainId)
+      const status = await getSafeTransaction(hash, chainId)
       if (status.isExecuted) return status
       throw new Error(`Timeout waiting for safe transaction to be executed. Transaction hash: ${hash}`)
     },
