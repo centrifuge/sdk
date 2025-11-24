@@ -496,7 +496,10 @@ describe('MerkleProofManager', () => {
     const template = {
       id: 'template-1',
       name: 'Default Template',
-      actions: [{ policyIndex: 0 }, { policyIndex: 1 }],
+      actions: [
+        { policyIndex: 0, defaultValues: ['0x', 987654321000] },
+        { policyIndex: 1, defaultValues: [987654321000, '0x'] },
+      ],
       createdAt: new Date().toISOString(),
       updatedAt: undefined,
     }
