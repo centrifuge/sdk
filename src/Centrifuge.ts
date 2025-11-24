@@ -578,7 +578,7 @@ export class Centrifuge {
    */
   registerAsset(
     originCentrifugeId: CentrifugeId,
-    registerOnCentrifugeId: number,
+    registerOnCentrifugeId: CentrifugeId,
     assetAddress: HexString,
     tokenId: number | bigint = 0
   ) {
@@ -586,7 +586,7 @@ export class Centrifuge {
     return this._transact(async function* (ctx) {
       const [addresses, estimate] = await Promise.all([
         self._protocolAddresses(originCentrifugeId),
-        self._estimate(originCentrifugeId, { centId: registerOnCentrifugeId }, MessageType.RegisterAsset),
+        self._estimate(originCentrifugeId, registerOnCentrifugeId, MessageType.RegisterAsset),
       ])
       yield* doTransaction('Register asset', ctx, () =>
         ctx.walletClient.writeContract({
@@ -603,17 +603,11 @@ export class Centrifuge {
   /**
    * Repay an underpaid batch of messages on the Gateway
    */
-  repayBatch(
-    fromCentrifugeId: number,
-    to: { chainId: number } | { centId: number },
-    batch: HexString,
-    extraPayment = 0n
-  ) {
+  repayBatch(fromCentrifugeId: number, toCentrifugeId: number, batch: HexString, extraPayment = 0n) {
     const self = this
     return this._transact(async function* (ctx) {
-      const [addresses, toCentId, client] = await Promise.all([
+      const [addresses, client] = await Promise.all([
         self._protocolAddresses(fromCentrifugeId),
-        'chainId' in to ? self.id(to.chainId) : to.centId,
         self.getClient(fromCentrifugeId),
       ])
       const batchHash = keccak256(batch)
@@ -621,7 +615,7 @@ export class Centrifuge {
         address: addresses.gateway,
         abi: ABI.Gateway,
         functionName: 'underpaid',
-        args: [toCentId, batchHash],
+        args: [toCentrifugeId, batchHash],
       })
       if (counter === 0n) {
         throw new Error(`Batch is not underpaid and can't be repaid. Batch hash: "${batchHash}"`)
@@ -630,7 +624,7 @@ export class Centrifuge {
         address: addresses.multiAdapter,
         abi: ABI.MultiAdapter,
         functionName: 'estimate',
-        args: [toCentId, batch, gasLimit],
+        args: [toCentrifugeId, batch, gasLimit],
       })
 
       yield* doTransaction('Repay', ctx, () =>
@@ -638,7 +632,7 @@ export class Centrifuge {
           address: addresses.gateway,
           abi: ABI.Gateway,
           functionName: 'repay',
-          args: [toCentId, batch],
+          args: [toCentrifugeId, batch],
           value: estimate + extraPayment,
         })
       )
@@ -1169,16 +1163,15 @@ export class Centrifuge {
    * @internal
    */
   _estimate(
-    fromCentrifugeId: number,
-    to: { chainId: number } | { centId: number },
+    fromCentrifugeId: CentrifugeId,
+    toCentrifugeId: CentrifugeId,
     messageType: MessageTypeWithSubType | MessageTypeWithSubType[]
   ) {
-    return this._query(['estimate', fromCentrifugeId, to, messageType], () =>
+    return this._query(['estimate', fromCentrifugeId, toCentrifugeId, messageType], () =>
       combineLatest([this._protocolAddresses(fromCentrifugeId), this.getClient(fromCentrifugeId)]).pipe(
         switchMap(([{ multiAdapter, gasService }, client]) => {
           const types = Array.isArray(messageType) ? messageType : [messageType]
           return combineLatest([
-            'chainId' in to ? this.id(to.chainId) : of(to.centId),
             ...types.map((typeAndMaybeSubtype) => {
               const type = typeof typeAndMaybeSubtype === 'number' ? typeAndMaybeSubtype : typeAndMaybeSubtype.type
               const subtype = typeof typeAndMaybeSubtype === 'number' ? undefined : typeAndMaybeSubtype.subtype
@@ -1191,12 +1184,12 @@ export class Centrifuge {
               })
             }),
           ]).pipe(
-            switchMap(async ([toCentId, ...gasLimits]) => {
+            switchMap(async ([...gasLimits]) => {
               const estimate = await client.readContract({
                 address: multiAdapter,
                 abi: ABI.MultiAdapter,
                 functionName: 'estimate',
-                args: [toCentId, '0x0', gasLimits.reduce((acc, val) => acc + val, 0n)],
+                args: [toCentrifugeId, '0x0', gasLimits.reduce((acc, val) => acc + val, 0n)],
               })
               return (estimate * 3n) / 2n // Add 50% buffer to the estimate
             })

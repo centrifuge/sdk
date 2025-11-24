@@ -333,7 +333,7 @@ export class Vault extends Entity {
     const self = this
     return this._transact(async function* (ctx) {
       const [estimate, investment, { vaultRouter }, isSyncDeposit, signingAddressCode] = await Promise.all([
-        self._root._estimate(self.centrifugeId, { centId: self.pool.id.centrifugeId }, MessageType.Request),
+        self._root._estimate(self.centrifugeId, self.pool.id.centrifugeId, MessageType.Request),
         self.investment(ctx.signingAddress),
         self._root._protocolAddresses(self.centrifugeId),
         self._isSyncDeposit(),
@@ -413,7 +413,7 @@ export class Vault extends Entity {
     const self = this
     return this._transact(async function* (ctx) {
       const [estimate, investment, { vaultRouter }] = await Promise.all([
-        self._root._estimate(self.centrifugeId, { centId: self.pool.id.centrifugeId }, MessageType.Request),
+        self._root._estimate(self.centrifugeId, self.pool.id.centrifugeId, MessageType.Request),
         self.investment(ctx.signingAddress),
         self._root._protocolAddresses(self.centrifugeId),
       ])
@@ -440,7 +440,7 @@ export class Vault extends Entity {
     const self = this
     return this._transact(async function* (ctx) {
       const [estimate, investment, { vaultRouter }, isOperator] = await Promise.all([
-        self._root._estimate(self.centrifugeId, { centId: self.pool.id.centrifugeId }, MessageType.Request),
+        self._root._estimate(self.centrifugeId, self.pool.id.centrifugeId, MessageType.Request),
         self.investment(ctx.signingAddress),
         self._root._protocolAddresses(self.centrifugeId),
         self._isOperator(ctx.signingAddress),
@@ -493,7 +493,7 @@ export class Vault extends Entity {
     const self = this
     return this._transact(async function* (ctx) {
       const [estimate, investment, { vaultRouter }] = await Promise.all([
-        self._root._estimate(self.centrifugeId, { centId: self.pool.id.centrifugeId }, MessageType.Request),
+        self._root._estimate(self.centrifugeId, self.pool.id.centrifugeId, MessageType.Request),
         self.investment(ctx.signingAddress),
         self._root._protocolAddresses(self.centrifugeId),
       ])

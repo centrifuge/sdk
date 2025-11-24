@@ -115,10 +115,10 @@ describe('Centrifuge', () => {
     })
 
     it('should estimate the gas for a bridge transaction', async () => {
-      const estimate = await context.centrifuge._estimate(centId, { chainId }, MessageType.NotifyPool)
+      const estimate = await context.centrifuge._estimate(centId, centId, MessageType.NotifyPool)
       expect(estimate).to.equal(0n)
 
-      const estimate2 = await context.centrifuge._estimate(centId, { centId: 2 }, MessageType.NotifyPool)
+      const estimate2 = await context.centrifuge._estimate(centId, 2, MessageType.NotifyPool)
       expect(typeof estimate2).to.equal('bigint')
     })
 

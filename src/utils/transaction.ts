@@ -21,6 +21,7 @@ import type {
   Signer,
   TransactionContext,
 } from '../types/transaction.js'
+import { CentrifugeId } from './types.js'
 
 class TransactionError extends Error {
   override name = 'TransactionError'
@@ -51,7 +52,7 @@ export async function* wrapTransaction(
     // Messages to estimate gas for, that will be sent as a result of the transaction, separated by Centrifuge ID.
     // Used to estimate the payment for the transaction.
     // It is assumed that the messages belong to a single pool.
-    messages?: Record<number /* Centrifuge ID */, MessageTypeWithSubType[]>
+    messages?: Record<CentrifugeId, MessageTypeWithSubType[]>
   },
   options: {
     simulate: boolean
@@ -69,7 +70,7 @@ export async function* wrapTransaction(
     const messagesEstimates = messages
       ? await Promise.all(
           Object.entries(messages).map(async ([centId, messageTypes]) =>
-            ctx.root._estimate(ctx.centrifugeId, { centId: Number(centId) }, messageTypes)
+            ctx.root._estimate(ctx.centrifugeId, Number(centId), messageTypes)
           )
         )
       : []
