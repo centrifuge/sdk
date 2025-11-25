@@ -29,15 +29,22 @@ export declare class SolanaManager {
      */
     get signer(): Keypair | null;
     /**
+     * Get account info for a given address
+     * @param address - The public key or address string
+     */
+    accountInfo(address: PublicKey | string): import("../types/query.js").Query<import("@solana/web3.js").AccountInfo<Buffer> | null>;
+    /**
      * Get the balance of a Solana account in lamports
      * @param address - The public key or address string
      */
     balance(address: PublicKey | string): import("../types/query.js").Query<number>;
     /**
-     * Get account info for a given address
-     * @param address - The public key or address string
+     * Get the USDC balance for a given Solana wallet address
+     * Returns the balance as a Balance object
+     * @param address - The wallet's public key or address string
+     * @returns Observable that emits the USDC balance
      */
-    accountInfo(address: PublicKey | string): import("../types/query.js").Query<import("@solana/web3.js").AccountInfo<Buffer> | null>;
+    usdcBalance(address: PublicKey | string): import("../types/query.js").Query<Balance>;
     /**
      * Transfer SOL from the signer to another account
      * Returns an observable that emits transaction status updates
