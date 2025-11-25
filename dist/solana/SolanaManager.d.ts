@@ -1,10 +1,11 @@
 import { Observable } from 'rxjs';
 import { Connection, Keypair, PublicKey, TransactionSignature } from '@solana/web3.js';
-import { SolanaClient, SolanaConfig } from './SolanaClient.js';
+import { SolanaClient } from './SolanaClient.js';
 import type { Centrifuge } from '../Centrifuge.js';
 import { Balance } from '../utils/BigInt.js';
 import type { ShareClassId } from '../utils/types.js';
 import { type SolanaWalletAdapter, type SolanaTransactionStatus } from './types/wallet.js';
+import type { SolanaConfig } from './types/config.js';
 /**
  * Manages Solana operations within the Centrifuge SDK.
  * This class provides Solana-specific functionality

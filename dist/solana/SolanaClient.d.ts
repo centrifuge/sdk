@@ -1,10 +1,6 @@
-import { Connection, PublicKey, Commitment } from '@solana/web3.js';
+import { Connection, PublicKey } from '@solana/web3.js';
 import { Observable } from 'rxjs';
-export interface SolanaConfig {
-    rpcUrl: string;
-    commitment?: Commitment;
-    wsEndpoint?: string;
-}
+import type { SolanaConfig } from './types/config.js';
 /**
  * Manages Solana blockchain connections
  * Similar to how viem clients are managed for EVM chains

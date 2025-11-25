@@ -13,9 +13,27 @@ export class SolanaManager {
     #client;
     #root;
     #signer = null;
+    #solanaConfig;
     constructor(root, config) {
         this.#root = root;
+        this.#solanaConfig = config;
         this.#client = new SolanaClient(config);
+    }
+    /**
+     * Get the Solana-specific environment
+     * Maps EVM environment to Solana environment, with optional override from config
+     * @internal
+     */
+    #getSolanaEnvironment() {
+        // If explicitly set in Solana config, use that
+        if (this.#solanaConfig.environment) {
+            return this.#solanaConfig.environment;
+        }
+        // Otherwise, map from the main SDK environment
+        // EVM 'testnet' -> Solana 'devnet' (Solana's primary development network)
+        // EVM 'mainnet' -> Solana 'mainnet'
+        const evmEnvironment = this.#root.config.environment;
+        return evmEnvironment === 'testnet' ? 'devnet' : 'mainnet';
     }
     /**
      * Get the Solana client
@@ -77,8 +95,8 @@ export class SolanaManager {
                 ;
                 (async () => {
                     try {
-                        const environment = this.#root.config.environment;
-                        const usdcMint = new PublicKey(getUsdcMintAddress(environment));
+                        const solanaEnvironment = this.#getSolanaEnvironment();
+                        const usdcMint = new PublicKey(getUsdcMintAddress(solanaEnvironment));
                         const tokenAccount = await getAssociatedTokenAddress(usdcMint, pubkey);
                         const accountInfo = await this.connection.getTokenAccountBalance(tokenAccount);
                         const balance = new Balance(BigInt(accountInfo.value.amount), 6);
@@ -175,17 +193,17 @@ export class SolanaManager {
                     if (!amount.gt(0n)) {
                         throw new SolanaTransactionError('Investment amount must be greater than 0.', SolanaErrorCode.INVALID_AMOUNT);
                     }
-                    const environment = this.#root.config.environment;
-                    const poolConfig = getSolanaPoolAddress(shareClassId.toString(), environment);
+                    const solanaEnvironment = this.#getSolanaEnvironment();
+                    const poolConfig = getSolanaPoolAddress(shareClassId.toString(), solanaEnvironment);
                     if (!poolConfig) {
-                        throw new SolanaTransactionError(`No Solana pool address configured for share class ${shareClassId.toString()} in ${environment} environment. ` +
+                        throw new SolanaTransactionError(`No Solana pool address configured for share class ${shareClassId.toString()} in ${solanaEnvironment} environment. ` +
                             'This pool may not support Solana investments yet.', SolanaErrorCode.POOL_NOT_CONFIGURED);
                     }
                     subscriber.next({
                         type: 'preparing',
                         message: 'Preparing USDC transfer transaction...',
                     });
-                    const usdcMint = new PublicKey(getUsdcMintAddress(environment));
+                    const usdcMint = new PublicKey(getUsdcMintAddress(solanaEnvironment));
                     const poolAddress = new PublicKey(poolConfig.address);
                     const fromTokenAccount = await getAssociatedTokenAddress(usdcMint, wallet.publicKey);
                     const toTokenAccount = await getAssociatedTokenAddress(usdcMint, poolAddress);

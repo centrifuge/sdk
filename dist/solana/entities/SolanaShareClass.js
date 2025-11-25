@@ -31,7 +31,11 @@ export class SolanaShareClass extends Entity {
         if (!this._root.solana) {
             return false;
         }
-        const config = getSolanaPoolAddress(this.shareClassId.toString(), this._root.config.environment);
+        // Get the Solana environment from the SDK configuration
+        // If Solana config specifies an environment, use that, otherwise map from EVM environment
+        const solanaConfig = this._root.config.solana;
+        const solanaEnvironment = solanaConfig?.environment ?? (this._root.config.environment === 'testnet' ? 'devnet' : 'mainnet');
+        const config = getSolanaPoolAddress(this.shareClassId.toString(), solanaEnvironment);
         return config !== undefined;
     }
 }

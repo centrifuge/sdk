@@ -1,10 +1,5 @@
 import { Chain, PublicClient } from 'viem';
-import type { Commitment } from '@solana/web3.js';
-export type SolanaConfig = {
-    rpcUrl: string;
-    commitment?: Commitment;
-    wsEndpoint?: string;
-};
+import type { SolanaConfig } from '../solana/types/config.js';
 export type Config = {
     environment: 'mainnet' | 'testnet';
     rpcUrls?: Record<number | string, string | string[]>;
@@ -21,9 +16,12 @@ export type Config = {
     pinFile?: (b64URI: string) => Promise<string>;
     /**
      * Optional Solana configuration
+     * Note: Solana supports 'mainnet', 'testnet', and 'devnet' environments
+     * which are separate from the EVM environment configuration
      */
     solana?: SolanaConfig;
 };
+export type { SolanaConfig } from '../solana/types/config.js';
 export type UserProvidedConfig = Partial<Config>;
 export type EnvConfig = {
     indexerUrl: string;

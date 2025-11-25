@@ -13,6 +13,7 @@ export * from './entities/Vault.js';
 export * from './solana/SolanaManager.js';
 export * from './solana/SolanaClient.js';
 export * from './solana/types/wallet.js';
+export type { SolanaEnvironment } from './solana/types/config.js';
 export type { Client, Config, CurrencyDetails, HexString, SolanaConfig } from './types/index.js';
 export type { IssuerDetail, PoolMetadataInput, PoolReport, ShareClassInput } from './types/poolInput.js';
 export * from './types/poolMetadata.js';
