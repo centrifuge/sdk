@@ -65,6 +65,19 @@ export class SolanaManager {
   }
 
   /**
+   * Get account info for a given address
+   * @param address - The public key or address string
+   */
+  accountInfo(address: PublicKey | string) {
+    const pubkey = typeof address === 'string' ? new PublicKey(address) : address
+    const addressStr = pubkey.toBase58()
+
+    return this._query(['solana', 'accountInfo', addressStr], () => {
+      return this.#client.getAccountInfo(pubkey)
+    })
+  }
+
+  /**
    * Get the balance of a Solana account in lamports
    * @param address - The public key or address string
    */
@@ -78,15 +91,41 @@ export class SolanaManager {
   }
 
   /**
-   * Get account info for a given address
-   * @param address - The public key or address string
+   * Get the USDC balance for a given Solana wallet address
+   * Returns the balance as a Balance object
+   * @param address - The wallet's public key or address string
+   * @returns Observable that emits the USDC balance
    */
-  accountInfo(address: PublicKey | string) {
+  usdcBalance(address: PublicKey | string) {
     const pubkey = typeof address === 'string' ? new PublicKey(address) : address
     const addressStr = pubkey.toBase58()
 
-    return this._query(['solana', 'accountInfo', addressStr], () => {
-      return this.#client.getAccountInfo(pubkey)
+    return this._query(['solana', 'usdcBalance', addressStr], () => {
+      return new Observable<Balance>((subscriber) => {
+        ;(async () => {
+          try {
+            const environment = this.#root.config.environment
+            const usdcMint = new PublicKey(getUsdcMintAddress(environment))
+            const tokenAccount = await getAssociatedTokenAddress(usdcMint, pubkey)
+
+            const accountInfo = await this.connection.getTokenAccountBalance(tokenAccount)
+            const balance = new Balance(BigInt(accountInfo.value.amount), 6)
+
+            subscriber.next(balance)
+            subscriber.complete()
+          } catch (error) {
+            if (error && typeof error === 'object' && 'message' in error) {
+              const errorMessage = (error as Error).message
+              if (errorMessage.includes('could not find account') || errorMessage.includes('Invalid param')) {
+                subscriber.next(new Balance(0n, 6))
+                subscriber.complete()
+                return
+              }
+            }
+            subscriber.error(error)
+          }
+        })()
+      })
     })
   }
 
