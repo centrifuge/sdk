@@ -1,11 +1,6 @@
-import { Connection, PublicKey, Commitment, ConnectionConfig } from '@solana/web3.js'
+import { Connection, PublicKey, ConnectionConfig } from '@solana/web3.js'
 import { Observable, defer } from 'rxjs'
-
-export interface SolanaConfig {
-  rpcUrl: string
-  commitment?: Commitment
-  wsEndpoint?: string
-}
+import type { SolanaConfig } from './types/config.js'
 
 /**
  * Manages Solana blockchain connections

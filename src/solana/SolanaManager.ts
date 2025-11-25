@@ -9,7 +9,7 @@ import {
   TransactionSignature,
 } from '@solana/web3.js'
 import { getAssociatedTokenAddress, createTransferInstruction } from '@solana/spl-token'
-import { SolanaClient, SolanaConfig } from './SolanaClient.js'
+import { SolanaClient } from './SolanaClient.js'
 import type { Centrifuge } from '../Centrifuge.js'
 import type { CentrifugeQueryOptions } from '../types/query.js'
 import { Balance } from '../utils/BigInt.js'
@@ -21,6 +21,7 @@ import {
   type SolanaWalletAdapter,
   type SolanaTransactionStatus,
 } from './types/wallet.js'
+import type { SolanaConfig, SolanaEnvironment } from './types/config.js'
 
 /**
  * Manages Solana operations within the Centrifuge SDK.
@@ -30,10 +31,26 @@ export class SolanaManager {
   #client: SolanaClient
   #root: Centrifuge
   #signer: Keypair | null = null
+  #solanaConfig: SolanaConfig
 
   constructor(root: Centrifuge, config: SolanaConfig) {
     this.#root = root
+    this.#solanaConfig = config
     this.#client = new SolanaClient(config)
+  }
+
+  /**
+   * Get the Solana-specific environment
+   * Maps EVM environment to Solana environment, with optional override from config
+   * @internal
+   */
+  #getSolanaEnvironment(): SolanaEnvironment {
+    if (this.#solanaConfig.environment) {
+      return this.#solanaConfig.environment
+    }
+
+    const evmEnvironment = this.#root.config.environment
+    return evmEnvironment === 'testnet' ? 'devnet' : 'mainnet'
   }
 
   /**
@@ -104,8 +121,8 @@ export class SolanaManager {
       return new Observable<Balance>((subscriber) => {
         ;(async () => {
           try {
-            const environment = this.#root.config.environment
-            const usdcMint = new PublicKey(getUsdcMintAddress(environment))
+            const solanaEnvironment = this.#getSolanaEnvironment()
+            const usdcMint = new PublicKey(getUsdcMintAddress(solanaEnvironment))
             const tokenAccount = await getAssociatedTokenAddress(usdcMint, pubkey)
 
             const accountInfo = await this.connection.getTokenAccountBalance(tokenAccount)
@@ -234,12 +251,12 @@ export class SolanaManager {
             )
           }
 
-          const environment = this.#root.config.environment
-          const poolConfig = getSolanaPoolAddress(shareClassId.toString(), environment)
+          const solanaEnvironment = this.#getSolanaEnvironment()
+          const poolConfig = getSolanaPoolAddress(shareClassId.toString(), solanaEnvironment)
 
           if (!poolConfig) {
             throw new SolanaTransactionError(
-              `No Solana pool address configured for share class ${shareClassId.toString()} in ${environment} environment. ` +
+              `No Solana pool address configured for share class ${shareClassId.toString()} in ${solanaEnvironment} environment. ` +
                 'This pool may not support Solana investments yet.',
               SolanaErrorCode.POOL_NOT_CONFIGURED
             )
@@ -250,7 +267,7 @@ export class SolanaManager {
             message: 'Preparing USDC transfer transaction...',
           })
 
-          const usdcMint = new PublicKey(getUsdcMintAddress(environment))
+          const usdcMint = new PublicKey(getUsdcMintAddress(solanaEnvironment))
           const poolAddress = new PublicKey(poolConfig.address)
 
           const fromTokenAccount = await getAssociatedTokenAddress(usdcMint, wallet.publicKey)

@@ -1,11 +1,5 @@
 import { Chain, PublicClient } from 'viem'
-import type { Commitment } from '@solana/web3.js'
-
-export type SolanaConfig = {
-  rpcUrl: string
-  commitment?: Commitment
-  wsEndpoint?: string
-}
+import type { SolanaConfig } from '../solana/types/config.js'
 
 export type Config = {
   environment: 'mainnet' | 'testnet'
@@ -26,6 +20,8 @@ export type Config = {
    */
   solana?: SolanaConfig
 }
+
+export type { SolanaConfig } from '../solana/types/config.js'
 
 export type UserProvidedConfig = Partial<Config>
 export type EnvConfig = {
