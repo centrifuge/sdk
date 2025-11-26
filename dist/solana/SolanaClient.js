@@ -1,5 +1,5 @@
 import { Connection, PublicKey } from '@solana/web3.js';
-import { Observable, defer } from 'rxjs';
+import { defer } from 'rxjs';
 /**
  * Manages Solana blockchain connections
  * Similar to how viem clients are managed for EVM chains
@@ -54,21 +54,6 @@ export class SolanaClient {
      */
     getLatestBlockhash() {
         return defer(() => this.#connection.getLatestBlockhash());
-    }
-    /**
-     * Create an observable that watches for account changes
-     * * @param publicKey - the Solana publicKey (address)
-     */
-    watchAccount(publicKey) {
-        const pubkey = typeof publicKey === 'string' ? new PublicKey(publicKey) : publicKey;
-        return new Observable((subscriber) => {
-            const subscriptionId = this.#connection.onAccountChange(pubkey, (accountInfo) => {
-                subscriber.next(accountInfo);
-            }, { commitment: this.#config.commitment });
-            return () => {
-                this.#connection.removeAccountChangeListener(subscriptionId);
-            };
-        });
     }
 }
 //# sourceMappingURL=SolanaClient.js.map

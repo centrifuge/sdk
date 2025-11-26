@@ -111,14 +111,6 @@ export class SolanaManager {
         });
     }
     /**
-     * Watch for account changes
-     * @param address - The public key or address string to watch
-     */
-    watchAccount(address) {
-        const pubkey = typeof address === 'string' ? new PublicKey(address) : address;
-        return this.#client.watchAccount(pubkey);
-    }
-    /**
      * Check if a pool/shareClass supports Solana investments
      * @param shareClassId - The share class ID to check
      * @returns True if the pool has a Solana address configured

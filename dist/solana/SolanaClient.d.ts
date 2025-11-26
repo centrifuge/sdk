@@ -1,5 +1,4 @@
 import { Connection, PublicKey } from '@solana/web3.js';
-import { Observable } from 'rxjs';
 import type { SolanaConfig } from './types/config.js';
 /**
  * Manages Solana blockchain connections
@@ -20,27 +19,22 @@ export declare class SolanaClient {
      * Get account info for a given public key
      * @param publicKey - the Solana publicKey (address)
      */
-    getAccountInfo(publicKey: PublicKey | string): Observable<import("@solana/web3.js").AccountInfo<Buffer> | null>;
+    getAccountInfo(publicKey: PublicKey | string): import("rxjs").Observable<import("@solana/web3.js").AccountInfo<Buffer> | null>;
     /**
      * Get the current slot
      */
-    getSlot(): Observable<number>;
+    getSlot(): import("rxjs").Observable<number>;
     /**
      * Get the balance of an account in lamports
      * * @param publicKey - the Solana publicKey (address)
      */
-    getBalance(publicKey: PublicKey | string): Observable<number>;
+    getBalance(publicKey: PublicKey | string): import("rxjs").Observable<number>;
     /**
      * Get recent blockhash
      */
-    getLatestBlockhash(): Observable<Readonly<{
+    getLatestBlockhash(): import("rxjs").Observable<Readonly<{
         blockhash: import("@solana/web3.js").Blockhash;
         lastValidBlockHeight: number;
     }>>;
-    /**
-     * Create an observable that watches for account changes
-     * * @param publicKey - the Solana publicKey (address)
-     */
-    watchAccount(publicKey: PublicKey | string): Observable<any>;
 }
 //# sourceMappingURL=SolanaClient.d.ts.map

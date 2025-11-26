@@ -40,11 +40,6 @@ export declare class SolanaManager {
      */
     getSlot(): import("../types/query.js").Query<number>;
     /**
-     * Watch for account changes
-     * @param address - The public key or address string to watch
-     */
-    watchAccount(address: PublicKey | string): Observable<any>;
-    /**
      * Check if a pool/shareClass supports Solana investments
      * @param shareClassId - The share class ID to check
      * @returns True if the pool has a Solana address configured
