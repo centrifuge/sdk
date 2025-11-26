@@ -1,5 +1,5 @@
 import { Connection, PublicKey, ConnectionConfig } from '@solana/web3.js'
-import { Observable, defer } from 'rxjs'
+import { defer } from 'rxjs'
 import type { SolanaConfig } from './types/config.js'
 
 /**
@@ -65,27 +65,5 @@ export class SolanaClient {
    */
   getLatestBlockhash() {
     return defer(() => this.#connection.getLatestBlockhash())
-  }
-
-  /**
-   * Create an observable that watches for account changes
-   * * @param publicKey - the Solana publicKey (address)
-   */
-  watchAccount(publicKey: PublicKey | string): Observable<any> {
-    const pubkey = typeof publicKey === 'string' ? new PublicKey(publicKey) : publicKey
-
-    return new Observable((subscriber) => {
-      const subscriptionId = this.#connection.onAccountChange(
-        pubkey,
-        (accountInfo) => {
-          subscriber.next(accountInfo)
-        },
-        { commitment: this.#config.commitment }
-      )
-
-      return () => {
-        this.#connection.removeAccountChangeListener(subscriptionId)
-      }
-    })
   }
 }

@@ -173,26 +173,6 @@ try {
 }
 ```
 
-### Watching Account Changes
-
-Subscribe to real-time updates for account changes:
-
-```typescript
-const accountUpdates$ = centrifugeSdk.solana!.watchAccount('YourSolanaAddressHere')
-
-const subscription = accountUpdates$.subscribe({
-  next: (accountInfo) => {
-    console.log('Account updated:', accountInfo)
-  },
-  error: (error) => {
-    console.error('Error watching account:', error)
-  },
-})
-
-// Don't forget to unsubscribe when done
-// subscription.unsubscribe()
-```
-
 ### Getting Current Slot
 
 Query the current Solana slot:
