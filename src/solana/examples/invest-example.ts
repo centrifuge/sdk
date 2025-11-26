@@ -6,9 +6,8 @@
  * with the @solana/wallet-adapter-react package.
  */
 
-import { Centrifuge, Balance, ShareClassId, SolanaInvestment } from '../../index.js'
-import type { SolanaWalletAdapter, SolanaTransactionStatus } from '../types/wallet.js'
-import type { SolanaTransactionError } from '../types/wallet.js'
+import { Centrifuge, Balance, ShareClassId } from '../../index.js'
+import type { SolanaWalletAdapter, SolanaTransactionStatus, SolanaTransactionError } from '../types/wallet.js'
 
 /**
  * Example for a React component using @solana/wallet-adapter-react
@@ -35,11 +34,9 @@ import type { SolanaTransactionError } from '../types/wallet.js'
  *     }
  *
  *     try {
- *       // Create Solana investment interface directly
- *       const solanaInvest = new SolanaInvestment(sdk, new ShareClassId(shareClassId))
- *
  *       // Check if this pool supports Solana investments
- *       if (!solanaInvest.isAvailable()) {
+ *       const shareClassId = new ShareClassId(shareClassId)
+ *       if (!sdk.solana!.isSolanaPool(shareClassId)) {
  *         alert('This pool does not support Solana investments yet')
  *         return
  *       }
@@ -51,7 +48,7 @@ import type { SolanaTransactionError } from '../types/wallet.js'
  *       const wallet = { publicKey, signTransaction }
  *
  *       // Subscribe to transaction status updates
- *       solanaInvest.invest(usdcAmount, wallet).subscribe({
+ *       sdk.solana!.invest(usdcAmount, shareClassId, wallet).subscribe({
  *         next: (status) => {
  *           switch (status.type) {
  *             case 'preparing':
@@ -79,7 +76,7 @@ import type { SolanaTransactionError } from '../types/wallet.js'
  *       })
  *
  *       // Or use async/await
- *       // const result = await solanaInvest.invest(usdcAmount, wallet)
+ *       // const result = await sdk.solana!.invest(usdcAmount, shareClassId, wallet)
  *       // console.log('Transaction confirmed:', result.signature)
  *
  *     } catch (error) {
@@ -122,11 +119,8 @@ async function exampleDirectInvestment() {
   // Example share class ID (must be 34 chars: 0x + 32 hex chars)
   const shareClassId = new ShareClassId('0x1234567890abcdef1234567890abcdef')
 
-  // Create Solana investment interface directly
-  const solanaInvest = new SolanaInvestment(sdk, shareClassId)
-
   console.log('Checking if pool supports Solana investments...')
-  const isAvailable = solanaInvest.isAvailable()
+  const isAvailable = sdk.solana!.isSolanaPool(shareClassId)
   console.log(`   Pool Solana support: ${isAvailable ? 'Available' : 'Not available'}\n`)
 
   if (!isAvailable) {
@@ -150,7 +144,7 @@ async function exampleDirectInvestment() {
 
   try {
     // Subscribe to status updates
-    const investment$ = solanaInvest.invest(amount, mockWallet)
+    const investment$ = sdk.solana!.invest(amount, shareClassId, mockWallet)
 
     investment$.subscribe({
       next: (status: SolanaTransactionStatus) => {
@@ -200,9 +194,8 @@ async function checkPoolsSolanaSupport() {
   console.log('Checking Solana support for multiple pools:\n')
 
   for (const { poolId, shareClassId } of poolsToCheck) {
-    const solanaInvest = new SolanaInvestment(sdk, new ShareClassId(shareClassId))
-
-    const isAvailable = solanaInvest.isAvailable()
+    const id = new ShareClassId(shareClassId)
+    const isAvailable = sdk.solana!.isSolanaPool(id)
     console.log(`Pool ${poolId}: Solana ${isAvailable ? 'available' : 'not available'}`)
   }
 }

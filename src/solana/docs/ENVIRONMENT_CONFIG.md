@@ -136,17 +136,16 @@ const sdk = new Centrifuge({
 
 ## Checking Pool Availability
 
-Use the `isAvailable()` method to check if a pool supports Solana investments in the current environment:
+Use the `isSolanaPool()` method to check if a pool supports Solana investments in the current environment:
 
 ```typescript
-import { ShareClassId, SolanaInvestment } from '@centrifuge/sdk'
+import { ShareClassId } from '@centrifuge/sdk'
 
 const shareClassId = new ShareClassId('0x1234567890abcdef1234567890abcdef')
-const solanaInvest = new SolanaInvestment(sdk, shareClassId)
 
-if (solanaInvest.isAvailable()) {
+if (sdk.solana!.isSolanaPool(shareClassId)) {
   // Pool is available for Solana investments
-  const investment$ = solanaInvest.invest(amount, wallet)
+  const investment$ = sdk.solana!.invest(amount, shareClassId, wallet)
 } else {
   // Pool doesn't have Solana address configured for this environment
   console.log('Solana investments not available for this pool')

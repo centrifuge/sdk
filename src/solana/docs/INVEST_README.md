@@ -21,25 +21,18 @@ The Solana investment feature allows investors to invest USDC directly into Cent
 
 1. **SolanaManager** ([../SolanaManager.ts](../SolanaManager.ts))
 
-   - Main class for Solana operations
-   - Contains the `invest()` method that handles USDC transfers
+   - Main class for all Solana operations
+   - Contains the `invest()` and `isSolanaPool()` methods
    - Manages connection to Solana RPC
    - Accessible via `sdk.solana`
 
-2. **SolanaInvestment** ([../SolanaInvestment.ts](../SolanaInvestment.ts))
-
-   - User-facing investment interface
-   - Created directly: `new SolanaInvestment(sdk, shareClassId)`
-   - Provides `invest()` and `isAvailable()` methods
-   - Delegates to SolanaManager for actual operations
-
-3. **Pool Address Mapping** ([../config/poolAddresses.ts](../config/poolAddresses.ts))
+2. **Pool Address Mapping** ([../config/poolAddresses.ts](../config/poolAddresses.ts))
 
    - Internal configuration mapping ShareClass IDs to Solana addresses
-   - Environment-specific (mainnet/testnet)
+   - Environment-specific (mainnet/devnet)
    - Cannot be overridden by SDK users
 
-4. **Wallet Types** ([../types/wallet.ts](../types/wallet.ts))
+3. **Wallet Types** ([../types/wallet.ts](../types/wallet.ts))
    - `SolanaWalletAdapter`: Minimal interface for wallet compatibility
    - `SolanaTransactionStatus`: Transaction status types
    - `SolanaTransactionError`: Custom error types with error codes
@@ -63,14 +56,13 @@ const sdk = new Centrifuge({
 ### 2. Basic Investment Flow
 
 ```typescript
-import { Balance, ShareClassId, SolanaInvestment } from '@centrifuge/sdk'
+import { Balance, ShareClassId } from '@centrifuge/sdk'
 
-// Create Solana investment interface
+// Prepare share class ID
 const shareClassId = new ShareClassId('0x1234567890abcdef1234567890abcdef')
-const solanaInvest = new SolanaInvestment(sdk, shareClassId)
 
 // Check if available
-if (!solanaInvest.isAvailable()) {
+if (!sdk.solana!.isSolanaPool(shareClassId)) {
   console.log('This pool does not support Solana investments')
   return
 }
@@ -82,7 +74,7 @@ const amount = Balance.fromFloat(1000, 6)
 const wallet = { publicKey, signTransaction }
 
 // Invest
-await solanaInvest.invest(amount, wallet)
+await sdk.solana!.invest(amount, shareClassId, wallet)
 ```
 
 ### 3. React Integration with Wallet Adapter
@@ -90,7 +82,7 @@ await solanaInvest.invest(amount, wallet)
 ```tsx
 import { useWallet } from '@solana/wallet-adapter-react'
 import { WalletMultiButton } from '@solana/wallet-adapter-react-ui'
-import { Centrifuge, Balance, ShareClassId, SolanaInvestment } from '@centrifuge/sdk'
+import { Centrifuge, Balance, ShareClassId } from '@centrifuge/sdk'
 
 function InvestComponent() {
   const { publicKey, signTransaction } = useWallet()
@@ -103,12 +95,10 @@ function InvestComponent() {
     }
 
     const shareClassId = new ShareClassId('0x1234567890abcdef1234567890abcdef')
-    const solanaInvest = new SolanaInvestment(sdk, shareClassId)
-
     const amount = Balance.fromFloat(1000, 6)
     const wallet = { publicKey, signTransaction }
 
-    solanaInvest.invest(amount, wallet).subscribe({
+    sdk.solana!.invest(amount, shareClassId, wallet).subscribe({
       next: (status) => {
         setStatus(status.message)
         if (status.type === 'confirmed') {
@@ -269,33 +259,28 @@ invest(
 
 **Throws:** `SolanaTransactionError` on validation or execution failure
 
-### `SolanaInvestment.invest()`
+### `SolanaManager.isSolanaPool()`
 
 ```typescript
-invest(
-  amount: Balance,
-  wallet: SolanaWalletAdapter
-): Observable<SolanaTransactionStatus>
+isSolanaPool(shareClassId: ShareClassId): boolean
 ```
 
-Convenience wrapper around `SolanaManager.invest()` with the share class ID already bound.
+**Parameters:**
 
-### `SolanaInvestment.isAvailable()`
+- `shareClassId`: The share class ID to check
 
-```typescript
-isAvailable(): boolean
-```
+**Returns:** `true` if the pool has a Solana address configured for the current environment
 
-Check if this pool/share class has a Solana address configured and supports Solana investments.
+Check if a pool/share class supports Solana investments.
 
 ## Testing
 
-Tests are located in [SolanaInvestment.test.ts](../SolanaInvestment.test.ts).
+Tests are located in [solana.test.ts](../solana.test.ts).
 
 Run tests:
 
 ```bash
-pnpm test:simple:single src/solana/SolanaInvestment.test.ts
+pnpm test:simple:single src/solana/solana.test.ts
 ```
 
 The tests cover:
@@ -338,7 +323,7 @@ function App() {
 
 ```tsx
 import { useWallet } from '@solana/wallet-adapter-react'
-import { ShareClassId, SolanaInvestment, Balance } from '@centrifuge/sdk'
+import { ShareClassId, Balance } from '@centrifuge/sdk'
 
 function InvestButton({ shareClassId, amount }) {
   const { publicKey, signTransaction, connected } = useWallet()
@@ -349,13 +334,12 @@ function InvestButton({ shareClassId, amount }) {
 
     setInvesting(true)
 
-    const solanaInvest = new SolanaInvestment(sdk, new ShareClassId(shareClassId))
-
+    const id = new ShareClassId(shareClassId)
     const usdcAmount = Balance.fromFloat(amount, 6)
     const wallet = { publicKey, signTransaction }
 
     try {
-      await solanaInvest.invest(usdcAmount, wallet)
+      await sdk.solana!.invest(usdcAmount, id, wallet)
       toast.success('Investment successful!')
     } catch (error) {
       toast.error(`Investment failed: ${error.message}`)
@@ -383,7 +367,7 @@ function InvestButton({ shareClassId, amount }) {
 | **Approval**         | Needs ERC20 approval or permit            | SPL Token transfer (no approval)         |
 | **Transaction Type** | Async request (order-based)               | Direct transfer                          |
 | **Status Updates**   | Observable with signing/pending/confirmed | Observable with 5 stages                 |
-| **Entity Access**    | `vault.increaseInvestOrder()`             | `new SolanaInvestment(sdk, id).invest()` |
+| **Entity Access**    | `vault.increaseInvestOrder()`             | `sdk.solana!.invest(amount, id, wallet)` |
 
 ## Troubleshooting
 

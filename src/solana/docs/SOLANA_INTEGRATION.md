@@ -126,18 +126,17 @@ if (info) {
 Invest USDC into a Centrifuge pool via Solana:
 
 ```typescript
-import { Balance, ShareClassId, SolanaInvestment } from '@centrifuge/sdk'
+import { Balance, ShareClassId } from '@centrifuge/sdk'
 import { useWallet } from '@solana/wallet-adapter-react'
 
 // In a React component with wallet adapter
 const { publicKey, signTransaction } = useWallet()
 
-// Create investment interface
+// Prepare share class ID
 const shareClassId = new ShareClassId('0x1234567890abcdef1234567890abcdef')
-const solanaInvest = new SolanaInvestment(centrifugeSdk, shareClassId)
 
 // Check if pool supports Solana investments
-if (!solanaInvest.isAvailable()) {
+if (!centrifugeSdk.solana!.isSolanaPool(shareClassId)) {
   console.log('Pool does not support Solana investments')
   return
 }
@@ -225,7 +224,6 @@ src/
 ├── solana/
 │   ├── SolanaClient.ts         # Connection wrapper
 │   ├── SolanaManager.ts        # Main Solana API
-│   ├── SolanaInvestment.ts     # Investment interface
 │   ├── config/                 # Pool addresses and configuration
 │   ├── types/                  # TypeScript types
 │   ├── examples/               # Code examples
@@ -235,8 +233,7 @@ src/
 ### Key Components
 
 - **SolanaClient**: Low-level connection management
-- **SolanaManager**: High-level API for Solana operations, accessible via `centrifugeSdk.solana`
-- **SolanaInvestment**: User-facing investment interface
+- **SolanaManager**: High-level API for all Solana operations, accessible via `centrifugeSdk.solana`
 
 ### Observable Pattern
 
@@ -299,7 +296,7 @@ Run the Solana integration tests:
 pnpm test:simple:single src/solana/solana.test.ts
 
 # Investment tests
-pnpm test:simple:single src/solana/SolanaInvestment.test.ts
+pnpm test:simple:single src/solana/solana.test.ts
 ```
 
 ## Network Endpoints
@@ -336,7 +333,6 @@ import {
   SolanaConfig,
   SolanaManager,
   SolanaClient,
-  SolanaInvestment,
   SolanaTransactionError,
   SolanaErrorCode,
   SolanaTransactionStatus,
