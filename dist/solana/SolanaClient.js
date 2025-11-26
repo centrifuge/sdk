@@ -29,6 +29,7 @@ export class SolanaClient {
     }
     /**
      * Get account info for a given public key
+     * @param publicKey - the Solana publicKey (address)
      */
     getAccountInfo(publicKey) {
         const pubkey = typeof publicKey === 'string' ? new PublicKey(publicKey) : publicKey;
@@ -42,6 +43,7 @@ export class SolanaClient {
     }
     /**
      * Get the balance of an account in lamports
+     * * @param publicKey - the Solana publicKey (address)
      */
     getBalance(publicKey) {
         const pubkey = typeof publicKey === 'string' ? new PublicKey(publicKey) : publicKey;
@@ -55,6 +57,7 @@ export class SolanaClient {
     }
     /**
      * Create an observable that watches for account changes
+     * * @param publicKey - the Solana publicKey (address)
      */
     watchAccount(publicKey) {
         const pubkey = typeof publicKey === 'string' ? new PublicKey(publicKey) : publicKey;

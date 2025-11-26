@@ -1,18 +1,15 @@
 import { Observable } from 'rxjs';
-import { Connection, Keypair, PublicKey, TransactionSignature } from '@solana/web3.js';
+import { Connection, PublicKey } from '@solana/web3.js';
 import { SolanaClient } from './SolanaClient.js';
-import type { Centrifuge } from '../Centrifuge.js';
 import { Balance } from '../utils/BigInt.js';
 import type { ShareClassId } from '../utils/types.js';
 import { type SolanaWalletAdapter, type SolanaTransactionStatus } from './types/wallet.js';
-import type { SolanaConfig } from './types/config.js';
 /**
  * Manages Solana operations within the Centrifuge SDK.
  * This class provides Solana-specific functionality
  */
 export declare class SolanaManager {
     #private;
-    constructor(root: Centrifuge, config: SolanaConfig);
     /**
      * Get the Solana client
      */
@@ -21,14 +18,6 @@ export declare class SolanaManager {
      * Get the underlying Solana connection
      */
     get connection(): Connection;
-    /**
-     * Set the Solana signer (keypair)
-     */
-    setSigner(signer: Keypair | null): void;
-    /**
-     * Get the current signer
-     */
-    get signer(): Keypair | null;
     /**
      * Get account info for a given address
      * @param address - The public key or address string
@@ -46,16 +35,6 @@ export declare class SolanaManager {
      * @returns Observable that emits the USDC balance
      */
     usdcBalance(address: PublicKey | string): import("../types/query.js").Query<Balance>;
-    /**
-     * Transfer SOL from the signer to another account
-     * Returns an observable that emits transaction status updates
-     * @param to - Recipient public key
-     * @param lamports - Amount to transfer in lamports (1 SOL = 1,000,000,000 lamports)
-     */
-    transferSol(to: PublicKey | string, lamports: number): Observable<{
-        status: 'signing' | 'sending' | 'confirmed';
-        signature?: TransactionSignature;
-    }>;
     /**
      * Get the current slot
      */

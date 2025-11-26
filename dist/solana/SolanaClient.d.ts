@@ -18,6 +18,7 @@ export declare class SolanaClient {
     get rpcUrl(): string;
     /**
      * Get account info for a given public key
+     * @param publicKey - the Solana publicKey (address)
      */
     getAccountInfo(publicKey: PublicKey | string): Observable<import("@solana/web3.js").AccountInfo<Buffer> | null>;
     /**
@@ -26,6 +27,7 @@ export declare class SolanaClient {
     getSlot(): Observable<number>;
     /**
      * Get the balance of an account in lamports
+     * * @param publicKey - the Solana publicKey (address)
      */
     getBalance(publicKey: PublicKey | string): Observable<number>;
     /**
@@ -37,6 +39,7 @@ export declare class SolanaClient {
     }>>;
     /**
      * Create an observable that watches for account changes
+     * * @param publicKey - the Solana publicKey (address)
      */
     watchAccount(publicKey: PublicKey | string): Observable<any>;
 }

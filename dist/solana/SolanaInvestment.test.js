@@ -1,6 +1,7 @@
 import { describe, it, beforeEach } from 'mocha';
 import { expect } from 'chai';
 import { Keypair } from '@solana/web3.js';
+import { firstValueFrom } from 'rxjs';
 import { Centrifuge } from '../Centrifuge.js';
 import { Balance } from '../utils/BigInt.js';
 import { ShareClassId } from '../utils/types.js';
@@ -33,67 +34,77 @@ describe('SolanaInvestment', () => {
             };
             const amount = Balance.fromFloat(100, 6);
             const shareClassId = new ShareClassId('0x1234567890abcdef1234567890abcdef');
+            let errorThrown = false;
             try {
-                await sdk.solana.invest(amount, shareClassId, disconnectedWallet);
-                expect.fail('Should have thrown an error');
+                await firstValueFrom(sdk.solana.invest(amount, shareClassId, disconnectedWallet));
             }
             catch (error) {
+                errorThrown = true;
                 expect(error).to.be.instanceOf(SolanaTransactionError);
                 expect(error.code).to.equal(SolanaErrorCode.WALLET_NOT_CONNECTED);
                 expect(error.message).to.include('Wallet not connected');
             }
+            expect(errorThrown, 'Expected error to be thrown').to.be.true;
         });
         it('should throw error if amount has invalid decimals', async () => {
             // USDC must have 6 decimals
             const invalidAmount = Balance.fromFloat(100, 18); // Wrong: 18 decimals (like ETH)
             const shareClassId = new ShareClassId('0x1234567890abcdef1234567890abcdef');
+            let errorThrown = false;
             try {
-                await sdk.solana.invest(invalidAmount, shareClassId, mockWallet);
-                expect.fail('Should have thrown an error');
+                await firstValueFrom(sdk.solana.invest(invalidAmount, shareClassId, mockWallet));
             }
             catch (error) {
+                errorThrown = true;
                 expect(error).to.be.instanceOf(SolanaTransactionError);
                 expect(error.code).to.equal(SolanaErrorCode.INVALID_DECIMALS);
                 expect(error.message).to.include('USDC must have 6 decimals');
             }
+            expect(errorThrown, 'Expected error to be thrown').to.be.true;
         });
         it('should throw error if amount is zero', async () => {
             const zeroAmount = Balance.fromFloat(0, 6);
             const shareClassId = new ShareClassId('0x1234567890abcdef1234567890abcdef');
+            let errorThrown = false;
             try {
-                await sdk.solana.invest(zeroAmount, shareClassId, mockWallet);
-                expect.fail('Should have thrown an error');
+                await firstValueFrom(sdk.solana.invest(zeroAmount, shareClassId, mockWallet));
             }
             catch (error) {
+                errorThrown = true;
                 expect(error).to.be.instanceOf(SolanaTransactionError);
                 expect(error.code).to.equal(SolanaErrorCode.INVALID_AMOUNT);
                 expect(error.message).to.include('must be greater than 0');
             }
+            expect(errorThrown, 'Expected error to be thrown').to.be.true;
         });
         it('should throw error if amount is negative', async () => {
             const negativeAmount = new Balance(-100000000n, 6);
             const shareClassId = new ShareClassId('0x1234567890abcdef1234567890abcdef');
+            let errorThrown = false;
             try {
-                await sdk.solana.invest(negativeAmount, shareClassId, mockWallet);
-                expect.fail('Should have thrown an error');
+                await firstValueFrom(sdk.solana.invest(negativeAmount, shareClassId, mockWallet));
             }
             catch (error) {
+                errorThrown = true;
                 expect(error).to.be.instanceOf(SolanaTransactionError);
                 expect(error.code).to.equal(SolanaErrorCode.INVALID_AMOUNT);
             }
+            expect(errorThrown, 'Expected error to be thrown').to.be.true;
         });
         it('should throw error if pool is not configured', async () => {
             const amount = Balance.fromFloat(100, 6);
             const unconfiguredShareClassId = new ShareClassId('0xffffffffffffffffffffffffffffffff');
+            let errorThrown = false;
             try {
-                await sdk.solana.invest(amount, unconfiguredShareClassId, mockWallet);
-                expect.fail('Should have thrown an error');
+                await firstValueFrom(sdk.solana.invest(amount, unconfiguredShareClassId, mockWallet));
             }
             catch (error) {
+                errorThrown = true;
                 expect(error).to.be.instanceOf(SolanaTransactionError);
                 expect(error.code).to.equal(SolanaErrorCode.POOL_NOT_CONFIGURED);
                 expect(error.message).to.include('No Solana pool address configured');
             }
+            expect(errorThrown, 'Expected error to be thrown').to.be.true;
         });
     });
     describe('Transaction Flow', () => {
@@ -129,14 +140,16 @@ describe('SolanaInvestment', () => {
                     throw new Error('User rejected the transaction');
                 },
             };
+            let errorThrown = false;
             try {
-                await sdk.solana.invest(amount, shareClassId, rejectingWallet);
-                expect.fail('Should have thrown an error');
+                await firstValueFrom(sdk.solana.invest(amount, shareClassId, rejectingWallet));
             }
             catch (error) {
+                errorThrown = true;
                 // Will fail at pool configuration or signature rejection
                 expect(error).to.be.instanceOf(SolanaTransactionError);
             }
+            expect(errorThrown, 'Expected error to be thrown').to.be.true;
         });
     });
     describe('Balance Class Integration', () => {
@@ -155,12 +168,12 @@ describe('SolanaInvestment', () => {
     });
     describe('ShareClassId Integration', () => {
         it('should correctly format ShareClassId as string', () => {
-            const shareClassId = new ShareClassId('0x1234567890abcdef1234567890abcdef12345678');
-            expect(shareClassId.toString()).to.equal('0x1234567890abcdef1234567890abcdef12345678');
+            const shareClassId = new ShareClassId('0x1234567890abcdef1234567890abcdef');
+            expect(shareClassId.toString()).to.equal('0x1234567890abcdef1234567890abcdef');
         });
         it('should handle ShareClassId case-insensitivity', () => {
-            const id1 = new ShareClassId('0x1234567890abcdef1234567890abcdef12345678');
-            const id2 = new ShareClassId('0x1234567890ABCDEF1234567890ABCDEF12345678');
+            const id1 = new ShareClassId('0x1234567890abcdef1234567890abcdef');
+            const id2 = new ShareClassId('0x1234567890ABCDEF1234567890ABCDEF');
             // toString should normalize the case
             expect(id1.toString().toLowerCase()).to.equal(id2.toString().toLowerCase());
         });
@@ -176,13 +189,15 @@ describe('SolanaInvestment', () => {
                     throw { weird: 'error object' }; // Non-standard error
                 },
             };
+            let errorThrown = false;
             try {
-                await sdk.solana.invest(amount, shareClassId, faultyWallet);
-                expect.fail('Should have thrown an error');
+                await firstValueFrom(sdk.solana.invest(amount, shareClassId, faultyWallet));
             }
             catch (error) {
+                errorThrown = true;
                 expect(error).to.be.instanceOf(SolanaTransactionError);
             }
+            expect(errorThrown, 'Expected error to be thrown').to.be.true;
         });
         it('should preserve original error in SolanaTransactionError', async () => {
             const amount = Balance.fromFloat(100, 6);
@@ -194,14 +209,16 @@ describe('SolanaInvestment', () => {
                     throw originalError;
                 },
             };
+            let errorThrown = false;
             try {
-                await sdk.solana.invest(amount, shareClassId, faultyWallet);
-                expect.fail('Should have thrown an error');
+                await firstValueFrom(sdk.solana.invest(amount, shareClassId, faultyWallet));
             }
             catch (error) {
+                errorThrown = true;
                 // Will fail at pool configuration first, but demonstrates error preservation
                 expect(error).to.be.instanceOf(SolanaTransactionError);
             }
+            expect(errorThrown, 'Expected error to be thrown').to.be.true;
         });
     });
     describe('Environment Configuration', () => {
