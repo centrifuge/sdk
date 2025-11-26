@@ -119,6 +119,124 @@ export class SolanaManager {
         return this.#client.watchAccount(pubkey);
     }
     /**
+     * Validate investment parameters
+     * @internal
+     */
+    #validateInvestmentParams(amount, wallet) {
+        if (!wallet.publicKey) {
+            throw new SolanaTransactionError('Wallet not connected. Please connect your Solana wallet.', SolanaErrorCode.WALLET_NOT_CONNECTED);
+        }
+        if (amount.decimals !== 6) {
+            throw new SolanaTransactionError(`Invalid amount decimals. USDC must have 6 decimals, got ${amount.decimals}.`, SolanaErrorCode.INVALID_DECIMALS);
+        }
+        if (!amount.gt(0n)) {
+            throw new SolanaTransactionError('Investment amount must be greater than 0.', SolanaErrorCode.INVALID_AMOUNT);
+        }
+    }
+    /**
+     * Get pool configuration and validate it exists
+     * @internal
+     */
+    #getPoolConfig(shareClassId, solanaEnvironment) {
+        const poolConfig = getSolanaPoolAddress(shareClassId.toString(), solanaEnvironment);
+        if (!poolConfig) {
+            throw new SolanaTransactionError(`No Solana pool address configured for share class ${shareClassId.toString()} in ${solanaEnvironment} environment. ` +
+                'This pool may not support Solana investments yet.', SolanaErrorCode.POOL_NOT_CONFIGURED);
+        }
+        return poolConfig;
+    }
+    /**
+     * Verify the wallet has sufficient USDC balance
+     * @internal
+     */
+    async #validateBalance(fromTokenAccount, amount) {
+        try {
+            const accountInfo = await this.connection.getTokenAccountBalance(fromTokenAccount);
+            const currentBalance = BigInt(accountInfo.value.amount);
+            if (currentBalance < amount.toBigInt()) {
+                throw new SolanaTransactionError(`Insufficient USDC balance. Required: ${amount.toFloat()} USDC, Available: ${Number(currentBalance) / 1_000_000} USDC`, SolanaErrorCode.INSUFFICIENT_BALANCE);
+            }
+        }
+        catch (error) {
+            if (error instanceof SolanaTransactionError) {
+                throw error;
+            }
+            throw new SolanaTransactionError('Could not verify USDC balance. Please ensure you have a USDC token account.', SolanaErrorCode.NETWORK_ERROR, error);
+        }
+    }
+    /**
+     * Build a USDC transfer transaction
+     * @internal
+     */
+    async #buildTransferTransaction(amount, fromTokenAccount, toTokenAccount, wallet) {
+        const transaction = new Transaction();
+        transaction.add(createTransferInstruction(fromTokenAccount, toTokenAccount, wallet.publicKey, amount.toBigInt(), [], undefined));
+        return transaction;
+    }
+    /**
+     * Prepare transaction with blockhash and fee payer
+     * @internal
+     */
+    async #prepareTransaction(transaction, feePayer) {
+        try {
+            const latestBlockhash = await this.connection.getLatestBlockhash();
+            transaction.recentBlockhash = latestBlockhash.blockhash;
+            transaction.feePayer = feePayer;
+            return {
+                blockhash: latestBlockhash.blockhash,
+                lastValidBlockHeight: latestBlockhash.lastValidBlockHeight,
+            };
+        }
+        catch (error) {
+            throw new SolanaTransactionError('Failed to fetch recent blockhash from Solana network.', SolanaErrorCode.NETWORK_ERROR, error);
+        }
+    }
+    /**
+     * Sign and send transaction to the network
+     * @internal
+     */
+    async #signAndSendTransaction(transaction, wallet) {
+        let signedTx;
+        try {
+            signedTx = await wallet.signTransaction(transaction);
+        }
+        catch (error) {
+            throw new SolanaTransactionError('Transaction signature was rejected. Please approve the transaction in your wallet.', SolanaErrorCode.SIGNATURE_REJECTED, error);
+        }
+        try {
+            const signature = await this.connection.sendRawTransaction(signedTx.serialize(), {
+                skipPreflight: false,
+                preflightCommitment: 'confirmed',
+            });
+            return signature;
+        }
+        catch (error) {
+            throw new SolanaTransactionError('Failed to send transaction to Solana network.', SolanaErrorCode.TRANSACTION_FAILED, error);
+        }
+    }
+    /**
+     * Confirm transaction on the network
+     * @internal
+     */
+    async #confirmTransaction(signature, blockhash, lastValidBlockHeight) {
+        try {
+            const confirmation = await this.connection.confirmTransaction({
+                signature,
+                blockhash,
+                lastValidBlockHeight,
+            }, 'confirmed');
+            if (confirmation.value.err) {
+                throw new SolanaTransactionError(`Transaction failed: ${JSON.stringify(confirmation.value.err)}`, SolanaErrorCode.TRANSACTION_FAILED, confirmation.value.err);
+            }
+        }
+        catch (error) {
+            if (error instanceof SolanaTransactionError) {
+                throw error;
+            }
+            throw new SolanaTransactionError('Transaction confirmation failed or timed out.', SolanaErrorCode.TRANSACTION_FAILED, error);
+        }
+    }
+    /**
      * Invest USDC into a Pool's Solana address via Solana network
      * This method transfers USDC from the investor's wallet to the pool's Solana address.
      * The wallet adapter handles all signing and authorization.
@@ -136,102 +254,42 @@ export class SolanaManager {
             ;
             (async () => {
                 try {
-                    if (!wallet.publicKey) {
-                        throw new SolanaTransactionError('Wallet not connected. Please connect your Solana wallet.', SolanaErrorCode.WALLET_NOT_CONNECTED);
-                    }
-                    if (amount.decimals !== 6) {
-                        throw new SolanaTransactionError(`Invalid amount decimals. USDC must have 6 decimals, got ${amount.decimals}.`, SolanaErrorCode.INVALID_DECIMALS);
-                    }
-                    if (!amount.gt(0n)) {
-                        throw new SolanaTransactionError('Investment amount must be greater than 0.', SolanaErrorCode.INVALID_AMOUNT);
-                    }
+                    // Validate parameters
+                    this.#validateInvestmentParams(amount, wallet);
                     const solanaEnvironment = this.#getSolanaEnvironment();
-                    const poolConfig = getSolanaPoolAddress(shareClassId.toString(), solanaEnvironment);
-                    if (!poolConfig) {
-                        throw new SolanaTransactionError(`No Solana pool address configured for share class ${shareClassId.toString()} in ${solanaEnvironment} environment. ` +
-                            'This pool may not support Solana investments yet.', SolanaErrorCode.POOL_NOT_CONFIGURED);
-                    }
+                    const poolConfig = this.#getPoolConfig(shareClassId, solanaEnvironment);
                     subscriber.next({
                         type: 'preparing',
                         message: 'Preparing USDC transfer transaction...',
                     });
+                    // Get token accounts
                     const usdcMint = new PublicKey(getUsdcMintAddress(solanaEnvironment));
                     const poolAddress = new PublicKey(poolConfig.address);
                     const fromTokenAccount = await getAssociatedTokenAddress(usdcMint, wallet.publicKey);
                     const toTokenAccount = await getAssociatedTokenAddress(usdcMint, poolAddress);
-                    try {
-                        const accountInfo = await this.connection.getTokenAccountBalance(fromTokenAccount);
-                        const currentBalance = BigInt(accountInfo.value.amount);
-                        if (currentBalance < amount.toBigInt()) {
-                            throw new SolanaTransactionError(`Insufficient USDC balance. Required: ${amount.toFloat()} USDC, Available: ${Number(currentBalance) / 1_000_000} USDC`, SolanaErrorCode.INSUFFICIENT_BALANCE);
-                        }
-                    }
-                    catch (error) {
-                        if (error instanceof SolanaTransactionError) {
-                            throw error;
-                        }
-                        throw new SolanaTransactionError('Could not verify USDC balance. Please ensure you have a USDC token account.', SolanaErrorCode.NETWORK_ERROR, error);
-                    }
-                    const transaction = new Transaction();
-                    transaction.add(createTransferInstruction(fromTokenAccount, toTokenAccount, wallet.publicKey, amount.toBigInt(), [], undefined));
-                    let blockhash;
-                    let lastValidBlockHeight;
-                    try {
-                        const latestBlockhash = await this.connection.getLatestBlockhash();
-                        blockhash = latestBlockhash.blockhash;
-                        lastValidBlockHeight = latestBlockhash.lastValidBlockHeight;
-                        transaction.recentBlockhash = blockhash;
-                        transaction.feePayer = wallet.publicKey;
-                    }
-                    catch (error) {
-                        throw new SolanaTransactionError('Failed to fetch recent blockhash from Solana network.', SolanaErrorCode.NETWORK_ERROR, error);
-                    }
+                    // Validate balance
+                    await this.#validateBalance(fromTokenAccount, amount);
+                    // Build transaction
+                    const transaction = await this.#buildTransferTransaction(amount, fromTokenAccount, toTokenAccount, wallet);
+                    // Prepare transaction with blockhash
+                    const { blockhash, lastValidBlockHeight } = await this.#prepareTransaction(transaction, wallet.publicKey);
                     subscriber.next({
                         type: 'signing',
                         message: 'Waiting for wallet signature...',
                     });
-                    let signedTx;
-                    try {
-                        signedTx = await wallet.signTransaction(transaction);
-                    }
-                    catch (error) {
-                        throw new SolanaTransactionError('Transaction signature was rejected. Please approve the transaction in your wallet.', SolanaErrorCode.SIGNATURE_REJECTED, error);
-                    }
+                    // Sign and send
+                    const signature = await this.#signAndSendTransaction(transaction, wallet);
                     subscriber.next({
                         type: 'sending',
                         message: 'Sending transaction to Solana network...',
                     });
-                    let signature;
-                    try {
-                        signature = await this.connection.sendRawTransaction(signedTx.serialize(), {
-                            skipPreflight: false,
-                            preflightCommitment: 'confirmed',
-                        });
-                    }
-                    catch (error) {
-                        throw new SolanaTransactionError('Failed to send transaction to Solana network.', SolanaErrorCode.TRANSACTION_FAILED, error);
-                    }
                     subscriber.next({
                         type: 'confirming',
                         message: 'Waiting for transaction confirmation...',
                         signature,
                     });
-                    try {
-                        const confirmation = await this.connection.confirmTransaction({
-                            signature,
-                            blockhash,
-                            lastValidBlockHeight,
-                        }, 'confirmed');
-                        if (confirmation.value.err) {
-                            throw new SolanaTransactionError(`Transaction failed: ${JSON.stringify(confirmation.value.err)}`, SolanaErrorCode.TRANSACTION_FAILED, confirmation.value.err);
-                        }
-                    }
-                    catch (error) {
-                        if (error instanceof SolanaTransactionError) {
-                            throw error;
-                        }
-                        throw new SolanaTransactionError('Transaction confirmation failed or timed out.', SolanaErrorCode.TRANSACTION_FAILED, error);
-                    }
+                    // Confirm transaction
+                    await this.#confirmTransaction(signature, blockhash, lastValidBlockHeight);
                     subscriber.next({
                         type: 'confirmed',
                         message: `Successfully invested ${amount.toFloat()} USDC into pool ${poolConfig.poolName || shareClassId.toString()}`,
