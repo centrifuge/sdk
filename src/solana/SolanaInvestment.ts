@@ -1,22 +1,19 @@
 import type { Observable } from 'rxjs'
-import type { Centrifuge } from '../../Centrifuge.js'
-import { getSolanaPoolAddress } from '../config/poolAddresses.js'
-import type { SolanaWalletAdapter, SolanaTransactionStatus } from '../types/wallet.js'
-import type { Balance } from '../../utils/BigInt.js'
-import type { ShareClassId } from '../../utils/types.js'
-import { Entity } from '../../entities/Entity.js'
+import type { Centrifuge } from '../Centrifuge.js'
+import { getSolanaPoolAddress } from './config/poolAddresses.js'
+import type { SolanaWalletAdapter, SolanaTransactionStatus } from './types/wallet.js'
+import type { Balance } from '../utils/BigInt.js'
+import type { ShareClassId } from '../utils/types.js'
 
 /**
- * Entity for managing Solana-based ShareClass methods in a pool
- * This provides a bridge between the ShareClass entity and Solana functionality
+ * Handles Solana investment operations for a specific pool/shareClass
+ * This is a lightweight wrapper around SolanaManager for user-facing API
  */
-export class SolanaShareClass extends Entity {
+export class SolanaInvestment {
   constructor(
-    _root: Centrifuge,
-    public shareClassId: ShareClassId
-  ) {
-    super(_root, ['solana-investment', shareClassId.toString()])
-  }
+    private readonly _root: Centrifuge,
+    public readonly shareClassId: ShareClassId
+  ) {}
 
   /**
    * Invest USDC into a Solana enabled pool
