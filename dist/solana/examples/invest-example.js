@@ -95,7 +95,7 @@ import { Centrifuge, Balance, ShareClassId, SolanaInvestment } from '../../index
  * Example using the SDK directly (for testing or scripts)
  */
 async function exampleDirectInvestment() {
-    console.log('🚀 Centrifuge SDK - Solana Investment Example\n');
+    console.log('Centrifuge SDK - Solana Investment Example\n');
     // Initialize SDK with Solana support
     const sdk = new Centrifuge({
         environment: 'testnet',
@@ -104,7 +104,7 @@ async function exampleDirectInvestment() {
             commitment: 'confirmed',
         },
     });
-    console.log('✅ SDK initialized with Solana support\n');
+    console.log('SDK initialized with Solana support\n');
     // Mock wallet adapter (in a real app, this comes from @solana/wallet-adapter-react)
     const mockWallet = {
         publicKey: null, // Would be set when wallet is connected
@@ -114,19 +114,19 @@ async function exampleDirectInvestment() {
     const shareClassId = new ShareClassId('0x1234567890abcdef1234567890abcdef');
     // Create Solana investment interface directly
     const solanaInvest = new SolanaInvestment(sdk, shareClassId);
-    console.log('📊 Checking if pool supports Solana investments...');
+    console.log('Checking if pool supports Solana investments...');
     const isAvailable = solanaInvest.isAvailable();
-    console.log(`   Pool Solana support: ${isAvailable ? '✅ Available' : '❌ Not available'}\n`);
+    console.log(`   Pool Solana support: ${isAvailable ? 'Available' : 'Not available'}\n`);
     if (!isAvailable) {
-        console.log('⚠️  This pool does not have a Solana address configured yet.');
+        console.log('WARNING: This pool does not have a Solana address configured yet.');
         console.log('   Check the poolAddresses.ts configuration file.\n');
         return;
     }
     // Prepare investment amount (1000 USDC)
     const amount = Balance.fromFloat(1000, 6);
-    console.log(`💰 Preparing to invest: ${amount.toFloat()} USDC\n`);
+    console.log(`Preparing to invest: ${amount.toFloat()} USDC\n`);
     // Note: This would fail without a real connected wallet
-    console.log('📝 Investment flow:');
+    console.log('Investment flow:');
     console.log('   1. Validate wallet connection');
     console.log('   2. Check USDC balance');
     console.log('   3. Create transfer instruction');
@@ -144,13 +144,13 @@ async function exampleDirectInvestment() {
                 }
             },
             error: (error) => {
-                console.error('❌ Investment failed:', error.message);
+                console.error('ERROR: Investment failed:', error.message);
                 if (error.code) {
                     console.error(`   Error code: ${error.code}`);
                 }
             },
             complete: () => {
-                console.log('\n✨ Investment completed successfully!');
+                console.log('\nInvestment completed successfully!');
             },
         });
         // Or use async/await
@@ -158,7 +158,7 @@ async function exampleDirectInvestment() {
         // console.log('Confirmed:', result.signature)
     }
     catch (error) {
-        console.error('❌ Error:', error);
+        console.error('ERROR:', error);
     }
 }
 /**
@@ -178,11 +178,11 @@ async function checkPoolsSolanaSupport() {
         { poolId: '2', shareClassId: '0x...' },
         { poolId: '3', shareClassId: '0x...' },
     ];
-    console.log('🔍 Checking Solana support for multiple pools:\n');
+    console.log('Checking Solana support for multiple pools:\n');
     for (const { poolId, shareClassId } of poolsToCheck) {
         const solanaInvest = new SolanaInvestment(sdk, new ShareClassId(shareClassId));
         const isAvailable = solanaInvest.isAvailable();
-        console.log(`Pool ${poolId}: ${isAvailable ? '✅' : '❌'} Solana ${isAvailable ? 'available' : 'not available'}`);
+        console.log(`Pool ${poolId}: Solana ${isAvailable ? 'available' : 'not available'}`);
     }
 }
 // Uncomment to run examples:

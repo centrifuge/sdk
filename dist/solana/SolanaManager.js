@@ -121,6 +121,8 @@ export class SolanaManager {
     /**
      * Validate investment parameters
      * @internal
+     * @param amount - USDC Balance amount
+     * @param wallet - Solana wallet adapter ({ publicKey, signTransaction })
      */
     #validateInvestmentParams(amount, wallet) {
         if (!wallet.publicKey) {
@@ -136,6 +138,8 @@ export class SolanaManager {
     /**
      * Get pool configuration and validate it exists
      * @internal
+     * @param shareClassId - the ShareClassId to be invested in
+     * @param solanaEnvironment - the current solana environment being used
      */
     #getPoolConfig(shareClassId, solanaEnvironment) {
         const poolConfig = getSolanaPoolAddress(shareClassId.toString(), solanaEnvironment);
@@ -148,6 +152,8 @@ export class SolanaManager {
     /**
      * Verify the wallet has sufficient USDC balance
      * @internal
+     * @param fromTokenAccount - Solana wallet public key
+     * @param amount - USDC Balance amount
      */
     async #validateBalance(fromTokenAccount, amount) {
         try {
@@ -167,6 +173,10 @@ export class SolanaManager {
     /**
      * Build a USDC transfer transaction
      * @internal
+     * @param amount - USDC Balance amount
+     * @param fromTokenAccount - Solana wallet public key
+     * @param toTokenAccount - Solana wallet public key
+     * @param wallet - Solana wallet adapter ({ publicKey, signTransaction })
      */
     async #buildTransferTransaction(amount, fromTokenAccount, toTokenAccount, wallet) {
         const transaction = new Transaction();
@@ -176,6 +186,8 @@ export class SolanaManager {
     /**
      * Prepare transaction with blockhash and fee payer
      * @internal
+     * @param transaction - Solana Transaction
+     * @param feePayer - Solana wallet public key
      */
     async #prepareTransaction(transaction, feePayer) {
         try {
@@ -194,6 +206,8 @@ export class SolanaManager {
     /**
      * Sign and send transaction to the network
      * @internal
+     * @param transaction - Solana Transaction
+     * @param wallet - Solana wallet adapter ({ publicKey, signTransaction })
      */
     async #signAndSendTransaction(transaction, wallet) {
         let signedTx;
@@ -217,6 +231,9 @@ export class SolanaManager {
     /**
      * Confirm transaction on the network
      * @internal
+     * @param signature - string
+     * @param blochash - string
+     * @param lastValidBlockHeight - number
      */
     async #confirmTransaction(signature, blockhash, lastValidBlockHeight) {
         try {
@@ -254,7 +271,6 @@ export class SolanaManager {
             ;
             (async () => {
                 try {
-                    // Validate parameters
                     this.#validateInvestmentParams(amount, wallet);
                     const solanaEnvironment = this.#getSolanaEnvironment();
                     const poolConfig = this.#getPoolConfig(shareClassId, solanaEnvironment);
@@ -262,22 +278,17 @@ export class SolanaManager {
                         type: 'preparing',
                         message: 'Preparing USDC transfer transaction...',
                     });
-                    // Get token accounts
                     const usdcMint = new PublicKey(getUsdcMintAddress(solanaEnvironment));
                     const poolAddress = new PublicKey(poolConfig.address);
                     const fromTokenAccount = await getAssociatedTokenAddress(usdcMint, wallet.publicKey);
                     const toTokenAccount = await getAssociatedTokenAddress(usdcMint, poolAddress);
-                    // Validate balance
                     await this.#validateBalance(fromTokenAccount, amount);
-                    // Build transaction
                     const transaction = await this.#buildTransferTransaction(amount, fromTokenAccount, toTokenAccount, wallet);
-                    // Prepare transaction with blockhash
                     const { blockhash, lastValidBlockHeight } = await this.#prepareTransaction(transaction, wallet.publicKey);
                     subscriber.next({
                         type: 'signing',
                         message: 'Waiting for wallet signature...',
                     });
-                    // Sign and send
                     const signature = await this.#signAndSendTransaction(transaction, wallet);
                     subscriber.next({
                         type: 'sending',
@@ -288,7 +299,6 @@ export class SolanaManager {
                         message: 'Waiting for transaction confirmation...',
                         signature,
                     });
-                    // Confirm transaction
                     await this.#confirmTransaction(signature, blockhash, lastValidBlockHeight);
                     subscriber.next({
                         type: 'confirmed',
