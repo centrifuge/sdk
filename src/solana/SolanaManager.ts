@@ -1,13 +1,5 @@
 import { Observable } from 'rxjs'
-import {
-  Connection,
-  Keypair,
-  PublicKey,
-  SystemProgram,
-  Transaction,
-  sendAndConfirmTransaction,
-  TransactionSignature,
-} from '@solana/web3.js'
+import { Connection, PublicKey, Transaction } from '@solana/web3.js'
 import { getAssociatedTokenAddress, createTransferInstruction } from '@solana/spl-token'
 import { SolanaClient } from './SolanaClient.js'
 import type { Centrifuge } from '../Centrifuge.js'
@@ -30,9 +22,9 @@ import type { SolanaConfig, SolanaEnvironment } from './types/config.js'
 export class SolanaManager {
   #client: SolanaClient
   #root: Centrifuge
-  #signer: Keypair | null = null
   #solanaConfig: SolanaConfig
 
+  /** @internal */
   constructor(root: Centrifuge, config: SolanaConfig) {
     this.#root = root
     this.#solanaConfig = config
@@ -65,20 +57,6 @@ export class SolanaManager {
    */
   get connection(): Connection {
     return this.#client.connection
-  }
-
-  /**
-   * Set the Solana signer (keypair)
-   */
-  setSigner(signer: Keypair | null) {
-    this.#signer = signer
-  }
-
-  /**
-   * Get the current signer
-   */
-  get signer(): Keypair | null {
-    return this.#signer
   }
 
   /**
@@ -143,51 +121,6 @@ export class SolanaManager {
           }
         })()
       })
-    })
-  }
-
-  /**
-   * Transfer SOL from the signer to another account
-   * Returns an observable that emits transaction status updates
-   * @param to - Recipient public key
-   * @param lamports - Amount to transfer in lamports (1 SOL = 1,000,000,000 lamports)
-   */
-  transferSol(
-    to: PublicKey | string,
-    lamports: number
-  ): Observable<{
-    status: 'signing' | 'sending' | 'confirmed'
-    signature?: TransactionSignature
-  }> {
-    return new Observable((subscriber) => {
-      ;(async () => {
-        try {
-          if (!this.#signer) {
-            throw new Error('Signer not set. Call setSigner() first.')
-          }
-
-          const toPubkey = typeof to === 'string' ? new PublicKey(to) : to
-
-          subscriber.next({ status: 'signing' })
-
-          const transaction = new Transaction().add(
-            SystemProgram.transfer({
-              fromPubkey: this.#signer.publicKey,
-              toPubkey,
-              lamports,
-            })
-          )
-
-          subscriber.next({ status: 'sending' })
-
-          const signature = await sendAndConfirmTransaction(this.connection, transaction, [this.#signer])
-
-          subscriber.next({ status: 'confirmed', signature })
-          subscriber.complete()
-        } catch (error) {
-          subscriber.error(error)
-        }
-      })()
     })
   }
 
@@ -415,11 +348,7 @@ export class SolanaManager {
     })
   }
 
-  /**
-   * Internal query method that uses the root Centrifuge query cache
-   * This ensures Solana queries are cached alongside EVM queries
-   * @internal
-   */
+  /** @internal */
   _query<T>(
     keys: (string | number | boolean | undefined)[] | null,
     observableCallback: () => Observable<T>,
