@@ -45,6 +45,12 @@ export declare class SolanaManager {
      */
     watchAccount(address: PublicKey | string): Observable<any>;
     /**
+     * Check if a pool/shareClass supports Solana investments
+     * @param shareClassId - The share class ID to check
+     * @returns True if the pool has a Solana address configured
+     */
+    isSolanaPool(shareClassId: ShareClassId): boolean;
+    /**
      * Invest USDC into a Pool's Solana address via Solana network
      * This method transfers USDC from the investor's wallet to the pool's Solana address.
      * The wallet adapter handles all signing and authorization.

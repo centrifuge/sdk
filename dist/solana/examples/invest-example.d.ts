@@ -30,11 +30,9 @@
  *     }
  *
  *     try {
- *       // Create Solana investment interface directly
- *       const solanaInvest = new SolanaInvestment(sdk, new ShareClassId(shareClassId))
- *
  *       // Check if this pool supports Solana investments
- *       if (!solanaInvest.isAvailable()) {
+ *       const shareClassId = new ShareClassId(shareClassId)
+ *       if (!sdk.solana!.isSolanaPool(shareClassId)) {
  *         alert('This pool does not support Solana investments yet')
  *         return
  *       }
@@ -46,7 +44,7 @@
  *       const wallet = { publicKey, signTransaction }
  *
  *       // Subscribe to transaction status updates
- *       solanaInvest.invest(usdcAmount, wallet).subscribe({
+ *       sdk.solana!.invest(usdcAmount, shareClassId, wallet).subscribe({
  *         next: (status) => {
  *           switch (status.type) {
  *             case 'preparing':
@@ -74,7 +72,7 @@
  *       })
  *
  *       // Or use async/await
- *       // const result = await solanaInvest.invest(usdcAmount, wallet)
+ *       // const result = await sdk.solana!.invest(usdcAmount, shareClassId, wallet)
  *       // console.log('Transaction confirmed:', result.signature)
  *
  *     } catch (error) {
