@@ -4,7 +4,9 @@ This document explains how to use the Solana integration in the Centrifuge SDK.
 
 ## Overview
 
-The Centrifuge SDK now supports both EVM chains and the Solana blockchain. You can use a single `Centrifuge` instance to interact with both ecosystems while maintaining the same observable-based patterns and query caching.
+The Centrifuge SDK supports both EVM chains and the Solana blockchain. You can use a single `Centrifuge` instance to interact with both ecosystems while maintaining the same observable-based patterns and query caching.
+
+The primary use case is investing USDC into Centrifuge pools via Solana, providing an alternative to EVM-based investments.
 
 ## Setup
 
@@ -72,9 +74,9 @@ if (centrifugeSdk.solana) {
 }
 ```
 
-### Getting Account Balance
+### Getting SOL Balance
 
-Get the balance of any Solana account in lamports (1 SOL = 1,000,000,000 lamports):
+Get the SOL balance of any Solana account in lamports (1 SOL = 1,000,000,000 lamports):
 
 ```typescript
 import { PublicKey } from '@solana/web3.js'
@@ -88,6 +90,19 @@ console.log(`Balance: ${balance / 1_000_000_000} SOL`)
 const pubkey = new PublicKey('YourSolanaAddressHere')
 const balance$ = centrifugeSdk.solana!.balance(pubkey)
 const balance = await balance$
+```
+
+### Getting USDC Balance
+
+Get the USDC token balance for a wallet:
+
+```typescript
+import { Balance } from '@centrifuge/sdk'
+
+const usdcBalance$ = centrifugeSdk.solana!.usdcBalance('YourSolanaAddressHere')
+const balance = await usdcBalance$ // Returns Balance instance with 6 decimals
+
+console.log(`USDC Balance: ${balance.toFloat()} USDC`)
 ```
 
 ### Getting Account Info
@@ -106,42 +121,56 @@ if (info) {
 }
 ```
 
-### Transferring SOL
+### Investing USDC into Pools
 
-Transfer SOL from one account to another:
+Invest USDC into a Centrifuge pool via Solana:
 
 ```typescript
-import { Keypair, LAMPORTS_PER_SOL } from '@solana/web3.js'
+import { Balance, ShareClassId, SolanaInvestment } from '@centrifuge/sdk'
+import { useWallet } from '@solana/wallet-adapter-react'
 
-// Set up signer (keypair)
-const keypair = Keypair.fromSecretKey(yourSecretKey)
-centrifugeSdk.solana!.setSigner(keypair)
+// In a React component with wallet adapter
+const { publicKey, signTransaction } = useWallet()
 
-// Transfer 0.5 SOL
-const transfer$ = centrifugeSdk.solana!.transferSol('RecipientAddressHere', 0.5 * LAMPORTS_PER_SOL)
+// Create investment interface
+const shareClassId = new ShareClassId('0x1234567890abcdef1234567890abcdef')
+const solanaInvest = new SolanaInvestment(centrifugeSdk, shareClassId)
 
-// Option 1: Subscribe to status updates
-transfer$.subscribe({
+// Check if pool supports Solana investments
+if (!solanaInvest.isAvailable()) {
+  console.log('Pool does not support Solana investments')
+  return
+}
+
+// Prepare investment amount (USDC has 6 decimals)
+const amount = Balance.fromFloat(100, 6) // 100 USDC
+
+// Invest with wallet adapter
+const invest$ = centrifugeSdk.solana!.invest(amount, shareClassId, {
+  publicKey,
+  signTransaction,
+})
+
+// Subscribe to transaction status updates
+invest$.subscribe({
   next: (status) => {
-    if (status.status === 'signing') {
-      console.log('Signing transaction...')
-    } else if (status.status === 'sending') {
-      console.log('Sending transaction...')
-    } else if (status.status === 'confirmed') {
-      console.log('Transaction confirmed!', status.signature)
-    }
+    if (status.type === 'preparing') console.log('Preparing transaction...')
+    if (status.type === 'signing') console.log('Waiting for signature...')
+    if (status.type === 'sending') console.log('Sending transaction...')
+    if (status.type === 'confirming') console.log('Confirming...', status.signature)
+    if (status.type === 'confirmed') console.log('Success!', status.signature)
   },
   error: (error) => {
-    console.error('Transaction failed:', error)
+    console.error('Investment failed:', error.message)
   },
 })
 
-// Option 2: Await completion
+// Or await completion
 try {
-  const result = await transfer$
-  console.log('Transaction signature:', result.signature)
+  await invest$
+  console.log('Investment completed successfully')
 } catch (error) {
-  console.error('Transaction failed:', error)
+  console.error('Investment failed:', error)
 }
 ```
 
@@ -194,105 +223,83 @@ const slot = await connection.getSlot()
 ```
 src/
 ├── solana/
-│   ├── SolanaClient.ts         # Manages Solana connection
-│   ├── SolanaManager.ts        # Main Solana interface
-│   ├── SolanaEntity.ts         # Base class for Solana entities
-│   ├── entities/               # Solana-specific entities (future)
-│   ├── idl/                    # Anchor IDL files (future)
-│   └── utils/                  # Solana utilities (future)
+│   ├── SolanaClient.ts         # Connection wrapper
+│   ├── SolanaManager.ts        # Main Solana API
+│   ├── SolanaInvestment.ts     # Investment interface
+│   ├── config/                 # Pool addresses and configuration
+│   ├── types/                  # TypeScript types
+│   ├── examples/               # Code examples
+│   └── docs/                   # Documentation
 ```
 
 ### Key Components
 
-- **SolanaClient**: Low-level connection management, similar to viem clients for EVM
+- **SolanaClient**: Low-level connection management
 - **SolanaManager**: High-level API for Solana operations, accessible via `centrifugeSdk.solana`
-- **SolanaEntity**: Base class for future Solana entities (similar to EVM `Entity`)
+- **SolanaInvestment**: User-facing investment interface
 
 ### Observable Pattern
 
-All Solana queries return RxJS Observables that:
+All Solana methods return RxJS Observables that:
 
 - Can be awaited for a single value
-- Can be subscribed to for updates
+- Can be subscribed to for status updates
 - Are cached using the same mechanism as EVM queries
-- Support the same patterns as EVM operations
+- Follow the same patterns as EVM operations
 
-## Use Cases
+## Transaction Status Updates
 
-### Unified Multi-Chain Application
+When investing via Solana, the transaction goes through multiple phases:
 
-```typescript
-const centrifugeSdk = new Centrifuge({
-  environment: 'mainnet',
-  rpcUrls: {
-    1: 'https://eth-mainnet...',
-    8453: 'https://base-mainnet...',
-  },
-  solana: {
-    rpcUrl: 'https://api.mainnet-beta.solana.com',
-  },
-})
+1. **preparing** - Building and validating the transaction
+2. **signing** - Waiting for user to approve in wallet
+3. **sending** - Submitting to Solana network
+4. **confirming** - Waiting for network confirmation
+5. **confirmed** - Transaction successfully completed
 
-// Query EVM pool
-const pool = await centrifugeSdk.pool(poolId)
-const poolDetails = await pool.details()
+Each phase emits a status update via the Observable, allowing you to show progress to users.
 
-// Query Solana account
-const solBalance = await centrifugeSdk.solana!.balance('...')
+## Error Handling
 
-// Use both in your application
-console.log('EVM Pool:', poolDetails.name)
-console.log('Solana Balance:', solBalance)
-```
-
-### Cross-Chain Asset Tracking
+The SDK provides specific error codes for common failure scenarios:
 
 ```typescript
-// Track balances on both chains
-const evmBalance = await centrifugeSdk.balance(
-  '0xTokenAddress',
-  '0xUserAddress',
-  1 // Ethereum
-)
+import { SolanaTransactionError, SolanaErrorCode } from '@centrifuge/sdk'
 
-const solBalance = await centrifugeSdk.solana!.balance('SolanaUserAddress')
-
-const totalValue = calculateTotalValue(evmBalance, solBalance)
+try {
+  await centrifugeSdk.solana!.invest(amount, shareClassId, wallet)
+} catch (error) {
+  if (error instanceof SolanaTransactionError) {
+    switch (error.code) {
+      case SolanaErrorCode.WALLET_NOT_CONNECTED:
+        console.error('Please connect your wallet')
+        break
+      case SolanaErrorCode.INSUFFICIENT_BALANCE:
+        console.error('Insufficient USDC balance')
+        break
+      case SolanaErrorCode.SIGNATURE_REJECTED:
+        console.error('Transaction was rejected')
+        break
+      case SolanaErrorCode.POOL_NOT_CONFIGURED:
+        console.error('Pool does not support Solana')
+        break
+      default:
+        console.error('Transaction failed:', error.message)
+    }
+  }
+}
 ```
-
-## Future Enhancements
-
-The following features are planned for future releases:
-
-1. **Solana Program Integration**
-
-   - Support for Anchor programs via IDL
-   - Type-safe program interactions
-   - Similar pattern to EVM contract ABIs
-
-2. **Solana Entities**
-
-   - `SolanaPool`, `SolanaVault`, etc.
-   - Follow same entity pattern as EVM side
-   - Shared caching and observable patterns
-
-3. **SPL Token Support**
-
-   - Query SPL token balances
-   - Transfer SPL tokens
-   - Token metadata queries
-
-4. **Transaction Building**
-   - Advanced transaction construction
-   - Multi-signature support
-   - Transaction batching
 
 ## Testing
 
 Run the Solana integration tests:
 
 ```bash
+# Basic integration tests
 pnpm test:simple:single src/solana/solana.test.ts
+
+# Investment tests
+pnpm test:simple:single src/solana/SolanaInvestment.test.ts
 ```
 
 ## Network Endpoints
@@ -324,10 +331,20 @@ pnpm test:simple:single src/solana/solana.test.ts
 All Solana types are exported from the main package:
 
 ```typescript
-import { Centrifuge, SolanaConfig, SolanaManager, SolanaClient, SolanaEntity } from '@centrifuge/sdk'
+import {
+  Centrifuge,
+  SolanaConfig,
+  SolanaManager,
+  SolanaClient,
+  SolanaInvestment,
+  SolanaTransactionError,
+  SolanaErrorCode,
+  SolanaTransactionStatus,
+  SolanaWalletAdapter,
+} from '@centrifuge/sdk'
 
-// Also export Solana web3.js types
-import { PublicKey, Keypair, Connection, Transaction } from '@solana/web3.js'
+// Also import Solana web3.js types
+import { PublicKey, Connection, Transaction } from '@solana/web3.js'
 ```
 
 ## Troubleshooting
@@ -344,12 +361,13 @@ const centrifugeSdk = new Centrifuge({
 })
 ```
 
-### Transaction Fails with "Insufficient Funds"
+### Investment Fails with "Insufficient Balance"
 
-Ensure the signing account has enough SOL for:
+Ensure the wallet has:
 
-1. The transfer amount
-2. Transaction fees (usually ~0.000005 SOL)
+1. Enough USDC for the investment amount
+2. Enough SOL for transaction fees (usually ~0.000005 SOL)
+3. A USDC token account (created automatically on first USDC receipt)
 
 ### Rate Limiting
 
@@ -359,17 +377,27 @@ Public RPC endpoints have rate limits. For production applications:
 2. Implement request throttling
 3. Cache responses when possible
 
+## Wallet Adapter Support
+
+The SDK is designed to work with the Solana wallet adapter ecosystem:
+
+- [@solana/wallet-adapter-react](https://github.com/solana-labs/wallet-adapter)
+- [@solana/wallet-adapter-wallets](https://github.com/solana-labs/wallet-adapter)
+
+Supported wallets include Phantom, Solflare, Backpack, and many others.
+
 ## Contributing
 
 To add new Solana functionality:
 
-1. Add methods to [SolanaManager.ts](../src/solana/SolanaManager.ts)
-2. Create entities in `src/solana/entities/` if needed
-3. Add tests in `src/solana/*.test.ts`
-4. Update this documentation
+1. Add methods to `SolanaManager.ts`
+2. Add tests in `src/solana/*.test.ts`
+3. Update this documentation
 
 ## Related Documentation
 
-- [SDK Usage Guide](https://docs.centrifuge.io/developer/centrifuge-sdk/overview/) - Main SDK documentation
+- [SDK Usage Guide](https://docs.centrifuge.io/developer/centrifuge-sdk/overview/)
+- [Solana Investment Example](../examples/invest-example.ts)
 - [@solana/web3.js Docs](https://solana-foundation.github.io/solana-web3.js/)
 - [Solana Developer Docs](https://docs.solana.com/)
+- [Wallet Adapter Docs](https://github.com/solana-labs/wallet-adapter)
