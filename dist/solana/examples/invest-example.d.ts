@@ -30,9 +30,8 @@
  *     }
  *
  *     try {
- *       const pool = sdk.pool(poolId)
- *       const shareClass = pool.shareClass(shareClassId)
- *       const solanaInvest = shareClass.solana()
+ *       // Create Solana investment interface directly
+ *       const solanaInvest = new SolanaInvestment(sdk, new ShareClassId(shareClassId))
  *
  *       // Check if this pool supports Solana investments
  *       if (!solanaInvest.isAvailable()) {

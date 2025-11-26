@@ -25,13 +25,9 @@ export class SolanaManager {
      * @internal
      */
     #getSolanaEnvironment() {
-        // If explicitly set in Solana config, use that
         if (this.#solanaConfig.environment) {
             return this.#solanaConfig.environment;
         }
-        // Otherwise, map from the main SDK environment
-        // EVM 'testnet' -> Solana 'devnet' (Solana's primary development network)
-        // EVM 'mainnet' -> Solana 'mainnet'
         const evmEnvironment = this.#root.config.environment;
         return evmEnvironment === 'testnet' ? 'devnet' : 'mainnet';
     }

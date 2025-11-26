@@ -5,7 +5,7 @@
  * using a Solana wallet. This is intended for use in a web application
  * with the @solana/wallet-adapter-react package.
  */
-import { Centrifuge, Balance, ShareClassId, PoolId } from '../../index.js';
+import { Centrifuge, Balance, ShareClassId, SolanaInvestment } from '../../index.js';
 /**
  * Example for a React component using @solana/wallet-adapter-react
  *
@@ -31,9 +31,8 @@ import { Centrifuge, Balance, ShareClassId, PoolId } from '../../index.js';
  *     }
  *
  *     try {
- *       const pool = sdk.pool(poolId)
- *       const shareClass = pool.shareClass(shareClassId)
- *       const solanaInvest = shareClass.solana()
+ *       // Create Solana investment interface directly
+ *       const solanaInvest = new SolanaInvestment(sdk, new ShareClassId(shareClassId))
  *
  *       // Check if this pool supports Solana investments
  *       if (!solanaInvest.isAvailable()) {
@@ -111,14 +110,10 @@ async function exampleDirectInvestment() {
         publicKey: null, // Would be set when wallet is connected
         signTransaction: async (tx) => tx, // Would show wallet popup in real scenario
     };
-    // Example pool and share class IDs
-    const poolId = new PoolId('123456789');
-    const shareClassId = new ShareClassId('0x1234567890abcdef1234567890abcdef12345678');
-    // Get the pool and share class
-    const pool = await sdk.pool(poolId);
-    const shareClass = await pool.shareClass(shareClassId);
-    // Get Solana investment interface
-    const solanaInvest = shareClass.solana();
+    // Example share class ID (must be 34 chars: 0x + 32 hex chars)
+    const shareClassId = new ShareClassId('0x1234567890abcdef1234567890abcdef');
+    // Create Solana investment interface directly
+    const solanaInvest = new SolanaInvestment(sdk, shareClassId);
     console.log('📊 Checking if pool supports Solana investments...');
     const isAvailable = solanaInvest.isAvailable();
     console.log(`   Pool Solana support: ${isAvailable ? '✅ Available' : '❌ Not available'}\n`);
@@ -185,9 +180,7 @@ async function checkPoolsSolanaSupport() {
     ];
     console.log('🔍 Checking Solana support for multiple pools:\n');
     for (const { poolId, shareClassId } of poolsToCheck) {
-        const pool = await sdk.pool(new PoolId(poolId));
-        const shareClass = await pool.shareClass(new ShareClassId(shareClassId));
-        const solanaInvest = shareClass.solana();
+        const solanaInvest = new SolanaInvestment(sdk, new ShareClassId(shareClassId));
         const isAvailable = solanaInvest.isAvailable();
         console.log(`Pool ${poolId}: ${isAvailable ? '✅' : '❌'} Solana ${isAvailable ? 'available' : 'not available'}`);
     }

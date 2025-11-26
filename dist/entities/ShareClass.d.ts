@@ -7,7 +7,6 @@ import { Entity } from './Entity.js';
 import type { Pool } from './Pool.js';
 import { Vault } from './Vault.js';
 import { AddressMap } from '../utils/AddressMap.js';
-import { SolanaShareClass } from '../solana/entities/SolanaShareClass.js';
 /**
  * Query and interact with a share class, which allows querying total issuance, NAV per share,
  * and allows interactions related to asynchronous deposits and redemptions.
@@ -395,11 +394,5 @@ export declare class ShareClass extends Entity {
             decimals: number;
         };
     }[]>;
-    /**
-     * This allows investing in the pool using USDC on Solana
-     *
-     * @returns A SolanaShareClass entity for this share class
-     */
-    solana(): SolanaShareClass;
 }
 //# sourceMappingURL=ShareClass.d.ts.map

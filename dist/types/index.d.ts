@@ -16,8 +16,6 @@ export type Config = {
     pinFile?: (b64URI: string) => Promise<string>;
     /**
      * Optional Solana configuration
-     * Note: Solana supports 'mainnet', 'testnet', and 'devnet' environments
-     * which are separate from the EVM environment configuration
      */
     solana?: SolanaConfig;
 };
