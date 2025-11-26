@@ -143,6 +143,17 @@ export class SolanaManager {
   }
 
   /**
+   * Check if a pool/shareClass supports Solana investments
+   * @param shareClassId - The share class ID to check
+   * @returns True if the pool has a Solana address configured
+   */
+  isSolanaPool(shareClassId: ShareClassId): boolean {
+    const solanaEnvironment = this.#getSolanaEnvironment()
+    const config = getSolanaPoolAddress(shareClassId.toString(), solanaEnvironment)
+    return config !== undefined
+  }
+
+  /**
    * Validate investment parameters
    * @internal
    * @param amount - USDC Balance amount
