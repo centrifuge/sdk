@@ -1,6 +1,6 @@
 import { describe, it } from 'mocha'
 import { expect } from 'chai'
-import { getSolanaPoolAddress, getUsdcMintAddress, hasSolanaPoolAddress } from './poolAddresses.js'
+import { getSolanaPoolConfig, getUsdcMintAddress, hasSolanaPoolAddress } from './poolAddresses.js'
 
 describe('Solana Environment Configuration', () => {
   describe('Environment Types', () => {
@@ -30,20 +30,20 @@ describe('Solana Environment Configuration', () => {
     const testShareClassId = '0x00010000000000060000000000000001'
 
     it('should find pool config for devnet environment', () => {
-      const config = getSolanaPoolAddress(testShareClassId, 'devnet')
+      const config = getSolanaPoolConfig(testShareClassId, 'devnet')
       expect(config).to.not.be.undefined
       expect(config?.environment).to.equal('devnet')
       expect(config?.address).to.equal('BdvsupcBZ3odJvWvLKZPGTQwPjpShuWVpmnTq3gfdCbN')
     })
 
     it('should not find pool config for mainnet environment (not configured yet)', () => {
-      const config = getSolanaPoolAddress(testShareClassId, 'mainnet')
+      const config = getSolanaPoolConfig(testShareClassId, 'mainnet')
       expect(config).to.be.undefined
     })
 
     it('should not find pool config for testnet environment', () => {
       // The pool is configured for devnet, not testnet
-      const config = getSolanaPoolAddress(testShareClassId, 'testnet')
+      const config = getSolanaPoolConfig(testShareClassId, 'testnet')
       expect(config).to.be.undefined
     })
 

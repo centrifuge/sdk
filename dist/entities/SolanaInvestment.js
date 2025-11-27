@@ -1,4 +1,4 @@
-import { getSolanaPoolAddress } from '../solana/config/poolAddresses.js';
+import { getSolanaPoolConfig } from '../solana/config/poolAddresses.js';
 import { Entity } from './Entity.js';
 /**
  * Entity for managing Solana-based investments in a pool
@@ -32,7 +32,7 @@ export class SolanaInvestment extends Entity {
         if (!this._root.solana) {
             return false;
         }
-        const config = getSolanaPoolAddress(this.shareClassId.toString(), this._root.config.environment);
+        const config = getSolanaPoolConfig(this.shareClassId.toString(), this._root.config.environment);
         return config !== undefined;
     }
 }

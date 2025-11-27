@@ -1,4 +1,4 @@
-import { getSolanaPoolAddress } from './config/poolAddresses.js';
+import { getSolanaPoolConfig } from './config/poolAddresses.js';
 /**
  * Handles Solana investment operations for a specific pool/shareClass
  * This is a lightweight wrapper around SolanaManager for user-facing API
@@ -33,7 +33,7 @@ export class SolanaInvestment {
         }
         const solanaConfig = this._root.config.solana;
         const solanaEnvironment = solanaConfig?.environment ?? (this._root.config.environment === 'testnet' ? 'devnet' : 'mainnet');
-        const config = getSolanaPoolAddress(this.shareClassId.toString(), solanaEnvironment);
+        const config = getSolanaPoolConfig(this.shareClassId.toString(), solanaEnvironment);
         return config !== undefined;
     }
 }

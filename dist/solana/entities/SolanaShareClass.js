@@ -1,4 +1,4 @@
-import { getSolanaPoolAddress } from '../config/poolAddresses.js';
+import { getSolanaPoolConfig } from '../config/poolAddresses.js';
 import { Entity } from '../../entities/Entity.js';
 /**
  * Entity for managing Solana-based ShareClass methods in a pool
@@ -35,7 +35,7 @@ export class SolanaShareClass extends Entity {
         // If Solana config specifies an environment, use that, otherwise map from EVM environment
         const solanaConfig = this._root.config.solana;
         const solanaEnvironment = solanaConfig?.environment ?? (this._root.config.environment === 'testnet' ? 'devnet' : 'mainnet');
-        const config = getSolanaPoolAddress(this.shareClassId.toString(), solanaEnvironment);
+        const config = getSolanaPoolConfig(this.shareClassId.toString(), solanaEnvironment);
         return config !== undefined;
     }
 }

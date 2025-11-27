@@ -45,7 +45,7 @@ export const USDC_MINT_ADDRESSES: Record<SolanaEnvironment, string> = {
  * @returns The Solana pool configuration or undefined if not found
  * @internal
  */
-export function getSolanaPoolAddress(
+export function getSolanaPoolConfig(
   shareClassId: string,
   environment: SolanaEnvironment
 ): SolanaPoolConfig | undefined {
@@ -76,5 +76,5 @@ export function getUsdcMintAddress(environment: SolanaEnvironment): string {
  * @internal
  */
 export function hasSolanaPoolAddress(shareClassId: string, environment: SolanaEnvironment): boolean {
-  return getSolanaPoolAddress(shareClassId, environment) !== undefined
+  return getSolanaPoolConfig(shareClassId, environment) !== undefined
 }

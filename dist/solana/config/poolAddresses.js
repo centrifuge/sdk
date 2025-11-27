@@ -33,7 +33,7 @@ export const USDC_MINT_ADDRESSES = {
  * @returns The Solana pool configuration or undefined if not found
  * @internal
  */
-export function getSolanaPoolAddress(shareClassId, environment) {
+export function getSolanaPoolConfig(shareClassId, environment) {
     const config = POOL_ADDRESS_MAPPING[shareClassId.toLowerCase()];
     if (!config || config.environment !== environment) {
         return undefined;
@@ -57,6 +57,6 @@ export function getUsdcMintAddress(environment) {
  * @internal
  */
 export function hasSolanaPoolAddress(shareClassId, environment) {
-    return getSolanaPoolAddress(shareClassId, environment) !== undefined;
+    return getSolanaPoolConfig(shareClassId, environment) !== undefined;
 }
 //# sourceMappingURL=poolAddresses.js.map

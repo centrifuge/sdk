@@ -3,7 +3,7 @@ import { PublicKey, Transaction } from '@solana/web3.js';
 import { getAssociatedTokenAddress, createTransferInstruction } from '@solana/spl-token';
 import { SolanaClient } from './SolanaClient.js';
 import { Balance } from '../utils/BigInt.js';
-import { getSolanaPoolAddress, getUsdcMintAddress } from './config/poolAddresses.js';
+import { getSolanaPoolConfig, getUsdcMintAddress } from './config/poolAddresses.js';
 import { SolanaTransactionError, SolanaErrorCode, } from './types/wallet.js';
 /**
  * Manages Solana operations within the Centrifuge SDK.
@@ -105,7 +105,7 @@ export class SolanaManager {
      */
     isSolanaPool(shareClassId) {
         const solanaEnvironment = this.#getSolanaEnvironment();
-        const config = getSolanaPoolAddress(shareClassId.toString(), solanaEnvironment);
+        const config = getSolanaPoolConfig(shareClassId.toString(), solanaEnvironment);
         return config !== undefined;
     }
     /**
@@ -193,7 +193,7 @@ export class SolanaManager {
      * @param solanaEnvironment - the current solana environment being used
      */
     #getPoolConfig(shareClassId, solanaEnvironment) {
-        const poolConfig = getSolanaPoolAddress(shareClassId.toString(), solanaEnvironment);
+        const poolConfig = getSolanaPoolConfig(shareClassId.toString(), solanaEnvironment);
         if (!poolConfig) {
             throw new SolanaTransactionError(`No Solana pool address configured for share class ${shareClassId.toString()} in ${solanaEnvironment} environment. ` +
                 'This pool may not support Solana investments yet.', SolanaErrorCode.POOL_NOT_CONFIGURED);

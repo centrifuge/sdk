@@ -6,7 +6,7 @@ import type { Centrifuge } from '../Centrifuge.js'
 import type { CentrifugeQueryOptions } from '../types/query.js'
 import { Balance } from '../utils/BigInt.js'
 import type { ShareClassId } from '../utils/types.js'
-import { getSolanaPoolAddress, getUsdcMintAddress } from './config/poolAddresses.js'
+import { getSolanaPoolConfig, getUsdcMintAddress } from './config/poolAddresses.js'
 import {
   SolanaTransactionError,
   SolanaErrorCode,
@@ -126,7 +126,7 @@ export class SolanaManager {
    */
   isSolanaPool(shareClassId: ShareClassId): boolean {
     const solanaEnvironment = this.#getSolanaEnvironment()
-    const config = getSolanaPoolAddress(shareClassId.toString(), solanaEnvironment)
+    const config = getSolanaPoolConfig(shareClassId.toString(), solanaEnvironment)
     return config !== undefined
   }
 
@@ -237,7 +237,7 @@ export class SolanaManager {
    * @param solanaEnvironment - the current solana environment being used
    */
   #getPoolConfig(shareClassId: ShareClassId, solanaEnvironment: SolanaEnvironment) {
-    const poolConfig = getSolanaPoolAddress(shareClassId.toString(), solanaEnvironment)
+    const poolConfig = getSolanaPoolConfig(shareClassId.toString(), solanaEnvironment)
 
     if (!poolConfig) {
       throw new SolanaTransactionError(
