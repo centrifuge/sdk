@@ -86,6 +86,7 @@ const POOL_ADDRESS_MAPPING: Record<string, SolanaPoolConfig> = {
     address: 'BdvsupcBZ3odJvWvLKZPGTQwPjpShuWVpmnTq3gfdCbN',
     environment: 'devnet', // This pool is only available on devnet
     poolName: 'AAA_CLO',
+    poolId: 281474976710662,
   },
 }
 ```

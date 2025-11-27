@@ -171,6 +171,7 @@ const POOL_ADDRESS_MAPPING: Record<string, SolanaPoolConfig> = {
     address: 'PoolAddr1111111111111111111111111111111111',
     environment: 'mainnet',
     poolName: 'Example Pool',
+    poolId: 123456789000000,
   },
 }
 ```
