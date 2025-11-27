@@ -199,10 +199,8 @@ export class BalanceSheet extends Entity {
       ])
       if (!isManager) throw new Error('Signing address is not a BalanceSheetManager')
 
-      let shares: Balance
-      if (pricePerShare.toBigInt() === 0n) {
-        shares = amount
-      } else {
+      let shares = amount
+      if (pricePerShare.toBigInt() !== 0n) {
         shares = amount.div(pricePerShare.toDecimal())
       }
 
@@ -247,10 +245,8 @@ export class BalanceSheet extends Entity {
       ])
       if (!isManager) throw new Error('Signing address is not a BalanceSheetManager')
 
-      let shares: Balance
-      if (pricePerShare.toBigInt() === 0n) {
-        shares = amount
-      } else {
+      let shares = amount
+      if (pricePerShare.toBigInt() !== 0n) {
         shares = amount.div(pricePerShare.toDecimal())
       }
 
