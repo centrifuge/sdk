@@ -95,7 +95,7 @@ export class BalanceSheet extends Entity {
         ]
 
         try {
-          // Try EIP-5792 wallet_sendCalls for batching approve + deposit.
+          // Try EIP-5792 wallet_sendCalls for batching approve + deposit
           yield* doTransaction('Approve and Deposit', ctx, async () => {
             const batchCallId = await provider.request({
               method: 'wallet_sendCalls',
