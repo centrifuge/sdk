@@ -247,7 +247,7 @@ export class BalanceSheet extends Entity {
       const transferTx = encodeFunctionData({
         abi: ABI.BalanceSheet,
         functionName: 'transferSharesFrom',
-        args: [self.pool.id.raw, self.shareClass.id.raw, user, ctx.signingAddress, user, shares.toBigInt()],
+        args: [self.pool.id.raw, self.shareClass.id.raw, user, user, ctx.signingAddress, shares.toBigInt()],
       })
 
       const overrideTx = encodeFunctionData({
