@@ -114,7 +114,7 @@ export class BalanceSheet extends Entity {
         } catch (error) {
           console.warn('Batching not supported, using sequential transactions:', error)
 
-          // Fallback to sequential transactions if batching fails.
+          // Fallback to sequential transactions if batching fails
           for (const [index, call] of calls.entries()) {
             yield* doTransaction(`Approve and Deposit (${index + 1}/${calls.length})`, ctx, () =>
               ctx.walletClient.sendTransaction({
