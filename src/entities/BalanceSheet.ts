@@ -114,7 +114,7 @@ export class BalanceSheet extends Entity {
         } catch (error) {
           console.warn('Batching not supported, using sequential transactions:', error)
 
-          // Fallback to sequential transactions if batching fails.
+          // Fallback to sequential transactions if batching fails
           for (const [index, call] of calls.entries()) {
             yield* doTransaction(`Approve and Deposit (${index + 1}/${calls.length})`, ctx, () =>
               ctx.walletClient.sendTransaction({
@@ -199,7 +199,11 @@ export class BalanceSheet extends Entity {
       ])
       if (!isManager) throw new Error('Signing address is not a BalanceSheetManager')
 
-      const shares = amount.div(pricePerShare.toDecimal())
+      let shares = amount
+      if (pricePerShare.toBigInt() !== 0n) {
+        shares = amount.div(pricePerShare.toDecimal())
+      }
+
       if (shares.eq(0n)) throw new Error('Cannot issue 0 shares')
 
       const overrideTx = encodeFunctionData({
@@ -241,7 +245,11 @@ export class BalanceSheet extends Entity {
       ])
       if (!isManager) throw new Error('Signing address is not a BalanceSheetManager')
 
-      const shares = amount.div(pricePerShare.toDecimal())
+      let shares = amount
+      if (pricePerShare.toBigInt() !== 0n) {
+        shares = amount.div(pricePerShare.toDecimal())
+      }
+
       if (shares.eq(0n)) throw new Error('Cannot revoke 0 shares')
 
       const transferTx = encodeFunctionData({
