@@ -11,11 +11,7 @@ export interface SolanaPoolConfig {
   poolId: number
   poolName: string
   environment: SolanaEnvironment[]
-  solanaAddress: {
-    mainnet: string
-    testnet: string
-    devnet: string
-  }
+  solanaAddress: Record<SolanaEnvironment, string>
 }
 
 // Pool address mappings by ShareClass ID

@@ -9,11 +9,7 @@ export interface SolanaPoolConfig {
     poolId: number;
     poolName: string;
     environment: SolanaEnvironment[];
-    solanaAddress: {
-        mainnet: string;
-        testnet: string;
-        devnet: string;
-    };
+    solanaAddress: Record<SolanaEnvironment, string>;
 }
 export declare const USDC_MINT_ADDRESSES: Record<SolanaEnvironment, string>;
 //# sourceMappingURL=poolAddresses.d.ts.map
