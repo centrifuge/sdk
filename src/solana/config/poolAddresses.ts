@@ -8,27 +8,27 @@
 import type { SolanaEnvironment } from '../types/config.js'
 
 export interface SolanaPoolConfig {
-  address: string // The Solana address that receives USDC for this pool
-  environment: SolanaEnvironment
-  poolName: string
   poolId: number
+  poolName: string
+  environment: SolanaEnvironment[]
+  solanaAddress: {
+    mainnet: string
+    testnet: string
+    devnet: string
+  }
 }
 
 // Pool address mappings by ShareClass ID
 const POOL_ADDRESS_MAPPING: Record<string, SolanaPoolConfig> = {
-  // Mainnet pools
-  // '0x00010000000000060000000000000001': {
-  //   address: '',
-  //   environment: 'mainnet',
-  //   poolName: 'AAA_CLO',
-  //   poolId: 281474976710662,
-  // },
-  // Testnet/Devnet pools (using devnet as default for development)
   '0x00010000000000060000000000000001': {
-    address: 'BdvsupcBZ3odJvWvLKZPGTQwPjpShuWVpmnTq3gfdCbN',
-    environment: 'devnet',
-    poolName: 'AAA_CLO',
     poolId: 281474976710662,
+    poolName: 'AAA_CLO',
+    environment: ['mainnet', 'devnet'],
+    solanaAddress: {
+      mainnet: '',
+      testnet: '',
+      devnet: 'BdvsupcBZ3odJvWvLKZPGTQwPjpShuWVpmnTq3gfdCbN',
+    },
   },
 }
 
@@ -51,7 +51,7 @@ export function getSolanaPoolConfig(
 ): SolanaPoolConfig | undefined {
   const config = POOL_ADDRESS_MAPPING[shareClassId.toLowerCase()]
 
-  if (!config || config.environment !== environment) {
+  if (!config || !config.environment.includes(environment)) {
     return undefined
   }
 

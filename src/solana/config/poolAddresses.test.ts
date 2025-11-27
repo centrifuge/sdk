@@ -32,25 +32,40 @@ describe('Solana Environment Configuration', () => {
     it('should find pool config for devnet environment', () => {
       const config = getSolanaPoolConfig(testShareClassId, 'devnet')
       expect(config).to.not.be.undefined
-      expect(config?.environment).to.equal('devnet')
-      expect(config?.address).to.equal('BdvsupcBZ3odJvWvLKZPGTQwPjpShuWVpmnTq3gfdCbN')
+      expect(config?.environment).to.include('devnet')
+      expect(config?.solanaAddress.devnet).to.equal('BdvsupcBZ3odJvWvLKZPGTQwPjpShuWVpmnTq3gfdCbN')
+      expect(config?.poolName).to.equal('AAA_CLO')
+      expect(config?.poolId).to.equal(281474976710662)
     })
 
-    it('should not find pool config for mainnet environment (not configured yet)', () => {
+    it('should find pool config for mainnet environment', () => {
       const config = getSolanaPoolConfig(testShareClassId, 'mainnet')
-      expect(config).to.be.undefined
+      expect(config).to.not.be.undefined
+      expect(config?.environment).to.include('mainnet')
+      expect(config?.solanaAddress.mainnet).to.equal('')
     })
 
     it('should not find pool config for testnet environment', () => {
-      // The pool is configured for devnet, not testnet
+      // The pool is configured for mainnet and devnet, not testnet
       const config = getSolanaPoolConfig(testShareClassId, 'testnet')
       expect(config).to.be.undefined
     })
 
     it('should correctly check if pool has Solana address', () => {
       expect(hasSolanaPoolAddress(testShareClassId, 'devnet')).to.be.true
-      expect(hasSolanaPoolAddress(testShareClassId, 'mainnet')).to.be.false
+      expect(hasSolanaPoolAddress(testShareClassId, 'mainnet')).to.be.true
       expect(hasSolanaPoolAddress(testShareClassId, 'testnet')).to.be.false
+    })
+
+    it('should have correct structure for pool config', () => {
+      const config = getSolanaPoolConfig(testShareClassId, 'devnet')
+      expect(config).to.have.property('poolId')
+      expect(config).to.have.property('poolName')
+      expect(config).to.have.property('environment')
+      expect(config).to.have.property('solanaAddress')
+      expect(config?.solanaAddress).to.have.property('mainnet')
+      expect(config?.solanaAddress).to.have.property('testnet')
+      expect(config?.solanaAddress).to.have.property('devnet')
     })
   })
 })

@@ -6,19 +6,15 @@
  */
 // Pool address mappings by ShareClass ID
 const POOL_ADDRESS_MAPPING = {
-    // Mainnet pools
-    // '0x00010000000000060000000000000001': {
-    //   address: '',
-    //   environment: 'mainnet',
-    //   poolName: 'AAA_CLO',
-    //   poolId: 281474976710662,
-    // },
-    // Testnet/Devnet pools (using devnet as default for development)
     '0x00010000000000060000000000000001': {
-        address: 'BdvsupcBZ3odJvWvLKZPGTQwPjpShuWVpmnTq3gfdCbN',
-        environment: 'devnet',
-        poolName: 'AAA_CLO',
         poolId: 281474976710662,
+        poolName: 'AAA_CLO',
+        environment: ['mainnet', 'devnet'],
+        solanaAddress: {
+            mainnet: '',
+            testnet: '',
+            devnet: 'BdvsupcBZ3odJvWvLKZPGTQwPjpShuWVpmnTq3gfdCbN',
+        },
     },
 };
 export const USDC_MINT_ADDRESSES = {
@@ -35,7 +31,7 @@ export const USDC_MINT_ADDRESSES = {
  */
 export function getSolanaPoolConfig(shareClassId, environment) {
     const config = POOL_ADDRESS_MAPPING[shareClassId.toLowerCase()];
-    if (!config || config.environment !== environment) {
+    if (!config || !config.environment.includes(environment)) {
         return undefined;
     }
     return config;

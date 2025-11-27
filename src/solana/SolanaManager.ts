@@ -163,7 +163,7 @@ export class SolanaManager {
           })
 
           const usdcMint = new PublicKey(getUsdcMintAddress(solanaEnvironment))
-          const poolAddress = new PublicKey(poolConfig.address)
+          const poolAddress = new PublicKey(poolConfig.solanaAddress[solanaEnvironment])
           const fromTokenAccount = await getAssociatedTokenAddress(usdcMint, wallet.publicKey!)
           const toTokenAccount = await getAssociatedTokenAddress(usdcMint, poolAddress)
 
