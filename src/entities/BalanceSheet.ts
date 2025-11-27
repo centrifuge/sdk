@@ -199,7 +199,13 @@ export class BalanceSheet extends Entity {
       ])
       if (!isManager) throw new Error('Signing address is not a BalanceSheetManager')
 
-      const shares = amount.div(pricePerShare.toDecimal())
+      let shares: Balance
+      if (pricePerShare.toBigInt() === 0n) {
+        shares = amount
+      } else {
+        shares = amount.div(pricePerShare.toDecimal())
+      }
+
       if (shares.eq(0n)) throw new Error('Cannot issue 0 shares')
 
       const overrideTx = encodeFunctionData({
@@ -241,7 +247,13 @@ export class BalanceSheet extends Entity {
       ])
       if (!isManager) throw new Error('Signing address is not a BalanceSheetManager')
 
-      const shares = amount.div(pricePerShare.toDecimal())
+      let shares: Balance
+      if (pricePerShare.toBigInt() === 0n) {
+        shares = amount
+      } else {
+        shares = amount.div(pricePerShare.toDecimal())
+      }
+
       if (shares.eq(0n)) throw new Error('Cannot revoke 0 shares')
 
       const transferTx = encodeFunctionData({
