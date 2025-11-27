@@ -11,12 +11,14 @@ const POOL_ADDRESS_MAPPING = {
     //   address: '',
     //   environment: 'mainnet',
     //   poolName: 'AAA_CLO',
+    //   poolId: 281474976710662,
     // },
     // Testnet/Devnet pools (using devnet as default for development)
     '0x00010000000000060000000000000001': {
         address: 'BdvsupcBZ3odJvWvLKZPGTQwPjpShuWVpmnTq3gfdCbN',
         environment: 'devnet',
         poolName: 'AAA_CLO',
+        poolId: 281474976710662,
     },
 };
 export const USDC_MINT_ADDRESSES = {

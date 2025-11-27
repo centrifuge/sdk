@@ -8,7 +8,8 @@ import type { SolanaEnvironment } from '../types/config.js';
 export interface SolanaPoolConfig {
     address: string;
     environment: SolanaEnvironment;
-    poolName?: string;
+    poolName: string;
+    poolId: number;
 }
 export declare const USDC_MINT_ADDRESSES: Record<SolanaEnvironment, string>;
 //# sourceMappingURL=poolAddresses.d.ts.map

@@ -19,6 +19,10 @@ export declare class SolanaManager {
      */
     get connection(): Connection;
     /**
+     * Get the current slot
+     */
+    getSlot(): import("../types/query.js").Query<number>;
+    /**
      * Get account info for a given address
      * @param address - The public key or address string
      */
@@ -35,10 +39,6 @@ export declare class SolanaManager {
      * @returns Observable that emits the USDC balance
      */
     usdcBalance(address: PublicKey | string): import("../types/query.js").Query<Balance>;
-    /**
-     * Get the current slot
-     */
-    getSlot(): import("../types/query.js").Query<number>;
     /**
      * Check if a pool/shareClass supports Solana investments
      * @param shareClassId - The share class ID to check

@@ -20,18 +20,6 @@ export class SolanaManager {
         this.#client = new SolanaClient(config);
     }
     /**
-     * Get the Solana-specific environment
-     * Maps EVM environment to Solana environment, with optional override from config
-     * @internal
-     */
-    #getSolanaEnvironment() {
-        if (this.#solanaConfig.environment) {
-            return this.#solanaConfig.environment;
-        }
-        const evmEnvironment = this.#root.config.environment;
-        return evmEnvironment === 'testnet' ? 'devnet' : 'mainnet';
-    }
-    /**
      * Get the Solana client
      */
     get client() {
@@ -42,6 +30,14 @@ export class SolanaManager {
      */
     get connection() {
         return this.#client.connection;
+    }
+    /**
+     * Get the current slot
+     */
+    getSlot() {
+        return this._query(['solana', 'slot'], () => {
+            return this.#client.getSlot();
+        });
     }
     /**
      * Get account info for a given address
@@ -103,14 +99,6 @@ export class SolanaManager {
         });
     }
     /**
-     * Get the current slot
-     */
-    getSlot() {
-        return this._query(['solana', 'slot'], () => {
-            return this.#client.getSlot();
-        });
-    }
-    /**
      * Check if a pool/shareClass supports Solana investments
      * @param shareClassId - The share class ID to check
      * @returns True if the pool has a Solana address configured
@@ -121,21 +109,82 @@ export class SolanaManager {
         return config !== undefined;
     }
     /**
-     * Validate investment parameters
-     * @internal
-     * @param amount - USDC Balance amount
-     * @param wallet - Solana wallet adapter ({ publicKey, signTransaction })
+     * Invest USDC into a Pool's Solana address via Solana network
+     * This method transfers USDC from the investor's wallet to the pool's Solana address.
+     * The wallet adapter handles all signing and authorization.
+     *
+     * **Note**: This method is designed for single-signature wallets (Phantom, Solflare, etc.).
+     * **TODO**: Create `prepareInvestTransaction()` for multi-sig wallets (Safe, Squads)
+     *
+     * @param amount - The USDC amount to invest (must have 6 decimals for USDC)
+     * @param shareClassId - The share class ID of the pool to invest in
+     * @param wallet - The connected Solana wallet adapter
+     * @returns Observable that emits transaction status updates
      */
-    #validateInvestmentParams(amount, wallet) {
-        if (!wallet.publicKey) {
-            throw new SolanaTransactionError('Wallet not connected. Please connect your Solana wallet.', SolanaErrorCode.WALLET_NOT_CONNECTED);
+    invest(amount, shareClassId, wallet) {
+        return new Observable((subscriber) => {
+            ;
+            (async () => {
+                try {
+                    const investDecimals = 6; // TODO: update if we use other tokens besides USDC
+                    this.#validateInvestmentParams(amount, investDecimals, wallet);
+                    const solanaEnvironment = this.#getSolanaEnvironment();
+                    const poolConfig = this.#getPoolConfig(shareClassId, solanaEnvironment);
+                    subscriber.next({
+                        type: 'preparing',
+                        message: 'Preparing USDC transfer transaction...',
+                    });
+                    const usdcMint = new PublicKey(getUsdcMintAddress(solanaEnvironment));
+                    const poolAddress = new PublicKey(poolConfig.address);
+                    const fromTokenAccount = await getAssociatedTokenAddress(usdcMint, wallet.publicKey);
+                    const toTokenAccount = await getAssociatedTokenAddress(usdcMint, poolAddress);
+                    await this.#validateBalance(fromTokenAccount, amount);
+                    const transaction = await this.#buildTransferTransaction(amount, fromTokenAccount, toTokenAccount, wallet);
+                    const { blockhash, lastValidBlockHeight } = await this.#prepareTransaction(transaction, wallet.publicKey);
+                    subscriber.next({
+                        type: 'signing',
+                        message: 'Waiting for wallet signature...',
+                    });
+                    const signature = await this.#signAndSendTransaction(transaction, wallet);
+                    subscriber.next({
+                        type: 'sending',
+                        message: 'Sending transaction to Solana network...',
+                    });
+                    subscriber.next({
+                        type: 'confirming',
+                        message: 'Waiting for transaction confirmation...',
+                        signature,
+                    });
+                    await this.#confirmTransaction(signature, blockhash, lastValidBlockHeight);
+                    subscriber.next({
+                        type: 'confirmed',
+                        message: `Successfully invested ${amount.toFloat()} USDC into pool ${poolConfig.poolName || shareClassId.toString()}`,
+                        signature,
+                    });
+                    subscriber.complete();
+                }
+                catch (error) {
+                    if (error instanceof SolanaTransactionError) {
+                        subscriber.error(error);
+                    }
+                    else {
+                        subscriber.error(new SolanaTransactionError('An unexpected error occurred during the investment transaction.', SolanaErrorCode.TRANSACTION_FAILED, error));
+                    }
+                }
+            })();
+        });
+    }
+    /**
+     * Get the Solana-specific environment
+     * Maps EVM environment to Solana environment, with optional override from config
+     * @internal
+     */
+    #getSolanaEnvironment() {
+        if (this.#solanaConfig.environment) {
+            return this.#solanaConfig.environment;
         }
-        if (amount.decimals !== 6) {
-            throw new SolanaTransactionError(`Invalid amount decimals. USDC must have 6 decimals, got ${amount.decimals}.`, SolanaErrorCode.INVALID_DECIMALS);
-        }
-        if (!amount.gt(0n)) {
-            throw new SolanaTransactionError('Investment amount must be greater than 0.', SolanaErrorCode.INVALID_AMOUNT);
-        }
+        const evmEnvironment = this.#root.config.environment;
+        return evmEnvironment === 'testnet' ? 'devnet' : 'mainnet';
     }
     /**
      * Get pool configuration and validate it exists
@@ -152,30 +201,48 @@ export class SolanaManager {
         return poolConfig;
     }
     /**
-     * Verify the wallet has sufficient USDC balance
+     * Validate investment parameters
+     * @internal
+     * @param amount - Balance amount
+     * @param decimals - Number of decimals in invest token
+     * @param wallet - Solana wallet adapter ({ publicKey, signTransaction })
+     */
+    #validateInvestmentParams(amount, decimals, wallet) {
+        if (!wallet.publicKey) {
+            throw new SolanaTransactionError('Wallet not connected. Please connect your Solana wallet.', SolanaErrorCode.WALLET_NOT_CONNECTED);
+        }
+        if (amount.decimals !== decimals) {
+            throw new SolanaTransactionError(`Invalid amount decimals. Invest token must have ${decimals} decimals, got ${amount.decimals}.`, SolanaErrorCode.INVALID_DECIMALS);
+        }
+        if (!amount.gt(0n)) {
+            throw new SolanaTransactionError('Investment amount must be greater than 0.', SolanaErrorCode.INVALID_AMOUNT);
+        }
+    }
+    /**
+     * Verify the wallet has sufficient balance of funds
      * @internal
      * @param fromTokenAccount - Solana wallet public key
-     * @param amount - USDC Balance amount
+     * @param amount - Balance amount
      */
     async #validateBalance(fromTokenAccount, amount) {
         try {
             const accountInfo = await this.connection.getTokenAccountBalance(fromTokenAccount);
             const currentBalance = BigInt(accountInfo.value.amount);
             if (currentBalance < amount.toBigInt()) {
-                throw new SolanaTransactionError(`Insufficient USDC balance. Required: ${amount.toFloat()} USDC, Available: ${Number(currentBalance) / 1_000_000} USDC`, SolanaErrorCode.INSUFFICIENT_BALANCE);
+                throw new SolanaTransactionError(`Insufficient balance. Required: ${amount.toFloat()}, Available: ${Number(currentBalance) / 1_000_000}`, SolanaErrorCode.INSUFFICIENT_BALANCE);
             }
         }
         catch (error) {
             if (error instanceof SolanaTransactionError) {
                 throw error;
             }
-            throw new SolanaTransactionError('Could not verify USDC balance. Please ensure you have a USDC token account.', SolanaErrorCode.NETWORK_ERROR, error);
+            throw new SolanaTransactionError('Could not verify invest token balance. Please ensure you have an invest token account.', SolanaErrorCode.NETWORK_ERROR, error);
         }
     }
     /**
-     * Build a USDC transfer transaction
+     * Build a transfer transaction
      * @internal
-     * @param amount - USDC Balance amount
+     * @param amount - Balance amount
      * @param fromTokenAccount - Solana wallet public key
      * @param toTokenAccount - Solana wallet public key
      * @param wallet - Solana wallet adapter ({ publicKey, signTransaction })
@@ -254,71 +321,6 @@ export class SolanaManager {
             }
             throw new SolanaTransactionError('Transaction confirmation failed or timed out.', SolanaErrorCode.TRANSACTION_FAILED, error);
         }
-    }
-    /**
-     * Invest USDC into a Pool's Solana address via Solana network
-     * This method transfers USDC from the investor's wallet to the pool's Solana address.
-     * The wallet adapter handles all signing and authorization.
-     *
-     * **Note**: This method is designed for single-signature wallets (Phantom, Solflare, etc.).
-     * **TODO**: Create `prepareInvestTransaction()` for multi-sig wallets (Safe, Squads)
-     *
-     * @param amount - The USDC amount to invest (must have 6 decimals for USDC)
-     * @param shareClassId - The share class ID of the pool to invest in
-     * @param wallet - The connected Solana wallet adapter
-     * @returns Observable that emits transaction status updates
-     */
-    invest(amount, shareClassId, wallet) {
-        return new Observable((subscriber) => {
-            ;
-            (async () => {
-                try {
-                    this.#validateInvestmentParams(amount, wallet);
-                    const solanaEnvironment = this.#getSolanaEnvironment();
-                    const poolConfig = this.#getPoolConfig(shareClassId, solanaEnvironment);
-                    subscriber.next({
-                        type: 'preparing',
-                        message: 'Preparing USDC transfer transaction...',
-                    });
-                    const usdcMint = new PublicKey(getUsdcMintAddress(solanaEnvironment));
-                    const poolAddress = new PublicKey(poolConfig.address);
-                    const fromTokenAccount = await getAssociatedTokenAddress(usdcMint, wallet.publicKey);
-                    const toTokenAccount = await getAssociatedTokenAddress(usdcMint, poolAddress);
-                    await this.#validateBalance(fromTokenAccount, amount);
-                    const transaction = await this.#buildTransferTransaction(amount, fromTokenAccount, toTokenAccount, wallet);
-                    const { blockhash, lastValidBlockHeight } = await this.#prepareTransaction(transaction, wallet.publicKey);
-                    subscriber.next({
-                        type: 'signing',
-                        message: 'Waiting for wallet signature...',
-                    });
-                    const signature = await this.#signAndSendTransaction(transaction, wallet);
-                    subscriber.next({
-                        type: 'sending',
-                        message: 'Sending transaction to Solana network...',
-                    });
-                    subscriber.next({
-                        type: 'confirming',
-                        message: 'Waiting for transaction confirmation...',
-                        signature,
-                    });
-                    await this.#confirmTransaction(signature, blockhash, lastValidBlockHeight);
-                    subscriber.next({
-                        type: 'confirmed',
-                        message: `Successfully invested ${amount.toFloat()} USDC into pool ${poolConfig.poolName || shareClassId.toString()}`,
-                        signature,
-                    });
-                    subscriber.complete();
-                }
-                catch (error) {
-                    if (error instanceof SolanaTransactionError) {
-                        subscriber.error(error);
-                    }
-                    else {
-                        subscriber.error(new SolanaTransactionError('An unexpected error occurred during the investment transaction.', SolanaErrorCode.TRANSACTION_FAILED, error));
-                    }
-                }
-            })();
-        });
     }
     /** @internal */
     _query(keys, observableCallback, options) {
