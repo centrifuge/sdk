@@ -114,7 +114,7 @@ export class BalanceSheet extends Entity {
         } catch (error) {
           console.warn('Batching not supported, using sequential transactions:', error)
 
-          // Fallback to sequential transactions if batching fails.
+          // Fallback to sequential transactions if batching fails
           for (const [index, call] of calls.entries()) {
             yield* doTransaction(`Approve and Deposit (${index + 1}/${calls.length})`, ctx, () =>
               ctx.walletClient.sendTransaction({
@@ -199,7 +199,11 @@ export class BalanceSheet extends Entity {
       ])
       if (!isManager) throw new Error('Signing address is not a BalanceSheetManager')
 
-      const shares = amount.div(pricePerShare.toDecimal())
+      let shares = amount
+      if (pricePerShare.toBigInt() !== 0n) {
+        shares = amount.div(pricePerShare.toDecimal())
+      }
+
       if (shares.eq(0n)) throw new Error('Cannot issue 0 shares')
 
       const overrideTx = encodeFunctionData({
@@ -225,6 +229,13 @@ export class BalanceSheet extends Entity {
     }, this.chainId)
   }
 
+  /**
+   * Revokes shares from a specific user in the balance sheet.
+   * * Calculates the number of shares to revoke.
+   * @param user - The address of the user from whom shares will be revoked.
+   * @param amount - The monetary value (currency amount) to revoke.
+   * @param pricePerShare - The price per share used to calculate the number of shares to revoke.
+   */
   revoke(user: HexString, amount: Balance, pricePerShare: Price) {
     const self = this
     return this._transact(async function* (ctx) {
@@ -234,20 +245,17 @@ export class BalanceSheet extends Entity {
       ])
       if (!isManager) throw new Error('Signing address is not a BalanceSheetManager')
 
-      const shares = amount.div(pricePerShare.toDecimal())
+      let shares = amount
+      if (pricePerShare.toBigInt() !== 0n) {
+        shares = amount.div(pricePerShare.toDecimal())
+      }
+
       if (shares.eq(0n)) throw new Error('Cannot revoke 0 shares')
 
       const transferTx = encodeFunctionData({
         abi: ABI.BalanceSheet,
         functionName: 'transferSharesFrom',
-        args: [
-          self.pool.id.raw,
-          self.shareClass.id.raw,
-          ctx.signingAddress,
-          user,
-          ctx.signingAddress,
-          shares.toBigInt(),
-        ],
+        args: [self.pool.id.raw, self.shareClass.id.raw, user, user, ctx.signingAddress, shares.toBigInt()],
       })
 
       const overrideTx = encodeFunctionData({

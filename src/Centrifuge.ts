@@ -505,6 +505,7 @@ export class Centrifuge {
                   name: string
                   symbol: string
                   decimals: number
+                  assetTokenId: string | null
                 } | null
               }[]
             }
@@ -519,6 +520,7 @@ export class Centrifuge {
                     name
                     symbol
                     decimals
+                    assetTokenId
                   }
                 }
               }
@@ -535,6 +537,7 @@ export class Centrifuge {
                     name: assetReg.asset!.name,
                     symbol: assetReg.asset!.symbol,
                     decimals: assetReg.asset!.decimals,
+                    tokenId: assetReg.asset!.assetTokenId ? BigInt(assetReg.asset!.assetTokenId) : undefined,
                   }
                 })
             })
@@ -1258,7 +1261,7 @@ export class Centrifuge {
                 id
               }
             }
-            deployments { 
+            deployments {
               items {
                 accounting
                 asyncRequestManager

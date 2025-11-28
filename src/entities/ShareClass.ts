@@ -284,13 +284,17 @@ export class ShareClass extends Entity {
             combineLatest(vaults.map((v) => this._epoch(v.assetId))),
             this._epochOutstandingInvests(),
             this._epochOutstandingRedeems(),
+            this.balances(),
           ]).pipe(
-            map(([epochs, outInv, outRed]) => {
+            map(([epochs, outInv, outRed, balancesData]) => {
               const invByKey = new Map<string, Balance>()
               outInv.forEach((o) => invByKey.set(`${o.assetId.toString()}-${o.chainId}`, o.amount))
 
               const redByKey = new Map<string, Balance>()
               outRed.forEach((o) => redByKey.set(`${o.assetId.toString()}-${o.chainId}`, o.amount))
+
+              const priceByAsset = new Map<string, Price>()
+              balancesData.forEach((b) => priceByAsset.set(b.assetId.toString(), b.price))
 
               return epochs.map((epoch, i) => {
                 const vault = vaults[i]!
@@ -298,12 +302,14 @@ export class ShareClass extends Entity {
 
                 const queuedInvest = invByKey.get(key) ?? new Balance(0n, 18)
                 const queuedRedeem = redByKey.get(key) ?? new Balance(0n, 18)
+                const assetPrice = priceByAsset.get(vault.assetId.toString()) ?? Price.fromFloat(1)
 
                 return {
                   assetId: vault.assetId,
                   chainId: vault.chainId,
                   queuedInvest,
                   queuedRedeem,
+                  assetPrice,
                   ...epoch,
                 }
               })
@@ -1424,10 +1430,10 @@ export class ShareClass extends Entity {
                         investor,
                         assetId: vault.assetId,
                         chainId: vault.chainId,
-                        pendingInvestCurrency: investment.pendingInvestCurrency || basePendingDeposit,
+                        pendingDepositAssets: investment.pendingDepositAssets || basePendingDeposit,
                         pendingRedeemShares: basePendingRedeem,
-                        claimableInvestShares: investment.claimableInvestShares,
-                        claimableRedeemCurrency: investment.claimableRedeemCurrency,
+                        claimableDepositShares: investment.claimableDepositShares,
+                        claimableRedeemAssets: investment.claimableRedeemAssets,
                         queuedInvest,
                         queuedRedeem,
                         depositEpoch: pendingMatch?.depositEpoch,
@@ -1443,10 +1449,10 @@ export class ShareClass extends Entity {
                         investor,
                         assetId: vault.assetId,
                         chainId: vault.chainId,
-                        pendingInvestCurrency: new Balance(0n, 18),
+                        pendingDepositAssets: new Balance(0n, 18),
                         pendingRedeemShares: new Balance(0n, 18),
-                        claimableInvestShares: new Balance(0n, 18),
-                        claimableRedeemCurrency: new Balance(0n, 18),
+                        claimableDepositShares: new Balance(0n, 18),
+                        claimableRedeemAssets: new Balance(0n, 18),
                         queuedInvest: new Balance(0n, 18),
                         queuedRedeem: new Balance(0n, 18),
                         pendingIssuances: [],
@@ -1489,11 +1495,14 @@ export class ShareClass extends Entity {
               decimals
               symbol
               name
+              blockchain {
+                chainId
+              }
             }
-             token {
+            token {
               decimals
               blockchain {
-               chainId
+                chainId
               }
             }
           }
@@ -1519,6 +1528,9 @@ export class ShareClass extends Entity {
                 decimals: number
                 symbol: string
                 name: string
+                blockchain: {
+                  chainId: number
+                }
               }
               token: {
                 decimals: number
@@ -1546,7 +1558,7 @@ export class ShareClass extends Entity {
               name: order.asset.name,
               decimals: order.asset.decimals,
             },
-            chainId: order.token.blockchain.chainId,
+            chainId: order.asset.blockchain.chainId,
             token: {
               decimals: order.token.decimals,
             },
@@ -1582,11 +1594,14 @@ export class ShareClass extends Entity {
               decimals
               symbol
               name
+              blockchain {
+                chainId
+              }
             }
             token {
               decimals
               blockchain {
-               chainId
+                chainId
               }
             }
           }
@@ -1612,6 +1627,9 @@ export class ShareClass extends Entity {
                 decimals: number
                 symbol: string
                 name: string
+                blockchain: {
+                  chainId: number
+                }
               }
               token: {
                 decimals: number
@@ -1639,7 +1657,7 @@ export class ShareClass extends Entity {
               name: order.asset.name,
               decimals: order.asset.decimals,
             },
-            chainId: order.token.blockchain.chainId,
+            chainId: order.asset.blockchain.chainId,
             token: {
               decimals: order.token.decimals,
             },
