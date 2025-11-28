@@ -1,4 +1,4 @@
-import { combineLatest, defer, EMPTY, map, of, switchMap } from 'rxjs'
+import { combineLatest, defer, EMPTY, firstValueFrom, map, of, switchMap } from 'rxjs'
 import { encodeFunctionData, encodePacked, getContract, maxUint128 } from 'viem'
 import { ABI } from '../abi/index.js'
 import type { Centrifuge } from '../Centrifuge.js'
@@ -584,6 +584,15 @@ export class PoolNetwork extends Entity {
         self.details(),
       ])
 
+      const shareClassIds = [...new Set(vaults.map((v) => v.shareClassId.raw))]
+      const vaultsWithUnlinked = await Promise.all(
+        shareClassIds.map((scId) => {
+          const shareClassId = vaults.find((v) => v.shareClassId.raw === scId)!.shareClassId
+          return firstValueFrom(self.vaults(shareClassId, true))
+        })
+      )
+      const vaultsByShareClass = Object.fromEntries(shareClassIds.map((scId, i) => [scId, vaultsWithUnlinked[i] ?? []]))
+
       const batch: HexString[] = []
       const messageTypes: MessageTypeWithSubType[] = []
 
@@ -594,7 +603,8 @@ export class PoolNetwork extends Entity {
           throw new Error(`Share class "${vault.shareClassId.raw}" not found`)
         }
 
-        const existingVault = shareClass.vaults.find((v) => v.assetId.equals(vault.assetId))
+        const allVaultsForShareClass = vaultsByShareClass[vault.shareClassId.raw] ?? []
+        const existingVault = allVaultsForShareClass.find((v) => v.assetId.equals(vault.assetId))
 
         if (!existingVault) {
           throw new Error(
