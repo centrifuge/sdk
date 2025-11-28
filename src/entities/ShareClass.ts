@@ -2715,4 +2715,5 @@ export class ShareClass extends Entity {
           )
     )
   }
+
 }
