@@ -563,7 +563,7 @@ export class PoolNetwork extends Entity {
         messageTypes.push({ type: MessageType.UpdateVault, subtype: VaultUpdateKind.Unlink })
       }
 
-      yield* wrapTransaction(`Unlink vault${batch.length > 1 ? 's' : ''}`, ctx, {
+      yield* wrapTransaction(`Unlink vaults`, ctx, {
         data: batch,
         contract: hub,
         messages: { [id]: messageTypes },
@@ -635,7 +635,7 @@ export class PoolNetwork extends Entity {
         messageTypes.push({ type: MessageType.UpdateVault, subtype: VaultUpdateKind.Link })
       }
 
-      yield* wrapTransaction(`Link vaults (${batch.length})`, ctx, {
+      yield* wrapTransaction(`Link vaults`, ctx, {
         data: batch,
         contract: hub,
         messages: { [id]: messageTypes },
