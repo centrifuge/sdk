@@ -1,3 +1,0 @@
-declare const _default: readonly ["event Freeze(address indexed token, address indexed user)", "event Unfreeze(address indexed token, address indexed user)", "event UpdateMember(address indexed token, address indexed user, uint64 validUntil)", "function freeze(address token, address user)", "function isFrozen(address token, address user) view returns (bool)", "function isMember(address token, address user) view returns (bool isValid, uint64 validUntil)", "function unfreeze(address token, address user)"];
-export default _default;
-//# sourceMappingURL=RestrictionManager.abi.d.ts.map

@@ -1,1 +1,0 @@
-{"version":3,"file":"PoolReports.d.ts","sourceRoot":"","sources":["../../../src/entities/Reports/PoolReports.ts"],"names":[],"mappings":"AACA,OAAO,EAAE,MAAM,EAAE,MAAM,cAAc,CAAA;AACrC,OAAO,EAAE,IAAI,EAAE,MAAM,YAAY,CAAA;AACjC,OAAO,EAAyB,uBAAuB,EAAE,MAAM,4BAA4B,CAAA;AAE3F,qBAAa,WAAY,SAAQ,MAAM;IAI5B,IAAI,EAAE,IAAI;IAKnB,WAAW,CAAC,MAAM,CAAC,EAAE,uBAAuB;CAG7C"}
