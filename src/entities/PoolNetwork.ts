@@ -350,7 +350,7 @@ export class PoolNetwork extends Entity {
    */
   deploy(
     shareClasses: { id: ShareClassId; hook: HexString }[] = [],
-    vaults: { shareClassId: ShareClassId; assetId: AssetId; kind: 'async' | 'syncDeposit' }[] = []
+    vaults: { shareClassId: ShareClassId; assetId: AssetId; kind: 'async' | 'syncDeposit'; hook?: HexString }[] = []
   ) {
     const self = this
     return this._transact(async function* (ctx) {
@@ -365,19 +365,19 @@ export class PoolNetwork extends Entity {
         self._root.id(self.chainId),
         self.details(),
       ])
-
       const balanceSheetContract = getContract({
         client: ctx.publicClient,
         address: balanceSheet,
         abi: ABI.BalanceSheet,
       })
+
       const [isAsyncManagerSet, isSyncManagerSet] = await Promise.all([
         balanceSheetContract.read.manager([self.pool.id.raw, asyncRequestManager]),
         balanceSheetContract.read.manager([self.pool.id.raw, syncManager]),
       ])
 
       const batch: HexString[] = []
-      const messageTypes: MessageTypeWithSubType[] = []
+      const messageTypes: (MessageType | { type: MessageType; subtype: number })[] = []
 
       // Set vault managers as balance sheet managers if not already set
       // Always set async manager, as it's used by both async and sync deposit vaults
@@ -420,12 +420,33 @@ export class PoolNetwork extends Entity {
           console.warn(`Share class "${sc.id}" is already active in pool "${self.pool.id}"`)
           continue
         }
+
         enabledShareClasses.add(sc.id.raw)
         batch.push(
           encodeFunctionData({
             abi: ABI.Hub,
             functionName: 'notifyShareClass',
             args: [self.pool.id.raw, sc.id.raw, id, addressToBytes32(sc.hook)],
+          })
+        )
+        messageTypes.push(MessageType.NotifyShareClass)
+      }
+
+      const shareClassesNeedingNotification = new Map<ShareClassId['raw'], HexString>()
+      for (const vault of vaults) {
+        if (!enabledShareClasses.has(vault.shareClassId.raw)) {
+          const hook = vault.hook ?? NULL_ADDRESS
+          shareClassesNeedingNotification.set(vault.shareClassId.raw, hook)
+        }
+      }
+
+      for (const [shareClassIdRaw, hook] of shareClassesNeedingNotification) {
+        enabledShareClasses.add(shareClassIdRaw)
+        batch.push(
+          encodeFunctionData({
+            abi: ABI.Hub,
+            functionName: 'notifyShareClass',
+            args: [self.pool.id.raw, shareClassIdRaw, id, addressToBytes32(hook)],
           })
         )
         messageTypes.push(MessageType.NotifyShareClass)
@@ -457,9 +478,10 @@ export class PoolNetwork extends Entity {
               ],
             })
           )
-          messageTypes.push(MessageType.UpdateContract)
         }
 
+        // Only set request manager if vault doesn't already exist
+        // `setRequestManager` will revert if the share class / asset combination already has a vault
         if (!existingVault) {
           batch.push(
             encodeFunctionData({
