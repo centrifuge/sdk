@@ -517,7 +517,7 @@ export class PoolNetwork extends Entity {
    * Unlink vaults.
    * @param vaults - An array of vaults to unlink
    */
-  unlinkVaults(vaults: { shareClassId: ShareClassId; assetId: AssetId }[]) {
+  unlinkVaults(vaults: { shareClassId: ShareClassId; assetId: AssetId; address: HexString }[]) {
     const self = this
     return this._transact(async function* (ctx) {
       if (vaults.length === 0) {
@@ -535,11 +535,15 @@ export class PoolNetwork extends Entity {
 
       for (const vault of vaults) {
         const shareClass = details.activeShareClasses.find((sc) => sc.id.equals(vault.shareClassId))
-        const existingVault = shareClass?.vaults.find((v) => v.assetId.equals(vault.assetId))
+
+        if (!shareClass) {
+          throw new Error(`Share class "${vault.shareClassId.raw}" not found`)
+        }
+
+        const existingVault = shareClass.vaults.find((v) => v.address.toLowerCase() === vault.address.toLowerCase())
+
         if (!existingVault) {
-          throw new Error(
-            `Vault for share class "${vault.shareClassId.raw}" and asset ID "${vault.assetId.raw}" not found`
-          )
+          throw new Error(`Vault with address "${vault.address}" not found for share class "${vault.shareClassId.raw}"`)
         }
 
         batch.push(
@@ -550,13 +554,13 @@ export class PoolNetwork extends Entity {
               self.pool.id.raw,
               vault.shareClassId.raw,
               vault.assetId.raw,
-              addressToBytes32(existingVault.address),
+              addressToBytes32(vault.address),
               VaultUpdateKind.Unlink,
               0n, // gas limit
             ],
           })
         )
-        messageTypes.push({ type: MessageType.UpdateVault, subtype: VaultUpdateKind.Unlink }) //
+        messageTypes.push({ type: MessageType.UpdateVault, subtype: VaultUpdateKind.Unlink })
       }
 
       yield* wrapTransaction(`Unlink vault${batch.length > 1 ? 's' : ''}`, ctx, {
@@ -571,7 +575,7 @@ export class PoolNetwork extends Entity {
    * Link vaults that are already deployed but currently unlinked.
    * @param vaults - An array of vaults to link
    */
-  linkVaults(vaults: { shareClassId: ShareClassId; assetId: AssetId }[]) {
+  linkVaults(vaults: { shareClassId: ShareClassId; assetId: AssetId; address: HexString }[]) {
     const self = this
     return this._transact(async function* (ctx) {
       if (vaults.length === 0) {
@@ -604,11 +608,13 @@ export class PoolNetwork extends Entity {
         }
 
         const allVaultsForShareClass = vaultsByShareClass[vault.shareClassId.raw] ?? []
-        const existingVault = allVaultsForShareClass.find((v) => v.assetId.equals(vault.assetId))
+        const existingVault = allVaultsForShareClass.find(
+          (v) => v.address.toLowerCase() === vault.address.toLowerCase()
+        )
 
         if (!existingVault) {
           throw new Error(
-            `Vault for share class "${vault.shareClassId.raw}" and asset ID "${vault.assetId.raw}" not found. The vault must be deployed before it can be linked.`
+            `Vault with address "${vault.address}" not found for share class "${vault.shareClassId.raw}". The vault must be deployed before it can be linked.`
           )
         }
 
@@ -620,7 +626,7 @@ export class PoolNetwork extends Entity {
               self.pool.id.raw,
               vault.shareClassId.raw,
               vault.assetId.raw,
-              addressToBytes32(existingVault.address),
+              addressToBytes32(vault.address),
               VaultUpdateKind.Link,
               0n,
             ],
