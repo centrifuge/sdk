@@ -436,6 +436,9 @@ export class PoolNetwork extends Entity {
           throw new Error(`Share class "${vault.shareClassId.raw}" is not enabled in pool "${self.pool.id.raw}"`)
         }
 
+        const existingShareClass = details.activeShareClasses.find((sc) => sc.id.equals(vault.shareClassId))
+        const existingVault = existingShareClass?.vaults.find((v) => v.assetId.equals(vault.assetId))
+
         if (vault.kind === 'syncDeposit') {
           batch.push(
             encodeFunctionData({
@@ -454,17 +457,26 @@ export class PoolNetwork extends Entity {
               ],
             })
           )
+          messageTypes.push(MessageType.UpdateContract)
+        }
+
+        if (!existingVault) {
+          batch.push(
+            encodeFunctionData({
+              abi: ABI.Hub,
+              functionName: 'setRequestManager',
+              args: [
+                self.pool.id.raw,
+                vault.shareClassId.raw,
+                vault.assetId.raw,
+                addressToBytes32(asyncRequestManager),
+              ],
+            })
+          )
+          messageTypes.push(MessageType.SetRequestManager)
         }
 
         batch.push(
-          // TODO: When we have fully sync vaults, we have to check if a vault for this share class and asset already exists
-          // and if so, we shouldn't set the request manager again.
-          // `setRequestManager` will revert if the share class / asset combination already has a vault.
-          encodeFunctionData({
-            abi: ABI.Hub,
-            functionName: 'setRequestManager',
-            args: [self.pool.id.raw, vault.shareClassId.raw, vault.assetId.raw, addressToBytes32(asyncRequestManager)],
-          }),
           encodeFunctionData({
             abi: ABI.Hub,
             functionName: 'notifyAssetPrice',
@@ -483,7 +495,7 @@ export class PoolNetwork extends Entity {
             ],
           })
         )
-        messageTypes.push(MessageType.SetRequestManager, MessageType.NotifyPricePoolPerAsset, {
+        messageTypes.push(MessageType.NotifyPricePoolPerAsset, {
           type: MessageType.UpdateVault,
           subtype: VaultUpdateKind.DeployAndLink,
         })
