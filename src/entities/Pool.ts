@@ -360,37 +360,40 @@ export class Pool extends Entity {
       let cid: string | null = null
 
       if (shouldUpdateMetadata) {
-        const baseMetadata: PoolMetadata = poolMetadata ?? {
-          version: 1,
-          pool: {
-            name: '',
-            icon: null,
-            asset: { class: 'Private credit', subClass: '' },
-            issuer: {
-              name: '',
-              repName: '',
-              description: '',
-              email: '',
-              logo: null,
-              shortDescription: '',
-              categories: [],
-            },
-            poolStructure: '',
-            investorType: '',
-            links: {
-              executiveSummary: null,
-              forum: undefined,
-              website: undefined,
-            },
-            details: [],
-            status: 'upcoming',
-            listed: false,
-            poolRatings: [],
-            reports: [],
-          },
-          shareClasses: {},
-          holdings: { headers: [], data: [] },
-        }
+        const baseMetadata: PoolMetadata =
+          poolMetadata && poolMetadata.pool
+            ? poolMetadata
+            : ({
+                version: 1,
+                pool: {
+                  name: '',
+                  icon: null,
+                  asset: { class: 'Private credit', subClass: '' },
+                  issuer: {
+                    name: '',
+                    repName: '',
+                    description: '',
+                    email: '',
+                    logo: null,
+                    shortDescription: '',
+                    categories: [],
+                  },
+                  poolStructure: '',
+                  investorType: '',
+                  links: {
+                    executiveSummary: null,
+                    forum: undefined,
+                    website: undefined,
+                  },
+                  details: [],
+                  status: 'upcoming',
+                  listed: false,
+                  poolRatings: [],
+                  reports: [],
+                },
+                shareClasses: {},
+                holdings: { headers: [], data: [] },
+              } as PoolMetadata)
 
         const newShareClassesById: PoolMetadata['shareClasses'] = {}
         addedShareClasses.forEach((sc, index) => {
