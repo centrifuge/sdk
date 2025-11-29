@@ -377,7 +377,7 @@ export class PoolNetwork extends Entity {
       ])
 
       const batch: HexString[] = []
-      const messageTypes: (MessageType | { type: MessageType; subtype: number })[] = []
+      const messageTypes: (MessageType | MessageTypeWithSubType)[] = []
 
       // Set vault managers as balance sheet managers if not already set
       // Always set async manager, as it's used by both async and sync deposit vaults
@@ -613,8 +613,9 @@ export class PoolNetwork extends Entity {
       const shareClassIds = [...new Set(vaults.map((v) => v.shareClassId.raw))]
       const vaultsWithUnlinked = await Promise.all(
         shareClassIds.map((scId) => {
-          const shareClassId = vaults.find((v) => v.shareClassId.raw === scId)!.shareClassId
-          return firstValueFrom(self.vaults(shareClassId, true))
+          const shareClass = vaults.find((v) => v.shareClassId.raw === scId)
+          const shareClassId = shareClass ? shareClass.shareClassId : null
+          return shareClassId ? firstValueFrom(self.vaults(shareClassId, true)) : null
         })
       )
       const vaultsByShareClass = Object.fromEntries(shareClassIds.map((scId, i) => [scId, vaultsWithUnlinked[i] ?? []]))
