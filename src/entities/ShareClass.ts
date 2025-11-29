@@ -1667,6 +1667,22 @@ export class ShareClass extends Entity {
     )
   }
 
+  updateHoldingValuation(assetId: AssetId, valuation: HexString) {
+    const self = this
+    return this._transact(async function* (ctx) {
+      const { hub } = await self._root._protocolAddresses(self.pool.chainId)
+
+      yield* wrapTransaction('Update holding valuation', ctx, {
+        contract: hub,
+        data: encodeFunctionData({
+          abi: ABI.Hub,
+          functionName: 'updateHoldingValuation',
+          args: [self.pool.id.raw, self.id.raw, assetId.raw, valuation],
+        }),
+      })
+    }, this.pool.chainId)
+  }
+
   /** @internal */
   _balances() {
     return this._root._queryIndexer(
