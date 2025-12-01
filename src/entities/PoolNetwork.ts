@@ -595,7 +595,7 @@ export class PoolNetwork extends Entity {
 
   /**
    * Link vaults that are already deployed but currently unlinked.
-   * @param vaults - An array of vaults to link
+   * @param vaults - An array of vaults to link.
    */
   linkVaults(vaults: { shareClassId: ShareClassId; assetId: AssetId; address: HexString }[]) {
     const self = this
