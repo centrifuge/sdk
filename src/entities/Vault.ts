@@ -603,7 +603,7 @@ export class Vault extends Entity {
   updateMaxReserve(maxReserve: Balance) {
     const self = this
     return this._transact(async function* (ctx) {
-      const [id, { hub }, asset] = await Promise.all([
+      const [id, { hub, syncManager }, asset] = await Promise.all([
         self._root.id(self.chainId),
         self._root._protocolAddresses(self.chainId),
         self._investmentCurrency(),
@@ -622,7 +622,7 @@ export class Vault extends Entity {
             self.pool.id.raw,
             self.shareClass.id.raw,
             id,
-            addressToBytes32(self.address),
+            addressToBytes32(syncManager),
             encodePacked(
               ['uint8', 'uint128', 'uint128'],
               [/* UpdateContractType.SyncDepositMaxReserve */ 2, self.assetId.raw, maxReserve.toBigInt()]

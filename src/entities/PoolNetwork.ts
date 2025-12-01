@@ -350,7 +350,13 @@ export class PoolNetwork extends Entity {
    */
   deploy(
     shareClasses: { id: ShareClassId; hook: HexString }[] = [],
-    vaults: { shareClassId: ShareClassId; assetId: AssetId; kind: 'async' | 'syncDeposit'; hook?: HexString }[] = []
+    vaults: {
+      shareClassId: ShareClassId
+      assetId: AssetId
+      kind: 'async' | 'syncDeposit'
+      factory?: HexString
+      hook?: HexString
+    }[] = []
   ) {
     const self = this
     return this._transact(async function* (ctx) {
@@ -460,6 +466,18 @@ export class PoolNetwork extends Entity {
         const existingShareClass = details.activeShareClasses.find((sc) => sc.id.equals(vault.shareClassId))
         const existingVault = existingShareClass?.vaults.find((v) => v.assetId.equals(vault.assetId))
 
+        let factoryAddress: HexString
+        if (vault.factory) {
+          // custom factory
+          factoryAddress = vault.factory
+        } else if (vault.kind === 'syncDeposit') {
+          // default sync deposit factory
+          factoryAddress = syncDepositVaultFactory
+        } else {
+          // default async factory
+          factoryAddress = asyncVaultFactory
+        }
+
         if (vault.kind === 'syncDeposit') {
           batch.push(
             encodeFunctionData({
@@ -511,7 +529,7 @@ export class PoolNetwork extends Entity {
               self.pool.id.raw,
               vault.shareClassId.raw,
               vault.assetId.raw,
-              addressToBytes32(vault.kind === 'syncDeposit' ? syncDepositVaultFactory : asyncVaultFactory),
+              addressToBytes32(factoryAddress),
               VaultUpdateKind.DeployAndLink,
               0n, // gas limit
             ],
