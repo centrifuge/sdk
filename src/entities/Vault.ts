@@ -568,7 +568,7 @@ export class Vault extends Entity {
 
   /**
    * Update the pricing oracle valuation for this vault.
-   * @param valuation - The valuation as a bytes32 hex string
+   * @param valuation - The valuation
    */
   updateValuation(valuation: HexString) {
     const self = this
@@ -588,7 +588,7 @@ export class Vault extends Entity {
             self.shareClass.id.raw,
             id,
             addressToBytes32(self.address),
-            encodePacked(['uint8', 'bytes32'], [/* UpdateContractType.Valuation */ 1, valuation]),
+            encodePacked(['uint8', 'bytes32'], [/* UpdateContractType.Valuation */ 1, addressToBytes32(valuation)]),
             0n,
           ],
         }),
