@@ -1,4 +1,4 @@
-import { combineLatest, defer, EMPTY, map, of, switchMap } from 'rxjs'
+import { combineLatest, defer, EMPTY, firstValueFrom, map, of, switchMap } from 'rxjs'
 import { encodeFunctionData, encodePacked, getContract, maxUint128 } from 'viem'
 import { ABI } from '../abi/index.js'
 import type { Centrifuge } from '../Centrifuge.js'
@@ -350,7 +350,7 @@ export class PoolNetwork extends Entity {
    */
   deploy(
     shareClasses: { id: ShareClassId; hook: HexString }[] = [],
-    vaults: { shareClassId: ShareClassId; assetId: AssetId; kind: 'async' | 'syncDeposit' }[] = []
+    vaults: { shareClassId: ShareClassId; assetId: AssetId; kind: 'async' | 'syncDeposit'; hook?: HexString }[] = []
   ) {
     const self = this
     return this._transact(async function* (ctx) {
@@ -365,19 +365,19 @@ export class PoolNetwork extends Entity {
         self._root.id(self.chainId),
         self.details(),
       ])
-
       const balanceSheetContract = getContract({
         client: ctx.publicClient,
         address: balanceSheet,
         abi: ABI.BalanceSheet,
       })
+
       const [isAsyncManagerSet, isSyncManagerSet] = await Promise.all([
         balanceSheetContract.read.manager([self.pool.id.raw, asyncRequestManager]),
         balanceSheetContract.read.manager([self.pool.id.raw, syncManager]),
       ])
 
       const batch: HexString[] = []
-      const messageTypes: MessageTypeWithSubType[] = []
+      const messageTypes: (MessageType | MessageTypeWithSubType)[] = []
 
       // Set vault managers as balance sheet managers if not already set
       // Always set async manager, as it's used by both async and sync deposit vaults
@@ -420,6 +420,7 @@ export class PoolNetwork extends Entity {
           console.warn(`Share class "${sc.id}" is already active in pool "${self.pool.id}"`)
           continue
         }
+
         enabledShareClasses.add(sc.id.raw)
         batch.push(
           encodeFunctionData({
@@ -431,10 +432,33 @@ export class PoolNetwork extends Entity {
         messageTypes.push(MessageType.NotifyShareClass)
       }
 
+      const shareClassesNeedingNotification = new Map<ShareClassId['raw'], HexString>()
+      for (const vault of vaults) {
+        if (!enabledShareClasses.has(vault.shareClassId.raw)) {
+          const hook = vault.hook ?? NULL_ADDRESS
+          shareClassesNeedingNotification.set(vault.shareClassId.raw, hook)
+        }
+      }
+
+      for (const [shareClassIdRaw, hook] of shareClassesNeedingNotification) {
+        enabledShareClasses.add(shareClassIdRaw)
+        batch.push(
+          encodeFunctionData({
+            abi: ABI.Hub,
+            functionName: 'notifyShareClass',
+            args: [self.pool.id.raw, shareClassIdRaw, id, addressToBytes32(hook)],
+          })
+        )
+        messageTypes.push(MessageType.NotifyShareClass)
+      }
+
       for (const vault of vaults) {
         if (!enabledShareClasses.has(vault.shareClassId.raw)) {
           throw new Error(`Share class "${vault.shareClassId.raw}" is not enabled in pool "${self.pool.id.raw}"`)
         }
+
+        const existingShareClass = details.activeShareClasses.find((sc) => sc.id.equals(vault.shareClassId))
+        const existingVault = existingShareClass?.vaults.find((v) => v.assetId.equals(vault.assetId))
 
         if (vault.kind === 'syncDeposit') {
           batch.push(
@@ -456,15 +480,25 @@ export class PoolNetwork extends Entity {
           )
         }
 
+        // Only set request manager if vault doesn't already exist
+        // `setRequestManager` will revert if the share class / asset combination already has a vault
+        if (!existingVault) {
+          batch.push(
+            encodeFunctionData({
+              abi: ABI.Hub,
+              functionName: 'setRequestManager',
+              args: [
+                self.pool.id.raw,
+                vault.shareClassId.raw,
+                vault.assetId.raw,
+                addressToBytes32(asyncRequestManager),
+              ],
+            })
+          )
+          messageTypes.push(MessageType.SetRequestManager)
+        }
+
         batch.push(
-          // TODO: When we have fully sync vaults, we have to check if a vault for this share class and asset already exists
-          // and if so, we shouldn't set the request manager again.
-          // `setRequestManager` will revert if the share class / asset combination already has a vault.
-          encodeFunctionData({
-            abi: ABI.Hub,
-            functionName: 'setRequestManager',
-            args: [self.pool.id.raw, vault.shareClassId.raw, vault.assetId.raw, addressToBytes32(asyncRequestManager)],
-          }),
           encodeFunctionData({
             abi: ABI.Hub,
             functionName: 'notifyAssetPrice',
@@ -483,7 +517,7 @@ export class PoolNetwork extends Entity {
             ],
           })
         )
-        messageTypes.push(MessageType.SetRequestManager, MessageType.NotifyPricePoolPerAsset, {
+        messageTypes.push(MessageType.NotifyPricePoolPerAsset, {
           type: MessageType.UpdateVault,
           subtype: VaultUpdateKind.DeployAndLink,
         })
@@ -505,65 +539,11 @@ export class PoolNetwork extends Entity {
    * Unlink vaults.
    * @param vaults - An array of vaults to unlink
    */
-  unlinkVaults(vaults: { shareClassId: ShareClassId; assetId: AssetId }[]) {
+  unlinkVaults(vaults: { shareClassId: ShareClassId; assetId: AssetId; address: HexString }[]) {
     const self = this
     return this._transact(async function* (ctx) {
       if (vaults.length === 0) {
         throw new Error('No vaults to unlink')
-      }
-
-      const [{ hub }, id, details] = await Promise.all([
-        self._root._protocolAddresses(self.pool.chainId),
-        self._root.id(self.chainId),
-        self.details(),
-      ])
-
-      const batch: HexString[] = []
-      const messageTypes: MessageTypeWithSubType[] = []
-
-      for (const vault of vaults) {
-        const shareClass = details.activeShareClasses.find((sc) => sc.id.equals(vault.shareClassId))
-        const existingVault = shareClass?.vaults.find((v) => v.assetId.equals(vault.assetId))
-        if (!existingVault) {
-          throw new Error(
-            `Vault for share class "${vault.shareClassId.raw}" and asset ID "${vault.assetId.raw}" not found`
-          )
-        }
-
-        batch.push(
-          encodeFunctionData({
-            abi: ABI.Hub,
-            functionName: 'updateVault',
-            args: [
-              self.pool.id.raw,
-              vault.shareClassId.raw,
-              vault.assetId.raw,
-              addressToBytes32(existingVault.address),
-              VaultUpdateKind.Unlink,
-              0n, // gas limit
-            ],
-          })
-        )
-        messageTypes.push({ type: MessageType.UpdateVault, subtype: VaultUpdateKind.Unlink }) //
-      }
-
-      yield* wrapTransaction(`Unlink vault${batch.length > 1 ? 's' : ''}`, ctx, {
-        data: batch,
-        contract: hub,
-        messages: { [id]: messageTypes },
-      })
-    }, this.pool.chainId)
-  }
-
-  /**
-   * Link vaults that are already deployed but currently unlinked.
-   * @param vaults - An array of vaults to link
-   */
-  linkVaults(vaults: { shareClassId: ShareClassId; assetId: AssetId }[]) {
-    const self = this
-    return this._transact(async function* (ctx) {
-      if (vaults.length === 0) {
-        throw new Error('No vaults to link')
       }
 
       const [{ hub }, id, details] = await Promise.all([
@@ -582,11 +562,82 @@ export class PoolNetwork extends Entity {
           throw new Error(`Share class "${vault.shareClassId.raw}" not found`)
         }
 
-        const existingVault = shareClass.vaults.find((v) => v.assetId.equals(vault.assetId))
+        const existingVault = shareClass.vaults.find((v) => v.address.toLowerCase() === vault.address.toLowerCase())
+
+        if (!existingVault) {
+          throw new Error(`Vault with address "${vault.address}" not found for share class "${vault.shareClassId.raw}"`)
+        }
+
+        batch.push(
+          encodeFunctionData({
+            abi: ABI.Hub,
+            functionName: 'updateVault',
+            args: [
+              self.pool.id.raw,
+              vault.shareClassId.raw,
+              vault.assetId.raw,
+              addressToBytes32(vault.address),
+              VaultUpdateKind.Unlink,
+              0n, // gas limit
+            ],
+          })
+        )
+        messageTypes.push({ type: MessageType.UpdateVault, subtype: VaultUpdateKind.Unlink })
+      }
+
+      yield* wrapTransaction('Unlink vaults', ctx, {
+        data: batch,
+        contract: hub,
+        messages: { [id]: messageTypes },
+      })
+    }, this.pool.chainId)
+  }
+
+  /**
+   * Link vaults that are already deployed but currently unlinked.
+   * @param vaults - An array of vaults to link.
+   */
+  linkVaults(vaults: { shareClassId: ShareClassId; assetId: AssetId; address: HexString }[]) {
+    const self = this
+    return this._transact(async function* (ctx) {
+      if (vaults.length === 0) {
+        throw new Error('No vaults to link')
+      }
+
+      const [{ hub }, id, details] = await Promise.all([
+        self._root._protocolAddresses(self.pool.chainId),
+        self._root.id(self.chainId),
+        self.details(),
+      ])
+
+      const shareClassIds = [...new Set(vaults.map((v) => v.shareClassId.raw))]
+      const vaultsWithUnlinked = await Promise.all(
+        shareClassIds.map((scId) => {
+          const shareClass = vaults.find((v) => v.shareClassId.raw === scId)
+          const shareClassId = shareClass ? shareClass.shareClassId : null
+          return shareClassId ? firstValueFrom(self.vaults(shareClassId, true)) : null
+        })
+      )
+      const vaultsByShareClass = Object.fromEntries(shareClassIds.map((scId, i) => [scId, vaultsWithUnlinked[i] ?? []]))
+
+      const batch: HexString[] = []
+      const messageTypes: MessageTypeWithSubType[] = []
+
+      for (const vault of vaults) {
+        const shareClass = details.activeShareClasses.find((sc) => sc.id.equals(vault.shareClassId))
+
+        if (!shareClass) {
+          throw new Error(`Share class "${vault.shareClassId.raw}" not found`)
+        }
+
+        const allVaultsForShareClass = vaultsByShareClass[vault.shareClassId.raw] ?? []
+        const existingVault = allVaultsForShareClass.find(
+          (v) => v.address.toLowerCase() === vault.address.toLowerCase()
+        )
 
         if (!existingVault) {
           throw new Error(
-            `Vault for share class "${vault.shareClassId.raw}" and asset ID "${vault.assetId.raw}" not found. The vault must be deployed before it can be linked.`
+            `Vault with address "${vault.address}" not found for share class "${vault.shareClassId.raw}". The vault must be deployed before it can be linked.`
           )
         }
 
@@ -598,7 +649,7 @@ export class PoolNetwork extends Entity {
               self.pool.id.raw,
               vault.shareClassId.raw,
               vault.assetId.raw,
-              addressToBytes32(existingVault.address),
+              addressToBytes32(vault.address),
               VaultUpdateKind.Link,
               0n,
             ],
@@ -607,7 +658,7 @@ export class PoolNetwork extends Entity {
         messageTypes.push({ type: MessageType.UpdateVault, subtype: VaultUpdateKind.Link })
       }
 
-      yield* wrapTransaction(`Link vaults (${batch.length})`, ctx, {
+      yield* wrapTransaction('Link vaults', ctx, {
         data: batch,
         contract: hub,
         messages: { [id]: messageTypes },
