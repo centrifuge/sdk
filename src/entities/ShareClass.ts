@@ -1667,6 +1667,39 @@ export class ShareClass extends Entity {
     )
   }
 
+  /**
+   * Set the default valuation contract for this share class on a specific chain.
+   * @param chainId - The chain ID where the valuation should be updated
+   * @param valuation - The address of the valuation contract
+   */
+  updateValuation(chainId: number, valuation: HexString) {
+    const self = this
+    return this._transact(async function* (ctx) {
+      const [id, { hub }, spokeAddresses] = await Promise.all([
+        self._root.id(chainId),
+        self._root._protocolAddresses(self.pool.chainId),
+        self._root._protocolAddresses(chainId),
+      ])
+
+      yield* wrapTransaction('Update valuation', ctx, {
+        contract: hub,
+        data: encodeFunctionData({
+          abi: ABI.Hub,
+          functionName: 'updateContract',
+          args: [
+            self.pool.id.raw,
+            self.id.raw,
+            id,
+            addressToBytes32(spokeAddresses.syncManager),
+            encodePacked(['uint8', 'bytes32'], [/* UpdateContractType.Valuation */ 1, addressToBytes32(valuation)]),
+            0n,
+          ],
+        }),
+        messages: { [id]: [MessageType.UpdateContract] },
+      })
+    }, this.pool.chainId)
+  }
+
   /** @internal */
   _balances() {
     return this._root._queryIndexer(
