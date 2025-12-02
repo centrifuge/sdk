@@ -241,8 +241,11 @@ export function parseEventLogs(parameters: {
   address?: HexString | HexString[]
 }): Log<bigint, number, false, undefined, true, Abi, string>[] {
   const { logs, eventName: eventName_, address: address_ } = parameters
-  const eventName = new Set(Array.isArray(eventName_) ? eventName_ : [eventName_])
-  const address = new Set((Array.isArray(address_) ? address_ : [address_]).map((a) => a.toLowerCase()))
+  const eventName = eventName_ !== undefined ? new Set(Array.isArray(eventName_) ? eventName_ : [eventName_]) : null
+  const address =
+    address_ !== undefined
+      ? new Set((Array.isArray(address_) ? address_ : [address_]).map((a) => a.toLowerCase()))
+      : null
 
   return logs
     .map((log) => {
@@ -251,8 +254,8 @@ export function parseEventLogs(parameters: {
         if (!abiItem) return null as never
 
         // Check that the event is one we care about
-        if (eventName.size && !eventName.has(abiItem.name)) return null
-        if (address.size && !address.has(log.address)) return null
+        if (eventName && eventName.size && !eventName.has(abiItem.name)) return null
+        if (address && address.size && !address.has(log.address)) return null
 
         const event = decodeEventLog({
           ...log,
