@@ -23,6 +23,7 @@ export type {
   OperationStatus,
   OperationStatusType,
   OperationSwitchChainStatus,
+  SimulationStatus,
   Signer,
   Transaction,
 } from './types/transaction.js'
