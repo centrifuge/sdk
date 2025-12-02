@@ -580,36 +580,6 @@ export class Vault extends Entity {
   }
 
   /**
-   * Update the pricing oracle valuation for this vault.
-   * @param valuation - The valuation
-   */
-  updateValuation(valuation: HexString) {
-    const self = this
-    return this._transact(async function* (ctx) {
-      const [id, { hub }] = await Promise.all([
-        self._root.id(self.chainId),
-        self._root._protocolAddresses(self.chainId),
-      ])
-
-      yield* wrapTransaction('Update valuation', ctx, {
-        contract: hub,
-        data: encodeFunctionData({
-          abi: ABI.Hub,
-          functionName: 'updateContract',
-          args: [
-            self.pool.id.raw,
-            self.shareClass.id.raw,
-            id,
-            addressToBytes32(self.address),
-            encodePacked(['uint8', 'bytes32'], [/* UpdateContractType.Valuation */ 1, addressToBytes32(valuation)]),
-            0n,
-          ],
-        }),
-      })
-    }, this.chainId)
-  }
-
-  /**
    * Update the maximum deposit reserve for this vault.
    * @param maxReserve - The maximum reserve amount
    */
