@@ -242,7 +242,7 @@ export class Pool extends Entity {
             });
         }, this.chainId);
     }
-    update(metadataInput, updatedShareClasses, addedShareClasses = []) {
+    update(metadataInput = null, updatedShareClasses, addedShareClasses = []) {
         const self = this;
         return this._transact(async function* (ctx) {
             const [{ hub }] = await Promise.all([self._root._protocolAddresses(self.chainId)]);
@@ -255,77 +255,119 @@ export class Pool extends Entity {
             const networksDetails = await Promise.all(activeNetworks.map((network) => {
                 return network.details();
             }));
-            if (!poolDetails || !poolMetadata) {
-                throw new Error('Pool details or metadata not found');
+            if (!poolDetails) {
+                throw new Error('Pool details not found');
             }
             const existingShareClassesCount = poolDetails.shareClasses.length;
             const scIds = Array.from({ length: addedShareClasses.length }, (_, index) => ShareClassId.from(poolDetails.id, existingShareClassesCount + index + 1));
-            const newShareClassesById = {};
-            addedShareClasses.forEach((sc, index) => {
-                newShareClassesById[scIds[index].raw] = {
-                    minInitialInvestment: sc.minInvestment,
-                    apyPercentage: sc.apyPercentage,
-                    apy: sc.apy,
-                    defaultAccounts: sc.defaultAccounts,
+            // Determine if we need to update metadata
+            const hasMetadataInput = metadataInput !== null && Object.keys(metadataInput).length > 0;
+            const hasNewShareClasses = addedShareClasses.length > 0;
+            const hasUpdatedShareClasses = updatedShareClasses.length > 0;
+            const shouldUpdateMetadata = hasMetadataInput || hasNewShareClasses || hasUpdatedShareClasses;
+            let cid = null;
+            if (shouldUpdateMetadata) {
+                const baseMetadata = poolMetadata && poolMetadata.pool
+                    ? poolMetadata
+                    : {
+                        version: 1,
+                        pool: {
+                            name: '',
+                            icon: null,
+                            asset: { class: 'Private credit', subClass: '' },
+                            issuer: {
+                                name: '',
+                                repName: '',
+                                description: '',
+                                email: '',
+                                logo: null,
+                                shortDescription: '',
+                                categories: [],
+                            },
+                            poolStructure: '',
+                            investorType: '',
+                            links: {
+                                executiveSummary: null,
+                                forum: undefined,
+                                website: undefined,
+                            },
+                            details: [],
+                            status: 'upcoming',
+                            listed: false,
+                            poolRatings: [],
+                            reports: [],
+                        },
+                        shareClasses: {},
+                        holdings: { headers: [], data: [] },
+                    };
+                const newShareClassesById = {};
+                addedShareClasses.forEach((sc, index) => {
+                    newShareClassesById[scIds[index].raw] = {
+                        minInitialInvestment: sc.minInvestment,
+                        apyPercentage: sc.apyPercentage,
+                        apy: sc.apy,
+                        defaultAccounts: sc.defaultAccounts,
+                    };
+                });
+                const poolStatus = metadataInput?.poolType === undefined
+                    ? baseMetadata.pool.status
+                    : metadataInput.poolType === 'open'
+                        ? 'open'
+                        : 'upcoming';
+                const formattedMetadata = {
+                    ...baseMetadata,
+                    version: 1,
+                    pool: {
+                        ...baseMetadata.pool,
+                        name: metadataInput?.poolName ?? baseMetadata.pool.name,
+                        icon: metadataInput?.poolIcon ?? baseMetadata.pool.icon,
+                        asset: {
+                            ...baseMetadata.pool.asset,
+                            class: metadataInput?.assetClass ?? baseMetadata.pool.asset.class,
+                            subClass: metadataInput?.subAssetClass ?? baseMetadata.pool.asset.subClass,
+                        },
+                        issuer: {
+                            ...baseMetadata.pool.issuer,
+                            name: metadataInput?.issuerName ?? baseMetadata.pool.issuer.name,
+                            repName: metadataInput?.issuerRepName ?? baseMetadata.pool.issuer.repName,
+                            description: metadataInput?.issuerDescription ?? baseMetadata.pool.issuer.description,
+                            email: metadataInput?.email ?? baseMetadata.pool.issuer.email,
+                            logo: metadataInput?.issuerLogo ?? baseMetadata.pool.issuer.logo,
+                            shortDescription: metadataInput?.issuerShortDescription ?? baseMetadata.pool.issuer.shortDescription,
+                            categories: metadataInput?.issuerCategories ?? baseMetadata.pool.issuer.categories,
+                        },
+                        poolStructure: metadataInput?.poolStructure ?? baseMetadata.pool.poolStructure,
+                        investorType: metadataInput?.investorType ?? baseMetadata.pool.investorType,
+                        links: {
+                            ...baseMetadata.pool.links,
+                            executiveSummary: metadataInput?.executiveSummary ?? baseMetadata.pool.links?.executiveSummary,
+                            forum: metadataInput?.forum ?? baseMetadata.pool.links?.forum,
+                            website: metadataInput?.website ?? baseMetadata.pool.links?.website,
+                        },
+                        details: metadataInput?.details ?? baseMetadata.pool.details,
+                        status: poolStatus,
+                        listed: metadataInput?.listed ?? baseMetadata.pool.listed,
+                        poolRatings: metadataInput?.poolRatings ?? baseMetadata.pool.poolRatings,
+                        reports: metadataInput?.report ? [metadataInput.report] : baseMetadata.pool.reports,
+                    },
+                    shareClasses: { ...baseMetadata.shareClasses, ...newShareClassesById },
+                    holdings: {
+                        headers: Array.from(new Set([...(baseMetadata.holdings?.headers ?? []), ...(metadataInput?.holdings?.headers ?? [])])),
+                        data: metadataInput?.holdings?.data ?? baseMetadata.holdings?.data ?? [],
+                    },
                 };
-            });
-            const poolStatus = metadataInput.poolType === undefined
-                ? poolMetadata.pool.status
-                : metadataInput.poolType === 'open'
-                    ? 'open'
-                    : 'upcoming';
-            const formattedMetadata = {
-                ...poolMetadata,
-                version: 1,
-                pool: {
-                    ...poolMetadata.pool,
-                    name: metadataInput.poolName ?? poolMetadata.pool.name,
-                    icon: metadataInput.poolIcon ?? poolMetadata.pool.icon,
-                    asset: {
-                        ...poolMetadata.pool.asset,
-                        class: metadataInput.assetClass ?? poolMetadata.pool.asset.class,
-                        subClass: metadataInput.subAssetClass ?? poolMetadata.pool.asset.subClass,
-                    },
-                    issuer: {
-                        ...poolMetadata.pool.issuer,
-                        name: metadataInput.issuerName ?? poolMetadata.pool.issuer.name,
-                        repName: metadataInput.issuerRepName ?? poolMetadata.pool.issuer.repName,
-                        description: metadataInput.issuerDescription ?? poolMetadata.pool.issuer.description,
-                        email: metadataInput.email ?? poolMetadata.pool.issuer.email,
-                        logo: metadataInput.issuerLogo ?? poolMetadata.pool.issuer.logo,
-                        shortDescription: metadataInput.issuerShortDescription ?? poolMetadata.pool.issuer.shortDescription,
-                        categories: metadataInput.issuerCategories ?? poolMetadata.pool.issuer.categories,
-                    },
-                    poolStructure: metadataInput.poolStructure ?? poolMetadata.pool.poolStructure,
-                    investorType: metadataInput.investorType ?? poolMetadata.pool.investorType,
-                    links: {
-                        ...poolMetadata.pool.links,
-                        executiveSummary: metadataInput.executiveSummary ?? poolMetadata.pool.links?.executiveSummary,
-                        forum: metadataInput.forum ?? poolMetadata.pool.links?.forum,
-                        website: metadataInput.website ?? poolMetadata.pool.links?.website,
-                    },
-                    details: metadataInput.details ?? poolMetadata.pool.details,
-                    status: poolStatus,
-                    listed: metadataInput.listed ?? poolMetadata.pool.listed,
-                    poolRatings: metadataInput.poolRatings ?? poolMetadata.pool.poolRatings,
-                    reports: metadataInput.report ? [metadataInput.report] : poolMetadata.pool.reports,
-                },
-                shareClasses: { ...poolMetadata.shareClasses, ...newShareClassesById },
-                holdings: {
-                    headers: Array.from(new Set([...(poolMetadata.holdings?.headers ?? []), ...(metadataInput.holdings?.headers ?? [])])),
-                    data: metadataInput.holdings?.data ?? poolMetadata.holdings?.data ?? [],
-                },
-            };
-            updatedShareClasses.forEach((sc) => {
-                const id = sc.id.toString();
-                formattedMetadata.shareClasses[id] = {
-                    ...formattedMetadata.shareClasses[id],
-                    minInitialInvestment: sc.minInvestment,
-                    apyPercentage: sc.apyPercentage,
-                    apy: sc.apy,
-                    defaultAccounts: sc.defaultAccounts,
-                };
-            });
+                updatedShareClasses.forEach((sc) => {
+                    const id = sc.id.toString();
+                    formattedMetadata.shareClasses[id] = {
+                        ...formattedMetadata.shareClasses[id],
+                        minInitialInvestment: sc.minInvestment,
+                        apyPercentage: sc.apyPercentage,
+                        apy: sc.apy,
+                        defaultAccounts: sc.defaultAccounts,
+                    };
+                });
+                cid = await self._root.config.pinJson(formattedMetadata);
+            }
             const shareClassesToBeUpdated = updatedShareClasses.filter((sc) => {
                 const shareClass = poolDetails.shareClasses.find((scDetails) => scDetails.details.id.equals(sc.id));
                 if (!shareClass) {
@@ -348,8 +390,9 @@ export class Pool extends Entity {
                     shareClassesToBeUpdatedPerNetwork.set(poolNetwork.chainId, shareClassesToUpdate.map((sc) => sc.shareClass));
                 }
             });
+            const existingShareClassesMetadata = poolMetadata?.shareClasses ?? {};
             const accountIsDebitNormal = new Map();
-            const exsitingAccounts = new Set(poolDetails.shareClasses.flatMap((sc) => Object.entries(sc.details.defaultAccounts ?? {})
+            const exsitingAccounts = new Set(poolDetails.shareClasses.flatMap((sc) => Object.entries(existingShareClassesMetadata[sc.details.id.toString()]?.defaultAccounts ?? {})
                 .filter(([k, v]) => {
                 if (!v)
                     return false;
@@ -366,7 +409,11 @@ export class Pool extends Entity {
                 return true;
             })
                 .map(([, v]) => v)));
-            const updatedAccounts = new Set(Object.values(formattedMetadata.shareClasses).flatMap((sc) => Object.entries(sc.defaultAccounts ?? {})
+            const updatedShareClassesMetadata = [
+                ...updatedShareClasses.map((sc) => sc.defaultAccounts),
+                ...addedShareClasses.map((sc) => sc.defaultAccounts),
+            ].filter(Boolean);
+            const updatedAccounts = new Set(updatedShareClassesMetadata.flatMap((defaultAccounts) => Object.entries(defaultAccounts ?? {})
                 .filter(([k, v]) => {
                 if (!v)
                     return false;
@@ -384,7 +431,6 @@ export class Pool extends Entity {
             })
                 .map(([, v]) => v)));
             const newAccounts = [...updatedAccounts].filter((account) => !exsitingAccounts.has(account));
-            const cid = await self._root.config.pinJson(formattedMetadata);
             const batch = [];
             const messages = {};
             function addMessage(centId, message) {
@@ -392,11 +438,14 @@ export class Pool extends Entity {
                     messages[centId] = [];
                 messages[centId].push(message);
             }
-            batch.push(encodeFunctionData({
-                abi: ABI.Hub,
-                functionName: 'setPoolMetadata',
-                args: [self.id.raw, toHex(cid)],
-            }));
+            // Only add metadata update if we have a CID
+            if (cid) {
+                batch.push(encodeFunctionData({
+                    abi: ABI.Hub,
+                    functionName: 'setPoolMetadata',
+                    args: [self.id.raw, toHex(cid)],
+                }));
+            }
             addedShareClasses.forEach((sc) => {
                 batch.push(encodeFunctionData({
                     abi: ABI.Hub,

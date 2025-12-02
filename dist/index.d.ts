@@ -17,10 +17,11 @@ export type { Client, Config, CurrencyDetails, HexString, SolanaConfig } from '.
 export type { IssuerDetail, PoolMetadataInput, PoolReport, ShareClassInput } from './types/poolInput.js';
 export * from './types/poolMetadata.js';
 export type { Query } from './types/query.js';
-export type { EIP1193ProviderLike, OperationConfirmedStatus, OperationPendingStatus, OperationSignedMessageStatus, OperationSigningMessageStatus, OperationSigningStatus, OperationStatus, OperationStatusType, OperationSwitchChainStatus, Signer, Transaction, } from './types/transaction.js';
+export type { EIP1193ProviderLike, OperationConfirmedStatus, OperationPendingStatus, OperationSignedMessageStatus, OperationSigningMessageStatus, OperationSigningStatus, OperationStatus, OperationStatusType, OperationSwitchChainStatus, SimulationStatus, Signer, Transaction, } from './types/transaction.js';
 export { Balance, Perquintill, Price, Rate } from './utils/BigInt.js';
 export type { GroupBy } from './utils/date.js';
 export * from './utils/types.js';
 export { Centrifuge };
 export default Centrifuge;
+export { parseEventLogs } from './utils/transaction.js';
 //# sourceMappingURL=index.d.ts.map

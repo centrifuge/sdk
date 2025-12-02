@@ -79,6 +79,8 @@ export declare class PoolNetwork extends Entity {
         shareClassId: ShareClassId;
         assetId: AssetId;
         kind: 'async' | 'syncDeposit';
+        factory?: HexString;
+        hook?: HexString;
     }[]): import("../types/transaction.js").Transaction;
     /**
      * Unlink vaults.
@@ -87,14 +89,16 @@ export declare class PoolNetwork extends Entity {
     unlinkVaults(vaults: {
         shareClassId: ShareClassId;
         assetId: AssetId;
+        address: HexString;
     }[]): import("../types/transaction.js").Transaction;
     /**
      * Link vaults that are already deployed but currently unlinked.
-     * @param vaults - An array of vaults to link
+     * @param vaults - An array of vaults to link.
      */
     linkVaults(vaults: {
         shareClassId: ShareClassId;
         assetId: AssetId;
+        address: HexString;
     }[]): import("../types/transaction.js").Transaction;
 }
 //# sourceMappingURL=PoolNetwork.d.ts.map

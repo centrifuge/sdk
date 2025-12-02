@@ -1,12 +1,13 @@
 import { combineLatest, defer, map, switchMap } from 'rxjs';
-import { encodeFunctionData, getContract } from 'viem';
+import { encodeFunctionData, encodePacked, getContract } from 'viem';
 import { ABI } from '../abi/index.js';
 import { MessageType } from '../types/transaction.js';
 import { Balance } from '../utils/BigInt.js';
 import { signPermit } from '../utils/permit.js';
 import { repeatOnEvents } from '../utils/rx.js';
-import { doSignMessage, doTransaction } from '../utils/transaction.js';
+import { doSignMessage, doTransaction, wrapTransaction } from '../utils/transaction.js';
 import { Entity } from './Entity.js';
+import { addressToBytes32 } from '../utils/index.js';
 // const ASYNC_OPERATOR_INTERFACE_ID = '0xe3bc4e65'
 // const ASYNC_DEPOSIT_INTERFACE_ID = '0xce3bbe50'
 // const ASYNC_REDEEM_INTERFACE_ID = '0x620ee8e4'
@@ -91,7 +92,7 @@ export class Vault extends Entity {
             this._isSyncDeposit(),
             this.pool._escrow(),
             this._isOperator(investorAddress),
-        ]).pipe(switchMap(([asset, share, addresses, restrictionManagerAddress, isSyncDeposit, escrowAddress, isOperatorEnabled,]) => combineLatest([
+        ]).pipe(switchMap(([asset, share, addresses, restrictionManagerAddress, isSyncDeposit, escrowAddress, isOperatorEnabled]) => combineLatest([
             this._root.balance(asset.address, investorAddress, this.chainId),
             this._root.balance(share.address, investorAddress, this.chainId),
             this._allowance(investorAddress),
@@ -301,15 +302,7 @@ export class Vault extends Entity {
                 encodeFunctionData({
                     abi: ABI.VaultRouter,
                     functionName: 'permit',
-                    args: [
-                        asset.address,
-                        spender,
-                        amount.toBigInt(),
-                        permit.deadline,
-                        permit.v,
-                        permit.r,
-                        permit.s,
-                    ],
+                    args: [asset.address, spender, amount.toBigInt(), permit.deadline, permit.v, permit.r, permit.s],
                 });
             yield* doTransaction('Invest', ctx, () => ctx.walletClient.writeContract({
                 address: vaultRouter,
@@ -473,6 +466,66 @@ export class Vault extends Entity {
                 functionName,
                 args: [self.address, receiverAddress, controllerAddress],
             }));
+        }, this.chainId);
+    }
+    /**
+     * Update the pricing oracle valuation for this vault.
+     * @param valuation - The valuation
+     */
+    updateValuation(valuation) {
+        const self = this;
+        return this._transact(async function* (ctx) {
+            const [id, { hub }] = await Promise.all([
+                self._root.id(self.chainId),
+                self._root._protocolAddresses(self.chainId),
+            ]);
+            yield* wrapTransaction('Update valuation', ctx, {
+                contract: hub,
+                data: encodeFunctionData({
+                    abi: ABI.Hub,
+                    functionName: 'updateContract',
+                    args: [
+                        self.pool.id.raw,
+                        self.shareClass.id.raw,
+                        id,
+                        addressToBytes32(self.address),
+                        encodePacked(['uint8', 'bytes32'], [/* UpdateContractType.Valuation */ 1, addressToBytes32(valuation)]),
+                        0n,
+                    ],
+                }),
+            });
+        }, this.chainId);
+    }
+    /**
+     * Update the maximum deposit reserve for this vault.
+     * @param maxReserve - The maximum reserve amount
+     */
+    updateMaxReserve(maxReserve) {
+        const self = this;
+        return this._transact(async function* (ctx) {
+            const [id, { hub, syncManager }, asset] = await Promise.all([
+                self._root.id(self.chainId),
+                self._root._protocolAddresses(self.chainId),
+                self._investmentCurrency(),
+            ]);
+            if (asset.decimals !== maxReserve.decimals) {
+                throw new Error('Invalid maxReserve decimals');
+            }
+            yield* wrapTransaction('Update max reserve', ctx, {
+                contract: hub,
+                data: encodeFunctionData({
+                    abi: ABI.Hub,
+                    functionName: 'updateContract',
+                    args: [
+                        self.pool.id.raw,
+                        self.shareClass.id.raw,
+                        id,
+                        addressToBytes32(syncManager),
+                        encodePacked(['uint8', 'uint128', 'uint128'], [/* UpdateContractType.SyncDepositMaxReserve */ 2, self.assetId.raw, maxReserve.toBigInt()]),
+                        0n,
+                    ],
+                }),
+            });
         }, this.chainId);
     }
     /**

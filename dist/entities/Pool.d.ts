@@ -135,7 +135,7 @@ export declare class Pool extends Entity {
      * Update pool metadata.
      */
     updateMetadata(metadata: PoolMetadata): import("../types/transaction.js").Transaction;
-    update(metadataInput: Partial<PoolMetadataInput>, updatedShareClasses: ({
+    update(metadataInput: (Partial<PoolMetadataInput> | null) | undefined, updatedShareClasses: ({
         id: ShareClassId;
     } & ShareClassInput)[], addedShareClasses?: ShareClassInput[]): import("../types/transaction.js").Transaction;
     /**

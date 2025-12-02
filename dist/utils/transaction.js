@@ -157,8 +157,10 @@ function getAbiEvent(selector) {
 // Match a block's event logs to all available ABIs' events.
 export function parseEventLogs(parameters) {
     const { logs, eventName: eventName_, address: address_ } = parameters;
-    const eventName = new Set(Array.isArray(eventName_) ? eventName_ : [eventName_]);
-    const address = new Set((Array.isArray(address_) ? address_ : [address_]).map((a) => a.toLowerCase()));
+    const eventName = eventName_ !== undefined ? new Set(Array.isArray(eventName_) ? eventName_ : [eventName_]) : null;
+    const address = address_ !== undefined
+        ? new Set((Array.isArray(address_) ? address_ : [address_]).map((a) => a.toLowerCase()))
+        : null;
     return logs
         .map((log) => {
         try {
@@ -166,9 +168,9 @@ export function parseEventLogs(parameters) {
             if (!abiItem)
                 return null;
             // Check that the event is one we care about
-            if (!eventName.has(abiItem.name))
+            if (eventName && eventName.size && !eventName.has(abiItem.name))
                 return null;
-            if (!address.has(log.address))
+            if (address && address.size && !address.has(log.address))
                 return null;
             const event = decodeEventLog({
                 ...log,

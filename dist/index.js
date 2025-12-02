@@ -17,4 +17,5 @@ export { Balance, Perquintill, Price, Rate } from './utils/BigInt.js';
 export * from './utils/types.js';
 export { Centrifuge };
 export default Centrifuge;
+export { parseEventLogs } from './utils/transaction.js';
 //# sourceMappingURL=index.js.map

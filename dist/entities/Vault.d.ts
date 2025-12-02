@@ -95,5 +95,15 @@ export declare class Vault extends Entity {
      *  if the user has set the VaultRouter as an operator on the vault. If not provided, the investor's address is used.
      */
     claim(receiver?: HexString, controller?: HexString): import("../types/transaction.js").Transaction;
+    /**
+     * Update the pricing oracle valuation for this vault.
+     * @param valuation - The valuation
+     */
+    updateValuation(valuation: HexString): import("../types/transaction.js").Transaction;
+    /**
+     * Update the maximum deposit reserve for this vault.
+     * @param maxReserve - The maximum reserve amount
+     */
+    updateMaxReserve(maxReserve: Balance): import("../types/transaction.js").Transaction;
 }
 //# sourceMappingURL=Vault.d.ts.map

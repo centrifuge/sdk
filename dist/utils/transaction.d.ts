@@ -20,7 +20,7 @@ export declare function doSignMessage<T = any>(title: string, transactionCallbac
 export declare function isLocalAccount(signer: Signer): signer is LocalAccount;
 export declare function parseEventLogs(parameters: {
     logs: (Log | RpcLog)[];
-    eventName: string | string[];
-    address: HexString | HexString[];
+    eventName?: string | string[];
+    address?: HexString | HexString[];
 }): Log<bigint, number, false, undefined, true, Abi, string>[];
 //# sourceMappingURL=transaction.d.ts.map
