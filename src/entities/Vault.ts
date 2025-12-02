@@ -598,7 +598,7 @@ export class Vault extends Entity {
 
   /**
    * Update the maximum deposit reserve for this vault.
-   * @param maxReserve - The maximum reserve amount as a Balance
+   * @param maxReserve - The maximum reserve amount
    */
   updateMaxReserve(maxReserve: Balance) {
     const self = this

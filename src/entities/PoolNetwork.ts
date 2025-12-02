@@ -467,15 +467,17 @@ export class PoolNetwork extends Entity {
         const existingVault = existingShareClass?.vaults.find((v) => v.assetId.equals(vault.assetId))
 
         let factoryAddress: HexString
-        if (vault.factory) {
-          // custom factory
-          factoryAddress = vault.factory
-        } else if (vault.kind === 'syncDeposit') {
-          // default sync deposit factory
-          factoryAddress = syncDepositVaultFactory
-        } else {
-          // default async factory
-          factoryAddress = asyncVaultFactory
+        switch (true) {
+          case !!vault.factory:
+            factoryAddress = vault.factory
+            break
+
+          case vault.kind === 'syncDeposit':
+            factoryAddress = syncDepositVaultFactory
+            break
+
+          default:
+            factoryAddress = asyncVaultFactory
         }
 
         if (vault.kind === 'syncDeposit') {
