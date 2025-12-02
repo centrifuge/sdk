@@ -237,8 +237,8 @@ function getAbiEvent(selector: HexString): AbiEvent | undefined {
 // Match a block's event logs to all available ABIs' events.
 export function parseEventLogs(parameters: {
   logs: (Log | RpcLog)[]
-  eventName: string | string[]
-  address: HexString | HexString[]
+  eventName?: string | string[]
+  address?: HexString | HexString[]
 }): Log<bigint, number, false, undefined, true, Abi, string>[] {
   const { logs, eventName: eventName_, address: address_ } = parameters
   const eventName = new Set(Array.isArray(eventName_) ? eventName_ : [eventName_])
@@ -251,8 +251,8 @@ export function parseEventLogs(parameters: {
         if (!abiItem) return null as never
 
         // Check that the event is one we care about
-        if (!eventName.has(abiItem.name)) return null
-        if (!address.has(log.address)) return null
+        if (eventName.size && !eventName.has(abiItem.name)) return null
+        if (address.size && !address.has(log.address)) return null
 
         const event = decodeEventLog({
           ...log,
