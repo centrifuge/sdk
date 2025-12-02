@@ -568,7 +568,7 @@ export class Vault extends Entity {
 
   /**
    * Update the pricing oracle valuation for this vault.
-   * @param valuation - The valuation as a bytes32 hex string
+   * @param valuation - The valuation
    */
   updateValuation(valuation: HexString) {
     const self = this
@@ -588,7 +588,7 @@ export class Vault extends Entity {
             self.shareClass.id.raw,
             id,
             addressToBytes32(self.address),
-            encodePacked(['uint8', 'bytes32'], [/* UpdateContractType.Valuation */ 1, valuation]),
+            encodePacked(['uint8', 'bytes32'], [/* UpdateContractType.Valuation */ 1, addressToBytes32(valuation)]),
             0n,
           ],
         }),
@@ -598,12 +598,12 @@ export class Vault extends Entity {
 
   /**
    * Update the maximum deposit reserve for this vault.
-   * @param maxReserve - The maximum reserve amount as a Balance
+   * @param maxReserve - The maximum reserve amount
    */
   updateMaxReserve(maxReserve: Balance) {
     const self = this
     return this._transact(async function* (ctx) {
-      const [id, { hub }, asset] = await Promise.all([
+      const [id, { hub, syncManager }, asset] = await Promise.all([
         self._root.id(self.chainId),
         self._root._protocolAddresses(self.chainId),
         self._investmentCurrency(),
@@ -622,7 +622,7 @@ export class Vault extends Entity {
             self.pool.id.raw,
             self.shareClass.id.raw,
             id,
-            addressToBytes32(self.address),
+            addressToBytes32(syncManager),
             encodePacked(
               ['uint8', 'uint128', 'uint128'],
               [/* UpdateContractType.SyncDepositMaxReserve */ 2, self.assetId.raw, maxReserve.toBigInt()]
