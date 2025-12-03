@@ -729,7 +729,23 @@ export class Vault extends Entity {
               args: [this.pool.id.raw, this.shareClass.id.raw, this._asset, 0n],
             })
             return new Balance(maxReserve, asset.decimals)
-          })
+          }).pipe(
+            repeatOnEvents(
+              this._root,
+              {
+                address: syncManager,
+                eventName: ['SetMaxReserve'],
+                filter: (events) =>
+                  events.some(
+                    (event) =>
+                      event.args.poolId === this.pool.id.raw &&
+                      event.args.scId === this.shareClass.id.raw &&
+                      event.args.asset?.toLowerCase() === this._asset
+                  ),
+              },
+              this.chainId
+            )
+          )
         )
       )
     )
@@ -751,7 +767,23 @@ export class Vault extends Entity {
               args: [this.pool.id.raw, this.shareClass.id.raw, this._asset, 0n],
             })
             return new Balance(availableBalance, asset.decimals)
-          })
+          }).pipe(
+            repeatOnEvents(
+              this._root,
+              {
+                address: balanceSheet,
+                eventName: ['NoteDeposit', 'Withdraw'],
+                filter: (events) =>
+                  events.some(
+                    (event) =>
+                      event.args.poolId === this.pool.id.raw &&
+                      event.args.scId === this.shareClass.id.raw &&
+                      event.args.asset?.toLowerCase() === this._asset
+                  ),
+              },
+              this.chainId
+            )
+          )
         )
       )
     )

@@ -107,6 +107,7 @@ export class ShareClass extends Entity {
               combineLatest([
                 this._share(network.chainId).pipe(catchError(() => of(null))),
                 this._restrictionManager(network.chainId).pipe(catchError(() => of(null))),
+                this.valuation(network.chainId).pipe(catchError(() => of(null))),
                 of(network),
               ])
             )
@@ -115,10 +116,11 @@ export class ShareClass extends Entity {
         map((data) =>
           data
             .filter(([, restrictionManager]) => restrictionManager != null)
-            .map(([share, restrictionManager, network]) => ({
+            .map(([share, restrictionManager, valuation, network]) => ({
               chainId: network.chainId,
               shareTokenAddress: share!,
               restrictionManagerAddress: restrictionManager!,
+              valuation,
             }))
         )
       )
@@ -1663,6 +1665,39 @@ export class ShareClass extends Entity {
             },
           }))
         }
+      )
+    )
+  }
+
+  /**
+   * Get the valuation contract address for this share class on a specific chain.
+   * @param chainId
+   */
+  valuation(chainId: number) {
+    return this._query(['valuation', chainId], () =>
+      this._root._protocolAddresses(chainId).pipe(
+        switchMap(({ syncManager }) =>
+          defer(async () => {
+            const valuation = await this._root.getClient(chainId).readContract({
+              address: syncManager,
+              abi: ABI.SyncRequests,
+              functionName: 'valuation',
+              args: [this.pool.id.raw, this.id.raw],
+            })
+            return valuation as HexString
+          }).pipe(
+            repeatOnEvents(
+              this._root,
+              {
+                address: syncManager,
+                eventName: ['SetValuation'],
+                filter: (events) =>
+                  events.some((event) => event.args.poolId === this.pool.id.raw && event.args.scId === this.id.raw),
+              },
+              chainId
+            )
+          )
+        )
       )
     )
   }
