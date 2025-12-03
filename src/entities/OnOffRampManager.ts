@@ -164,7 +164,7 @@ export class OnOffRampManager extends Entity {
     return this._transact(async function* (ctx) {
       const [id, { hub }] = await Promise.all([
         self._root.id(self.network.chainId),
-        self._root._protocolAddresses(self.network.chainId),
+        self._root._protocolAddresses(self.shareClass.pool.chainId),
       ])
 
       yield* wrapTransaction(enabled ? 'Enable Receiver' : 'Disable Receiver', ctx, {
@@ -185,7 +185,7 @@ export class OnOffRampManager extends Entity {
           ],
         }),
       })
-    }, this.network.chainId)
+    }, this.shareClass.pool.chainId)
   }
 
   /**
@@ -198,7 +198,7 @@ export class OnOffRampManager extends Entity {
     return this._transact(async function* (ctx) {
       const [id, { hub }] = await Promise.all([
         self._root.id(self.network.chainId),
-        self._root._protocolAddresses(self.network.chainId),
+        self._root._protocolAddresses(self.shareClass.pool.chainId),
       ])
 
       yield* wrapTransaction(enabled ? 'Enable Relayer' : 'Disable Relayer', ctx, {
@@ -219,7 +219,7 @@ export class OnOffRampManager extends Entity {
           ],
         }),
       })
-    }, this.network.chainId)
+    }, this.shareClass.pool.chainId)
   }
 
   setAsset(assetId: AssetId) {
@@ -227,7 +227,7 @@ export class OnOffRampManager extends Entity {
     return this._transact(async function* (ctx) {
       const [id, { hub }] = await Promise.all([
         self._root.id(self.network.chainId),
-        self._root._protocolAddresses(self.network.chainId),
+        self._root._protocolAddresses(self.shareClass.pool.chainId),
       ])
 
       yield* wrapTransaction('Set Relayer', ctx, {
@@ -254,7 +254,7 @@ export class OnOffRampManager extends Entity {
           ],
         }),
       })
-    }, this.network.chainId)
+    }, this.shareClass.pool.chainId)
   }
 
   deposit(assetAddress: HexString, amount: Balance, receiverAddress: HexString) {
