@@ -105,8 +105,9 @@ export class ShareClass extends Entity {
           return combineLatest(
             networks.map((network) =>
               combineLatest([
-                this._share(network.chainId).pipe(catchError(() => of(null))),
+                this._share(network.chainId),
                 this._restrictionManager(network.chainId).pipe(catchError(() => of(null))),
+                this.valuation(network.chainId),
                 of(network),
               ])
             )
@@ -115,10 +116,11 @@ export class ShareClass extends Entity {
         map((data) =>
           data
             .filter(([, restrictionManager]) => restrictionManager != null)
-            .map(([share, restrictionManager, network]) => ({
+            .map(([share, restrictionManager, valuation, network]) => ({
               chainId: network.chainId,
               shareTokenAddress: share!,
               restrictionManagerAddress: restrictionManager!,
+              valuation,
             }))
         )
       )
@@ -1665,6 +1667,72 @@ export class ShareClass extends Entity {
         }
       )
     )
+  }
+
+  /**
+   * Get the valuation contract address for this share class on a specific chain.
+   * @param chainId
+   */
+  valuation(chainId: number) {
+    return this._query(['valuation', chainId], () =>
+      this._root._protocolAddresses(chainId).pipe(
+        switchMap(({ syncManager }) =>
+          defer(async () => {
+            const valuation = await this._root.getClient(chainId).readContract({
+              address: syncManager,
+              abi: ABI.SyncRequests,
+              functionName: 'valuation',
+              args: [this.pool.id.raw, this.id.raw],
+            })
+            return valuation as HexString
+          }).pipe(
+            repeatOnEvents(
+              this._root,
+              {
+                address: syncManager,
+                eventName: ['SetValuation'],
+                filter: (events) =>
+                  events.some((event) => event.args.poolId === this.pool.id.raw && event.args.scId === this.id.raw),
+              },
+              chainId
+            )
+          )
+        )
+      )
+    )
+  }
+
+  /**
+   * Set the default valuation contract for this share class on a specific chain.
+   * @param chainId - The chain ID where the valuation should be updated
+   * @param valuation - The address of the valuation contract
+   */
+  updateValuation(chainId: number, valuation: HexString) {
+    const self = this
+    return this._transact(async function* (ctx) {
+      const [id, { hub }, spokeAddresses] = await Promise.all([
+        self._root.id(chainId),
+        self._root._protocolAddresses(self.pool.chainId),
+        self._root._protocolAddresses(chainId),
+      ])
+
+      yield* wrapTransaction('Update valuation', ctx, {
+        contract: hub,
+        data: encodeFunctionData({
+          abi: ABI.Hub,
+          functionName: 'updateContract',
+          args: [
+            self.pool.id.raw,
+            self.id.raw,
+            id,
+            addressToBytes32(spokeAddresses.syncManager),
+            encodePacked(['uint8', 'bytes32'], [/* UpdateContractType.Valuation */ 1, addressToBytes32(valuation)]),
+            0n,
+          ],
+        }),
+        messages: { [id]: [MessageType.UpdateContract] },
+      })
+    }, this.pool.chainId)
   }
 
   /** @internal */

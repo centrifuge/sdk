@@ -60,18 +60,31 @@ export class Vault extends Entity {
    */
   details() {
     return this._query(['details'], () =>
-      combineLatest([this.isLinked(), this._isSyncDeposit(), this._investmentCurrency(), this._shareCurrency()]).pipe(
-        map(([isLinked, isSyncDeposit, assetDetails, share]) => ({
-          pool: this.pool,
-          shareClass: this.shareClass,
-          network: this.network,
-          address: this.address,
-          asset: assetDetails,
-          isLinked,
-          isSyncDeposit,
-          isSyncRedeem: false,
-          share,
-        }))
+      combineLatest([
+        this.isLinked(),
+        this._isSyncDeposit(),
+        this._investmentCurrency(),
+        this._shareCurrency(),
+        this._maxReserve(),
+        this._availableBalance(),
+      ]).pipe(
+        map(([isLinked, isSyncDeposit, assetDetails, share, maxReserve, availableBalance]) => {
+          const maxDepositValue = maxReserve.toBigInt() - availableBalance.toBigInt()
+          const maxDeposit = new Balance(maxDepositValue > 0n ? maxDepositValue : 0n, assetDetails.decimals)
+
+          return {
+            pool: this.pool,
+            shareClass: this.shareClass,
+            network: this.network,
+            address: this.address,
+            asset: assetDetails,
+            isLinked,
+            isSyncDeposit,
+            isSyncRedeem: false,
+            share,
+            maxDeposit,
+          }
+        })
       )
     )
   }
@@ -567,36 +580,6 @@ export class Vault extends Entity {
   }
 
   /**
-   * Update the pricing oracle valuation for this vault.
-   * @param valuation - The valuation
-   */
-  updateValuation(valuation: HexString) {
-    const self = this
-    return this._transact(async function* (ctx) {
-      const [id, { hub }] = await Promise.all([
-        self._root.id(self.chainId),
-        self._root._protocolAddresses(self.chainId),
-      ])
-
-      yield* wrapTransaction('Update valuation', ctx, {
-        contract: hub,
-        data: encodeFunctionData({
-          abi: ABI.Hub,
-          functionName: 'updateContract',
-          args: [
-            self.pool.id.raw,
-            self.shareClass.id.raw,
-            id,
-            addressToBytes32(self.address),
-            encodePacked(['uint8', 'bytes32'], [/* UpdateContractType.Valuation */ 1, addressToBytes32(valuation)]),
-            0n,
-          ],
-        }),
-      })
-    }, this.chainId)
-  }
-
-  /**
    * Update the maximum deposit reserve for this vault.
    * @param maxReserve - The maximum reserve amount
    */
@@ -725,6 +708,82 @@ export class Vault extends Entity {
           this._root
             ._allowance(owner, isSyncDeposit ? vaultRouter : this.address, this.chainId, asset.address)
             .pipe(map((allowance) => new Balance(allowance, asset.decimals)))
+        )
+      )
+    )
+  }
+
+  /**
+   * Get the maximum reserve for this vault.
+   * @internal
+   */
+  _maxReserve() {
+    return this._query(['maxReserve'], () =>
+      combineLatest([this._root._protocolAddresses(this.chainId), this._investmentCurrency()]).pipe(
+        switchMap(([{ syncManager }, asset]) =>
+          defer(async () => {
+            const maxReserve = await this._root.getClient(this.chainId).readContract({
+              address: syncManager,
+              abi: ABI.SyncRequests,
+              functionName: 'maxReserve',
+              args: [this.pool.id.raw, this.shareClass.id.raw, this._asset, 0n],
+            })
+            return new Balance(maxReserve, asset.decimals)
+          }).pipe(
+            repeatOnEvents(
+              this._root,
+              {
+                address: syncManager,
+                eventName: ['SetMaxReserve'],
+                filter: (events) =>
+                  events.some(
+                    (event) =>
+                      event.args.poolId === this.pool.id.raw &&
+                      event.args.scId === this.shareClass.id.raw &&
+                      event.args.asset?.toLowerCase() === this._asset
+                  ),
+              },
+              this.chainId
+            )
+          )
+        )
+      )
+    )
+  }
+
+  /**
+   * Get the available balance for this vault from the BalanceSheet.
+   * @internal
+   */
+  _availableBalance() {
+    return this._query(['availableBalance'], () =>
+      combineLatest([this._root._protocolAddresses(this.chainId), this._investmentCurrency()]).pipe(
+        switchMap(([{ balanceSheet }, asset]) =>
+          defer(async () => {
+            const availableBalance = await this._root.getClient(this.chainId).readContract({
+              address: balanceSheet,
+              abi: ABI.BalanceSheet,
+              functionName: 'availableBalanceOf',
+              args: [this.pool.id.raw, this.shareClass.id.raw, this._asset, 0n],
+            })
+            return new Balance(availableBalance, asset.decimals)
+          }).pipe(
+            repeatOnEvents(
+              this._root,
+              {
+                address: balanceSheet,
+                eventName: ['NoteDeposit', 'Withdraw'],
+                filter: (events) =>
+                  events.some(
+                    (event) =>
+                      event.args.poolId === this.pool.id.raw &&
+                      event.args.scId === this.shareClass.id.raw &&
+                      event.args.asset?.toLowerCase() === this._asset
+                  ),
+              },
+              this.chainId
+            )
+          )
         )
       )
     )
