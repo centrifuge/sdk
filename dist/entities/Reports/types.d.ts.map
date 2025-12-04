@@ -1,0 +1,1 @@
+{"version":3,"file":"types.d.ts","sourceRoot":"","sources":["../../../src/entities/Reports/types.ts"],"names":[],"mappings":"AAAA,OAAO,KAAK,EAAE,OAAO,EAAE,MAAM,qBAAqB,CAAA;AAElD,MAAM,MAAM,YAAY,GAAG;IACzB,IAAI,CAAC,EAAE,MAAM,CAAA;IACb,EAAE,CAAC,EAAE,MAAM,CAAA;CACZ,CAAA;AAED,MAAM,MAAM,gBAAgB,GAAG,YAAY,GAAG;IAC5C,OAAO,CAAC,EAAE,OAAO,CAAA;CAClB,CAAA"}

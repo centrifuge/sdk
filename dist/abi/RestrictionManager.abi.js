@@ -1,0 +1,23 @@
+export default [
+    // "event Deny(address indexed user)",
+    'event Freeze(address indexed token, address indexed user)',
+    // "event Rely(address indexed user)",
+    'event Unfreeze(address indexed token, address indexed user)',
+    'event UpdateMember(address indexed token, address indexed user, uint64 validUntil)',
+    // "function FREEZE_BIT() view returns (uint8)",
+    // "function checkERC20Transfer(address from, address to, uint256, (bytes16 from, bytes16 to) hookData) view returns (bool)",
+    // "function deny(address user)",
+    'function freeze(address token, address user)',
+    'function isFrozen(address token, address user) view returns (bool)',
+    'function isMember(address token, address user) view returns (bool isValid, uint64 validUntil)',
+    // "function onERC20AuthTransfer(address, address, address, uint256, (bytes16 from, bytes16 to)) pure returns (bytes4)",
+    // "function onERC20Transfer(address from, address to, uint256 value, (bytes16 from, bytes16 to) hookData) returns (bytes4)",
+    // "function rely(address user)",
+    // "function root() view returns (address)",
+    // "function supportsInterface(bytes4 interfaceId) pure returns (bool)",
+    'function unfreeze(address token, address user)',
+    // "function updateMember(address token, address user, uint64 validUntil)",
+    // "function updateRestriction(address token, bytes update)",
+    // "function wards(address) view returns (uint256)"
+];
+//# sourceMappingURL=RestrictionManager.abi.js.map
