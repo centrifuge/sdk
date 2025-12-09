@@ -599,11 +599,12 @@ export class Centrifuge {
   restrictionHooks(chainId: number) {
     return this._query(['restrictionHooks', chainId], () =>
       this._protocolAddresses(chainId).pipe(
-        map(({ freezeOnlyHook, redemptionRestrictionsHook, fullRestrictionsHook /* freelyTransferableHook */ }) => {
+        map(({ freezeOnlyHook, redemptionRestrictionsHook, fullRestrictionsHook, freelyTransferableHook }) => {
           return {
             freezeOnlyHook,
             redemptionRestrictionsHook,
             fullRestrictionsHook,
+            freelyTransferableHook,
           }
         })
       )
