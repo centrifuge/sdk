@@ -65,6 +65,7 @@ describe('Centrifuge', () => {
       'freezeOnlyHook',
       'redemptionRestrictionsHook',
       'fullRestrictionsHook',
+      'freelyTransferableHook',
       'tokenFactory',
       'asyncRequestManager',
       'syncManager',
