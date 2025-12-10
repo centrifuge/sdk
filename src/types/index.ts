@@ -57,6 +57,7 @@ export type ProtocolContracts = {
   freezeOnlyHook: HexString
   redemptionRestrictionsHook: HexString
   fullRestrictionsHook: HexString
+  freelyTransferableHook: HexString
   tokenFactory: HexString
   asyncRequestManager: HexString
   asyncVaultFactory: HexString
