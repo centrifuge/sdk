@@ -321,6 +321,51 @@ export class Centrifuge {
   }
 
   /**
+   * Get information about all supported blockchains from the indexer.
+   */
+  blockchains() {
+    return this._queryIndexer(
+      `{
+        blockchains {
+          items {
+            alchemyName
+            explorer
+            chainId
+            environment
+            icon
+            name
+            network
+          }
+        }
+      }`,
+      {},
+      (data: {
+        blockchains: {
+          items: {
+            alchemyName: string | null
+            explorer: string | null
+            chainId: string
+            environment: string
+            icon: string | null
+            name: string
+            network: string
+          }[]
+        }
+      }) => {
+        return data.blockchains.items.map((blockchain) => ({
+          alchemyName: blockchain.alchemyName,
+          explorer: blockchain.explorer,
+          chainId: Number(blockchain.chainId),
+          environment: blockchain.environment,
+          icon: blockchain.icon,
+          name: blockchain.name,
+          network: blockchain.network,
+        }))
+      }
+    )
+  }
+
+  /**
    * Get the existing pools on the different chains.
    */
   pools() {
@@ -558,11 +603,12 @@ export class Centrifuge {
   restrictionHooks(centrifugeId: CentrifugeId) {
     return this._query(['restrictionHooks', centrifugeId], () =>
       this._protocolAddresses(centrifugeId).pipe(
-        map(({ freezeOnlyHook, redemptionRestrictionsHook, fullRestrictionsHook /* freelyTransferableHook */ }) => {
+        map(({ freezeOnlyHook, redemptionRestrictionsHook, fullRestrictionsHook, freelyTransferableHook }) => {
           return {
             freezeOnlyHook,
             redemptionRestrictionsHook,
             fullRestrictionsHook,
+            freelyTransferableHook,
           }
         })
       )

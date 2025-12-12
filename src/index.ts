@@ -23,6 +23,7 @@ export type {
   OperationStatus,
   OperationStatusType,
   OperationSwitchChainStatus,
+  SimulationStatus,
   Signer,
   Transaction,
 } from './types/transaction.js'
@@ -32,3 +33,5 @@ export * from './utils/types.js'
 
 export { Centrifuge }
 export default Centrifuge
+
+export { parseEventLogs } from './utils/transaction.js'

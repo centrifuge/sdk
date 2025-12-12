@@ -142,7 +142,9 @@ describe.skip('PoolNetwork', () => {
       activeShareClasses: [{ id: scId, vaults: [{ assetId, address: vaultAddr }] }],
     })
 
-    const result = await poolNetwork.unlinkVaults([{ shareClassId: scId, assetId }])
+    const result = await poolNetwork.unlinkVaults([
+      { shareClassId: scId, assetId, address: vaultAddr as `0x${string}` },
+    ])
     expect(result.type).to.equal('TransactionConfirmed')
 
     const vaultAddr2 = await client.readContract({
@@ -178,7 +180,9 @@ describe.skip('PoolNetwork', () => {
       activeShareClasses: [{ id: scId, vaults: [{ assetId, address: initialVaultAddr }] }],
     })
 
-    const unlinkResult = await poolNetwork.unlinkVaults([{ shareClassId: scId, assetId }])
+    const unlinkResult = await poolNetwork.unlinkVaults([
+      { shareClassId: scId, assetId, address: initialVaultAddr as `0x${string}` },
+    ])
     expect(unlinkResult.type).to.equal('TransactionConfirmed')
 
     mockUnlink.restore()
@@ -201,7 +205,9 @@ describe.skip('PoolNetwork', () => {
       ],
     })
 
-    const linkResult = await poolNetwork.linkVaults([{ shareClassId: scId, assetId }])
+    const linkResult = await poolNetwork.linkVaults([
+      { shareClassId: scId, assetId, address: initialVaultAddr as `0x${string}` },
+    ])
     expect(linkResult.type).to.equal('TransactionConfirmed')
 
     mockLink.restore()

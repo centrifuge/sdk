@@ -13,6 +13,8 @@ export type MerkleProofTemplate = {
 export type MerkleProofTemplateAction = {
   /** index of the policy in manager.policies[] */
   policyIndex: number
+  /** possible inputs for the policy execution, matching input order from policy inputs */
+  defaultValues: (HexString | string | number)[]
 }
 
 export type MerkleProofPolicy = {

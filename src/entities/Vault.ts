@@ -1,13 +1,14 @@
 import { combineLatest, defer, map, switchMap } from 'rxjs'
-import { encodeFunctionData, getContract } from 'viem'
+import { encodeFunctionData, encodePacked, getContract } from 'viem'
 import { ABI } from '../abi/index.js'
 import type { Centrifuge } from '../Centrifuge.js'
 import type { HexString } from '../types/index.js'
 import { MessageType } from '../types/transaction.js'
 import { Balance } from '../utils/BigInt.js'
+import { addressToBytes32 } from '../utils/index.js'
 import { Permit, signPermit } from '../utils/permit.js'
 import { repeatOnEvents } from '../utils/rx.js'
-import { doSignMessage, doTransaction } from '../utils/transaction.js'
+import { doSignMessage, doTransaction, wrapTransaction } from '../utils/transaction.js'
 import { AssetId } from '../utils/types.js'
 import { Entity } from './Entity.js'
 import type { Pool } from './Pool.js'
@@ -53,7 +54,7 @@ export class Vault extends Entity {
   }
 
   get centrifugeId() {
-    return this.assetId.centrifugeId
+    return this.network.centrifugeId
   }
 
   /**
@@ -61,18 +62,31 @@ export class Vault extends Entity {
    */
   details() {
     return this._query(['details'], () =>
-      combineLatest([this.isLinked(), this._isSyncDeposit(), this._investmentCurrency(), this._shareCurrency()]).pipe(
-        map(([isLinked, isSyncDeposit, assetDetails, share]) => ({
-          pool: this.pool,
-          shareClass: this.shareClass,
-          network: this.network,
-          address: this.address,
-          asset: assetDetails,
-          isLinked,
-          isSyncDeposit,
-          isSyncRedeem: false,
-          share,
-        }))
+      combineLatest([
+        this.isLinked(),
+        this._isSyncDeposit(),
+        this._investmentCurrency(),
+        this._shareCurrency(),
+        this._maxReserve(),
+        this._availableBalance(),
+      ]).pipe(
+        map(([isLinked, isSyncDeposit, assetDetails, share, maxReserve, availableBalance]) => {
+          const maxDepositValue = maxReserve.toBigInt() - availableBalance.toBigInt()
+          const maxDeposit = new Balance(maxDepositValue > 0n ? maxDepositValue : 0n, assetDetails.decimals)
+
+          return {
+            pool: this.pool,
+            shareClass: this.shareClass,
+            network: this.network,
+            address: this.address,
+            asset: assetDetails,
+            isLinked,
+            isSyncDeposit,
+            isSyncRedeem: false,
+            share,
+            maxDeposit,
+          }
+        })
       )
     )
   }
@@ -577,24 +591,77 @@ export class Vault extends Entity {
   }
 
   /**
+   * Update the maximum deposit reserve for this vault.
+   * @param maxReserve - The maximum reserve amount
+   */
+  updateMaxReserve(maxReserve: Balance) {
+    const self = this
+    return this._transact(async function* (ctx) {
+      const [{ hub, syncManager }, asset] = await Promise.all([
+        self._root._protocolAddresses(self.pool.centrifugeId),
+        self._investmentCurrency(),
+      ])
+
+      if (asset.decimals !== maxReserve.decimals) {
+        throw new Error('Invalid maxReserve decimals')
+      }
+
+      yield* wrapTransaction('Update max reserve', ctx, {
+        contract: hub,
+        data: encodeFunctionData({
+          abi: ABI.Hub,
+          functionName: 'updateContract',
+          args: [
+            self.pool.id.raw,
+            self.shareClass.id.raw,
+            self.centrifugeId,
+            addressToBytes32(syncManager),
+            encodePacked(
+              ['uint8', 'uint128', 'uint128'],
+              [/* UpdateContractType.SyncDepositMaxReserve */ 2, self.assetId.raw, maxReserve.toBigInt()]
+            ),
+            0n,
+          ],
+        }),
+      })
+    }, this.pool.centrifugeId)
+  }
+
+  /**
    * Find if the vault router is enabled to manage the investor funds in the vault,
    * which is required to be able to operate on their behalf and claim investments or redemptions.
    * @param investorAddress - The address of the investor
    * @internal
    */
   _isOperator(investorAddress: HexString) {
-    return this._query(['isOperator', investorAddress], () =>
-      this._root.getClient(this.centrifugeId).pipe(
-        switchMap((client) =>
+    const investor = investorAddress.toLowerCase() as HexString
+    return this._query(['isOperator', investor], () =>
+      combineLatest([this._root._protocolAddresses(this.centrifugeId), this._root.getClient(this.centrifugeId)]).pipe(
+        switchMap(([{ vaultRouter }, client]) =>
           defer(() =>
             client
               .readContract({
                 address: this.address,
                 abi: ABI.AsyncVault,
                 functionName: 'isOperator',
-                args: [investorAddress, this.address],
+                args: [investor, vaultRouter],
               })
               .then((val) => val)
+          ).pipe(
+            repeatOnEvents(
+              this._root,
+              {
+                address: this.address,
+                eventName: ['OperatorSet'],
+                filter: (events) =>
+                  events.some(
+                    (event) =>
+                      event.args.controller.toLowerCase() === investor &&
+                      event.args.operator.toLowerCase() === vaultRouter.toLowerCase()
+                  ),
+              },
+              this.centrifugeId
+            )
           )
         )
       )
@@ -673,6 +740,90 @@ export class Vault extends Entity {
           this._root
             ._allowance(owner, isSyncDeposit ? vaultRouter : this.address, this.centrifugeId, asset.address)
             .pipe(map((allowance) => new Balance(allowance, asset.decimals)))
+        )
+      )
+    )
+  }
+
+  /**
+   * Get the maximum reserve for this vault.
+   * @internal
+   */
+  _maxReserve() {
+    return this._query(['maxReserve'], () =>
+      combineLatest([
+        this._root.getClient(this.centrifugeId),
+        this._root._protocolAddresses(this.centrifugeId),
+        this._investmentCurrency(),
+      ]).pipe(
+        switchMap(([client, { syncManager }, asset]) =>
+          defer(async () => {
+            const maxReserve = await client.readContract({
+              address: syncManager,
+              abi: ABI.SyncRequests,
+              functionName: 'maxReserve',
+              args: [this.pool.id.raw, this.shareClass.id.raw, this._asset, 0n],
+            })
+            return new Balance(maxReserve, asset.decimals)
+          }).pipe(
+            repeatOnEvents(
+              this._root,
+              {
+                address: syncManager,
+                eventName: ['SetMaxReserve'],
+                filter: (events) =>
+                  events.some(
+                    (event) =>
+                      event.args.poolId === this.pool.id.raw &&
+                      event.args.scId === this.shareClass.id.raw &&
+                      event.args.asset?.toLowerCase() === this._asset
+                  ),
+              },
+              this.centrifugeId
+            )
+          )
+        )
+      )
+    )
+  }
+
+  /**
+   * Get the available balance for this vault from the BalanceSheet.
+   * @internal
+   */
+  _availableBalance() {
+    return this._query(['availableBalance'], () =>
+      combineLatest([
+        this._root.getClient(this.centrifugeId),
+        this._root._protocolAddresses(this.centrifugeId),
+        this._investmentCurrency(),
+      ]).pipe(
+        switchMap(([client, { balanceSheet }, asset]) =>
+          defer(async () => {
+            const availableBalance = await client.readContract({
+              address: balanceSheet,
+              abi: ABI.BalanceSheet,
+              functionName: 'availableBalanceOf',
+              args: [this.pool.id.raw, this.shareClass.id.raw, this._asset, 0n],
+            })
+            return new Balance(availableBalance, asset.decimals)
+          }).pipe(
+            repeatOnEvents(
+              this._root,
+              {
+                address: balanceSheet,
+                eventName: ['NoteDeposit', 'Withdraw'],
+                filter: (events) =>
+                  events.some(
+                    (event) =>
+                      event.args.poolId === this.pool.id.raw &&
+                      event.args.scId === this.shareClass.id.raw &&
+                      event.args.asset?.toLowerCase() === this._asset
+                  ),
+              },
+              this.centrifugeId
+            )
+          )
         )
       )
     )

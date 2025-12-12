@@ -146,7 +146,9 @@ export class OnOffRampManager extends Entity {
           if (onRampAssets.length === 0) return of([])
 
           return combineLatest(
-            onRampAssets.map((item) => this._root.balance(item.assetAddress, this.onrampAddress, this.network.centrifugeId))
+            onRampAssets.map((item) =>
+              this._root.balance(item.assetAddress, this.onrampAddress, this.network.centrifugeId)
+            )
           )
         }),
         map((balances) => balances.filter((b) => b.balance.gt(0n)))
@@ -162,10 +164,7 @@ export class OnOffRampManager extends Entity {
   setReceiver(assetId: AssetId, receiver: HexString, enabled: boolean = true) {
     const self = this
     return this._transact(async function* (ctx) {
-      const [id, { hub }] = await Promise.all([
-        Promise.resolve(self.network.centrifugeId),
-        self._root._protocolAddresses(self.network.centrifugeId),
-      ])
+      const { hub } = await self._root._protocolAddresses(self.network.centrifugeId)
 
       yield* wrapTransaction(enabled ? 'Enable Receiver' : 'Disable Receiver', ctx, {
         contract: hub,
@@ -175,7 +174,7 @@ export class OnOffRampManager extends Entity {
           args: [
             self.network.pool.id.raw,
             self.shareClass.id.raw,
-            id,
+            self.network.centrifugeId,
             addressToBytes32(self.onrampAddress),
             encodePacked(
               ['uint8', 'bytes32', 'uint128', 'bytes32', 'bool'],
@@ -196,10 +195,7 @@ export class OnOffRampManager extends Entity {
   setRelayer(relayer: HexString, enabled: boolean = true) {
     const self = this
     return this._transact(async function* (ctx) {
-      const [id, { hub }] = await Promise.all([
-        Promise.resolve(self.network.centrifugeId),
-        self._root._protocolAddresses(self.network.centrifugeId),
-      ])
+      const { hub } = await self._root._protocolAddresses(self.network.centrifugeId)
 
       yield* wrapTransaction(enabled ? 'Enable Relayer' : 'Disable Relayer', ctx, {
         contract: hub,
@@ -209,7 +205,7 @@ export class OnOffRampManager extends Entity {
           args: [
             self.network.pool.id.raw,
             self.shareClass.id.raw,
-            id,
+            self.network.centrifugeId,
             addressToBytes32(self.onrampAddress),
             encodePacked(
               ['uint8', 'bytes32', 'uint128', 'bytes32', 'bool'],
@@ -225,10 +221,7 @@ export class OnOffRampManager extends Entity {
   setAsset(assetId: AssetId) {
     const self = this
     return this._transact(async function* (ctx) {
-      const [id, { hub }] = await Promise.all([
-        Promise.resolve(self.network.centrifugeId),
-        self._root._protocolAddresses(self.network.centrifugeId),
-      ])
+      const { hub } = await self._root._protocolAddresses(self.network.centrifugeId)
 
       yield* wrapTransaction('Set Relayer', ctx, {
         contract: hub,
@@ -238,7 +231,7 @@ export class OnOffRampManager extends Entity {
           args: [
             self.network.pool.id.raw,
             self.shareClass.id.raw,
-            id,
+            self.network.centrifugeId,
             addressToBytes32(self.onrampAddress),
             encodePacked(
               ['uint8', 'bytes32', 'uint128', 'bytes32', 'bool'],

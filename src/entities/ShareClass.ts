@@ -105,8 +105,9 @@ export class ShareClass extends Entity {
           return combineLatest(
             networks.map((network) =>
               combineLatest([
-                this._share(network.centrifugeId).pipe(catchError(() => of(null))),
+                this._share(network.centrifugeId),
                 this._restrictionManager(network.centrifugeId).pipe(catchError(() => of(null))),
+                this.valuation(network.centrifugeId),
                 of(network),
               ])
             )
@@ -115,10 +116,11 @@ export class ShareClass extends Entity {
         map((data) =>
           data
             .filter(([, restrictionManager]) => restrictionManager != null)
-            .map(([share, restrictionManager, network]) => ({
+            .map(([share, restrictionManager, valuation, network]) => ({
               centrifugeId: network.centrifugeId,
               shareTokenAddress: share!,
               restrictionManagerAddress: restrictionManager!,
+              valuation,
             }))
         )
       )
@@ -1658,6 +1660,153 @@ export class ShareClass extends Entity {
         }
       )
     )
+  }
+
+  /**
+   * Get the valuation contract address for this share class on a specific chain.
+   * @param centrifugeId
+   */
+  valuation(centrifugeId: CentrifugeId) {
+    return this._query(['valuation', centrifugeId], () =>
+      combineLatest([this._root._protocolAddresses(centrifugeId), this._root.getClient(centrifugeId)]).pipe(
+        switchMap(([{ syncManager }, client]) =>
+          defer(async () => {
+            const valuation = await client.readContract({
+              address: syncManager,
+              abi: ABI.SyncRequests,
+              functionName: 'valuation',
+              args: [this.pool.id.raw, this.id.raw],
+            })
+            return valuation as HexString
+          }).pipe(
+            repeatOnEvents(
+              this._root,
+              {
+                address: syncManager,
+                eventName: ['SetValuation'],
+                filter: (events) =>
+                  events.some((event) => event.args.poolId === this.pool.id.raw && event.args.scId === this.id.raw),
+              },
+              centrifugeId
+            )
+          )
+        )
+      )
+    )
+  }
+
+  /**
+   * Set the default valuation contract for this share class on a specific chain.
+   * @param centrifugeId - The centrifuge ID where the valuation should be updated
+   * @param valuation - The address of the valuation contract
+   */
+  updateValuation(centrifugeId: CentrifugeId, valuation: HexString) {
+    const self = this
+    return this._transact(async function* (ctx) {
+      const [{ hub }, spokeAddresses] = await Promise.all([
+        self._root._protocolAddresses(self.pool.centrifugeId),
+        self._root._protocolAddresses(centrifugeId),
+      ])
+
+      yield* wrapTransaction('Update valuation', ctx, {
+        contract: hub,
+        data: encodeFunctionData({
+          abi: ABI.Hub,
+          functionName: 'updateContract',
+          args: [
+            self.pool.id.raw,
+            self.id.raw,
+            centrifugeId,
+            addressToBytes32(spokeAddresses.syncManager),
+            encodePacked(['uint8', 'bytes32'], [/* UpdateContractType.Valuation */ 1, addressToBytes32(valuation)]),
+            0n,
+          ],
+        }),
+        messages: { [centrifugeId]: [MessageType.UpdateContract] },
+      })
+    }, this.pool.centrifugeId)
+  }
+
+  /**
+   * Update the hook for this share class on a specific chain.
+   * @param centrifugeId - The centrifuge ID where the hook should be updated
+   * @param hook - The address of the new hook contract
+   */
+  updateHook(centrifugeId: CentrifugeId, hook: HexString) {
+    const self = this
+    return this._transact(async function* (ctx) {
+      const { hub } = await self._root._protocolAddresses(self.pool.centrifugeId)
+
+      yield* wrapTransaction('Update hook', ctx, {
+        contract: hub,
+        data: encodeFunctionData({
+          abi: ABI.Hub,
+          functionName: 'updateShareHook',
+          args: [self.pool.id.raw, self.id.raw, centrifugeId, addressToBytes32(hook)],
+        }),
+        messages: { [centrifugeId]: [MessageType.UpdateShareHook] },
+      })
+    }, this.pool.centrifugeId)
+  }
+
+  /**
+   * Update both (or one of) the hook and valuation for this share class on a specific chain in a single transaction.
+   * @param centrifugeId - The centrifuge ID where the updates should be applied
+   * @param hook - The address of the new hook contract (optional)
+   * @param valuation - The address of the new valuation contract (optional)
+   */
+  updateHookAndValuation(centrifugeId: CentrifugeId, hook?: HexString, valuation?: HexString) {
+    if (!hook && !valuation) {
+      throw new Error('At least one of hook or valuation must be provided')
+    }
+
+    const self = this
+    return this._transact(async function* (ctx) {
+      const [{ hub }, spokeAddresses] = await Promise.all([
+        self._root._protocolAddresses(self.pool.centrifugeId),
+        self._root._protocolAddresses(centrifugeId),
+      ])
+
+      const calls: HexString[] = []
+      const messages: MessageType[] = []
+
+      if (hook) {
+        calls.push(
+          encodeFunctionData({
+            abi: ABI.Hub,
+            functionName: 'updateShareHook',
+            args: [self.pool.id.raw, self.id.raw, centrifugeId, addressToBytes32(hook)],
+          })
+        )
+        messages.push(MessageType.UpdateShareHook)
+      }
+
+      if (valuation) {
+        calls.push(
+          encodeFunctionData({
+            abi: ABI.Hub,
+            functionName: 'updateContract',
+            args: [
+              self.pool.id.raw,
+              self.id.raw,
+              centrifugeId,
+              addressToBytes32(spokeAddresses.syncManager),
+              encodePacked(['uint8', 'bytes32'], [/* UpdateContractType.Valuation */ 1, addressToBytes32(valuation)]),
+              0n,
+            ],
+          })
+        )
+        messages.push(MessageType.UpdateContract)
+      }
+
+      const title = hook && valuation ? 'Update hook and valuation' : hook ? 'Update hook' : 'Update valuation'
+
+      yield* wrapTransaction(title, ctx, {
+        contract: hub,
+        data: calls,
+        messages: { [centrifugeId]: messages },
+      })
+    }, this.pool.centrifugeId)
   }
 
   /** @internal */
