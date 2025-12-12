@@ -105,9 +105,9 @@ export class ShareClass extends Entity {
           return combineLatest(
             networks.map((network) =>
               combineLatest([
-                this._share(network.chainId),
+                this._share(network.chainId).pipe(catchError(() => of(null))),
                 this._restrictionManager(network.chainId).pipe(catchError(() => of(null))),
-                this.valuation(network.chainId),
+                this.valuation(network.chainId).pipe(catchError(() => of(null))),
                 of(network),
               ])
             )
@@ -115,7 +115,7 @@ export class ShareClass extends Entity {
         }),
         map((data) =>
           data
-            .filter(([, restrictionManager]) => restrictionManager != null)
+            .filter(([share, restrictionManager]) => share != null && restrictionManager != null)
             .map(([share, restrictionManager, valuation, network]) => ({
               chainId: network.chainId,
               shareTokenAddress: share!,
