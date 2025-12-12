@@ -612,20 +612,19 @@ export class Pool extends Entity {
         )
       })
 
-      for (const [chainId, shareClasses] of shareClassesToBeUpdatedPerNetwork) {
+      for (const [centId, shareClasses] of shareClassesToBeUpdatedPerNetwork) {
         if (shareClasses.length > 0) {
-          const id = await self._root.id(Number(chainId))
           await Promise.all(
             shareClasses.map(async (sc: ShareClass) => {
               batch.push(
                 encodeFunctionData({
                   abi: ABI.Hub,
                   functionName: 'notifyShareMetadata',
-                  args: [self.id.raw, sc.id.raw, id],
+                  args: [self.id.raw, sc.id.raw, centId],
                 })
               )
 
-              addMessage(id, MessageType.NotifyShareClass)
+              addMessage(centId, MessageType.NotifyShareClass)
             })
           )
         }

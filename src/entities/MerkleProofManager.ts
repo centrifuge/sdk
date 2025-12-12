@@ -19,7 +19,6 @@ import { PoolNetwork } from './PoolNetwork.js'
  */
 export class MerkleProofManager extends Entity {
   pool: Pool
-  chainId: number
 
   /**
    * The contract address of the Merkle Proof Manager.
@@ -32,7 +31,6 @@ export class MerkleProofManager extends Entity {
     address: HexString
   ) {
     super(_root, ['merkleProofManager', network.centrifugeId, network.pool.id.toString()])
-    this.chainId = 0 // Deprecated, will be removed
     this.pool = network.pool
     this.address = address.toLowerCase() as HexString
   }
@@ -41,7 +39,12 @@ export class MerkleProofManager extends Entity {
     return this._query(['policiesAndTemplates', strategist.toLowerCase()], () =>
       this.pool
         .metadata()
-        .pipe(map((metadata) => metadata?.merkleProofManager?.[this.chainId]?.[strategist.toLowerCase() as any] ?? []))
+        .pipe(
+          map(
+            (metadata) =>
+              metadata?.merkleProofManager?.[this.network.centrifugeId]?.[strategist.toLowerCase() as any] ?? []
+          )
+        )
     )
   }
 
@@ -49,7 +52,7 @@ export class MerkleProofManager extends Entity {
     return this._query(['strategists'], () =>
       this.pool.metadata().pipe(
         switchMap(async (metadata) => {
-          const strategists = metadata?.merkleProofManager?.[this.chainId]
+          const strategists = metadata?.merkleProofManager?.[this.network.centrifugeId]
           const importedMerkleTree = await import('@openzeppelin/merkle-tree')
           const { SimpleMerkleTree: SimpleMerkleTreeConstructor } = importedMerkleTree.default || importedMerkleTree
 
@@ -58,7 +61,7 @@ export class MerkleProofManager extends Entity {
           return Object.entries(strategists)
             .filter(([_, { policies }]) => policies.length > 0)
             .map(([address, { policies, templates }]) => ({
-              chainId: this.chainId,
+              centrifugeId: this.network.centrifugeId,
               address,
               policies,
               templates: templates ?? [],
@@ -338,7 +341,7 @@ export class MerkleProofManager extends Entity {
         },
         options && { simulate: options.simulate }
       )
-    }, this.chainId)
+    }, this.network.centrifugeId)
   }
 }
 

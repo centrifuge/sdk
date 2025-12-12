@@ -3,7 +3,6 @@ import {
   defer,
   filter,
   first,
-  firstValueFrom,
   identity,
   isObservable,
   map,
@@ -617,8 +616,8 @@ export class Centrifuge {
 
   /**
    * Register an asset
-   * @param originChainId - The chain ID where the asset exists
-   * @param registerOnChainId - The chain ID where the asset should be registered
+   * @param originCentrifugeId - The centrifuge ID where the asset exists
+   * @param registerOnCentrifugeId - The centrifuge ID where the asset should be registered
    * @param assetAddress - The address of the asset to register
    * @param tokenId - Optional token ID for ERC6909 assets
    */
@@ -1047,9 +1046,11 @@ export class Centrifuge {
       const { signer } = self
       if (!signer) throw new Error('Signer not set')
 
-      const chainId = await firstValueFrom(self._idToChain(centrifugeId))
-      const publicClient = await firstValueFrom(self.getClient(centrifugeId))
-      const chain = await firstValueFrom(self.getChainConfig(centrifugeId))
+      const [chainId, publicClient, chain] = await Promise.all([
+        self._idToChain(centrifugeId),
+        self.getClient(centrifugeId),
+        self.getChainConfig(centrifugeId),
+      ])
       let walletClient: WalletClient<any, Chain, Account> = isLocalAccount(signer)
         ? createWalletClient({
             account: signer,

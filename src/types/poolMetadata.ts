@@ -134,7 +134,7 @@ export type PoolMetadata = {
       }
     }
   >
-  // chainId => strategist => policies
+  // centrifugeId => strategist => policies
   merkleProofManager?: Record<
     string,
     Record<
@@ -170,7 +170,7 @@ export type PoolMetadata = {
     string,
     {
       assetAddress: HexString
-      chainId: string
+      centrifugeId: string
       manager: HexString
       label: string
     }[]

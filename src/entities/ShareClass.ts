@@ -204,14 +204,14 @@ export class ShareClass extends Entity {
   /**
    * Query all the balances of the share class (from BalanceSheet and Holdings).
    */
-  balances(chainId?: number) {
-    return this._query(['balances', chainId], () =>
+  balances(centrifugeId?: CentrifugeId) {
+    return this._query(['balances', centrifugeId], () =>
       combineLatest([this._balances(), this.pool.currency()]).pipe(
         switchMap(([res, poolCurrency]) => {
           if (res.length === 0) {
             return of([])
           }
-          const items = res.filter((item) => Number(item.asset.blockchain.id) === chainId || !chainId)
+          const items = res.filter((item) => Number(item.centrifugeId) === centrifugeId || !centrifugeId)
 
           if (items.length === 0) return of([])
 
@@ -226,7 +226,7 @@ export class ShareClass extends Entity {
             combineLatest(
               items.map((holding) => {
                 const assetId = new AssetId(holding.assetId)
-                return this._balance(Number(holding.asset.blockchain.centrifugeId), {
+                return this._balance(Number(holding.centrifugeId), {
                   address: holding.asset.address,
                   assetTokenId: BigInt(holding.asset.assetTokenId),
                   id: assetId,
@@ -256,7 +256,7 @@ export class ShareClass extends Entity {
                     tokenId: BigInt(data.asset.assetTokenId),
                     name: data.asset.name,
                     symbol: data.asset.symbol,
-                    centrifugeId: Number(data.asset.blockchain.centrifugeId) as CentrifugeId,
+                    centrifugeId: Number(data.centrifugeId) as CentrifugeId,
                   },
                   holding: holding && {
                     valuation: holding.valuation,
@@ -620,9 +620,8 @@ export class ShareClass extends Entity {
   ) {
     const self = this
     return this._transact(async function* (ctx) {
-      const [{ hub }, id, pendingAmounts, orders, maxBatchGasLimit] = await Promise.all([
+      const [{ hub }, pendingAmounts, orders, maxBatchGasLimit] = await Promise.all([
         self._root._protocolAddresses(self.pool.centrifugeId),
-        self._root.id(self.pool.centrifugeId),
         self.pendingAmounts(),
         firstValueFrom(
           self._investorOrders().pipe(
@@ -664,7 +663,8 @@ export class ShareClass extends Entity {
       }
 
       for (const asset of assets) {
-        const gasPerMessage = asset.assetId.centrifugeId === id ? estimatePerMessageIfLocal : estimatePerMessage
+        const gasPerMessage =
+          asset.assetId.centrifugeId === self.pool.centrifugeId ? estimatePerMessageIfLocal : estimatePerMessage
         let gasLeft = gasLimitPerAsset
         const pending = pendingAmounts.find((e) => e.assetId.equals(asset.assetId))
         if (!pending) {
@@ -778,9 +778,8 @@ export class ShareClass extends Entity {
   ) {
     const self = this
     return this._transact(async function* (ctx) {
-      const [{ hub }, id, pendingAmounts, orders, maxBatchGasLimit] = await Promise.all([
+      const [{ hub }, pendingAmounts, orders, maxBatchGasLimit] = await Promise.all([
         self._root._protocolAddresses(self.pool.centrifugeId),
-        self._root.id(self.pool.centrifugeId),
         self.pendingAmounts(),
         firstValueFrom(
           self._investorOrders().pipe(
@@ -823,7 +822,8 @@ export class ShareClass extends Entity {
       }
 
       for (const asset of assets) {
-        const gasPerMessage = asset.assetId.centrifugeId === id ? estimatePerMessageIfLocal : estimatePerMessage
+        const gasPerMessage =
+          asset.assetId.centrifugeId === self.pool.centrifugeId ? estimatePerMessageIfLocal : estimatePerMessage
         let gasLeft = gasLimitPerAsset
         const pending = pendingAmounts.find((e) => e.assetId.equals(asset.assetId))
         if (!pending) {
@@ -1180,15 +1180,9 @@ export class ShareClass extends Entity {
     const offset = options?.offset ?? 0
 
     return this._query(['whitelistedHolders', this.id.raw, limit, offset], () =>
-      combineLatest([
-        this._root._deployments(),
-        this.pool.currency(),
-        this._investorOrders(),
-        this._whitelistedInvestors({ limit, offset }),
-      ]).pipe(
+      combineLatest([this.pool.currency(), this._investorOrders(), this._whitelistedInvestors({ limit, offset })]).pipe(
         switchMap(
           ([
-            deployments,
             poolCurrency,
             { outstandingInvests, outstandingRedeems },
             { items: whitelistedInvestors, assets, pageInfo, totalCount },
@@ -1209,13 +1203,10 @@ export class ShareClass extends Entity {
               }).pipe(catchError(() => of(null)))
             )
 
-            const chainsById = new Map(deployments.blockchains.items.map((chain) => [chain.centrifugeId, chain.id]))
-
             return combineLatest(positionQueries).pipe(
               map((positionResults) => {
                 const investors = whitelistedInvestors.map((investor, i) => {
                   const positionData = positionResults[i]
-                  const chainId = Number(chainsById.get(investor.centrifugeId)!)
                   const outstandingInvest = outstandingInvests.find((order) => order.investor === investor.address)
                   const outstandingRedeem = outstandingRedeems.find((order) => order.investor === investor.address)
                   const assetId = outstandingInvest?.assetId.toString()
@@ -1227,7 +1218,7 @@ export class ShareClass extends Entity {
                   return {
                     address: investor.address,
                     amount: new Balance(outstandingInvest?.pendingAmount ?? 0n, assetDecimals),
-                    chainId,
+                    centrifugeId: investor.centrifugeId,
                     createdAt: investor.createdAt,
                     holdings: new Balance(positionBalance, poolCurrency.decimals),
                     isFrozen: investor.isFrozen ?? positionData?.isFrozen,
@@ -1490,15 +1481,10 @@ export class ShareClass extends Entity {
               decimals
               symbol
               name
-              blockchain {
-                chainId
-              }
+              centrifugeId
             }
             token {
               decimals
-              blockchain {
-                chainId
-              }
             }
           }
         }
@@ -1523,15 +1509,10 @@ export class ShareClass extends Entity {
                 decimals: number
                 symbol: string
                 name: string
-                blockchain: {
-                  chainId: number
-                }
+                centrifugeId: string
               }
               token: {
                 decimals: number
-                blockchain: {
-                  chainId: number
-                }
               }
             }[]
           }
@@ -1553,7 +1534,7 @@ export class ShareClass extends Entity {
               name: order.asset.name,
               decimals: order.asset.decimals,
             },
-            centrifugeId: order.asset.blockchain.chainId,
+            centrifugeId: Number(order.asset.centrifugeId) as CentrifugeId,
             token: {
               decimals: order.token.decimals,
             },
@@ -1589,15 +1570,10 @@ export class ShareClass extends Entity {
               decimals
               symbol
               name
-              blockchain {
-                chainId
-              }
+              centrifugeId
             }
             token {
               decimals
-              blockchain {
-                chainId
-              }
             }
           }
         }
@@ -1622,15 +1598,10 @@ export class ShareClass extends Entity {
                 decimals: number
                 symbol: string
                 name: string
-                blockchain: {
-                  chainId: number
-                }
+                centrifugeId: string
               }
               token: {
                 decimals: number
-                blockchain: {
-                  chainId: number
-                }
               }
             }[]
           }
@@ -1652,7 +1623,7 @@ export class ShareClass extends Entity {
               name: order.asset.name,
               decimals: order.asset.decimals,
             },
-            centrifugeId: order.asset.blockchain.chainId,
+            centrifugeId: Number(order.asset.centrifugeId) as CentrifugeId,
             token: {
               decimals: order.token.decimals,
             },
@@ -1821,6 +1792,7 @@ export class ShareClass extends Entity {
             assetAmount
             assetPrice
             assetId
+            centrifugeId
             asset {
               decimals
               assetTokenId
@@ -1841,6 +1813,7 @@ export class ShareClass extends Entity {
       (data: {
         holdingEscrows: {
           items: {
+            centrifugeId: string
             holding: {
               createdAt: string | null
             }
@@ -2407,21 +2380,18 @@ export class ShareClass extends Entity {
   }
 
   /** @internal */
-  _updateContract(chainId: number, target: HexString, payload: HexString) {
+  _updateContract(centrifugeId: CentrifugeId, target: HexString, payload: HexString) {
     const self = this
     return this._transact(async function* (ctx) {
-      const [id, { hub }] = await Promise.all([
-        self._root.id(chainId),
-        self._root._protocolAddresses(self.pool.centrifugeId),
-      ])
+      const { hub } = await self._root._protocolAddresses(self.pool.centrifugeId)
       yield* wrapTransaction('Update contract', ctx, {
         contract: hub,
         data: encodeFunctionData({
           abi: ABI.Hub,
           functionName: 'updateContract',
-          args: [self.pool.id.raw, self.id.raw, id, addressToBytes32(target), payload, 0n],
+          args: [self.pool.id.raw, self.id.raw, centrifugeId, addressToBytes32(target), payload, 0n],
         }),
-        messages: { [id]: [MessageType.UpdateContract] },
+        messages: { [centrifugeId]: [MessageType.UpdateContract] },
       })
     }, this.pool.centrifugeId)
   }
