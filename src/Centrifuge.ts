@@ -1303,6 +1303,7 @@ export class Centrifuge {
                 centrifugeId
                 chainId
                 freezeOnlyHook
+                freelyTransferableHook
                 fullRestrictionsHook
                 gasService
                 gateway
