@@ -105,9 +105,9 @@ export class ShareClass extends Entity {
           return combineLatest(
             networks.map((network) =>
               combineLatest([
-                this._share(network.chainId),
+                this._share(network.chainId).pipe(catchError(() => of(null))),
                 this._restrictionManager(network.chainId).pipe(catchError(() => of(null))),
-                this.valuation(network.chainId),
+                this.valuation(network.chainId).pipe(catchError(() => of(null))),
                 of(network),
               ])
             )
@@ -115,7 +115,7 @@ export class ShareClass extends Entity {
         }),
         map((data) =>
           data
-            .filter(([, restrictionManager]) => restrictionManager != null)
+            .filter(([share, restrictionManager]) => share != null && restrictionManager != null)
             .map(([share, restrictionManager, valuation, network]) => ({
               chainId: network.chainId,
               shareTokenAddress: share!,
@@ -1731,6 +1731,92 @@ export class ShareClass extends Entity {
           ],
         }),
         messages: { [id]: [MessageType.UpdateContract] },
+      })
+    }, this.pool.chainId)
+  }
+
+  /**
+   * Update the hook for this share class on a specific chain.
+   * @param chainId - The chain ID where the hook should be updated
+   * @param hook - The address of the new hook contract
+   */
+  updateHook(chainId: number, hook: HexString) {
+    const self = this
+    return this._transact(async function* (ctx) {
+      const [id, { hub }] = await Promise.all([
+        self._root.id(chainId),
+        self._root._protocolAddresses(self.pool.chainId),
+      ])
+
+      yield* wrapTransaction('Update hook', ctx, {
+        contract: hub,
+        data: encodeFunctionData({
+          abi: ABI.Hub,
+          functionName: 'updateShareHook',
+          args: [self.pool.id.raw, self.id.raw, id, addressToBytes32(hook)],
+        }),
+        messages: { [id]: [MessageType.UpdateShareHook] },
+      })
+    }, this.pool.chainId)
+  }
+
+  /**
+   * Update both (or one of) the hook and valuation for this share class on a specific chain in a single transaction.
+   * @param chainId - The chain ID where the updates should be applied
+   * @param hook - The address of the new hook contract (optional)
+   * @param valuation - The address of the new valuation contract (optional)
+   */
+  updateHookAndValuation(chainId: number, hook?: HexString, valuation?: HexString) {
+    if (!hook && !valuation) {
+      throw new Error('At least one of hook or valuation must be provided')
+    }
+
+    const self = this
+    return this._transact(async function* (ctx) {
+      const [id, { hub }, spokeAddresses] = await Promise.all([
+        self._root.id(chainId),
+        self._root._protocolAddresses(self.pool.chainId),
+        self._root._protocolAddresses(chainId),
+      ])
+
+      const calls: HexString[] = []
+      const messages: MessageType[] = []
+
+      if (hook) {
+        calls.push(
+          encodeFunctionData({
+            abi: ABI.Hub,
+            functionName: 'updateShareHook',
+            args: [self.pool.id.raw, self.id.raw, id, addressToBytes32(hook)],
+          })
+        )
+        messages.push(MessageType.UpdateShareHook)
+      }
+
+      if (valuation) {
+        calls.push(
+          encodeFunctionData({
+            abi: ABI.Hub,
+            functionName: 'updateContract',
+            args: [
+              self.pool.id.raw,
+              self.id.raw,
+              id,
+              addressToBytes32(spokeAddresses.syncManager),
+              encodePacked(['uint8', 'bytes32'], [/* UpdateContractType.Valuation */ 1, addressToBytes32(valuation)]),
+              0n,
+            ],
+          })
+        )
+        messages.push(MessageType.UpdateContract)
+      }
+
+      const title = hook && valuation ? 'Update hook and valuation' : hook ? 'Update hook' : 'Update valuation'
+
+      yield* wrapTransaction(title, ctx, {
+        contract: hub,
+        data: calls,
+        messages: { [id]: messages },
       })
     }, this.pool.chainId)
   }
