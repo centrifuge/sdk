@@ -105,28 +105,10 @@ type SimulationResult = {
   logs?: Log[]
 }
 
-type SimulationAssetChangeToken = {
-  address: HexString
-  decimals?: number
-  symbol?: string
-}
-
-type SimulationAssetChangeValue = {
-  pre: bigint
-  post: bigint
-  diff: bigint
-}
-
-type SimulationAssetChange = {
-  token: SimulationAssetChangeToken
-  value: SimulationAssetChangeValue
-}
-
 export type SimulationStatus = {
   type: 'TransactionSimulation'
   title: string
   result: SimulationResult[]
-  assetChanges?: readonly SimulationAssetChange[]
 }
 
 export type OperationStatus =
