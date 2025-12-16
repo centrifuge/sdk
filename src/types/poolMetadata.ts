@@ -160,19 +160,5 @@ export type PoolMetadata = {
     headers: string[]
     data: Record<string, unknown>[]
   }
-  investors?: {
-    [shareClassId: string]: {
-      address: string
-      label?: string
-    }[]
-  }
-  withdrawManagers?: Record<
-    string,
-    {
-      assetAddress: HexString
-      chainId: string
-      manager: HexString
-      label: string
-    }[]
-  >
+  addressLabels?: Record<string, string>
 }
