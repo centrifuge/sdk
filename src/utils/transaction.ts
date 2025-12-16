@@ -101,7 +101,7 @@ export async function* wrapTransaction(
       let simulationResult
 
       if (data.length === 1) {
-        const { results } = await ctx.publicClient.simulateCalls({
+        const { results, assetChanges } = await ctx.publicClient.simulateCalls({
           account: ctx.signingAddress,
           calls: [
             {
@@ -110,11 +110,12 @@ export async function* wrapTransaction(
               value,
             },
           ],
+          traceAssetChanges: true,
         })
 
-        simulationResult = results
+        simulationResult = { results, assetChanges }
       } else {
-        const { results } = await ctx.publicClient.simulateCalls({
+        const { results, assetChanges } = await ctx.publicClient.simulateCalls({
           account: ctx.signingAddress,
           calls: [
             {
@@ -125,15 +126,17 @@ export async function* wrapTransaction(
               value,
             },
           ],
+          traceAssetChanges: true,
         })
 
-        simulationResult = results
+        simulationResult = { results, assetChanges }
       }
 
       yield {
         type: 'TransactionSimulation',
         title,
-        result: simulationResult,
+        result: simulationResult.results,
+        assetChanges: simulationResult.assetChanges,
       } satisfies OperationStatus
 
       return
