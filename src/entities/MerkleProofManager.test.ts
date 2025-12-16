@@ -5,7 +5,7 @@ import sinon from 'sinon'
 import { encodePacked } from 'viem'
 import { ABI } from '../abi/index.js'
 import { Centrifuge } from '../Centrifuge.js'
-import { HexString } from '../index.js'
+import { HexString, parseEventLogs } from '../index.js'
 import { context } from '../tests/setup.js'
 import { randomAddress } from '../tests/utils.js'
 import { MerkleProofPolicy, MerkleProofPolicyInput } from '../types/poolMetadata.js'
@@ -798,6 +798,24 @@ describe('MerkleProofManager', () => {
       expect(result.result).to.have.length(1)
       expect(result.result[0]!.status).to.equal('success')
       expect(result.result[0]!.logs).to.have.length(2)
+      expect(result.assetChanges).to.deep.equal([
+        {
+          token: {
+            address: '0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee',
+            decimals: 18,
+            symbol: 'ETH',
+          },
+          value: { pre: 1000000000000000000n, post: 1000000000000000000n, diff: 0n },
+        },
+        {
+          token: {
+            address: '0x3aaaa86458d576bafcb1b7ed290434f0696da65c',
+            decimals: 6,
+            symbol: 'USDC',
+          },
+          value: { pre: 0n, post: 0n, diff: 0n },
+        },
+      ])
 
       mock.restore()
     })
@@ -826,6 +844,13 @@ describe('MerkleProofManager', () => {
       expect(result.result).to.have.length(1)
       expect(result.result[0]!.status).to.equal('success')
       expect(result.result[0]!.logs).to.have.length(4)
+      expect(result.assetChanges![0]?.token).to.deep.equal({
+        address: '0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee',
+        decimals: 18,
+        symbol: 'ETH',
+      })
+      expect(result.assetChanges![0]?.value.pre).to.equal(result.assetChanges![0]?.value.post)
+      expect(result.assetChanges![0]?.value.diff).to.equal(0n)
     })
   })
 })
