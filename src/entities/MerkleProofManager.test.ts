@@ -5,7 +5,7 @@ import sinon from 'sinon'
 import { encodePacked } from 'viem'
 import { ABI } from '../abi/index.js'
 import { Centrifuge } from '../Centrifuge.js'
-import { HexString } from '../index.js'
+import { HexString, parseEventLogs } from '../index.js'
 import { context } from '../tests/setup.js'
 import { randomAddress } from '../tests/utils.js'
 import { MerkleProofPolicy, MerkleProofPolicyInput } from '../types/poolMetadata.js'
@@ -15,6 +15,8 @@ import { generateCombinations, getMerkleTree, MerkleProofManager } from './Merkl
 import { Pool } from './Pool.js'
 import { PoolNetwork } from './PoolNetwork.js'
 import { SimulationStatus } from '../types/transaction.js'
+
+type FromArgs = { from: HexString; to: HexString; value: bigint }
 
 const chainId = 11155111
 const centId = 1
@@ -32,6 +34,7 @@ describe('MerkleProofManager', () => {
   let pool: Pool
   let merkleProofManager: MerkleProofManager
   let mockPolicies: MerkleProofPolicy[]
+  let randomUser: HexString
   const strategist = randomAddress()
   before(async () => {
     const { centrifuge } = context
@@ -41,7 +44,7 @@ describe('MerkleProofManager', () => {
     merkleProofManager = new MerkleProofManager(centrifuge, poolNetwork, mpmAddress)
     const decoder = vaultDecoder
     const target = balanceSheet
-    const randomUser = randomAddress()
+    randomUser = randomAddress()
 
     mockPolicies = [
       {
@@ -798,6 +801,65 @@ describe('MerkleProofManager', () => {
       expect(result.result).to.have.length(1)
       expect(result.result[0]!.status).to.equal('success')
       expect(result.result[0]!.logs).to.have.length(2)
+
+      mock.restore()
+    })
+
+    it('simulates execution of calls - with asset changes', async () => {
+      const mock = sinon.stub(merkleProofManager.pool, 'metadata')
+      mock.returns(
+        makeThenable(
+          of({
+            merkleProofManager: {
+              [chainId]: {
+                [strategist.toLowerCase()]: { policies: mockPolicies },
+              },
+            },
+          } as any)
+        )
+      )
+
+      const centrifugeWithPin = new Centrifuge({
+        environment: 'testnet',
+        pinJson: async () => {
+          return 'abc'
+        },
+        rpcUrls: {
+          11155111: context.tenderlyFork.rpcUrl,
+        },
+      })
+      context.tenderlyFork.impersonateAddress = fundManager
+      centrifugeWithPin.setSigner(context.tenderlyFork.signer)
+      const mpm = new MerkleProofManager(centrifugeWithPin, merkleProofManager.network, mpmAddress)
+      await mpm.setPolicies(strategist, mockPolicies)
+
+      await context.tenderlyFork.fundAccountEth(strategist, 10n ** 18n)
+      context.tenderlyFork.impersonateAddress = strategist
+      context.centrifuge.setSigner(context.tenderlyFork.signer)
+
+      const result = (await merkleProofManager.execute(
+        [
+          {
+            policy: mockPolicies[12]!,
+            inputs: [poolId.toString() as HexString, scId.raw, someErc20, 0, randomUser, 123_456_000n],
+          },
+        ],
+        { simulate: true }
+      )) as SimulationStatus
+
+      const logs = parseEventLogs({
+        logs: result.result[0]?.logs ?? [],
+      })
+
+      expect(result.type).to.equal('TransactionSimulation')
+      expect(result.title).to.equal('Execute calls')
+      expect(result.result).to.have.length(1)
+      expect(result.result[0]!.status).to.equal('success')
+      expect(result.result[0]!.logs).to.have.length(5)
+      expect(logs[2]?.eventName).to.equal('Transfer')
+      expect((logs[2]?.args as FromArgs).from).to.equal('0x08BdC2Cb9C50Accc5B395B5EB22d275adC941072')
+      expect((logs[2]?.args as FromArgs).to.toLowerCase()).to.equal(randomUser)
+      expect((logs[2]?.args as FromArgs).value).to.equal(123_456_000n)
 
       mock.restore()
     })

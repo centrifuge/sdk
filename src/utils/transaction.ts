@@ -112,7 +112,7 @@ export async function* wrapTransaction(
           ],
         })
 
-        simulationResult = results
+        simulationResult = { results }
       } else {
         const { results } = await ctx.publicClient.simulateCalls({
           account: ctx.signingAddress,
@@ -127,13 +127,13 @@ export async function* wrapTransaction(
           ],
         })
 
-        simulationResult = results
+        simulationResult = { results }
       }
 
       yield {
         type: 'TransactionSimulation',
         title,
-        result: simulationResult,
+        result: simulationResult.results,
       } satisfies OperationStatus
 
       return

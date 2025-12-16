@@ -752,6 +752,10 @@ export class Pool extends Entity {
     }, this.chainId)
   }
 
+  getEscrowAddress() {
+    return this._escrow()
+  }
+
   /**
    * @internal
    */
