@@ -759,6 +759,10 @@ export class Pool extends Entity {
     }, this.centrifugeId)
   }
 
+  getEscrowAddress() {
+    return this._escrow()
+  }
+
   /**
    * @internal
    */

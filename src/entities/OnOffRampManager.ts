@@ -3,6 +3,7 @@ import { encodeFunctionData, encodePacked, toHex } from 'viem'
 import { ABI } from '../abi/index.js'
 import { Centrifuge } from '../Centrifuge.js'
 import { HexString } from '../types/index.js'
+import { MessageType } from '../types/transaction.js'
 import { Balance } from '../utils/BigInt.js'
 import { addressToBytes32 } from '../utils/index.js'
 import { doTransaction, wrapTransaction } from '../utils/transaction.js'
@@ -183,6 +184,7 @@ export class OnOffRampManager extends Entity {
             0n,
           ],
         }),
+        messages: { [id]: [MessageType.UpdateContract] },
       })
     }, this.network.centrifugeId)
   }
@@ -214,6 +216,7 @@ export class OnOffRampManager extends Entity {
             0n,
           ],
         }),
+        messages: { [id]: [MessageType.UpdateContract] },
       })
     }, this.network.centrifugeId)
   }
@@ -223,7 +226,7 @@ export class OnOffRampManager extends Entity {
     return this._transact(async function* (ctx) {
       const { hub } = await self._root._protocolAddresses(self.network.centrifugeId)
 
-      yield* wrapTransaction('Set Relayer', ctx, {
+      yield* wrapTransaction('Set Asset', ctx, {
         contract: hub,
         data: encodeFunctionData({
           abi: ABI.Hub,
@@ -246,6 +249,7 @@ export class OnOffRampManager extends Entity {
             0n,
           ],
         }),
+        messages: { [id]: [MessageType.UpdateContract] },
       })
     }, this.network.centrifugeId)
   }

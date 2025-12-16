@@ -221,12 +221,18 @@ export class BalanceSheet extends Entity {
         args: [self.pool.id.raw, self.shareClass.id.raw, to, shares.toBigInt()],
       })
 
+      const resetTx = encodeFunctionData({
+        abi: ABI.BalanceSheet,
+        functionName: 'resetPricePoolPerShare',
+        args: [self.pool.id.raw, self.shareClass.id.raw],
+      })
+
       yield* doTransaction('Issue shares', ctx, () =>
         ctx.walletClient.writeContract({
           address: balanceSheet,
           abi: ABI.BalanceSheet,
           functionName: 'multicall',
-          args: [[overrideTx, issueTx]],
+          args: [[overrideTx, issueTx, resetTx]],
         })
       )
     }, this.centrifugeId)
@@ -273,12 +279,18 @@ export class BalanceSheet extends Entity {
         args: [self.pool.id.raw, self.shareClass.id.raw, shares.toBigInt()],
       })
 
+      const resetTx = encodeFunctionData({
+        abi: ABI.BalanceSheet,
+        functionName: 'resetPricePoolPerShare',
+        args: [self.pool.id.raw, self.shareClass.id.raw],
+      })
+
       yield* doTransaction('Revoke shares', ctx, () =>
         ctx.walletClient.writeContract({
           address: balanceSheet,
           abi: ABI.BalanceSheet,
           functionName: 'multicall',
-          args: [[transferTx, overrideTx, revokeTx]],
+          args: [[transferTx, overrideTx, revokeTx, resetTx]],
         })
       )
     }, this.centrifugeId)

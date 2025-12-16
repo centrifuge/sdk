@@ -115,7 +115,7 @@ export class ShareClass extends Entity {
         }),
         map((data) =>
           data
-            .filter(([, restrictionManager]) => restrictionManager != null)
+            .filter(([share, restrictionManager]) => share != null && restrictionManager != null)
             .map(([share, restrictionManager, valuation, network]) => ({
               centrifugeId: network.centrifugeId,
               shareTokenAddress: share!,
