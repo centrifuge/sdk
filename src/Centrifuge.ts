@@ -324,7 +324,6 @@ export class Centrifuge {
       `{
         blockchains {
           items {
-            alchemyName
             explorer
             chainId
             environment
@@ -338,7 +337,6 @@ export class Centrifuge {
       (data: {
         blockchains: {
           items: {
-            alchemyName: string | null
             explorer: string | null
             chainId: string
             environment: string
@@ -349,7 +347,6 @@ export class Centrifuge {
         }
       }) => {
         return data.blockchains.items.map((blockchain) => ({
-          alchemyName: blockchain.alchemyName,
           explorer: blockchain.explorer,
           chainId: Number(blockchain.chainId),
           environment: blockchain.environment,
