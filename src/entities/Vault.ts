@@ -97,11 +97,11 @@ export class Vault extends Entity {
   isLinked() {
     return this._query(['linked'], () =>
       this._root._protocolAddresses(this.chainId).pipe(
-        switchMap(({ spoke }) =>
+        switchMap(({ vaultRegistry }) =>
           defer(async () => {
             const details = await this._root.getClient(this.chainId).readContract({
-              address: spoke,
-              abi: ABI.Spoke,
+              address: vaultRegistry,
+              abi: ABI.VaultRegistry,
               functionName: 'vaultDetails',
               args: [this.address],
             })
@@ -110,7 +110,7 @@ export class Vault extends Entity {
             repeatOnEvents(
               this._root,
               {
-                address: spoke,
+                address: vaultRegistry,
                 eventName: ['LinkVault', 'UnlinkVault'],
                 filter: (events) => events.some((event) => event.args.vault.toLowerCase() === this.address),
               },

@@ -1,16 +1,22 @@
 import { combineLatest, map, of, switchMap } from 'rxjs'
-import { encodeFunctionData, encodePacked, toHex } from 'viem'
+import { encodeFunctionData } from 'viem'
 import { ABI } from '../abi/index.js'
 import { Centrifuge } from '../Centrifuge.js'
 import { HexString } from '../types/index.js'
 import { MessageType } from '../types/transaction.js'
 import { Balance } from '../utils/BigInt.js'
-import { addressToBytes32 } from '../utils/index.js'
+import { addressToBytes32, encode } from '../utils/index.js'
 import { doTransaction, wrapTransaction } from '../utils/transaction.js'
 import { AssetId } from '../utils/types.js'
 import { Entity } from './Entity.js'
 import { PoolNetwork } from './PoolNetwork.js'
 import { ShareClass } from './ShareClass.js'
+
+enum OnOffRampManagerTrustedCall {
+  Onramp,
+  Relayer,
+  Offramp,
+}
 
 export class OnOffRampManager extends Entity {
   /** @internal */
@@ -178,14 +184,14 @@ export class OnOffRampManager extends Entity {
             self.shareClass.id.raw,
             id,
             addressToBytes32(self.onrampAddress),
-            encodePacked(
-              ['uint8', 'bytes32', 'uint128', 'bytes32', 'bool'],
-              [3, toHex('offramp', { size: 32 }), assetId.raw, addressToBytes32(receiver), enabled]
-            ),
+            encode([OnOffRampManagerTrustedCall.Offramp, assetId.raw, receiver, enabled]),
             0n,
+            ctx.signingAddress,
           ],
         }),
-        messages: { [id]: [MessageType.UpdateContract] },
+        messages: {
+          [id]: [MessageType.TrustedContractUpdate],
+        },
       })
     }, this.shareClass.pool.chainId)
   }
@@ -213,14 +219,12 @@ export class OnOffRampManager extends Entity {
             self.shareClass.id.raw,
             id,
             addressToBytes32(self.onrampAddress),
-            encodePacked(
-              ['uint8', 'bytes32', 'uint128', 'bytes32', 'bool'],
-              [3, toHex('relayer', { size: 32 }), 0n, addressToBytes32(relayer), enabled]
-            ),
+            encode([OnOffRampManagerTrustedCall.Relayer, relayer, enabled]),
             0n,
+            ctx.signingAddress,
           ],
         }),
-        messages: { [id]: [MessageType.UpdateContract] },
+        messages: { [id]: [MessageType.TrustedContractUpdate] },
       })
     }, this.shareClass.pool.chainId)
   }
@@ -243,20 +247,12 @@ export class OnOffRampManager extends Entity {
             self.shareClass.id.raw,
             id,
             addressToBytes32(self.onrampAddress),
-            encodePacked(
-              ['uint8', 'bytes32', 'uint128', 'bytes32', 'bool'],
-              [
-                /* UpdateContractType.UpdateAddress */ 3,
-                toHex('onramp', { size: 32 }),
-                assetId.raw,
-                toHex(0, { size: 32 }),
-                true,
-              ]
-            ),
+            encode([OnOffRampManagerTrustedCall.Onramp, assetId.raw, true]),
             0n,
+            ctx.signingAddress,
           ],
         }),
-        messages: { [id]: [MessageType.UpdateContract] },
+        messages: { [id]: [MessageType.TrustedContractUpdate] },
       })
     }, this.shareClass.pool.chainId)
   }

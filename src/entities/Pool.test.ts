@@ -298,7 +298,7 @@ describe.skip('Pool', () => {
 
     // Check if all accounts got created properly
     for (const account of expectedAccounts) {
-      const exists = await accountsContract.read.exists([poolId.raw, account])
+      const exists = await accountsContract.read.exists([poolId.raw, BigInt(account)])
       expect(exists).to.be.true
     }
 
@@ -314,6 +314,18 @@ describe.skip('Pool', () => {
 
     expect(updateShareClassName).to.equal('Sepolia Pool One Token2')
     expect(updatedShareClassSymbol).to.equal('sep.poo.one2')
+  })
+
+  it('creates accounts', async () => {
+    context.tenderlyFork.impersonateAddress = poolManager
+    context.centrifuge.setSigner(context.tenderlyFork.signer)
+
+    const result = await pool.createAccounts([
+      { accountId: 111n, isDebitNormal: true },
+      { accountId: 222n, isDebitNormal: false },
+      { accountId: 333n, isDebitNormal: true },
+    ])
+    expect(result.type).to.equal('TransactionConfirmed')
   })
 
   it('should update the pool metadata', async () => {

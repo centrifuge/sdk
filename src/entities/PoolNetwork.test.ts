@@ -1,15 +1,15 @@
 import { expect } from 'chai'
 import sinon from 'sinon'
 import { ABI } from '../abi/index.js'
+import { Centrifuge } from '../Centrifuge.js'
 import { NULL_ADDRESS } from '../constants.js'
 import { context } from '../tests/setup.js'
 import { doTransaction } from '../utils/transaction.js'
 import { AssetId, PoolId, ShareClassId } from '../utils/types.js'
+import { MerkleProofManager } from './MerkleProofManager.js'
 import { Pool } from './Pool.js'
 import { PoolNetwork } from './PoolNetwork.js'
 import { Vault } from './Vault.js'
-import { MerkleProofManager } from './MerkleProofManager.js'
-import { Centrifuge } from '../Centrifuge.js'
 
 const poolId = PoolId.from(1, 1)
 const scId = ShareClassId.from(poolId, 1)
@@ -110,7 +110,7 @@ describe.skip('PoolNetwork', () => {
 
     const maxReserve = await context.centrifuge.getClient(chainId).readContract({
       address: addresses.syncManager,
-      abi: ABI.SyncRequests,
+      abi: ABI.SyncManager,
       functionName: 'maxReserve',
       args: [poolId.raw, scId.raw, asset.address, 0n],
     })
