@@ -326,7 +326,6 @@ export class Centrifuge {
           items {
             explorer
             chainId
-            environment
             icon
             name
             network
@@ -339,7 +338,6 @@ export class Centrifuge {
           items: {
             explorer: string | null
             chainId: string
-            environment: string
             icon: string | null
             name: string
             network: string
@@ -349,7 +347,6 @@ export class Centrifuge {
         return data.blockchains.items.map((blockchain) => ({
           explorer: blockchain.explorer,
           chainId: Number(blockchain.chainId),
-          environment: blockchain.environment,
           icon: blockchain.icon,
           name: blockchain.name,
           network: blockchain.network,
