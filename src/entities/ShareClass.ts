@@ -1734,7 +1734,7 @@ export class ShareClass extends Entity {
           defer(async () => {
             const valuation = await this._root.getClient(chainId).readContract({
               address: syncManager,
-              abi: ABI.SyncRequests,
+              abi: ABI.SyncManager,
               functionName: 'valuation',
               args: [this.pool.id.raw, this.id.raw],
             })
@@ -1782,9 +1782,10 @@ export class ShareClass extends Entity {
             addressToBytes32(spokeAddresses.syncManager),
             encodePacked(['uint8', 'bytes32'], [/* UpdateContractType.Valuation */ 1, addressToBytes32(valuation)]),
             0n,
+            ctx.signingAddress,
           ],
         }),
-        messages: { [id]: [MessageType.UpdateContract] },
+        messages: { [id]: [MessageType.TrustedContractUpdate] },
       })
     }, this.pool.chainId)
   }
@@ -1807,7 +1808,7 @@ export class ShareClass extends Entity {
         data: encodeFunctionData({
           abi: ABI.Hub,
           functionName: 'updateShareHook',
-          args: [self.pool.id.raw, self.id.raw, id, addressToBytes32(hook)],
+          args: [self.pool.id.raw, self.id.raw, id, addressToBytes32(hook), ctx.signingAddress],
         }),
         messages: { [id]: [MessageType.UpdateShareHook] },
       })
@@ -1841,7 +1842,7 @@ export class ShareClass extends Entity {
           encodeFunctionData({
             abi: ABI.Hub,
             functionName: 'updateShareHook',
-            args: [self.pool.id.raw, self.id.raw, id, addressToBytes32(hook)],
+            args: [self.pool.id.raw, self.id.raw, id, addressToBytes32(hook), ctx.signingAddress],
           })
         )
         messages.push(MessageType.UpdateShareHook)
@@ -1859,10 +1860,11 @@ export class ShareClass extends Entity {
               addressToBytes32(spokeAddresses.syncManager),
               encodePacked(['uint8', 'bytes32'], [/* UpdateContractType.Valuation */ 1, addressToBytes32(valuation)]),
               0n,
+              ctx.signingAddress,
             ],
           })
         )
-        messages.push(MessageType.UpdateContract)
+        messages.push(MessageType.TrustedContractUpdate)
       }
 
       const title = hook && valuation ? 'Update hook and valuation' : hook ? 'Update hook' : 'Update valuation'

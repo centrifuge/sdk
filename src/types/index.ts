@@ -79,7 +79,6 @@ export type ProtocolContracts = {
   protocolGuardian: HexString
   opsGuardian: HexString
   refundEscrowFactory: HexString
-  freelyTransferableHook: HexString
   queueManager: HexString
   oracleValuation: HexString
   navManager: HexString

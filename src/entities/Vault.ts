@@ -615,6 +615,7 @@ export class Vault extends Entity {
               [/* UpdateContractType.SyncDepositMaxReserve */ 2, self.assetId.raw, maxReserve.toBigInt()]
             ),
             0n,
+            ctx.signingAddress,
           ],
         }),
       })
@@ -728,7 +729,7 @@ export class Vault extends Entity {
           defer(async () => {
             const maxReserve = await this._root.getClient(this.chainId).readContract({
               address: syncManager,
-              abi: ABI.SyncRequests,
+              abi: ABI.SyncManager,
               functionName: 'maxReserve',
               args: [this.pool.id.raw, this.shareClass.id.raw, this._asset, 0n],
             })

@@ -479,7 +479,7 @@ export class PoolNetwork extends Entity {
           encodeFunctionData({
             abi: ABI.Hub,
             functionName: 'notifyShareClass',
-            args: [self.pool.id.raw, shareClassIdRaw, id, addressToBytes32(hook)],
+            args: [self.pool.id.raw, shareClassIdRaw, id, addressToBytes32(hook), ctx.signingAddress],
           })
         )
         messageTypes.push(MessageType.NotifyShareClass)
@@ -526,9 +526,11 @@ export class PoolNetwork extends Entity {
               functionName: 'setRequestManager',
               args: [
                 self.pool.id.raw,
-                vault.shareClassId.raw,
-                vault.assetId.raw,
+                // TODO:V3_MIGRATION: check if the following args are correct
+                vault.shareClassId.centrifugeId,
+                hub,
                 addressToBytes32(asyncRequestManager),
+                ctx.signingAddress,
               ],
             })
           )
@@ -617,6 +619,7 @@ export class PoolNetwork extends Entity {
               addressToBytes32(vault.address),
               VaultUpdateKind.Unlink,
               0n, // gas limit
+              ctx.signingAddress,
             ],
           })
         )
