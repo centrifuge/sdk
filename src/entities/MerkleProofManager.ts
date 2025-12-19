@@ -299,6 +299,8 @@ export class MerkleProofManager extends Entity {
           ic.inputs.every((input, i) => input === null || inputs[i] === input)
         )?.inputsEncoded
 
+        console.log({ argsEncoded })
+
         if (!argsEncoded) {
           throw new Error(`No encoded args found for policy with selector "${policy.selector}" and inputs [${inputs}]`)
         }
