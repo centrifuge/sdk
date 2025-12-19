@@ -83,14 +83,14 @@ export const mockPoolMetadata: PoolMetadata = {
     shareClasses: {
       '0x6756e091ae798a8e51e12e27ee8facdf': {
         agreement: {
-          uri: 'https://centrifuge.mypinata.cloud/ipfs/QmNbrzAHKKYtPCoY6g4WfxXnuWRdMdWRXm64LfQz5sYHAw',
+          uri: 'https://ipfs.centrifuge.io/ipfs/QmNbrzAHKKYtPCoY6g4WfxXnuWRdMdWRXm64LfQz5sYHAw',
           mime: 'application/pdf',
         },
         openForOnboarding: false,
       },
       '0xda64aae939e4d3a981004619f1709d8f': {
         agreement: {
-          uri: 'https://centrifuge.mypinata.cloud/ipfs/QmV3cXT38k45VeEYXQRfRPDza1wLf5pnjxy79D2RudMUrG',
+          uri: 'https://ipfs.centrifuge.io/ipfs/QmV3cXT38k45VeEYXQRfRPDza1wLf5pnjxy79D2RudMUrG',
           mime: 'application/pdf',
         },
         openForOnboarding: true,

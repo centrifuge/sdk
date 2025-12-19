@@ -33,7 +33,7 @@ export type CurrencyDetails = {
   decimals: number
   name: string
   symbol: string
-  chainId: number
+  centrifugeId: number
   supportsPermit: boolean
 }
 

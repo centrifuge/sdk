@@ -55,7 +55,7 @@ export class PoolSharePricesReport extends Entity {
     const { from, to, groupBy } = filter
     return this._query(['report', from?.toString(), to?.toString(), groupBy?.toString()], () =>
       combineLatest([this.pool._shareClassIds(), this.pool.currency(), this.pool.activeNetworks()]).pipe(
-        switchMap(([shareClassIds, poolCurrency, activeNetworks]) =>
+        switchMap(([shareClassIds, poolCurrency]) =>
           this._root
             ._queryIndexer<SharePriceData>(
               `query ($filter: TokenInstanceSnapshotFilter) {

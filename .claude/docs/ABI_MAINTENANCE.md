@@ -24,6 +24,7 @@ This guide provides detailed procedures for updating contract ABIs in the Centri
 The Centrifuge SDK uses **human-readable ABI format** (Viem/ethers style) stored in `src/abi/*.abi.ts` files. These ABIs are manually synchronized with the protocol repository when contracts change.
 
 **Key Points:**
+
 - No automated ABI validation exists (see `ABI_VALIDATION_ANALYSIS.md` for details)
 - ABIs are extracted from deployed contracts or protocol compilation artifacts
 - Human-readable format is more maintainable than JSON
@@ -42,6 +43,7 @@ Update ABIs when:
 5. **Bug fixes** modify contract interfaces
 
 **Sources of Information:**
+
 - Protocol repository releases: [github.com/centrifuge/protocol/releases](https://github.com/centrifuge/protocol/releases)
 - Protocol PRs with "breaking" or "contract" labels
 - Centrifuge developer communication channels
@@ -54,6 +56,7 @@ Update ABIs when:
 ### Step 1: Identify Changed Contracts
 
 **Check Protocol Release Notes:**
+
 ```bash
 # Clone or update protocol repository
 git clone https://github.com/centrifuge/protocol.git
@@ -67,12 +70,14 @@ git show v3.1.0
 ```
 
 **Review PR Descriptions:**
+
 - Look for function signature changes
 - Note new functions/events
 - Identify deprecated functions
 - Check for renamed contracts
 
 **Common Contract Changes:**
+
 - Added functions (new features)
 - Modified function signatures (breaking changes)
 - Removed functions (deprecated features)
@@ -106,6 +111,7 @@ cast abi 0x6B1b1d1Ca52F8b5F8e38f8b6e6e1c5f4c8b0b8c4 \
 ```
 
 **Get Contract Addresses:**
+
 - Check protocol documentation
 - Look in protocol repository's deployment scripts
 - Query chain explorers (Etherscan, Basescan, etc.)
@@ -129,6 +135,7 @@ cat out/Hub.sol/Hub.json | jq '.abi' > Hub.abi.json
 ```
 
 **Finding Contract Files:**
+
 ```bash
 # List all contract files
 find src/contracts -name "*.sol"
@@ -147,14 +154,15 @@ See [Converting JSON to Human-Readable Format](#converting-json-to-human-readabl
 **Quick Manual Conversion:**
 
 JSON ABI:
+
 ```json
 {
   "type": "function",
   "name": "updatePoolManagers",
   "inputs": [
-    {"name": "poolId", "type": "bytes16"},
-    {"name": "managers", "type": "address[]"},
-    {"name": "permissions", "type": "bool[]"}
+    { "name": "poolId", "type": "bytes16" },
+    { "name": "managers", "type": "address[]" },
+    { "name": "permissions", "type": "bool[]" }
   ],
   "outputs": [],
   "stateMutability": "nonpayable"
@@ -162,6 +170,7 @@ JSON ABI:
 ```
 
 Human-Readable:
+
 ```typescript
 'function updatePoolManagers(bytes16 poolId, address[] managers, bool[] permissions)'
 ```
@@ -194,6 +203,7 @@ export default [
 ```
 
 **Best Practices:**
+
 - Only include functions/events SDK needs
 - Group by category (view functions, state-changing, events, errors)
 - Add comments for complex signatures
@@ -239,13 +249,13 @@ export class Pool extends Entity {
    */
   async newFeature(amount: Balance) {
     return this._transact(function* () {
-      const client = this._root.getClient(this.chainId)
-      const { hub } = await this._root._protocolAddresses(this.chainId)
+      const client = await this._root.getClient(this.centrifugeId)
+      const { hub } = await this._root._protocolAddresses(this.centrifugeId)
 
       const hubContract = getContract({
         address: hub,
         abi: ABI.Hub,
-        client
+        client,
       })
 
       const hash = yield* doTransaction(
@@ -379,11 +389,13 @@ SDK Commit: xyz789ghi012
 ## Changed Contracts
 
 ### Hub
+
 - Added `newFeature(address user, uint256 amount)` function
 - Updated `updatePoolManagers` signature to include permissions
 - Removed deprecated `oldFunction`
 
 ### VaultRouter
+
 - No changes
 
 ## Breaking Changes
@@ -396,10 +408,12 @@ SDK Commit: xyz789ghi012
 ## Deployment Addresses
 
 ### Mainnet (Chain ID: 1)
+
 - Hub: 0x...
 - VaultRouter: 0x...
 
 ### Sepolia (Chain ID: 11155111)
+
 - Hub: 0x...
 - VaultRouter: 0x...
 ```
@@ -479,29 +493,27 @@ import fs from 'fs'
 const jsonAbi = JSON.parse(fs.readFileSync(process.argv[2], 'utf-8'))
 
 const humanReadable = jsonAbi
-  .filter(item => ['function', 'event', 'error'].includes(item.type))
-  .map(item => {
+  .filter((item) => ['function', 'event', 'error'].includes(item.type))
+  .map((item) => {
     if (item.type === 'function') {
-      const inputs = item.inputs.map(i => `${i.type} ${i.name || ''}`).join(', ')
-      const outputs = item.outputs?.length
-        ? ` returns (${item.outputs.map(o => o.type).join(', ')})`
-        : ''
-      const stateMutability = item.stateMutability !== 'nonpayable'
-        ? ` ${item.stateMutability}`
-        : ''
+      const inputs = item.inputs.map((i) => `${i.type} ${i.name || ''}`).join(', ')
+      const outputs = item.outputs?.length ? ` returns (${item.outputs.map((o) => o.type).join(', ')})` : ''
+      const stateMutability = item.stateMutability !== 'nonpayable' ? ` ${item.stateMutability}` : ''
       return `'function ${item.name}(${inputs})${stateMutability}${outputs}'`
     }
 
     if (item.type === 'event') {
-      const inputs = item.inputs.map(i => {
-        const indexed = i.indexed ? 'indexed ' : ''
-        return `${i.type} ${indexed}${i.name || ''}`
-      }).join(', ')
+      const inputs = item.inputs
+        .map((i) => {
+          const indexed = i.indexed ? 'indexed ' : ''
+          return `${i.type} ${indexed}${i.name || ''}`
+        })
+        .join(', ')
       return `'event ${item.name}(${inputs})'`
     }
 
     if (item.type === 'error') {
-      const inputs = item.inputs?.map(i => `${i.type} ${i.name || ''}`).join(', ') || ''
+      const inputs = item.inputs?.map((i) => `${i.type} ${i.name || ''}`).join(', ') || ''
       return `'error ${item.name}(${inputs})'`
     }
   })
@@ -513,6 +525,7 @@ console.log(output)
 ```
 
 **Usage:**
+
 ```bash
 chmod +x scripts/convert-abi.mjs
 ./scripts/convert-abi.mjs Hub.abi.json > src/abi/Hub.abi.ts
@@ -521,76 +534,86 @@ chmod +x scripts/convert-abi.mjs
 ### Manual Conversion Examples
 
 **Function (View):**
+
 ```json
 {
   "type": "function",
   "name": "balanceOf",
-  "inputs": [{"name": "owner", "type": "address"}],
-  "outputs": [{"type": "uint256"}],
+  "inputs": [{ "name": "owner", "type": "address" }],
+  "outputs": [{ "type": "uint256" }],
   "stateMutability": "view"
 }
 ```
+
 → `'function balanceOf(address owner) view returns (uint256)'`
 
 **Function (State-Changing):**
+
 ```json
 {
   "type": "function",
   "name": "transfer",
   "inputs": [
-    {"name": "to", "type": "address"},
-    {"name": "amount", "type": "uint256"}
+    { "name": "to", "type": "address" },
+    { "name": "amount", "type": "uint256" }
   ],
-  "outputs": [{"type": "bool"}],
+  "outputs": [{ "type": "bool" }],
   "stateMutability": "nonpayable"
 }
 ```
+
 → `'function transfer(address to, uint256 amount) returns (bool)'`
 
 **Event:**
+
 ```json
 {
   "type": "event",
   "name": "Transfer",
   "inputs": [
-    {"name": "from", "type": "address", "indexed": true},
-    {"name": "to", "type": "address", "indexed": true},
-    {"name": "value", "type": "uint256", "indexed": false}
+    { "name": "from", "type": "address", "indexed": true },
+    { "name": "to", "type": "address", "indexed": true },
+    { "name": "value", "type": "uint256", "indexed": false }
   ]
 }
 ```
+
 → `'event Transfer(address indexed from, address indexed to, uint256 value)'`
 
 **Error:**
+
 ```json
 {
   "type": "error",
   "name": "InsufficientBalance",
   "inputs": [
-    {"name": "available", "type": "uint256"},
-    {"name": "required", "type": "uint256"}
+    { "name": "available", "type": "uint256" },
+    { "name": "required", "type": "uint256" }
   ]
 }
 ```
+
 → `'error InsufficientBalance(uint256 available, uint256 required)'`
 
 **Complex Function (Multiple Returns):**
+
 ```json
 {
   "type": "function",
   "name": "investments",
   "inputs": [
-    {"name": "vault", "type": "address"},
-    {"name": "investor", "type": "address"}
+    { "name": "vault", "type": "address" },
+    { "name": "investor", "type": "address" }
   ],
   "outputs": [
-    {"type": "uint128", "name": "maxMint"},
-    {"type": "uint128", "name": "maxWithdraw"},
-    {"type": "uint256", "name": "pendingDeposit"}
+    { "type": "uint128", "name": "maxMint" },
+    { "type": "uint128", "name": "maxWithdraw" },
+    { "type": "uint256", "name": "pendingDeposit" }
   ],
   "stateMutability": "view"
 }
 ```
+
 → `'function investments(address vault, address investor) view returns (uint128 maxMint, uint128 maxWithdraw, uint256 pendingDeposit)'`
 
 ---
@@ -602,6 +625,7 @@ chmod +x scripts/convert-abi.mjs
 **Scenario:** Protocol adds `batchProcessRequests` to `AsyncRequestManager`.
 
 **1. Update ABI:**
+
 ```typescript
 // src/abi/AsyncRequestManager.abi.ts
 export default [
@@ -612,12 +636,13 @@ export default [
 ```
 
 **2. Update Entity:**
+
 ```typescript
 // src/entities/Vault.ts (or new entity if appropriate)
 async batchProcess(users: string[]) {
   return this._transact(function* () {
-    const client = this._root.getClient(this.chainId)
-    const { asyncRequestManager } = await this._root._protocolAddresses(this.chainId)
+    const client = await this._root.getClient(this.centrifugeId)
+    const { asyncRequestManager } = await this._root._protocolAddresses(this.centrifugeId)
 
     const requestManager = getContract({
       address: asyncRequestManager,
@@ -636,6 +661,7 @@ async batchProcess(users: string[]) {
 ```
 
 **3. Add Test:**
+
 ```typescript
 // src/entities/Vault.test.ts
 it('should batch process requests for multiple users', async () => {
@@ -657,6 +683,7 @@ it('should batch process requests for multiple users', async () => {
 **Scenario:** `updatePoolManagers` signature changes from `(poolId, managers[])` to `(poolId, managers[], permissions[])`.
 
 **1. Update ABI:**
+
 ```typescript
 // src/abi/Hub.abi.ts
 export default [
@@ -669,14 +696,15 @@ export default [
 ```
 
 **2. Update Entity with Backward-Compatible API:**
+
 ```typescript
 // src/entities/Pool.ts
 async updatePoolManagers(
   updates: Array<{ address: string; canManage: boolean }>
 ) {
   return this._transact(function* () {
-    const client = this._root.getClient(this.chainId)
-    const { hub } = await this._root._protocolAddresses(this.chainId)
+    const client = await this._root.getClient(this.centrifugeId)
+    const { hub } = await this._root._protocolAddresses(this.centrifugeId)
 
     const hubContract = getContract({
       address: hub,
@@ -712,12 +740,13 @@ async updatePoolManagers(
 ```
 
 **3. Update Tests:**
+
 ```typescript
 // src/entities/Pool.test.ts
 it('should update pool managers with specific permissions', async () => {
   const updates = [
     { address: newManager1, canManage: true },
-    { address: newManager2, canManage: false },  // Remove permission
+    { address: newManager2, canManage: false }, // Remove permission
   ]
 
   const result = await pool.updatePoolManagers(updates)
@@ -730,7 +759,8 @@ it('should update pool managers with specific permissions', async () => {
 ```
 
 **4. Document Breaking Change:**
-```markdown
+
+````markdown
 ## Migration Guide: v3.0 to v3.1
 
 ### Breaking Changes
@@ -738,11 +768,14 @@ it('should update pool managers with specific permissions', async () => {
 #### `Pool.updatePoolManagers()` signature changed
 
 **Before:**
+
 ```typescript
 await pool.updatePoolManagers(poolId, [address1, address2])
 ```
+````
 
 **After:**
+
 ```typescript
 await pool.updatePoolManagers([
   { address: address1, canManage: true },
@@ -751,12 +784,12 @@ await pool.updatePoolManagers([
 ```
 
 To remove a manager:
+
 ```typescript
-await pool.updatePoolManagers([
-  { address: existingManager, canManage: false },
-])
+await pool.updatePoolManagers([{ address: existingManager, canManage: false }])
 ```
-```
+
+````
 
 ### Example 3: Adding Completely New Contract
 
@@ -773,9 +806,10 @@ export default [
   'event BatchRequestCancelled(bytes32 indexed requestId)',
   'error InvalidBatchRequest()',
 ] as const
-```
+````
 
 **2. Add to ABI Index:**
+
 ```typescript
 // src/abi/index.ts
 import BatchRequestManagerAbi from './BatchRequestManager.abi.js'
@@ -787,15 +821,16 @@ export const ABI = {
 ```
 
 **3. Create Entity (if complex enough):**
+
 ```typescript
 // src/entities/BatchRequestManager.ts
 export class BatchRequestManager extends Entity {
   constructor(
     _root: Centrifuge,
     public pool: Pool,
-    public chainId: number
+    public centrifugeId: number
   ) {
-    super(_root, ['batch-request-manager', pool.id.toString(), chainId.toString()])
+    super(_root, ['batch-request-manager', pool.id.toString(), centrifugeId.toString()])
   }
 
   async batchRequest(vaults: Vault[], amounts: Balance[]) {
@@ -813,12 +848,14 @@ export class BatchRequestManager extends Entity {
 ```
 
 **4. Export from Index:**
+
 ```typescript
 // src/index.ts
 export * from './entities/BatchRequestManager.js'
 ```
 
 **5. Add Tests:**
+
 ```typescript
 // src/entities/BatchRequestManager.test.ts
 describe('BatchRequestManager', () => {
@@ -826,7 +863,7 @@ describe('BatchRequestManager', () => {
 
   before(async () => {
     const pool = await centrifuge.pool(poolId)
-    manager = new BatchRequestManager(centrifuge, pool, chainId)
+    manager = new BatchRequestManager(centrifuge, pool, centrifugeId)
   })
 
   it('should create batch request', async () => {
@@ -850,18 +887,21 @@ describe('BatchRequestManager', () => {
 After completing ABI updates, verify:
 
 ### 1. Compilation Check
+
 ```bash
 pnpm build
 # Should complete without errors
 ```
 
 ### 2. Type Safety Check
+
 ```bash
 npx tsc --noEmit
 # Should show no type errors
 ```
 
 ### 3. Test Execution
+
 ```bash
 # Run all tests
 pnpm test
@@ -904,6 +944,7 @@ try {
 ```
 
 Run verification:
+
 ```bash
 npx tsx scripts/verify-abis.ts
 ```
@@ -943,6 +984,7 @@ cast abi <address> --rpc-url <rpc> > deployed.json
 **Cause:** Syntax error in ABI string.
 
 **Solution:**
+
 ```typescript
 // ❌ WRONG: Missing quotes, parentheses
 'function transfer(address to, uint256 amount'
@@ -956,6 +998,7 @@ cast abi <address> --rpc-url <rpc> > deployed.json
 **Cause:** Function not added to ABI or typo in function name.
 
 **Solution:**
+
 ```typescript
 // Check ABI includes the function
 export default [
@@ -971,6 +1014,7 @@ contract.read.myFunction([...]) // Must match exactly
 **Cause:** ABI function doesn't exist on deployed contract.
 
 **Solution:**
+
 1. Verify contract address is correct
 2. Check contract is deployed (has bytecode)
 3. Verify function exists in deployed contract:
@@ -983,6 +1027,7 @@ contract.read.myFunction([...]) // Must match exactly
 **Cause:** Return types don't match actual contract.
 
 **Solution:**
+
 ```typescript
 // ❌ WRONG: Returns wrong type
 'function getAmount() view returns (uint128)'
@@ -992,6 +1037,7 @@ contract.read.myFunction([...]) // Must match exactly
 ```
 
 Check actual return type:
+
 ```bash
 cast call <address> "getAmount()" --rpc-url <rpc>
 ```
@@ -1001,6 +1047,7 @@ cast call <address> "getAmount()" --rpc-url <rpc>
 **Cause:** Tenderly fork may have different contract version than production.
 
 **Solution:**
+
 1. Verify contract addresses match production
 2. Check deployed contract bytecode
 3. Test against mainnet fork, not testnet
@@ -1011,6 +1058,7 @@ cast call <address> "getAmount()" --rpc-url <rpc>
 **Cause:** Multiple developers updating same ABI.
 
 **Solution:**
+
 1. Communicate ABI updates with team
 2. Resolve conflicts by taking newest version
 3. Re-run tests after merge

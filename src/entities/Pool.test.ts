@@ -23,7 +23,7 @@ describe.skip('Pool', () => {
   let pool: Pool
   before(() => {
     const { centrifuge } = context
-    pool = new Pool(centrifuge, poolId.raw, chainId)
+    pool = new Pool(centrifuge, poolId.raw)
   })
 
   it('gets whether an address is manager', async () => {
@@ -37,7 +37,7 @@ describe.skip('Pool', () => {
   it('gets active networks of a pool', async () => {
     const networks = await pool.activeNetworks()
     expect(networks).to.have.length.greaterThan(0)
-    expect(networks.some((n) => n.chainId === chainId)).to.equal(true)
+    expect(networks.some((n) => n.centrifugeId === centId)).to.equal(true)
   })
 
   it('gets share class IDs of a pool', async () => {
@@ -95,9 +95,13 @@ describe.skip('Pool', () => {
     const result = await pool.updatePoolManagers([{ address: newManager, canManage: true }])
     expect(result.type).to.equal('TransactionConfirmed')
 
-    const { hubRegistry } = await context.centrifuge._protocolAddresses(chainId)
+    const centId = await context.centrifuge.id(chainId)
+    const [{ hubRegistry }, client] = await Promise.all([
+      context.centrifuge._protocolAddresses(centId),
+      firstValueFrom(context.centrifuge.getClient(centId)),
+    ])
 
-    const isNewManager = await context.centrifuge.getClient(chainId).readContract({
+    const isNewManager = await client.readContract({
       address: hubRegistry,
       abi: ABI.HubRegistry,
       functionName: 'manager',
@@ -156,12 +160,17 @@ describe.skip('Pool', () => {
     context.centrifuge.setSigner(context.tenderlyFork.signer)
 
     const newManager = randomAddress()
-    const result = await pool.updateBalanceSheetManagers([{ chainId, address: newManager, canManage: true }])
+    const result = await pool.updateBalanceSheetManagers([
+      { centrifugeId: centId, address: newManager, canManage: true },
+    ])
     expect(result.type).to.equal('TransactionConfirmed')
 
-    const { balanceSheet } = await context.centrifuge._protocolAddresses(chainId)
+    const [{ balanceSheet }, client] = await Promise.all([
+      context.centrifuge._protocolAddresses(centId),
+      firstValueFrom(context.centrifuge.getClient(centId)),
+    ])
 
-    const isNewManager = await context.centrifuge.getClient(chainId).readContract({
+    const isNewManager = await client.readContract({
       address: balanceSheet,
       abi: ABI.BalanceSheet,
       functionName: 'manager',
@@ -284,8 +293,12 @@ describe.skip('Pool', () => {
       symbol: 'TSC2',
     })
 
-    const { accounting } = await context.centrifuge._protocolAddresses(chainId)
-    const network = new PoolNetwork(context.centrifuge, pool, chainId)
+    const centId = await context.centrifuge.id(chainId)
+    const [{ accounting }, client] = await Promise.all([
+      context.centrifuge._protocolAddresses(centId),
+      firstValueFrom(context.centrifuge.getClient(centId)),
+    ])
+    const network = new PoolNetwork(context.centrifuge, pool, centId)
 
     // Share Token for updated share class
     const shareToken = await network._share(poolDetails.shareClasses[0]!.shareClass.id)
@@ -293,7 +306,7 @@ describe.skip('Pool', () => {
     const accountsContract = getContract({
       address: accounting,
       abi: ABI.Accounting,
-      client: context.centrifuge.getClient(chainId),
+      client,
     })
 
     // Check if all accounts got created properly
@@ -306,7 +319,7 @@ describe.skip('Pool', () => {
     const shareClassContract = getContract({
       address: shareToken,
       abi: ABI.Currency,
-      client: context.centrifuge.getClient(chainId),
+      client,
     })
 
     const updateShareClassName = await shareClassContract.read.name()
