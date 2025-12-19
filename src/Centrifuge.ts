@@ -7,11 +7,11 @@ import {
   isObservable,
   map,
   mergeMap,
+  Observable,
   of,
+  shareReplay,
   switchMap,
   timer,
-  Observable,
-  shareReplay,
 } from 'rxjs'
 import { fromFetch } from 'rxjs/fetch'
 import {
@@ -287,7 +287,7 @@ export class Centrifuge {
         encodeFunctionData({
           abi: ABI.Hub,
           functionName: 'createAccount',
-          args: [poolId.raw, account, accountIsDebitNormal.get(account)!],
+          args: [poolId.raw, BigInt(account), accountIsDebitNormal.get(account)!],
         })
       )
 
@@ -630,7 +630,7 @@ export class Centrifuge {
           address: addresses.spoke,
           abi: ABI.Spoke,
           functionName: 'registerAsset',
-          args: [id, assetAddress, BigInt(tokenId)],
+          args: [id, assetAddress, BigInt(tokenId), ctx.signingAddress],
           value: estimate,
         })
       )
@@ -670,7 +670,7 @@ export class Centrifuge {
           address: addresses.gateway,
           abi: ABI.Gateway,
           functionName: 'repay',
-          args: [toCentId, batch],
+          args: [toCentId, batch, ctx.signingAddress],
           value: estimate + extraPayment,
         })
       )
@@ -1155,41 +1155,6 @@ export class Centrifuge {
     )
   }
 
-  /** @internal */
-  _getQuote(
-    valuationAddress: HexString,
-    baseAmount: Balance,
-    baseAssetId: AssetId,
-    quoteAssetId: AssetId,
-    chainId: number
-  ) {
-    return this._query(['getQuote', baseAmount, baseAssetId.toString(), quoteAssetId.toString()], () =>
-      timer(0, 60_000).pipe(
-        switchMap(() => this._protocolAddresses(chainId)),
-        switchMap(({ hubRegistry }) =>
-          defer(async () => {
-            const [quote, quoteDecimals] = await Promise.all([
-              this.getClient(chainId).readContract({
-                address: valuationAddress,
-                abi: ABI.Valuation,
-                functionName: 'getQuote',
-                args: [baseAmount.toBigInt(), baseAssetId.raw, quoteAssetId.raw],
-              }),
-              this.getClient(chainId).readContract({
-                address: hubRegistry,
-                // Use inline ABI because of function overload
-                abi: parseAbi(['function decimals(uint256) view returns (uint8)']),
-                functionName: 'decimals',
-                args: [quoteAssetId.raw],
-              }),
-            ])
-            return new Balance(quote, quoteDecimals)
-          })
-        )
-      )
-    )
-  }
-
   /**
    * Estimates the gas cost needed to bridge the message from one chain to another,
    * that results from a transaction
@@ -1228,33 +1193,6 @@ export class Centrifuge {
               return (estimate * 3n) / 2n // Add 50% buffer to the estimate
             })
           )
-        })
-      )
-    )
-  }
-
-  /** @internal */
-  _maxBatchGasLimit(chainId: number) {
-    return this._query(['maxBatchGasLimit', chainId], () =>
-      this._protocolAddresses(chainId).pipe(
-        switchMap(async ({ gasService }) => {
-          try {
-            // `batchGasLimit` was renamed to `maxBatchGasLimit`, support both for backwards compatibility,
-            // until all chains are updated
-            return await this.getClient(chainId).readContract({
-              address: gasService,
-              abi: ABI.GasService,
-              functionName: 'maxBatchGasLimit',
-              args: [0],
-            })
-          } catch {
-            return await this.getClient(chainId).readContract({
-              address: gasService,
-              abi: ABI.GasService,
-              functionName: 'batchGasLimit',
-              args: [0],
-            })
-          }
         })
       )
     )
@@ -1314,7 +1252,9 @@ export class Centrifuge {
                 root
                 routerEscrow
                 shareClassManager
+                batchRequestManager
                 spoke
+                vaultRegistry
                 syncDepositVaultFactory
                 syncManager
                 wormholeAdapter
