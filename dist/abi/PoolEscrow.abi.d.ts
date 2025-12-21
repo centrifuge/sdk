@@ -1,0 +1,3 @@
+declare const _default: readonly ["function holding(bytes16 scId, address asset, uint256 tokenId) view returns (uint128 total, uint128 reserved)", "event DecreaseReserve(address indexed asset, uint256 indexed tokenId, uint64 indexed poolId, bytes16 scId, uint256 delta, uint128 value)", "event Deposit(address indexed asset, uint256 indexed tokenId, uint64 indexed poolId, bytes16 scId, uint128 value)", "event IncreaseReserve(address indexed asset, uint256 indexed tokenId, uint64 indexed poolId, bytes16 scId, uint256 delta, uint128 value)", "event Withdraw(address indexed asset, uint256 indexed tokenId, uint64 indexed poolId, bytes16 scId, uint128 value)"];
+export default _default;
+//# sourceMappingURL=PoolEscrow.abi.d.ts.map

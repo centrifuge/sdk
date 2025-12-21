@@ -1,4 +1,5 @@
 import { Chain, PublicClient } from 'viem'
+import type { SolanaConfig } from '../solana/types/config.js'
 
 export type Config = {
   environment: 'mainnet' | 'testnet'
@@ -14,7 +15,13 @@ export type Config = {
   indexerPollingInterval?: number
   pinJson?: (json: any) => Promise<string>
   pinFile?: (b64URI: string) => Promise<string>
+  /**
+   * Optional Solana configuration
+   */
+  solana?: SolanaConfig
 }
+
+export type { SolanaConfig } from '../solana/types/config.js'
 
 export type UserProvidedConfig = Partial<Config>
 export type EnvConfig = {

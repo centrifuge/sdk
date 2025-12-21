@@ -1,0 +1,3 @@
+declare const _default: readonly ["function allowance(address owner, address spender, uint256 tokenId) view returns (uint256 amount)", "function approve(address spender, uint256 tokenId, uint256 amount) returns (bool)", "function balanceOf(address owner, uint256 tokenId) view returns (uint256 amount)", "function name(uint256 tokenId) view returns (string)", "function symbol(uint256 tokenId) view returns (string)", "function decimals(uint256 tokenId) view returns (uint8)", "event Approval(address indexed owner, address indexed spender, uint256 indexed tokenId, uint256 amount)", "event Transfer(address caller, address indexed from, address indexed to, uint256 indexed tokenId, uint256 amount)"];
+export default _default;
+//# sourceMappingURL=ERC6909.abi.d.ts.map
