@@ -1,11 +1,11 @@
 import { combineLatest, defer, EMPTY, firstValueFrom, map, of, switchMap } from 'rxjs'
-import { encodeFunctionData, encodePacked, getContract, maxUint128 } from 'viem'
+import { encodeFunctionData, getContract, maxUint128 } from 'viem'
 import { ABI } from '../abi/index.js'
 import type { Centrifuge } from '../Centrifuge.js'
 import { NULL_ADDRESS } from '../constants.js'
 import { HexString } from '../types/index.js'
 import { MessageType, MessageTypeWithSubType, VaultUpdateKind } from '../types/transaction.js'
-import { addressToBytes32 } from '../utils/index.js'
+import { addressToBytes32, encode } from '../utils/index.js'
 import { repeatOnEvents } from '../utils/rx.js'
 import { doTransaction, wrapTransaction } from '../utils/transaction.js'
 import { AssetId, CentrifugeId, ShareClassId } from '../utils/types.js'
@@ -15,6 +15,11 @@ import { MerkleProofManager } from './MerkleProofManager.js'
 import { OnOffRampManager } from './OnOffRampManager.js'
 import type { Pool } from './Pool.js'
 import { ShareClass } from './ShareClass.js'
+
+export enum VaultManagerTrustedCall {
+  Valuation,
+  MaxReserve,
+}
 
 /**
  * Query and interact with a pool on a specific network.
@@ -350,48 +355,86 @@ export class PoolNetwork extends Entity {
     return this._transact(async function* (ctx) {
       const [
         { hub },
-        { balanceSheet, syncDepositVaultFactory, asyncVaultFactory, syncManager, asyncRequestManager },
+        {
+          spoke,
+          balanceSheet,
+          syncDepositVaultFactory,
+          asyncVaultFactory,
+          syncManager,
+          asyncRequestManager,
+          batchRequestManager,
+        },
         details,
+        spokeClient,
       ] = await Promise.all([
         self._root._protocolAddresses(self.pool.centrifugeId),
         self._root._protocolAddresses(self.centrifugeId),
         self.details(),
+        self._root.getClient(self.centrifugeId),
       ])
       const balanceSheetContract = getContract({
-        client: ctx.publicClient,
+        client: spokeClient,
         address: balanceSheet,
         abi: ABI.BalanceSheet,
       })
-
-      const [isAsyncManagerSet, isSyncManagerSet] = await Promise.all([
-        balanceSheetContract.read.manager([self.pool.id.raw, asyncRequestManager]),
-        balanceSheetContract.read.manager([self.pool.id.raw, syncManager]),
-      ])
+      const [isAsyncManagerSetOnBalanceSheet, isSyncManagerSetOnBalanceSheet, existingRequestManager] =
+        await Promise.all([
+          balanceSheetContract.read.manager([self.pool.id.raw, asyncRequestManager]),
+          balanceSheetContract.read.manager([self.pool.id.raw, syncManager]),
+          spokeClient.readContract({
+            address: spoke,
+            abi: ABI.Spoke,
+            functionName: 'requestManager',
+            args: [self.pool.id.raw],
+          }),
+        ])
 
       const batch: HexString[] = []
       const messageTypes: (MessageType | MessageTypeWithSubType)[] = []
 
       // Set vault managers as balance sheet managers if not already set
       // Always set async manager, as it's used by both async and sync deposit vaults
-      if (!isAsyncManagerSet) {
+      if (!isAsyncManagerSetOnBalanceSheet) {
         batch.push(
           encodeFunctionData({
             abi: ABI.Hub,
             functionName: 'updateBalanceSheetManager',
-            args: [self.centrifugeId, self.pool.id.raw, addressToBytes32(asyncRequestManager), true],
+            args: [
+              self.pool.id.raw,
+              self.centrifugeId,
+              addressToBytes32(asyncRequestManager),
+              true,
+              ctx.signingAddress,
+            ],
           })
         )
         messageTypes.push(MessageType.UpdateBalanceSheetManager)
       }
-      if (!isSyncManagerSet && vaults.some((v) => v.kind === 'syncDeposit')) {
+      if (!isSyncManagerSetOnBalanceSheet && vaults.some((v) => v.kind === 'syncDeposit')) {
         batch.push(
           encodeFunctionData({
             abi: ABI.Hub,
             functionName: 'updateBalanceSheetManager',
-            args: [self.centrifugeId, self.pool.id.raw, addressToBytes32(syncManager), true],
+            args: [self.pool.id.raw, self.centrifugeId, addressToBytes32(syncManager), true, ctx.signingAddress],
           })
         )
         messageTypes.push(MessageType.UpdateBalanceSheetManager)
+      }
+      if (existingRequestManager === NULL_ADDRESS) {
+        batch.push(
+          encodeFunctionData({
+            abi: ABI.Hub,
+            functionName: 'setRequestManager',
+            args: [
+              self.pool.id.raw,
+              self.centrifugeId,
+              batchRequestManager,
+              addressToBytes32(asyncRequestManager),
+              ctx.signingAddress,
+            ],
+          })
+        )
+        messageTypes.push(MessageType.SetRequestManager)
       }
 
       if (!details.isActive) {
@@ -399,7 +442,7 @@ export class PoolNetwork extends Entity {
           encodeFunctionData({
             abi: ABI.Hub,
             functionName: 'notifyPool',
-            args: [self.pool.id.raw, self.centrifugeId],
+            args: [self.pool.id.raw, self.centrifugeId, ctx.signingAddress],
           })
         )
         messageTypes.push(MessageType.NotifyPool)
@@ -418,7 +461,7 @@ export class PoolNetwork extends Entity {
           encodeFunctionData({
             abi: ABI.Hub,
             functionName: 'notifyShareClass',
-            args: [self.pool.id.raw, sc.id.raw, self.centrifugeId, addressToBytes32(sc.hook)],
+            args: [self.pool.id.raw, sc.id.raw, self.centrifugeId, addressToBytes32(sc.hook), ctx.signingAddress],
           })
         )
         messageTypes.push(MessageType.NotifyShareClass)
@@ -438,7 +481,7 @@ export class PoolNetwork extends Entity {
           encodeFunctionData({
             abi: ABI.Hub,
             functionName: 'notifyShareClass',
-            args: [self.pool.id.raw, shareClassIdRaw, self.centrifugeId, addressToBytes32(hook)],
+            args: [self.pool.id.raw, shareClassIdRaw, self.centrifugeId, addressToBytes32(hook), ctx.signingAddress],
           })
         )
         messageTypes.push(MessageType.NotifyShareClass)
@@ -448,9 +491,6 @@ export class PoolNetwork extends Entity {
         if (!enabledShareClasses.has(vault.shareClassId.raw)) {
           throw new Error(`Share class "${vault.shareClassId.raw}" is not enabled in pool "${self.pool.id.raw}"`)
         }
-
-        const existingShareClass = details.activeShareClasses.find((sc) => sc.id.equals(vault.shareClassId))
-        const existingVault = existingShareClass?.vaults.find((v) => v.assetId.equals(vault.assetId))
 
         const factoryAddress: HexString = vault.factory
           ? vault.factory
@@ -468,39 +508,19 @@ export class PoolNetwork extends Entity {
                 vault.shareClassId.raw,
                 self.centrifugeId,
                 addressToBytes32(syncManager),
-                encodePacked(
-                  ['uint8', 'uint128', 'uint128'],
-                  [/* UpdateContractType.SyncDepositMaxReserve */ 2, vault.assetId.raw, maxUint128]
-                ),
+                encode([VaultManagerTrustedCall.MaxReserve, vault.assetId.raw, maxUint128]),
                 0n,
+                ctx.signingAddress,
               ],
             })
           )
-        }
-
-        // Only set request manager if vault doesn't already exist
-        // `setRequestManager` will revert if the share class / asset combination already has a vault
-        if (!existingVault) {
-          batch.push(
-            encodeFunctionData({
-              abi: ABI.Hub,
-              functionName: 'setRequestManager',
-              args: [
-                self.pool.id.raw,
-                vault.shareClassId.raw,
-                vault.assetId.raw,
-                addressToBytes32(asyncRequestManager),
-              ],
-            })
-          )
-          messageTypes.push(MessageType.SetRequestManager)
         }
 
         batch.push(
           encodeFunctionData({
             abi: ABI.Hub,
             functionName: 'notifyAssetPrice',
-            args: [self.pool.id.raw, vault.shareClassId.raw, vault.assetId.raw],
+            args: [self.pool.id.raw, vault.shareClassId.raw, vault.assetId.raw, ctx.signingAddress],
           }),
           encodeFunctionData({
             abi: ABI.Hub,
@@ -512,6 +532,7 @@ export class PoolNetwork extends Entity {
               addressToBytes32(factoryAddress),
               VaultUpdateKind.DeployAndLink,
               0n, // gas limit
+              ctx.signingAddress,
             ],
           })
         )
@@ -576,6 +597,7 @@ export class PoolNetwork extends Entity {
               addressToBytes32(vault.address),
               VaultUpdateKind.Unlink,
               0n, // gas limit
+              ctx.signingAddress,
             ],
           })
         )
@@ -645,9 +667,10 @@ export class PoolNetwork extends Entity {
               self.pool.id.raw,
               vault.shareClassId.raw,
               vault.assetId.raw,
-              addressToBytes32(vault.address),
-              VaultUpdateKind.Link,
-              0n,
+              addressToBytes32(existingVault.address),
+              VaultUpdateKind.Unlink,
+              0n, // gas limit
+              ctx.signingAddress,
             ],
           })
         )

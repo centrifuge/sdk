@@ -620,7 +620,7 @@ export class Pool extends Entity {
                 encodeFunctionData({
                   abi: ABI.Hub,
                   functionName: 'notifyShareMetadata',
-                  args: [self.id.raw, sc.id.raw, centId],
+                  args: [self.id.raw, sc.id.raw, centId, ctx.signingAddress],
                 })
               )
 
@@ -641,7 +641,7 @@ export class Pool extends Entity {
           encodeFunctionData({
             abi: ABI.Hub,
             functionName: 'createAccount',
-            args: [self.id.raw, accountId, isDebitNormal],
+            args: [self.id.raw, BigInt(accountId), isDebitNormal],
           })
         )
       })
@@ -723,7 +723,7 @@ export class Pool extends Entity {
         encodeFunctionData({
           abi: ABI.Hub,
           functionName: 'updateBalanceSheetManager',
-          args: [centrifugeId, self.id.raw, addressToBytes32(address), canManage],
+          args: [self.id.raw, centrifugeId, addressToBytes32(address), canManage, ctx.signingAddress],
         })
       )
       const messages: Record<number, MessageType[]> = {}
@@ -740,7 +740,7 @@ export class Pool extends Entity {
     }, this.centrifugeId)
   }
 
-  createAccounts(accounts: { accountId: number; isDebitNormal: boolean }[]) {
+  createAccounts(accounts: { accountId: bigint; isDebitNormal: boolean }[]) {
     const self = this
     return this._transact(async function* (ctx) {
       const { hub } = await self._root._protocolAddresses(self.centrifugeId)

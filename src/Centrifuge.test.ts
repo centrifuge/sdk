@@ -9,7 +9,6 @@ import { context } from './tests/setup.js'
 import { randomAddress } from './tests/utils.js'
 import { ProtocolContracts } from './types/index.js'
 import { MessageType } from './types/transaction.js'
-import { Balance } from './utils/BigInt.js'
 import { doSignMessage, doTransaction } from './utils/transaction.js'
 import { AssetId, PoolId } from './utils/types.js'
 
@@ -49,7 +48,6 @@ describe('Centrifuge', () => {
   it('should fetch protocol addresses for the demo chain (sepolia)', async () => {
     const expectedContractKeys = [
       'root',
-      'guardian',
       'gasService',
       'gateway',
       'multiAdapter',
@@ -121,19 +119,6 @@ describe('Centrifuge', () => {
 
       const estimate2 = await context.centrifuge._estimate(centId, 2, MessageType.NotifyPool)
       expect(typeof estimate2).to.equal('bigint')
-    })
-
-    it('should fetch the value of an asset in relation to another one', async () => {
-      const quote = await context.centrifuge._getQuote(
-        (await context.centrifuge._protocolAddresses(centId)).identityValuation,
-        Balance.fromFloat(100, 6),
-        assetId,
-        AssetId.fromIso(840),
-        centId
-      )
-      expect(quote).to.instanceOf(Balance)
-      expect(quote.decimals).to.equal(18)
-      expect(quote.toFloat()).to.equal(100)
     })
   })
 
@@ -528,7 +513,7 @@ describe('Centrifuge', () => {
     })
 
     it('should create a pool', async () => {
-      const { guardian } = await context.centrifuge._protocolAddresses(centId)
+      const { opsGuardian } = await context.centrifuge._protocolAddresses(chainId)
       const centrifugeWithPin = new Centrifuge({
         environment: 'testnet',
         pinJson: async () => {
@@ -539,9 +524,9 @@ describe('Centrifuge', () => {
         },
       })
 
-      await context.tenderlyFork.fundAccountEth(guardian, 10n ** 18n)
+      await context.tenderlyFork.fundAccountEth(opsGuardian, 10n ** 18n)
 
-      context.tenderlyFork.impersonateAddress = guardian
+      context.tenderlyFork.impersonateAddress = opsGuardian
       centrifugeWithPin.setSigner(context.tenderlyFork.signer)
 
       const result = await centrifugeWithPin.createPool(

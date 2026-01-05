@@ -112,7 +112,7 @@ describe.skip('PoolNetwork', () => {
 
     const maxReserve = await client.readContract({
       address: addresses.syncManager,
-      abi: ABI.SyncRequests,
+      abi: ABI.SyncManager,
       functionName: 'maxReserve',
       args: [poolId.raw, scId.raw, asset.address, 0n],
     })

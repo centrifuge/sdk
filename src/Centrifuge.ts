@@ -300,7 +300,7 @@ export class Centrifuge {
         encodeFunctionData({
           abi: ABI.Hub,
           functionName: 'createAccount',
-          args: [poolId.raw, account, accountIsDebitNormal.get(account)!],
+          args: [poolId.raw, BigInt(account), accountIsDebitNormal.get(account)!],
         })
       )
 
@@ -327,10 +327,8 @@ export class Centrifuge {
       `{
         blockchains {
           items {
-            alchemyName
             explorer
             chainId
-            environment
             icon
             name
             network
@@ -341,10 +339,8 @@ export class Centrifuge {
       (data: {
         blockchains: {
           items: {
-            alchemyName: string | null
             explorer: string | null
             chainId: string
-            environment: string
             icon: string | null
             name: string
             network: string
@@ -352,10 +348,8 @@ export class Centrifuge {
         }
       }) => {
         return data.blockchains.items.map((blockchain) => ({
-          alchemyName: blockchain.alchemyName,
           explorer: blockchain.explorer,
           chainId: Number(blockchain.chainId),
-          environment: blockchain.environment,
           icon: blockchain.icon,
           name: blockchain.name,
           network: blockchain.network,
@@ -638,7 +632,7 @@ export class Centrifuge {
           address: addresses.spoke,
           abi: ABI.Spoke,
           functionName: 'registerAsset',
-          args: [originCentrifugeId, assetAddress, BigInt(tokenId)],
+          args: [originCentrifugeId, assetAddress, BigInt(tokenId), ctx.signingAddress],
           value: estimate,
         })
       )
@@ -677,7 +671,7 @@ export class Centrifuge {
           address: addresses.gateway,
           abi: ABI.Gateway,
           functionName: 'repay',
-          args: [toCentrifugeId, batch],
+          args: [toCentrifugeId, batch, ctx.signingAddress],
           value: estimate + extraPayment,
         })
       )
@@ -1169,41 +1163,6 @@ export class Centrifuge {
     )
   }
 
-  /** @internal */
-  _getQuote(
-    valuationAddress: HexString,
-    baseAmount: Balance,
-    baseAssetId: AssetId,
-    quoteAssetId: AssetId,
-    centrifugeId: CentrifugeId
-  ) {
-    return this._query(['getQuote', baseAmount, baseAssetId.toString(), quoteAssetId.toString()], () =>
-      timer(0, 60_000).pipe(
-        switchMap(() => combineLatest([this._protocolAddresses(centrifugeId), this.getClient(centrifugeId)])),
-        switchMap(([{ hubRegistry }, client]) =>
-          defer(async () => {
-            const [quote, quoteDecimals] = await Promise.all([
-              client.readContract({
-                address: valuationAddress,
-                abi: ABI.Valuation,
-                functionName: 'getQuote',
-                args: [baseAmount.toBigInt(), baseAssetId.raw, quoteAssetId.raw],
-              }),
-              client.readContract({
-                address: hubRegistry,
-                // Use inline ABI because of function overload
-                abi: parseAbi(['function decimals(uint256) view returns (uint8)']),
-                functionName: 'decimals',
-                args: [quoteAssetId.raw],
-              }),
-            ])
-            return new Balance(quote, quoteDecimals)
-          })
-        )
-      )
-    )
-  }
-
   /**
    * Estimates the gas cost needed to bridge the message from one chain to another,
    * that results from a transaction
@@ -1241,33 +1200,6 @@ export class Centrifuge {
               return (estimate * 3n) / 2n // Add 50% buffer to the estimate
             })
           )
-        })
-      )
-    )
-  }
-
-  /** @internal */
-  _maxBatchGasLimit(centrifugeId: CentrifugeId) {
-    return this._query(['maxBatchGasLimit', centrifugeId], () =>
-      combineLatest([this._protocolAddresses(centrifugeId), this.getClient(centrifugeId)]).pipe(
-        switchMap(async ([{ gasService }, client]) => {
-          try {
-            // `batchGasLimit` was renamed to `maxBatchGasLimit`, support both for backwards compatibility,
-            // until all chains are updated
-            return await client.readContract({
-              address: gasService,
-              abi: ABI.GasService,
-              functionName: 'maxBatchGasLimit',
-              args: [0],
-            })
-          } catch {
-            return await client.readContract({
-              address: gasService,
-              abi: ABI.GasService,
-              functionName: 'batchGasLimit',
-              args: [0],
-            })
-          }
         })
       )
     )
@@ -1340,7 +1272,9 @@ export class Centrifuge {
                 root
                 routerEscrow
                 shareClassManager
+                batchRequestManager
                 spoke
+                vaultRegistry
                 syncDepositVaultFactory
                 syncManager
                 wormholeAdapter

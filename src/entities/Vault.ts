@@ -99,11 +99,11 @@ export class Vault extends Entity {
   isLinked() {
     return this._query(['linked'], () =>
       combineLatest([this._root._protocolAddresses(this.centrifugeId), this._root.getClient(this.centrifugeId)]).pipe(
-        switchMap(([{ spoke }, client]) =>
+        switchMap(([{ vaultRegistry }, client]) =>
           defer(async () => {
             const details = await client.readContract({
-              address: spoke,
-              abi: ABI.Spoke,
+              address: vaultRegistry,
+              abi: ABI.VaultRegistry,
               functionName: 'vaultDetails',
               args: [this.address],
             })
@@ -112,7 +112,7 @@ export class Vault extends Entity {
             repeatOnEvents(
               this._root,
               {
-                address: spoke,
+                address: vaultRegistry,
                 eventName: ['LinkVault', 'UnlinkVault'],
                 filter: (events) => events.some((event) => event.args.vault.toLowerCase() === this.address),
               },
@@ -625,6 +625,7 @@ export class Vault extends Entity {
               [/* UpdateContractType.SyncDepositMaxReserve */ 2, self.assetId.raw, maxReserve.toBigInt()]
             ),
             0n,
+            ctx.signingAddress,
           ],
         }),
       })
@@ -764,7 +765,7 @@ export class Vault extends Entity {
           defer(async () => {
             const maxReserve = await client.readContract({
               address: syncManager,
-              abi: ABI.SyncRequests,
+              abi: ABI.SyncManager,
               functionName: 'maxReserve',
               args: [this.pool.id.raw, this.shareClass.id.raw, this._asset, 0n],
             })

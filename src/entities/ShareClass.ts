@@ -1,4 +1,16 @@
-import { catchError, combineLatest, defer, EMPTY, expand, filter, firstValueFrom, map, of, switchMap } from 'rxjs'
+import {
+  catchError,
+  combineLatest,
+  defer,
+  EMPTY,
+  expand,
+  filter,
+  firstValueFrom,
+  map,
+  of,
+  switchMap,
+  timer,
+} from 'rxjs'
 import { encodeFunctionData, encodePacked, getContract } from 'viem'
 import { ABI } from '../abi/index.js'
 import type { Centrifuge } from '../Centrifuge.js'
@@ -7,15 +19,17 @@ import { HexString } from '../types/index.js'
 import { MessageType } from '../types/transaction.js'
 import { AddressMap } from '../utils/AddressMap.js'
 import { Balance, Price } from '../utils/BigInt.js'
-import { addressToBytes32, randomUint } from '../utils/index.js'
+import { addressToBytes32, encode, randomUint } from '../utils/index.js'
 import { repeatOnEvents } from '../utils/rx.js'
 import { wrapTransaction } from '../utils/transaction.js'
 import { AssetId, CentrifugeId, ShareClassId } from '../utils/types.js'
 import { BalanceSheet } from './BalanceSheet.js'
 import { Entity } from './Entity.js'
 import type { Pool } from './Pool.js'
-import { PoolNetwork } from './PoolNetwork.js'
+import { PoolNetwork, VaultManagerTrustedCall } from './PoolNetwork.js'
 import { Vault } from './Vault.js'
+
+const GAS_LIMIT = 30_000_000n
 
 /**
  * Query and interact with a share class, which allows querying total issuance, NAV per share,
@@ -486,7 +500,7 @@ export class ShareClass extends Entity {
     }, this.pool.centrifugeId)
   }
 
-  updateSharePrice(pricePerShare: Price) {
+  updateSharePrice(pricePerShare: Price, updatedAt = new Date()) {
     const self = this
     return this._transact(async function* (ctx) {
       const [{ hub }, activeNetworks] = await Promise.all([
@@ -504,7 +518,12 @@ export class ShareClass extends Entity {
         encodeFunctionData({
           abi: ABI.Hub,
           functionName: 'updateSharePrice',
-          args: [self.pool.id.raw, self.id.raw, pricePerShare.toBigInt()],
+          args: [
+            self.pool.id.raw,
+            self.id.raw,
+            pricePerShare.toBigInt(),
+            BigInt(Math.floor(updatedAt.getTime() / 1000)),
+          ],
         })
       )
 
@@ -522,7 +541,7 @@ export class ShareClass extends Entity {
               encodeFunctionData({
                 abi: ABI.Hub,
                 functionName: 'notifySharePrice',
-                args: [self.pool.id.raw, self.id.raw, id],
+                args: [self.pool.id.raw, self.id.raw, id, ctx.signingAddress],
               })
             )
             addMessage(id, MessageType.NotifyPricePoolPerShare)
@@ -547,10 +566,10 @@ export class ShareClass extends Entity {
         data: encodeFunctionData({
           abi: ABI.Hub,
           functionName: 'setMaxAssetPriceAge',
-          args: [self.pool.id.raw, self.id.raw, assetId.raw, BigInt(maxPriceAge)],
+          args: [self.pool.id.raw, self.id.raw, assetId.raw, BigInt(maxPriceAge), ctx.signingAddress],
         }),
         messages: {
-          [assetId.centrifugeId]: [MessageType.MaxAssetPriceAge],
+          [assetId.centrifugeId]: [MessageType.SetMaxAssetPriceAge],
         },
       })
     }, this.pool.centrifugeId)
@@ -565,10 +584,10 @@ export class ShareClass extends Entity {
         data: encodeFunctionData({
           abi: ABI.Hub,
           functionName: 'setMaxSharePriceAge',
-          args: [centrifugeId, self.pool.id.raw, self.id.raw, BigInt(maxPriceAge)],
+          args: [self.pool.id.raw, self.id.raw, centrifugeId, BigInt(maxPriceAge), ctx.signingAddress],
         }),
         messages: {
-          [centrifugeId]: [MessageType.MaxSharePriceAge],
+          [centrifugeId]: [MessageType.SetMaxSharePriceAge],
         },
       })
     }, this.pool.centrifugeId)
@@ -583,7 +602,7 @@ export class ShareClass extends Entity {
         data: encodeFunctionData({
           abi: ABI.Hub,
           functionName: 'notifyAssetPrice',
-          args: [self.pool.id.raw, self.id.raw, assetId.raw],
+          args: [self.pool.id.raw, self.id.raw, assetId.raw, ctx.signingAddress],
         }),
         messages: {
           [assetId.centrifugeId]: [MessageType.NotifyPricePoolPerAsset],
@@ -601,7 +620,7 @@ export class ShareClass extends Entity {
         data: encodeFunctionData({
           abi: ABI.Hub,
           functionName: 'notifySharePrice',
-          args: [self.pool.id.raw, self.id.raw, centrifugeId],
+          args: [self.pool.id.raw, self.id.raw, centrifugeId, ctx.signingAddress],
         }),
         messages: {
           [centrifugeId]: [MessageType.NotifyPricePoolPerShare],
@@ -616,11 +635,14 @@ export class ShareClass extends Entity {
    * `issuePricePerShare` can be a single price for all epochs or an array of prices for each epoch to be issued for.
    */
   approveDepositsAndIssueShares(
-    assets: { assetId: AssetId; approveAssetAmount?: Balance; issuePricePerShare?: Price | Price[] }[]
+    assets: ({ assetId: AssetId } & (
+      | { approveAssetAmount: Balance; approvePricePerAsset: Balance }
+      | { issuePricePerShare?: Price | Price[] }
+    ))[]
   ) {
     const self = this
     return this._transact(async function* (ctx) {
-      const [{ hub }, pendingAmounts, orders, maxBatchGasLimit] = await Promise.all([
+      const [{ batchRequestManager }, pendingAmounts, orders] = await Promise.all([
         self._root._protocolAddresses(self.pool.centrifugeId),
         self.pendingAmounts(),
         firstValueFrom(
@@ -634,11 +656,10 @@ export class ShareClass extends Entity {
             })
           )
         ),
-        self._root._maxBatchGasLimit(self.pool.centrifugeId),
       ])
-      const assetsWithApprove = assets.filter((a) => a.approveAssetAmount).length
-      const assetsWithIssue = assets.filter((a) => a.issuePricePerShare).length
-      const gasLimitPerAsset = assetsWithIssue ? maxBatchGasLimit / BigInt(assetsWithIssue) : 0n
+      const assetsWithApprove = assets.filter((a) => 'approveAssetAmount' in a).length
+      const assetsWithIssue = assets.filter((a) => 'issuePricePerShare' in a).length
+      const gasLimitPerAsset = assetsWithIssue ? GAS_LIMIT / BigInt(assetsWithIssue) : 0n
       const estimatePerMessage = 700_000n
       const estimatePerMessageIfLocal = 360_000n
 
@@ -673,7 +694,7 @@ export class ShareClass extends Entity {
 
         let nowDepositEpoch = pending?.depositEpoch
 
-        if (asset.approveAssetAmount) {
+        if ('approveAssetAmount' in asset) {
           if (asset.approveAssetAmount.gt(pending.pendingDeposit)) {
             throw new Error(`Approve amount exceeds pending amount for asset "${asset.assetId.toString()}"`)
           }
@@ -682,7 +703,7 @@ export class ShareClass extends Entity {
           }
           batch.push(
             encodeFunctionData({
-              abi: ABI.Hub,
+              abi: ABI.BatchRequestManager,
               functionName: 'approveDeposits',
               args: [
                 self.pool.id.raw,
@@ -690,6 +711,8 @@ export class ShareClass extends Entity {
                 asset.assetId.raw,
                 nowDepositEpoch,
                 asset.approveAssetAmount.toBigInt(),
+                asset.approvePricePerAsset.toBigInt(),
+                ctx.signingAddress,
               ],
             })
           )
@@ -700,7 +723,7 @@ export class ShareClass extends Entity {
 
         const nowIssueEpoch = pending.issueEpoch
 
-        if (asset.issuePricePerShare) {
+        if ('issuePricePerShare' in asset) {
           if (nowIssueEpoch >= nowDepositEpoch) throw new Error('Nothing to issue')
 
           let i
@@ -716,9 +739,17 @@ export class ShareClass extends Entity {
 
             batch.push(
               encodeFunctionData({
-                abi: ABI.Hub,
+                abi: ABI.BatchRequestManager,
                 functionName: 'issueShares',
-                args: [self.pool.id.raw, self.id.raw, asset.assetId.raw, nowIssueEpoch + i, price.toBigInt(), 0n],
+                args: [
+                  self.pool.id.raw,
+                  self.id.raw,
+                  asset.assetId.raw,
+                  nowIssueEpoch + i,
+                  price.toBigInt(),
+                  0n,
+                  ctx.signingAddress,
+                ],
               })
             )
             addMessage(asset.assetId.centrifugeId, MessageType.RequestCallback)
@@ -732,7 +763,7 @@ export class ShareClass extends Entity {
               if (order.pendingDeposit > 0n) {
                 batch.push(
                   encodeFunctionData({
-                    abi: ABI.Hub,
+                    abi: ABI.BatchRequestManager,
                     functionName: 'notifyDeposit',
                     args: [
                       self.pool.id.raw,
@@ -740,6 +771,7 @@ export class ShareClass extends Entity {
                       asset.assetId.raw,
                       addressToBytes32(order.investor),
                       order.maxDepositClaims + i, // +i to ensure the additional epochs that are being issued are included
+                      ctx.signingAddress,
                     ],
                   })
                 )
@@ -761,7 +793,7 @@ export class ShareClass extends Entity {
       }
 
       yield* wrapTransaction(title, ctx, {
-        contract: hub,
+        contract: batchRequestManager,
         data: batch,
         messages,
       })
@@ -773,12 +805,16 @@ export class ShareClass extends Entity {
    * @param assets - Array of assets to approve redeems and/or revoke shares for
    * `approveShareAmount` can be a single amount for all epochs or an array of amounts for each epoch to be revoked.
    */
+
   approveRedeemsAndRevokeShares(
-    assets: { assetId: AssetId; approveShareAmount?: Balance; revokePricePerShare?: Price | Price[] }[]
+    assets: ({ assetId: AssetId } & (
+      | { approveShareAmount: Balance; approvePricePerAsset: Balance }
+      | { revokePricePerShare: Price | Price[] }
+    ))[]
   ) {
     const self = this
     return this._transact(async function* (ctx) {
-      const [{ hub }, pendingAmounts, orders, maxBatchGasLimit] = await Promise.all([
+      const [{ batchRequestManager }, pendingAmounts, orders] = await Promise.all([
         self._root._protocolAddresses(self.pool.centrifugeId),
         self.pendingAmounts(),
         firstValueFrom(
@@ -792,12 +828,11 @@ export class ShareClass extends Entity {
             })
           )
         ),
-        self._root._maxBatchGasLimit(self.pool.centrifugeId),
       ])
 
-      const assetsWithApprove = assets.filter((a) => a.approveShareAmount).length
-      const assetsWithRevoke = assets.filter((a) => a.revokePricePerShare).length
-      const gasLimitPerAsset = assetsWithRevoke ? maxBatchGasLimit / BigInt(assetsWithRevoke) : 0n
+      const assetsWithApprove = assets.filter((a) => 'approveShareAmount' in a).length
+      const assetsWithRevoke = assets.filter((a) => 'revokePricePerShare' in a).length
+      const gasLimitPerAsset = assetsWithRevoke ? GAS_LIMIT / BigInt(assetsWithRevoke) : 0n
       const estimatePerMessage = 700_000n
       const estimatePerMessageIfLocal = 360_000n
 
@@ -832,7 +867,7 @@ export class ShareClass extends Entity {
 
         let nowRedeemEpoch = pending.redeemEpoch
 
-        if (asset.approveShareAmount) {
+        if ('approveShareAmount' in asset) {
           if (asset.approveShareAmount.gt(pending.pendingRedeem)) {
             throw new Error(`Share amount exceeds pending redeem for asset "${asset.assetId.toString()}"`)
           }
@@ -841,7 +876,7 @@ export class ShareClass extends Entity {
           }
           batch.push(
             encodeFunctionData({
-              abi: ABI.Hub,
+              abi: ABI.BatchRequestManager,
               functionName: 'approveRedeems',
               args: [
                 self.pool.id.raw,
@@ -849,6 +884,7 @@ export class ShareClass extends Entity {
                 asset.assetId.raw,
                 nowRedeemEpoch,
                 asset.approveShareAmount.toBigInt(),
+                asset.approvePricePerAsset.toBigInt(),
               ],
             })
           )
@@ -856,7 +892,7 @@ export class ShareClass extends Entity {
         }
 
         const nowRevokeEpoch = pending.revokeEpoch
-        if (asset.revokePricePerShare) {
+        if ('revokePricePerShare' in asset) {
           if (nowRevokeEpoch >= nowRedeemEpoch) throw new Error('Nothing to revoke')
 
           let i
@@ -872,9 +908,17 @@ export class ShareClass extends Entity {
 
             batch.push(
               encodeFunctionData({
-                abi: ABI.Hub,
+                abi: ABI.BatchRequestManager,
                 functionName: 'revokeShares',
-                args: [self.pool.id.raw, self.id.raw, asset.assetId.raw, nowRevokeEpoch + i, price.toBigInt(), 0n],
+                args: [
+                  self.pool.id.raw,
+                  self.id.raw,
+                  asset.assetId.raw,
+                  nowRevokeEpoch + i,
+                  price.toBigInt(),
+                  0n,
+                  ctx.signingAddress,
+                ],
               })
             )
             addMessage(asset.assetId.centrifugeId, MessageType.RequestCallback)
@@ -889,7 +933,7 @@ export class ShareClass extends Entity {
               if (order.pendingRedeem > 0n) {
                 batch.push(
                   encodeFunctionData({
-                    abi: ABI.Hub,
+                    abi: ABI.BatchRequestManager,
                     functionName: 'notifyRedeem',
                     args: [
                       self.pool.id.raw,
@@ -897,6 +941,7 @@ export class ShareClass extends Entity {
                       asset.assetId.raw,
                       addressToBytes32(order.investor),
                       order.maxRedeemClaims + 1, // +1 to ensure the order that's being issued is included
+                      ctx.signingAddress,
                     ],
                   })
                 )
@@ -918,7 +963,7 @@ export class ShareClass extends Entity {
       }
 
       yield* wrapTransaction(title, ctx, {
-        contract: hub,
+        contract: batchRequestManager,
         data: batch,
         messages,
       })
@@ -932,14 +977,14 @@ export class ShareClass extends Entity {
   claimDeposit(assetId: AssetId, investor: HexString) {
     const self = this
     return this._transact(async function* (ctx) {
-      const [{ hub }, investorOrder] = await Promise.all([
+      const [{ batchRequestManager }, investorOrder] = await Promise.all([
         self._root._protocolAddresses(self.pool.centrifugeId),
         self._investorOrder(assetId, investor),
       ])
       yield* wrapTransaction('Claim deposit', ctx, {
-        contract: hub,
+        contract: batchRequestManager,
         data: encodeFunctionData({
-          abi: ABI.Hub,
+          abi: ABI.BatchRequestManager,
           functionName: 'notifyDeposit',
           args: [
             self.pool.id.raw,
@@ -947,6 +992,7 @@ export class ShareClass extends Entity {
             assetId.raw,
             addressToBytes32(investor),
             investorOrder.maxDepositClaims,
+            ctx.signingAddress,
           ],
         }),
         messages: { [assetId.centrifugeId]: [MessageType.RequestCallback] },
@@ -961,16 +1007,23 @@ export class ShareClass extends Entity {
   claimRedeem(assetId: AssetId, investor: HexString) {
     const self = this
     return this._transact(async function* (ctx) {
-      const [{ hub }, investorOrder] = await Promise.all([
+      const [{ batchRequestManager }, investorOrder] = await Promise.all([
         self._root._protocolAddresses(self.pool.centrifugeId),
         self._investorOrder(assetId, investor),
       ])
       yield* wrapTransaction('Claim redeem', ctx, {
-        contract: hub,
+        contract: batchRequestManager,
         data: encodeFunctionData({
-          abi: ABI.Hub,
+          abi: ABI.BatchRequestManager,
           functionName: 'notifyRedeem',
-          args: [self.pool.id.raw, self.id.raw, assetId.raw, addressToBytes32(investor), investorOrder.maxRedeemClaims],
+          args: [
+            self.pool.id.raw,
+            self.id.raw,
+            assetId.raw,
+            addressToBytes32(investor),
+            investorOrder.maxRedeemClaims,
+            ctx.signingAddress,
+          ],
         }),
         messages: { [assetId.centrifugeId]: [MessageType.RequestCallback] },
       })
@@ -1021,6 +1074,7 @@ export class ShareClass extends Entity {
                 [/* UpdateRestrictionType.Member */ 1, addressToBytes32(member.address), BigInt(member.validUntil)]
               ),
               0n,
+              ctx.signingAddress,
             ],
           })
         )
@@ -1644,7 +1698,7 @@ export class ShareClass extends Entity {
           defer(async () => {
             const valuation = await client.readContract({
               address: syncManager,
-              abi: ABI.SyncRequests,
+              abi: ABI.SyncManager,
               functionName: 'valuation',
               args: [this.pool.id.raw, this.id.raw],
             })
@@ -1689,11 +1743,12 @@ export class ShareClass extends Entity {
             self.id.raw,
             centrifugeId,
             addressToBytes32(spokeAddresses.syncManager),
-            encodePacked(['uint8', 'bytes32'], [/* UpdateContractType.Valuation */ 1, addressToBytes32(valuation)]),
+            encode([VaultManagerTrustedCall.Valuation, addressToBytes32(valuation)]),
             0n,
+            ctx.signingAddress,
           ],
         }),
-        messages: { [centrifugeId]: [MessageType.UpdateContract] },
+        messages: { [centrifugeId]: [MessageType.TrustedContractUpdate] },
       })
     }, this.pool.centrifugeId)
   }
@@ -1713,7 +1768,7 @@ export class ShareClass extends Entity {
         data: encodeFunctionData({
           abi: ABI.Hub,
           functionName: 'updateShareHook',
-          args: [self.pool.id.raw, self.id.raw, centrifugeId, addressToBytes32(hook)],
+          args: [self.pool.id.raw, self.id.raw, centrifugeId, addressToBytes32(hook), ctx.signingAddress],
         }),
         messages: { [centrifugeId]: [MessageType.UpdateShareHook] },
       })
@@ -1746,7 +1801,7 @@ export class ShareClass extends Entity {
           encodeFunctionData({
             abi: ABI.Hub,
             functionName: 'updateShareHook',
-            args: [self.pool.id.raw, self.id.raw, centrifugeId, addressToBytes32(hook)],
+            args: [self.pool.id.raw, self.id.raw, centrifugeId, addressToBytes32(hook), ctx.signingAddress],
           })
         )
         messages.push(MessageType.UpdateShareHook)
@@ -1764,10 +1819,11 @@ export class ShareClass extends Entity {
               addressToBytes32(spokeAddresses.syncManager),
               encodePacked(['uint8', 'bytes32'], [/* UpdateContractType.Valuation */ 1, addressToBytes32(valuation)]),
               0n,
+              ctx.signingAddress,
             ],
           })
         )
-        messages.push(MessageType.UpdateContract)
+        messages.push(MessageType.TrustedContractUpdate)
       }
 
       const title = hook && valuation ? 'Update hook and valuation' : hook ? 'Update hook' : 'Update valuation'
@@ -2022,21 +2078,23 @@ export class ShareClass extends Entity {
   /** @internal */
   _investorOrder(assetId: AssetId, investor: HexString) {
     return this._query(['investorOrder', assetId.toString(), investor.toLowerCase()], () =>
-      this._root._protocolAddresses(this.pool.centrifugeId).pipe(
-        switchMap(({ shareClassManager }) =>
+      combineLatest([
+        this._root._protocolAddresses(this.pool.centrifugeId),
+        this._root.getClient(this.pool.centrifugeId),
+      ]).pipe(
+        switchMap(([{ batchRequestManager }, client]) =>
           defer(async () => {
-            const client = await firstValueFrom(this._root.getClient(this.pool.centrifugeId))
             const contract = getContract({
-              address: shareClassManager,
-              abi: ABI.ShareClassManager,
+              address: batchRequestManager,
+              abi: ABI.BatchRequestManager,
               client,
             })
 
             const [maxDepositClaims, maxRedeemClaims, [pendingDeposit], [pendingRedeem]] = await Promise.all([
-              contract.read.maxDepositClaims([this.id.raw, addressToBytes32(investor), assetId.raw]),
-              contract.read.maxRedeemClaims([this.id.raw, addressToBytes32(investor), assetId.raw]),
-              contract.read.depositRequest([this.id.raw, assetId.raw, addressToBytes32(investor)]),
-              contract.read.redeemRequest([this.id.raw, assetId.raw, addressToBytes32(investor)]),
+              contract.read.maxDepositClaims([this.pool.id.raw, this.id.raw, addressToBytes32(investor), assetId.raw]),
+              contract.read.maxRedeemClaims([this.pool.id.raw, this.id.raw, addressToBytes32(investor), assetId.raw]),
+              contract.read.depositRequest([this.pool.id.raw, this.id.raw, assetId.raw, addressToBytes32(investor)]),
+              contract.read.redeemRequest([this.pool.id.raw, this.id.raw, assetId.raw, addressToBytes32(investor)]),
             ])
 
             return {
@@ -2051,7 +2109,7 @@ export class ShareClass extends Entity {
             repeatOnEvents(
               this._root,
               {
-                address: shareClassManager,
+                address: batchRequestManager,
                 eventName: [
                   'UpdateDepositRequest',
                   'UpdateRedeemRequest',
@@ -2127,7 +2185,7 @@ export class ShareClass extends Entity {
               address: shareClassManager,
               abi: ABI.ShareClassManager,
               functionName: 'metadata',
-              args: [this.id.raw],
+              args: [this.pool.id.raw, this.id.raw],
             })
             return {
               name,
@@ -2156,16 +2214,23 @@ export class ShareClass extends Entity {
   /** @internal */
   _metrics() {
     return this._query(['metrics'], () =>
-      this._root._protocolAddresses(this.pool.centrifugeId).pipe(
-        switchMap(({ shareClassManager }) =>
+      combineLatest([
+        this._root._protocolAddresses(this.pool.centrifugeId),
+        this._root.getClient(this.pool.centrifugeId),
+      ]).pipe(
+        switchMap(([{ shareClassManager }, client]) =>
           defer(async () => {
-            const client = await firstValueFrom(this._root.getClient(this.pool.centrifugeId))
-            const [totalIssuance, pricePerShare] = await client.readContract({
+            const contract = getContract({
               address: shareClassManager,
               abi: ABI.ShareClassManager,
-              functionName: 'metrics',
-              args: [this.id.raw],
+              client,
             })
+
+            const [totalIssuance, [pricePerShare]] = await Promise.all([
+              contract.read.totalIssuance([this.pool.id.raw, this.id.raw]),
+              contract.read.pricePoolPerShare([this.pool.id.raw, this.id.raw]),
+            ])
+
             return {
               totalIssuance: new Balance(totalIssuance, 18),
               pricePerShare: new Price(pricePerShare),
@@ -2293,87 +2358,88 @@ export class ShareClass extends Entity {
         this._root._assetDecimals(assetId, this.pool.centrifugeId),
         this._epochInvestOrders(),
         this._epochRedeemOrders(),
+        this._root.getClient(this.pool.centrifugeId),
       ]).pipe(
-        switchMap(([{ shareClassManager }, poolCurrency, assetDecimals, epochInvestOrders, epochRedeemOrders]) =>
-          defer(async () => {
-            const client = await firstValueFrom(this._root.getClient(this.pool.centrifugeId))
-            const scm = getContract({
-              address: shareClassManager,
-              abi: ABI.ShareClassManager,
-              client,
-            })
+        switchMap(
+          ([{ batchRequestManager }, poolCurrency, assetDecimals, epochInvestOrders, epochRedeemOrders, client]) =>
+            defer(async () => {
+              const scm = getContract({
+                address: batchRequestManager,
+                abi: ABI.BatchRequestManager,
+                client,
+              })
 
-            const [epoch, pendingDeposit, pendingRedeem] = await Promise.all([
-              scm.read.epochId([this.id.raw, assetId.raw]),
-              scm.read.pendingDeposit([this.id.raw, assetId.raw]),
-              scm.read.pendingRedeem([this.id.raw, assetId.raw]),
-            ])
+              const [epoch, pendingDeposit, pendingRedeem] = await Promise.all([
+                scm.read.epochId([this.pool.id.raw, this.id.raw, assetId.raw]),
+                scm.read.pendingDeposit([this.pool.id.raw, this.id.raw, assetId.raw]),
+                scm.read.pendingRedeem([this.pool.id.raw, this.id.raw, assetId.raw]),
+              ])
 
-            const depositEpoch = epoch[0] + 1
-            const redeemEpoch = epoch[1] + 1
-            const issueEpoch = epoch[2] + 1
-            const revokeEpoch = epoch[3] + 1
+              const depositEpoch = epoch[0] + 1
+              const redeemEpoch = epoch[1] + 1
+              const issueEpoch = epoch[2] + 1
+              const revokeEpoch = epoch[3] + 1
 
-            const [depositEpochAmounts, redeemEpochAmount] = await Promise.all([
-              Promise.all(
-                Array.from({ length: depositEpoch - issueEpoch }).map((_, i) =>
-                  scm.read.epochInvestAmounts([this.id.raw, assetId.raw, issueEpoch + i])
-                )
-              ),
-              Promise.all(
-                Array.from({ length: redeemEpoch - revokeEpoch }).map((_, i) =>
-                  scm.read.epochRedeemAmounts([this.id.raw, assetId.raw, revokeEpoch + i])
-                )
-              ),
-            ])
+              const [depositEpochAmounts, redeemEpochAmount] = await Promise.all([
+                Promise.all(
+                  Array.from({ length: depositEpoch - issueEpoch }).map((_, i) =>
+                    scm.read.epochInvestAmounts([this.pool.id.raw, this.id.raw, assetId.raw, issueEpoch + i])
+                  )
+                ),
+                Promise.all(
+                  Array.from({ length: redeemEpoch - revokeEpoch }).map((_, i) =>
+                    scm.read.epochRedeemAmounts([this.pool.id.raw, this.id.raw, assetId.raw, revokeEpoch + i])
+                  )
+                ),
+              ])
 
-            const approvedDeposit = depositEpochAmounts.reduce((acc, amount) => acc + amount[1], 0n)
-            const approvedRedeem = redeemEpochAmount.reduce((acc, amount) => acc + amount[1], 0n)
+              const approvedDeposit = depositEpochAmounts.reduce((acc, amount) => acc + amount[1], 0n)
+              const approvedRedeem = redeemEpochAmount.reduce((acc, amount) => acc + amount[1], 0n)
 
-            return {
-              depositEpoch,
-              redeemEpoch,
-              issueEpoch,
-              revokeEpoch,
-              pendingDeposit: new Balance(pendingDeposit, assetDecimals),
-              pendingRedeem: new Balance(pendingRedeem, poolCurrency.decimals),
-              pendingIssuancesTotal: new Balance(approvedDeposit, assetDecimals),
-              pendingIssuances: depositEpochAmounts.map(([, amount], i) => ({
-                amount: new Balance(amount, assetDecimals),
-                approvedAt: epochInvestOrders.get(assetId.toString())?.[issueEpoch + i]?.approvedAt,
-                epoch: issueEpoch + i,
-              })),
-              pendingRevocationsTotal: new Balance(approvedRedeem, poolCurrency.decimals),
-              pendingRevocations: redeemEpochAmount.map(([, amount], i) => ({
-                amount: new Balance(amount, poolCurrency.decimals),
-                approvedAt: epochRedeemOrders.get(assetId.toString())?.[revokeEpoch + i]?.approvedAt,
-                epoch: revokeEpoch + i,
-              })),
-            }
-          }).pipe(
-            repeatOnEvents(
-              this._root,
-              {
-                address: shareClassManager,
-                eventName: [
-                  'ApproveDeposits',
-                  'ApproveRedeems',
-                  'IssueShares',
-                  'RevokeShares',
-                  'RemoteIssueShares',
-                  'RemoteRevokeShares',
-                  'UpdateDepositRequest',
-                  'UpdateRedeemRequest',
-                ],
-                filter: (events) => {
-                  return events.some((event) => {
-                    return event.args.scId === this.id.raw
-                  })
+              return {
+                depositEpoch,
+                redeemEpoch,
+                issueEpoch,
+                revokeEpoch,
+                pendingDeposit: new Balance(pendingDeposit, assetDecimals),
+                pendingRedeem: new Balance(pendingRedeem, poolCurrency.decimals),
+                pendingIssuancesTotal: new Balance(approvedDeposit, assetDecimals),
+                pendingIssuances: depositEpochAmounts.map(([, amount], i) => ({
+                  amount: new Balance(amount, assetDecimals),
+                  approvedAt: epochInvestOrders.get(assetId.toString())?.[issueEpoch + i]?.approvedAt,
+                  epoch: issueEpoch + i,
+                })),
+                pendingRevocationsTotal: new Balance(approvedRedeem, poolCurrency.decimals),
+                pendingRevocations: redeemEpochAmount.map(([, amount], i) => ({
+                  amount: new Balance(amount, poolCurrency.decimals),
+                  approvedAt: epochRedeemOrders.get(assetId.toString())?.[revokeEpoch + i]?.approvedAt,
+                  epoch: revokeEpoch + i,
+                })),
+              }
+            }).pipe(
+              repeatOnEvents(
+                this._root,
+                {
+                  address: batchRequestManager,
+                  eventName: [
+                    'ApproveDeposits',
+                    'ApproveRedeems',
+                    'IssueShares',
+                    'RevokeShares',
+                    'RemoteIssueShares',
+                    'RemoteRevokeShares',
+                    'UpdateDepositRequest',
+                    'UpdateRedeemRequest',
+                  ],
+                  filter: (events) => {
+                    return events.some((event) => {
+                      return event.args.scId === this.id.raw
+                    })
+                  },
                 },
-              },
-              this.pool.centrifugeId
+                this.pool.centrifugeId
+              )
             )
-          )
         )
       )
     )
@@ -2389,9 +2455,17 @@ export class ShareClass extends Entity {
         data: encodeFunctionData({
           abi: ABI.Hub,
           functionName: 'updateContract',
-          args: [self.pool.id.raw, self.id.raw, centrifugeId, addressToBytes32(target), payload, 0n],
+          args: [
+            self.pool.id.raw,
+            self.id.raw,
+            centrifugeId,
+            addressToBytes32(target),
+            payload,
+            0n,
+            ctx.signingAddress,
+          ],
         }),
-        messages: { [centrifugeId]: [MessageType.UpdateContract] },
+        messages: { [centrifugeId]: [MessageType.TrustedContractUpdate] },
       })
     }, this.pool.centrifugeId)
   }
@@ -2493,7 +2567,7 @@ export class ShareClass extends Entity {
       this._root._protocolAddresses(this.pool.centrifugeId).pipe(
         map(({ accounting }) => ({ accounting, id: null, triesLeft: 10 })),
         expand(({ accounting, triesLeft }) => {
-          const id = Number(randomUint(32))
+          const id = randomUint(256)
 
           if (triesLeft <= 0) return EMPTY
 
@@ -2826,6 +2900,31 @@ export class ShareClass extends Entity {
               }
             })
           )
+    )
+  }
+
+  /** @internal */
+  _getQuote(valuationAddress: HexString, assetId: AssetId, baseAmount: Balance) {
+    return this._query(['getQuote', valuationAddress, baseAmount.toString(), assetId.toString()], () =>
+      timer(0, 120_000).pipe(
+        switchMap(() => this._root.getClient(this.pool.centrifugeId)),
+        switchMap((client) =>
+          combineLatest([
+            this.pool.currency(),
+            defer(() => {
+              return client.readContract({
+                address: valuationAddress,
+                abi: ABI.Valuation,
+                functionName: 'getQuote',
+                args: [this.pool.id.raw, this.id.raw, assetId.raw, baseAmount.toBigInt()],
+              })
+            }),
+          ])
+        ),
+        map(([poolCurrency, quote]) => {
+          return new Balance(quote, poolCurrency.decimals)
+        })
+      )
     )
   }
 }
