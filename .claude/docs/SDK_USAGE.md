@@ -59,7 +59,7 @@ const pool = await centrifuge.pool(poolId)
 await pool.details()
 await pool.activeNetworks()
 await pool.shareClasses()
-await pool.vault(chainId, scId, assetId)
+await pool.vault(centrifugeId, scId, assetId)
 await pool.isPoolManager(address)
 await pool.updatePoolManagers([...])
 await pool.updateBalanceSheetManagers([...])
@@ -68,7 +68,7 @@ await pool.updateBalanceSheetManagers([...])
 ### Vault - ERC-7540 tokenized vault operations
 
 ```typescript
-const vault = await pool.vault(chainId, shareClassId, assetId)
+const vault = await pool.vault(centrifugeId, shareClassId, assetId)
 await vault.details()
 await vault.investment(investorAddress)
 await vault.increaseInvestOrder(amount)
@@ -84,9 +84,9 @@ await vault.cancelRedeemOrder()
 const sc = new ShareClass(centrifuge, pool, shareClassId)
 await sc.details()
 await sc.pendingAmounts()
-await sc.updateMember(address, validUntil, chainId)
-await sc.freeze(address, chainId)
-await sc.unfreeze(address, chainId)
+await sc.updateMember(address, validUntil, centrifugeId)
+await sc.freeze(address, centrifugeId)
+await sc.unfreeze(address, centrifugeId)
 await sc.approveDepositsAndIssueShares([...])
 await sc.approveRedeemsAndRevokeShares([...])
 ```
@@ -106,7 +106,7 @@ await investor.investments()
 const investor = await centrifuge.investor('0x...')
 const investments = await investor.investments()
 
-investments.forEach(inv => {
+investments.forEach((inv) => {
   console.log(`Pool ${inv.poolId}: ${inv.shareBalance.toFloat()} shares`)
 })
 ```
@@ -114,7 +114,7 @@ investments.forEach(inv => {
 ### Place Invest Order and Wait for Execution
 
 ```typescript
-const vault = await pool.vault(chainId, shareClassId, assetId)
+const vault = await pool.vault(centrifugeId, shareClassId, assetId)
 const investment = await vault.investment(investorAddress)
 
 console.log(`Allowed to invest: ${investment.isAllowedToInvest}`)
@@ -149,7 +149,7 @@ if (updatedInvestment.claimableInvestShares.gt(0n)) {
 ```typescript
 const details = await pool.details()
 
-details.shareClasses.forEach(sc => {
+details.shareClasses.forEach((sc) => {
   console.log(`${sc.details.name}:`)
   console.log(`  Supply: ${sc.supply.toFloat()}`)
   console.log(`  NAV: ${sc.nav?.toFloat() || 'N/A'}`)
@@ -195,15 +195,15 @@ const assetId = AssetId.from(1, 1)
 import { Balance, Price, Rate } from '@centrifuge/sdk'
 
 // Balance - Token amounts
-const amount = Balance.fromFloat(1000.50, 6) // USDC (6 decimals)
-const shares = Balance.fromFloat(100, 18)    // shares (18 decimals)
-const amount = new Balance(1000500000n, 6)   // from bigint
+const amount = Balance.fromFloat(1000.5, 6) // USDC (6 decimals)
+const shares = Balance.fromFloat(100, 18) // shares (18 decimals)
+const amount = new Balance(1000500000n, 6) // from bigint
 
-amount.toFloat()        // 1000.5
-amount.toBigInt()       // 1000500000n
-amount.mul(2)          // arithmetic
-amount.add(other)      // requires same decimals
-amount.gt(other)       // comparison
+amount.toFloat() // 1000.5
+amount.toBigInt() // 1000500000n
+amount.mul(2) // arithmetic
+amount.add(other) // requires same decimals
+amount.gt(other) // comparison
 
 // Price - Price per share (18 decimals)
 const price = Price.fromFloat(1.05)
@@ -215,6 +215,7 @@ const rate = Rate.fromFloat(5.0) // 5% APY
 ### Common Pitfalls
 
 **Mixing decimal precision:**
+
 ```typescript
 // ❌ WRONG
 const usdc = Balance.fromFloat(1000, 6)
@@ -222,11 +223,12 @@ const eth = Balance.fromFloat(1, 18)
 const total = usdc.add(eth) // Error: decimals don't match
 
 // ✅ CORRECT
-const usdcIn18 = new Balance(usdc.toBigInt() * 10n**12n, 18)
+const usdcIn18 = new Balance(usdc.toBigInt() * 10n ** 12n, 18)
 const total = usdcIn18.add(eth)
 ```
 
 **Using wrong types:**
+
 ```typescript
 // ❌ WRONG
 await vault.increaseInvestOrder(1000)
@@ -261,12 +263,12 @@ The SDK uses a GraphQL indexer API for aggregated data:
 - **Mainnet:** `https://api.centrifuge.io`
 - **Testnet:** `https://api-v3-hitz.marble.live/graphql`
 
-| Data Type | Source | Reason |
-|-----------|--------|--------|
-| Pool metadata | Indexer | IPFS, indexed for speed |
-| Share class details | Blockchain | Current state |
-| Investor balances | Blockchain | Real-time accuracy |
-| Historical reports | Indexer | Aggregated data |
-| Pending orders | Blockchain | Current state |
+| Data Type           | Source     | Reason                  |
+| ------------------- | ---------- | ----------------------- |
+| Pool metadata       | Indexer    | IPFS, indexed for speed |
+| Share class details | Blockchain | Current state           |
+| Investor balances   | Blockchain | Real-time accuracy      |
+| Historical reports  | Indexer    | Aggregated data         |
+| Pending orders      | Blockchain | Current state           |
 
 For detailed troubleshooting, see [TROUBLESHOOTING.md](./TROUBLESHOOTING.md).

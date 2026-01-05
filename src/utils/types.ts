@@ -1,5 +1,11 @@
 import { toHex } from 'viem'
 
+/**
+ * Type alias for centrifuge ID (uint16)
+ * Used to identify specific networks/chains in the Centrifuge protocol
+ */
+export type CentrifugeId = number
+
 export class PoolId {
   /**
    * Creates a PoolId from a centrifuge ID and a pool counter.
@@ -7,7 +13,7 @@ export class PoolId {
    * @param poolCounter - uint48
    * @returns A new PoolId instance.
    */
-  static from(centrifugeId: number, poolCounter: number | bigint) {
+  static from(centrifugeId: CentrifugeId, poolCounter: number | bigint) {
     return new PoolId((BigInt(centrifugeId) << 48n) + BigInt(poolCounter))
   }
 
@@ -17,8 +23,8 @@ export class PoolId {
     this.#id = BigInt(id)
   }
 
-  get centrifugeId() {
-    return Number(this.#id >> 48n)
+  get centrifugeId(): CentrifugeId {
+    return Number(this.#id >> 48n) as CentrifugeId
   }
 
   get raw() {
@@ -52,8 +58,8 @@ export class ShareClassId {
     return new PoolId(this.#id >> 64n)
   }
 
-  get centrifugeId() {
-    return Number(this.#id >> 112n)
+  get centrifugeId(): CentrifugeId {
+    return Number(this.#id >> 112n) as CentrifugeId
   }
 
   get raw() {
@@ -70,7 +76,7 @@ export class ShareClassId {
 }
 
 export class AssetId {
-  static from(centrifugeId: number, assetCounter: number) {
+  static from(centrifugeId: CentrifugeId, assetCounter: number) {
     return new AssetId((BigInt(centrifugeId) << 112n) + BigInt(assetCounter))
   }
   static fromIso(countryCode: number) {
@@ -83,8 +89,8 @@ export class AssetId {
     this.#id = BigInt(id)
   }
 
-  get centrifugeId() {
-    return Number(this.#id >> 112n)
+  get centrifugeId(): CentrifugeId {
+    return Number(this.#id >> 112n) as CentrifugeId
   }
 
   get isNationalCurrency() {

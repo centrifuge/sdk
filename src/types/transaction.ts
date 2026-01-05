@@ -125,13 +125,13 @@ export type EIP1193ProviderLike = {
 }
 export type Signer = EIP1193ProviderLike | LocalAccount
 
-export type Transaction = Query<OperationStatus> & { chainId: number }
+export type Transaction = Query<OperationStatus> & { centrifugeId: number }
 
 export type TransactionContext = {
   isBatching?: boolean
   signingAddress: HexString
   chain: Chain
-  chainId: number
+  centrifugeId: number
   publicClient: PublicClient
   walletClient: WalletClient<any, Chain, Account>
   signer: Signer

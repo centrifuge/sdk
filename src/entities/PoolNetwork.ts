@@ -1,5 +1,5 @@
 import { combineLatest, defer, EMPTY, firstValueFrom, map, of, switchMap } from 'rxjs'
-import { encodeFunctionData, encodePacked, getContract, maxUint128 } from 'viem'
+import { encodeFunctionData, getContract, maxUint128 } from 'viem'
 import { ABI } from '../abi/index.js'
 import type { Centrifuge } from '../Centrifuge.js'
 import { NULL_ADDRESS } from '../constants.js'
@@ -8,7 +8,7 @@ import { MessageType, MessageTypeWithSubType, VaultUpdateKind } from '../types/t
 import { addressToBytes32, encode } from '../utils/index.js'
 import { repeatOnEvents } from '../utils/rx.js'
 import { doTransaction, wrapTransaction } from '../utils/transaction.js'
-import { AssetId, ShareClassId } from '../utils/types.js'
+import { AssetId, CentrifugeId, ShareClassId } from '../utils/types.js'
 import { BalanceSheet } from './BalanceSheet.js'
 import { Entity } from './Entity.js'
 import { MerkleProofManager } from './MerkleProofManager.js'
@@ -16,7 +16,7 @@ import { OnOffRampManager } from './OnOffRampManager.js'
 import type { Pool } from './Pool.js'
 import { ShareClass } from './ShareClass.js'
 
-enum VaultManagerTrustedCall {
+export enum VaultManagerTrustedCall {
   Valuation,
   MaxReserve,
 }
@@ -29,9 +29,9 @@ export class PoolNetwork extends Entity {
   constructor(
     _root: Centrifuge,
     public pool: Pool,
-    public chainId: number
+    public centrifugeId: CentrifugeId
   ) {
-    super(_root, ['poolnetwork', pool.id.toString(), chainId])
+    super(_root, ['poolnetwork', pool.id.toString(), centrifugeId])
   }
 
   /**
@@ -81,7 +81,7 @@ export class PoolNetwork extends Entity {
    */
   shareCurrency(scId: ShareClassId) {
     return this._query(['shareCurrency', scId.toString()], () =>
-      this._share(scId).pipe(switchMap((share) => this._root.currency(share, this.chainId)))
+      this._share(scId).pipe(switchMap((share) => this._root.currency(share, this.centrifugeId)))
     )
   }
 
@@ -95,7 +95,7 @@ export class PoolNetwork extends Entity {
     return this._query(['vaults', scId.toString(), includeUnlinked.toString()], () =>
       this._root.pool(this.pool.id).pipe(
         switchMap((pool) => pool.shareClass(scId)),
-        switchMap((shareClass) => shareClass.vaults(this.chainId, includeUnlinked))
+        switchMap((shareClass) => shareClass.vaults(this.centrifugeId, includeUnlinked))
       )
     )
   }
@@ -127,11 +127,11 @@ export class PoolNetwork extends Entity {
    */
   isActive() {
     return this._query(['isActive'], () =>
-      this._root._protocolAddresses(this.chainId).pipe(
-        switchMap(({ spoke }) => {
+      combineLatest([this._root._protocolAddresses(this.centrifugeId), this._root.getClient(this.centrifugeId)]).pipe(
+        switchMap(([{ spoke }, client]) => {
           return defer(
             () =>
-              this._root.getClient(this.chainId).readContract({
+              client.readContract({
                 address: spoke,
                 abi: ABI.Spoke,
                 functionName: 'isPoolActive',
@@ -149,7 +149,7 @@ export class PoolNetwork extends Entity {
                   })
                 },
               },
-              this.chainId
+              this.centrifugeId
             )
           )
         })
@@ -159,34 +159,30 @@ export class PoolNetwork extends Entity {
 
   merkleProofManager() {
     return this._query(['merkleProofManager'], () =>
-      this._root.id(this.chainId).pipe(
-        switchMap((centrifugeId) =>
-          this._root._queryIndexer(
-            `query ($poolId: BigInt!, $centrifugeId: String!) {
-              merkleProofManagers(where: {poolId: $poolId, centrifugeId: $centrifugeId}) {
-                items {
-                  address
-                }
-              }
-            }`,
-            { poolId: this.pool.id.toString(), centrifugeId: centrifugeId.toString() },
-            (data: {
-              merkleProofManagers: {
-                items: {
-                  address: HexString
-                }[]
-              }
-            }) => {
-              const manager = data.merkleProofManagers.items[0]
-
-              if (!manager) {
-                throw new Error('MerkleProofManager not found')
-              }
-
-              return new MerkleProofManager(this._root, this, manager.address)
+      this._root._queryIndexer(
+        `query ($poolId: BigInt!, $centrifugeId: String!) {
+          merkleProofManagers(where: {poolId: $poolId, centrifugeId: $centrifugeId}) {
+            items {
+              address
             }
-          )
-        )
+          }
+        }`,
+        { poolId: this.pool.id.toString(), centrifugeId: this.centrifugeId.toString() },
+        (data: {
+          merkleProofManagers: {
+            items: {
+              address: HexString
+            }[]
+          }
+        }) => {
+          const manager = data.merkleProofManagers.items[0]
+
+          if (!manager) {
+            throw new Error('MerkleProofManager not found')
+          }
+
+          return new MerkleProofManager(this._root, this, manager.address)
+        }
       )
     )
   }
@@ -198,7 +194,7 @@ export class PoolNetwork extends Entity {
     const self = this
 
     return this._transact(async function* (ctx) {
-      const { merkleProofManagerFactory } = await self._root._protocolAddresses(self.chainId)
+      const { merkleProofManagerFactory } = await self._root._protocolAddresses(self.centrifugeId)
 
       yield* doTransaction('AddMerkleProofManager', ctx, () =>
         ctx.walletClient.writeContract({
@@ -208,7 +204,7 @@ export class PoolNetwork extends Entity {
           args: [self.pool.id.raw],
         })
       )
-    }, self.chainId)
+    }, self.centrifugeId)
   }
 
   /**
@@ -219,29 +215,25 @@ export class PoolNetwork extends Entity {
   onOfframpManager(scId: ShareClassId) {
     return this._query(null, () =>
       combineLatest([
-        this._root.id(this.chainId).pipe(
-          switchMap((centrifugeId) =>
-            this._root._queryIndexer(
-              `query ($scId: String!, $centrifugeId: String!) {
-                onOffRampManagers(where: {tokenId: $scId, centrifugeId: $centrifugeId}) {
-                  items {
-                    address
-                  }
-                }
-              }`,
-              {
-                scId: scId.toString(),
-                centrifugeId: centrifugeId.toString(),
-              },
-              (data: {
-                onOffRampManagers: {
-                  items: {
-                    address: HexString
-                  }[]
-                }
-              }) => data.onOffRampManagers.items
-            )
-          )
+        this._root._queryIndexer(
+          `query ($scId: String!, $centrifugeId: String!) {
+            onOffRampManagers(where: {tokenId: $scId, centrifugeId: $centrifugeId}) {
+              items {
+                address
+              }
+            }
+          }`,
+          {
+            scId: scId.toString(),
+            centrifugeId: this.centrifugeId.toString(),
+          },
+          (data: {
+            onOffRampManagers: {
+              items: {
+                address: HexString
+              }[]
+            }
+          }) => data.onOffRampManagers.items
         ),
         this.pool.balanceSheetManagers(),
       ]).pipe(
@@ -279,34 +271,30 @@ export class PoolNetwork extends Entity {
     const self = this
     return this._transact(() => {
       return combineLatest([
-        this._root.id(this.chainId).pipe(
-          switchMap((centrifugeId) =>
-            this._root._queryIndexer(
-              `query ($scId: String!, $centrifugeId: String!) {
-                onOffRampManagers(where: {tokenId: $scId, centrifugeId: $centrifugeId}) {
-                  items {
-                    address
-                  }
-                }
-              }`,
-              {
-                scId: scId.toString(),
-                centrifugeId: centrifugeId.toString(),
-              },
-              (data: {
-                onOffRampManagers: {
-                  items: {
-                    address: HexString
-                  }[]
-                }
-              }) => data.onOffRampManagers.items
-            )
-          )
+        this._root._queryIndexer(
+          `query ($scId: String!, $centrifugeId: String!) {
+            onOffRampManagers(where: {tokenId: $scId, centrifugeId: $centrifugeId}) {
+              items {
+                address
+              }
+            }
+          }`,
+          {
+            scId: scId.toString(),
+            centrifugeId: this.centrifugeId.toString(),
+          },
+          (data: {
+            onOffRampManagers: {
+              items: {
+                address: HexString
+              }[]
+            }
+          }) => data.onOffRampManagers.items
         ),
         this.pool.balanceSheetManagers(),
       ]).pipe(
         switchMap(([deployedOnOffRampManager, balanceSheetManagers]) => {
-          const bsManagers = new Map<string, { address: `0x${string}`; chainId: number; type: string }>()
+          const bsManagers = new Map<string, { address: `0x${string}`; centrifugeId: number; type: string }>()
           balanceSheetManagers.forEach((manager) => {
             bsManagers.set(manager.address.toLowerCase(), manager)
           })
@@ -316,7 +304,7 @@ export class PoolNetwork extends Entity {
               return bsManagers.has(onOffRampManager.address.toLowerCase()) === false
             })
             .map((onOffRampManager) => ({
-              chainId: self.chainId,
+              centrifugeId: self.centrifugeId,
               address: onOffRampManager.address,
               canManage: true,
             }))
@@ -328,14 +316,14 @@ export class PoolNetwork extends Entity {
           return this.pool.updateBalanceSheetManagers(onOffRampManagers)
         })
       )
-    }, this.pool.chainId)
+    }, this.centrifugeId)
   }
 
   deployOnOfframpManager(scId: ShareClassId) {
     const self = this
 
     return this._transact(async function* (ctx) {
-      const { onOfframpManagerFactory } = await self._root._protocolAddresses(self.chainId)
+      const { onOfframpManagerFactory } = await self._root._protocolAddresses(self.centrifugeId)
 
       yield* doTransaction('DeployOnOfframpManager', ctx, () =>
         ctx.walletClient.writeContract({
@@ -345,7 +333,7 @@ export class PoolNetwork extends Entity {
           args: [self.pool.id.raw, scId.raw],
         })
       )
-    }, self.chainId)
+    }, self.centrifugeId)
   }
 
   /**
@@ -366,18 +354,26 @@ export class PoolNetwork extends Entity {
     const self = this
     return this._transact(async function* (ctx) {
       const [
-        { hub, batchRequestManager },
-        { spoke, balanceSheet, syncDepositVaultFactory, asyncVaultFactory, syncManager, asyncRequestManager },
-        id,
+        { hub },
+        {
+          spoke,
+          balanceSheet,
+          syncDepositVaultFactory,
+          asyncVaultFactory,
+          syncManager,
+          asyncRequestManager,
+          batchRequestManager,
+        },
         details,
+        spokeClient,
       ] = await Promise.all([
-        self._root._protocolAddresses(self.pool.chainId),
-        self._root._protocolAddresses(self.chainId),
-        self._root.id(self.chainId),
+        self._root._protocolAddresses(self.pool.centrifugeId),
+        self._root._protocolAddresses(self.centrifugeId),
         self.details(),
+        self._root.getClient(self.centrifugeId),
       ])
       const balanceSheetContract = getContract({
-        client: ctx.publicClient,
+        client: spokeClient,
         address: balanceSheet,
         abi: ABI.BalanceSheet,
       })
@@ -385,7 +381,7 @@ export class PoolNetwork extends Entity {
         await Promise.all([
           balanceSheetContract.read.manager([self.pool.id.raw, asyncRequestManager]),
           balanceSheetContract.read.manager([self.pool.id.raw, syncManager]),
-          self._root.getClient(self.chainId).readContract({
+          spokeClient.readContract({
             address: spoke,
             abi: ABI.Spoke,
             functionName: 'requestManager',
@@ -403,7 +399,13 @@ export class PoolNetwork extends Entity {
           encodeFunctionData({
             abi: ABI.Hub,
             functionName: 'updateBalanceSheetManager',
-            args: [self.pool.id.raw, id, addressToBytes32(asyncRequestManager), true, ctx.signingAddress],
+            args: [
+              self.pool.id.raw,
+              self.centrifugeId,
+              addressToBytes32(asyncRequestManager),
+              true,
+              ctx.signingAddress,
+            ],
           })
         )
         messageTypes.push(MessageType.UpdateBalanceSheetManager)
@@ -413,7 +415,7 @@ export class PoolNetwork extends Entity {
           encodeFunctionData({
             abi: ABI.Hub,
             functionName: 'updateBalanceSheetManager',
-            args: [self.pool.id.raw, id, addressToBytes32(syncManager), true, ctx.signingAddress],
+            args: [self.pool.id.raw, self.centrifugeId, addressToBytes32(syncManager), true, ctx.signingAddress],
           })
         )
         messageTypes.push(MessageType.UpdateBalanceSheetManager)
@@ -425,7 +427,7 @@ export class PoolNetwork extends Entity {
             functionName: 'setRequestManager',
             args: [
               self.pool.id.raw,
-              id,
+              self.centrifugeId,
               batchRequestManager,
               addressToBytes32(asyncRequestManager),
               ctx.signingAddress,
@@ -440,7 +442,7 @@ export class PoolNetwork extends Entity {
           encodeFunctionData({
             abi: ABI.Hub,
             functionName: 'notifyPool',
-            args: [self.pool.id.raw, id, ctx.signingAddress],
+            args: [self.pool.id.raw, self.centrifugeId, ctx.signingAddress],
           })
         )
         messageTypes.push(MessageType.NotifyPool)
@@ -459,7 +461,7 @@ export class PoolNetwork extends Entity {
           encodeFunctionData({
             abi: ABI.Hub,
             functionName: 'notifyShareClass',
-            args: [self.pool.id.raw, sc.id.raw, id, addressToBytes32(sc.hook), ctx.signingAddress],
+            args: [self.pool.id.raw, sc.id.raw, self.centrifugeId, addressToBytes32(sc.hook), ctx.signingAddress],
           })
         )
         messageTypes.push(MessageType.NotifyShareClass)
@@ -479,7 +481,7 @@ export class PoolNetwork extends Entity {
           encodeFunctionData({
             abi: ABI.Hub,
             functionName: 'notifyShareClass',
-            args: [self.pool.id.raw, shareClassIdRaw, id, addressToBytes32(hook), ctx.signingAddress],
+            args: [self.pool.id.raw, shareClassIdRaw, self.centrifugeId, addressToBytes32(hook), ctx.signingAddress],
           })
         )
         messageTypes.push(MessageType.NotifyShareClass)
@@ -489,9 +491,6 @@ export class PoolNetwork extends Entity {
         if (!enabledShareClasses.has(vault.shareClassId.raw)) {
           throw new Error(`Share class "${vault.shareClassId.raw}" is not enabled in pool "${self.pool.id.raw}"`)
         }
-
-        const existingShareClass = details.activeShareClasses.find((sc) => sc.id.equals(vault.shareClassId))
-        const existingVault = existingShareClass?.vaults.find((v) => v.assetId.equals(vault.assetId))
 
         const factoryAddress: HexString = vault.factory
           ? vault.factory
@@ -507,7 +506,7 @@ export class PoolNetwork extends Entity {
               args: [
                 self.pool.id.raw,
                 vault.shareClassId.raw,
-                id,
+                self.centrifugeId,
                 addressToBytes32(syncManager),
                 encode([VaultManagerTrustedCall.MaxReserve, vault.assetId.raw, maxUint128]),
                 0n,
@@ -515,26 +514,6 @@ export class PoolNetwork extends Entity {
               ],
             })
           )
-        }
-
-        // Only set request manager if vault doesn't already exist
-        // `setRequestManager` will revert if the share class / asset combination already has a vault
-        if (!existingVault) {
-          batch.push(
-            encodeFunctionData({
-              abi: ABI.Hub,
-              functionName: 'setRequestManager',
-              args: [
-                self.pool.id.raw,
-                // TODO:V3_MIGRATION: check if the following args are correct
-                vault.shareClassId.centrifugeId,
-                hub,
-                addressToBytes32(asyncRequestManager),
-                ctx.signingAddress,
-              ],
-            })
-          )
-          messageTypes.push(MessageType.SetRequestManager)
         }
 
         batch.push(
@@ -570,9 +549,9 @@ export class PoolNetwork extends Entity {
       yield* wrapTransaction('Deploy share classes and vaults', ctx, {
         data: batch,
         contract: hub,
-        messages: { [id]: messageTypes },
+        messages: { [self.centrifugeId]: messageTypes },
       })
-    }, this.pool.chainId)
+    }, this.pool.centrifugeId)
   }
 
   /**
@@ -586,9 +565,8 @@ export class PoolNetwork extends Entity {
         throw new Error('No vaults to unlink')
       }
 
-      const [{ hub }, id, details] = await Promise.all([
-        self._root._protocolAddresses(self.pool.chainId),
-        self._root.id(self.chainId),
+      const [{ hub }, details] = await Promise.all([
+        self._root._protocolAddresses(self.pool.centrifugeId),
         self.details(),
       ])
 
@@ -629,9 +607,9 @@ export class PoolNetwork extends Entity {
       yield* wrapTransaction('Unlink vaults', ctx, {
         data: batch,
         contract: hub,
-        messages: { [id]: messageTypes },
+        messages: { [self.centrifugeId]: messageTypes },
       })
-    }, this.pool.chainId)
+    }, this.pool.centrifugeId)
   }
 
   /**
@@ -645,9 +623,8 @@ export class PoolNetwork extends Entity {
         throw new Error('No vaults to link')
       }
 
-      const [{ hub }, id, details] = await Promise.all([
-        self._root._protocolAddresses(self.pool.chainId),
-        self._root.id(self.chainId),
+      const [{ hub }, details] = await Promise.all([
+        self._root._protocolAddresses(self.pool.centrifugeId),
         self.details(),
       ])
 
@@ -703,9 +680,9 @@ export class PoolNetwork extends Entity {
       yield* wrapTransaction('Link vaults', ctx, {
         data: batch,
         contract: hub,
-        messages: { [id]: messageTypes },
+        messages: { [self.centrifugeId]: messageTypes },
       })
-    }, this.pool.chainId)
+    }, this.pool.centrifugeId)
   }
 
   /**
@@ -714,11 +691,11 @@ export class PoolNetwork extends Entity {
    */
   _share(scId: ShareClassId, throwOnNullAddress = true) {
     return this._query(['share', scId.toString(), throwOnNullAddress], () =>
-      this._root._protocolAddresses(this.chainId).pipe(
-        switchMap(({ spoke }) =>
+      combineLatest([this._root._protocolAddresses(this.centrifugeId), this._root.getClient(this.centrifugeId)]).pipe(
+        switchMap(([{ spoke }, client]) =>
           defer(async () => {
             try {
-              const address = await this._root.getClient(this.chainId).readContract({
+              const address = await client.readContract({
                 address: spoke,
                 abi: ABI.Spoke,
                 functionName: 'shareToken',
@@ -727,7 +704,9 @@ export class PoolNetwork extends Entity {
               return address.toLowerCase() as HexString
             } catch {
               if (throwOnNullAddress) {
-                throw new Error(`Share class ${scId} not found for pool ${this.pool.id} on chain ${this.chainId}`)
+                throw new Error(
+                  `Share class ${scId} not found for pool ${this.pool.id} on centrifuge network ${this.centrifugeId}`
+                )
               }
               return NULL_ADDRESS
             }
@@ -741,7 +720,7 @@ export class PoolNetwork extends Entity {
                   return events.some((event) => event.args.poolId === this.pool.id.raw && event.args.scId === scId.raw)
                 },
               },
-              this.chainId
+              this.centrifugeId
             )
           )
         )

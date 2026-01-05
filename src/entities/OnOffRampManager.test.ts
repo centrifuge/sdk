@@ -29,8 +29,8 @@ describe('OnOffRampManager', () => {
 
   before(async () => {
     const { centrifuge } = context
-    pool = new Pool(centrifuge, poolId.raw, chainId)
-    poolNetwork = new PoolNetwork(centrifuge, pool, 11155111)
+    pool = new Pool(centrifuge, poolId.raw)
+    poolNetwork = new PoolNetwork(centrifuge, pool, centId)
     shareClass = new ShareClass(centrifuge, pool, scId.raw)
 
     context.tenderlyFork.impersonateAddress = fundManager
@@ -46,7 +46,9 @@ describe('OnOffRampManager', () => {
       const result = await onOffRampManager.setReceiver(assetId, address)
       expect(result.type).to.equal('TransactionConfirmed')
 
-      const setReceiver = await context.centrifuge.getClient(chainId).readContract({
+      const setReceiver = await (
+        await context.centrifuge.getClient(centId)
+      ).readContract({
         address: rampManager,
         abi: ABI.OnOffRampManager,
         functionName: 'offramp',
@@ -64,7 +66,9 @@ describe('OnOffRampManager', () => {
       const result = await onOffRampManager.setReceiver(assetId, address, false)
       expect(result.type).to.equal('TransactionConfirmed')
 
-      const disabledReceiver = await context.centrifuge.getClient(chainId).readContract({
+      const disabledReceiver = await (
+        await context.centrifuge.getClient(chainId)
+      ).readContract({
         address: rampManager,
         abi: ABI.OnOffRampManager,
         functionName: 'offramp',
@@ -90,7 +94,9 @@ describe('OnOffRampManager', () => {
 
       expect(result.type).to.equal('TransactionConfirmed')
 
-      const setRelayer = await context.centrifuge.getClient(chainId).readContract({
+      const setRelayer = await (
+        await context.centrifuge.getClient(centId)
+      ).readContract({
         address: rampManager,
         abi: ABI.OnOffRampManager,
         functionName: 'onramp',
@@ -158,7 +164,9 @@ describe('OnOffRampManager', () => {
       const allowance = new Balance(100n, 6)
       const amount = new Balance(56n, 6)
 
-      await pool.updateBalanceSheetManagers([{ chainId, address: onOffRampManager.onrampAddress, canManage: true }])
+      await pool.updateBalanceSheetManagers([
+        { centrifugeId: centId, address: onOffRampManager.onrampAddress, canManage: true },
+      ])
 
       await context.centrifuge._transact(async function* (ctx) {
         yield* doTransaction('Approve transfer', ctx, async () => {
@@ -175,7 +183,9 @@ describe('OnOffRampManager', () => {
 
       expect(result.type).to.equal('TransactionConfirmed')
 
-      const balance = await context.centrifuge.getClient(chainId).readContract({
+      const balance = await (
+        await context.centrifuge.getClient(centId)
+      ).readContract({
         address: assetAddress,
         abi: ABI.Currency,
         functionName: 'balanceOf',
@@ -204,14 +214,18 @@ describe('OnOffRampManager', () => {
 
       await context.tenderlyFork.fundAccountEth(relayer, 10n ** 18n)
 
-      await pool.updateBalanceSheetManagers([{ chainId, address: onOffRampManager.onrampAddress, canManage: true }])
+      await pool.updateBalanceSheetManagers([
+        { centrifugeId: centId, address: onOffRampManager.onrampAddress, canManage: true },
+      ])
       await onOffRampManager.setReceiver(assetId, receiver)
       await onOffRampManager.setRelayer(relayer)
 
       context.tenderlyFork.impersonateAddress = relayer
       context.centrifuge.setSigner(context.tenderlyFork.signer)
 
-      const receiverBalanceBefore = await context.centrifuge.getClient(chainId).readContract({
+      const receiverBalanceBefore = await (
+        await context.centrifuge.getClient(centId)
+      ).readContract({
         address: assetAddress,
         abi: ABI.Currency,
         functionName: 'balanceOf',
@@ -224,7 +238,9 @@ describe('OnOffRampManager', () => {
 
       expect(result.type).to.equal('TransactionConfirmed')
 
-      const receiverBalanceAfter = await context.centrifuge.getClient(chainId).readContract({
+      const receiverBalanceAfter = await (
+        await context.centrifuge.getClient(chainId)
+      ).readContract({
         address: assetAddress,
         abi: ABI.Currency,
         functionName: 'balanceOf',

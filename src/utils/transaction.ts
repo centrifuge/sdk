@@ -21,6 +21,7 @@ import type {
   Signer,
   TransactionContext,
 } from '../types/transaction.js'
+import { CentrifugeId } from './types.js'
 
 class TransactionError extends Error {
   override name = 'TransactionError'
@@ -51,7 +52,7 @@ export async function* wrapTransaction(
     // Messages to estimate gas for, that will be sent as a result of the transaction, separated by Centrifuge ID.
     // Used to estimate the payment for the transaction.
     // It is assumed that the messages belong to a single pool.
-    messages?: Record<number /* Centrifuge ID */, MessageTypeWithSubType[]>
+    messages?: Record<CentrifugeId, MessageTypeWithSubType[]>
   },
   options: {
     simulate: boolean
@@ -69,7 +70,7 @@ export async function* wrapTransaction(
     const messagesEstimates = messages
       ? await Promise.all(
           Object.entries(messages).map(async ([centId, messageTypes]) =>
-            ctx.root._estimate(ctx.chainId, { centId: Number(centId) }, messageTypes)
+            ctx.root._estimate(ctx.centrifugeId, Number(centId), messageTypes)
           )
         )
       : []
@@ -173,8 +174,9 @@ async function* waitForSafeTransaction(
   hash: HexString,
   ctx: TransactionContext
 ): AsyncGenerator<OperationStatus> {
+  const chainId = await ctx.root._idToChain(ctx.centrifugeId)
   // First check if tx is actually a safe tx
-  let safeTx = await withRetry(() => getSafeTransaction(hash, ctx.chainId), {
+  let safeTx = await withRetry(() => getSafeTransaction(hash, chainId), {
     retryCount: 5,
     delay: 5000,
   })
@@ -183,7 +185,7 @@ async function* waitForSafeTransaction(
 
   safeTx = await withRetry(
     async () => {
-      const status = await getSafeTransaction(hash, ctx.chainId)
+      const status = await getSafeTransaction(hash, chainId)
       if (status.isExecuted) return status
       throw new Error(`Timeout waiting for safe transaction to be executed. Transaction hash: ${hash}`)
     },

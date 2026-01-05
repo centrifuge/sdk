@@ -5,6 +5,7 @@ import type { Centrifuge } from '../Centrifuge.js'
 import type { HexString } from '../types/index.js'
 import { MessageType } from '../types/transaction.js'
 import { Balance } from '../utils/BigInt.js'
+import { addressToBytes32 } from '../utils/index.js'
 import { Permit, signPermit } from '../utils/permit.js'
 import { repeatOnEvents } from '../utils/rx.js'
 import { doSignMessage, doTransaction, wrapTransaction } from '../utils/transaction.js'
@@ -13,7 +14,6 @@ import { Entity } from './Entity.js'
 import type { Pool } from './Pool.js'
 import { PoolNetwork } from './PoolNetwork.js'
 import { ShareClass } from './ShareClass.js'
-import { addressToBytes32 } from '../utils/index.js'
 
 // const ASYNC_OPERATOR_INTERFACE_ID = '0xe3bc4e65'
 // const ASYNC_DEPOSIT_INTERFACE_ID = '0xce3bbe50'
@@ -31,7 +31,6 @@ const ESCROW_HOOK_ID_TESTNET = '0x00000000000000000000000000000000000000ce'
  */
 export class Vault extends Entity {
   pool: Pool
-  chainId: number
   /**
    * The contract address of the investment currency.
    * @internal
@@ -50,11 +49,14 @@ export class Vault extends Entity {
     address: HexString,
     public assetId: AssetId
   ) {
-    super(_root, ['vault', network.chainId, shareClass.id.toString(), asset.toLowerCase(), address.toLowerCase()])
-    this.chainId = network.chainId
+    super(_root, ['vault', network.centrifugeId, shareClass.id.toString(), asset.toLowerCase()])
     this.pool = network.pool
     this._asset = asset.toLowerCase() as HexString
     this.address = address.toLowerCase() as HexString
+  }
+
+  get centrifugeId() {
+    return this.network.centrifugeId
   }
 
   /**
@@ -96,10 +98,10 @@ export class Vault extends Entity {
    */
   isLinked() {
     return this._query(['linked'], () =>
-      this._root._protocolAddresses(this.chainId).pipe(
-        switchMap(({ vaultRegistry }) =>
+      combineLatest([this._root._protocolAddresses(this.centrifugeId), this._root.getClient(this.centrifugeId)]).pipe(
+        switchMap(([{ vaultRegistry }, client]) =>
           defer(async () => {
-            const details = await this._root.getClient(this.chainId).readContract({
+            const details = await client.readContract({
               address: vaultRegistry,
               abi: ABI.VaultRegistry,
               functionName: 'vaultDetails',
@@ -114,7 +116,7 @@ export class Vault extends Entity {
                 eventName: ['LinkVault', 'UnlinkVault'],
                 filter: (events) => events.some((event) => event.args.vault.toLowerCase() === this.address),
               },
-              this.chainId
+              this.centrifugeId
             )
           )
         )
@@ -132,20 +134,29 @@ export class Vault extends Entity {
       combineLatest([
         this._investmentCurrency(),
         this._shareCurrency(),
-        this._root._protocolAddresses(this.chainId),
+        this._root._protocolAddresses(this.centrifugeId),
         this._restrictionManager(),
         this._isSyncDeposit(),
         this.pool._escrow(),
         this._isOperator(investorAddress),
+        this._root.getClient(this.centrifugeId),
       ]).pipe(
         switchMap(
-          ([asset, share, addresses, restrictionManagerAddress, isSyncDeposit, escrowAddress, isOperatorEnabled]) =>
+          ([
+            asset,
+            share,
+            addresses,
+            restrictionManagerAddress,
+            isSyncDeposit,
+            escrowAddress,
+            isOperatorEnabled,
+            client,
+          ]) =>
             combineLatest([
-              this._root.balance(asset.address, investorAddress, this.chainId),
-              this._root.balance(share.address, investorAddress, this.chainId),
+              this._root.balance(asset.address, investorAddress, this.centrifugeId),
+              this._root.balance(share.address, investorAddress, this.centrifugeId),
               this._allowance(investorAddress),
               defer(async () => {
-                const client = this._root.getClient(this.chainId)
                 const vault = getContract({ address: this.address, abi: ABI.AsyncVault, client })
                 const investmentManager = getContract({
                   address: addresses.asyncRequestManager,
@@ -254,7 +265,7 @@ export class Vault extends Entity {
                           (event.args.scId === this.shareClass.id.raw && event.args.asset.toLowerCase() === this._asset)
                       ),
                   },
-                  this.chainId
+                  this.centrifugeId
                 )
               ),
             ])
@@ -279,7 +290,7 @@ export class Vault extends Entity {
     return this._transact(async function* (ctx) {
       const [investment, { vaultRouter }, isSyncDeposit, signingAddressCode] = await Promise.all([
         self.investment(ctx.signingAddress),
-        self._root._protocolAddresses(self.chainId),
+        self._root._protocolAddresses(self.centrifugeId),
         self._isSyncDeposit(),
         ctx.publicClient.getCode({ address: ctx.signingAddress }),
       ])
@@ -328,7 +339,7 @@ export class Vault extends Entity {
           args: [self.address, amount.toBigInt(), ctx.signingAddress, ctx.signingAddress],
         })
       )
-    }, this.chainId)
+    }, this.centrifugeId)
   }
 
   /**
@@ -340,9 +351,9 @@ export class Vault extends Entity {
     const self = this
     return this._transact(async function* (ctx) {
       const [estimate, investment, { vaultRouter }, isSyncDeposit, signingAddressCode] = await Promise.all([
-        self._root._estimate(self.chainId, { centId: self.pool.id.centrifugeId }, MessageType.Request),
+        self._root._estimate(self.centrifugeId, self.pool.id.centrifugeId, MessageType.Request),
         self.investment(ctx.signingAddress),
-        self._root._protocolAddresses(self.chainId),
+        self._root._protocolAddresses(self.centrifugeId),
         self._isSyncDeposit(),
         ctx.publicClient.getCode({ address: ctx.signingAddress }),
       ])
@@ -410,7 +421,7 @@ export class Vault extends Entity {
           value: estimate, // only one message is sent as a result of the multicall
         })
       )
-    }, this.chainId)
+    }, this.centrifugeId)
   }
 
   /**
@@ -420,9 +431,9 @@ export class Vault extends Entity {
     const self = this
     return this._transact(async function* (ctx) {
       const [estimate, investment, { vaultRouter }] = await Promise.all([
-        self._root._estimate(self.chainId, { centId: self.pool.id.centrifugeId }, MessageType.Request),
+        self._root._estimate(self.centrifugeId, self.pool.id.centrifugeId, MessageType.Request),
         self.investment(ctx.signingAddress),
-        self._root._protocolAddresses(self.chainId),
+        self._root._protocolAddresses(self.centrifugeId),
       ])
 
       if (investment.pendingDepositAssets.isZero()) throw new Error('No order to cancel')
@@ -436,7 +447,7 @@ export class Vault extends Entity {
           value: estimate,
         })
       )
-    }, this.chainId)
+    }, this.centrifugeId)
   }
 
   /**
@@ -447,9 +458,9 @@ export class Vault extends Entity {
     const self = this
     return this._transact(async function* (ctx) {
       const [estimate, investment, { vaultRouter }, isOperator] = await Promise.all([
-        self._root._estimate(self.chainId, { centId: self.pool.id.centrifugeId }, MessageType.Request),
+        self._root._estimate(self.centrifugeId, self.pool.id.centrifugeId, MessageType.Request),
         self.investment(ctx.signingAddress),
-        self._root._protocolAddresses(self.chainId),
+        self._root._protocolAddresses(self.centrifugeId),
         self._isOperator(ctx.signingAddress),
       ])
 
@@ -490,7 +501,7 @@ export class Vault extends Entity {
           value: estimate,
         })
       )
-    }, this.chainId)
+    }, this.centrifugeId)
   }
 
   /**
@@ -500,9 +511,9 @@ export class Vault extends Entity {
     const self = this
     return this._transact(async function* (ctx) {
       const [estimate, investment, { vaultRouter }] = await Promise.all([
-        self._root._estimate(self.chainId, { centId: self.pool.id.centrifugeId }, MessageType.Request),
+        self._root._estimate(self.centrifugeId, self.pool.id.centrifugeId, MessageType.Request),
         self.investment(ctx.signingAddress),
-        self._root._protocolAddresses(self.chainId),
+        self._root._protocolAddresses(self.centrifugeId),
       ])
 
       if (investment.pendingRedeemShares.isZero()) throw new Error('No order to cancel')
@@ -516,7 +527,7 @@ export class Vault extends Entity {
           value: estimate,
         })
       )
-    }, this.chainId)
+    }, this.centrifugeId)
   }
 
   /**
@@ -530,7 +541,7 @@ export class Vault extends Entity {
     return this._transact(async function* (ctx) {
       const [investment, { vaultRouter }, isOperator] = await Promise.all([
         self.investment(ctx.signingAddress),
-        self._root._protocolAddresses(self.chainId),
+        self._root._protocolAddresses(self.centrifugeId),
         self._isOperator(ctx.signingAddress),
       ])
       const receiverAddress = receiver || ctx.signingAddress
@@ -580,7 +591,7 @@ export class Vault extends Entity {
           args: [self.address, receiverAddress, controllerAddress],
         })
       )
-    }, this.chainId)
+    }, this.centrifugeId)
   }
 
   /**
@@ -590,9 +601,8 @@ export class Vault extends Entity {
   updateMaxReserve(maxReserve: Balance) {
     const self = this
     return this._transact(async function* (ctx) {
-      const [id, { hub, syncManager }, asset] = await Promise.all([
-        self._root.id(self.chainId),
-        self._root._protocolAddresses(self.chainId),
+      const [{ hub, syncManager }, asset] = await Promise.all([
+        self._root._protocolAddresses(self.pool.centrifugeId),
         self._investmentCurrency(),
       ])
 
@@ -608,7 +618,7 @@ export class Vault extends Entity {
           args: [
             self.pool.id.raw,
             self.shareClass.id.raw,
-            id,
+            self.centrifugeId,
             addressToBytes32(syncManager),
             encodePacked(
               ['uint8', 'uint128', 'uint128'],
@@ -619,7 +629,7 @@ export class Vault extends Entity {
           ],
         }),
       })
-    }, this.chainId)
+    }, this.pool.centrifugeId)
   }
 
   /**
@@ -629,17 +639,36 @@ export class Vault extends Entity {
    * @internal
    */
   _isOperator(investorAddress: HexString) {
-    return this._query(['isOperator', investorAddress], () =>
-      defer(() =>
-        this._root
-          .getClient(this.chainId)
-          .readContract({
-            address: this.address,
-            abi: ABI.AsyncVault,
-            functionName: 'isOperator',
-            args: [investorAddress, this.address],
-          })
-          .then((val) => val)
+    const investor = investorAddress.toLowerCase() as HexString
+    return this._query(['isOperator', investor], () =>
+      combineLatest([this._root._protocolAddresses(this.centrifugeId), this._root.getClient(this.centrifugeId)]).pipe(
+        switchMap(([{ vaultRouter }, client]) =>
+          defer(() =>
+            client
+              .readContract({
+                address: this.address,
+                abi: ABI.AsyncVault,
+                functionName: 'isOperator',
+                args: [investor, vaultRouter],
+              })
+              .then((val) => val)
+          ).pipe(
+            repeatOnEvents(
+              this._root,
+              {
+                address: this.address,
+                eventName: ['OperatorSet'],
+                filter: (events) =>
+                  events.some(
+                    (event) =>
+                      event.args.controller.toLowerCase() === investor &&
+                      event.args.operator.toLowerCase() === vaultRouter.toLowerCase()
+                  ),
+              },
+              this.centrifugeId
+            )
+          )
+        )
       )
     )
   }
@@ -647,16 +676,19 @@ export class Vault extends Entity {
   /** @internal */
   _isSyncDeposit() {
     return this._query(['isSyncDeposit'], () =>
-      defer(() =>
-        this._root
-          .getClient(this.chainId)
-          .readContract({
-            address: this.address,
-            abi: ABI.AsyncVault,
-            functionName: 'supportsInterface',
-            args: ['0xce3bbe50'], // ASYNC_DEPOSIT_INTERFACE_ID
-          })
-          .then((val) => !val)
+      this._root.getClient(this.centrifugeId).pipe(
+        switchMap((client) =>
+          defer(() =>
+            client
+              .readContract({
+                address: this.address,
+                abi: ABI.AsyncVault,
+                functionName: 'supportsInterface',
+                args: ['0xce3bbe50'], // ASYNC_DEPOSIT_INTERFACE_ID
+              })
+              .then((val) => !val)
+          )
+        )
       )
     )
   }
@@ -667,10 +699,10 @@ export class Vault extends Entity {
    */
   _restrictionManager() {
     return this._query(['restrictionManager'], () =>
-      this.network._share(this.shareClass.id).pipe(
+      combineLatest([this.network._share(this.shareClass.id), this._root.getClient(this.centrifugeId)]).pipe(
         switchMap(
-          (share) =>
-            this._root.getClient(this.chainId).readContract({
+          ([share, client]) =>
+            client.readContract({
               address: share,
               abi: ABI.Currency,
               functionName: 'hook',
@@ -685,7 +717,7 @@ export class Vault extends Entity {
    * @internal
    */
   _investmentCurrency() {
-    return this._root.currency(this._asset, this.chainId)
+    return this._root.currency(this._asset, this.centrifugeId)
   }
 
   /**
@@ -706,12 +738,12 @@ export class Vault extends Entity {
     return this._query(['allowance', owner.toLowerCase()], () =>
       combineLatest([
         this._investmentCurrency(),
-        this._root._protocolAddresses(this.chainId),
+        this._root._protocolAddresses(this.centrifugeId),
         this._isSyncDeposit(),
       ]).pipe(
         switchMap(([asset, { vaultRouter }, isSyncDeposit]) =>
           this._root
-            ._allowance(owner, isSyncDeposit ? vaultRouter : this.address, this.chainId, asset.address)
+            ._allowance(owner, isSyncDeposit ? vaultRouter : this.address, this.centrifugeId, asset.address)
             .pipe(map((allowance) => new Balance(allowance, asset.decimals)))
         )
       )
@@ -724,10 +756,14 @@ export class Vault extends Entity {
    */
   _maxReserve() {
     return this._query(['maxReserve'], () =>
-      combineLatest([this._root._protocolAddresses(this.chainId), this._investmentCurrency()]).pipe(
-        switchMap(([{ syncManager }, asset]) =>
+      combineLatest([
+        this._root.getClient(this.centrifugeId),
+        this._root._protocolAddresses(this.centrifugeId),
+        this._investmentCurrency(),
+      ]).pipe(
+        switchMap(([client, { syncManager }, asset]) =>
           defer(async () => {
-            const maxReserve = await this._root.getClient(this.chainId).readContract({
+            const maxReserve = await client.readContract({
               address: syncManager,
               abi: ABI.SyncManager,
               functionName: 'maxReserve',
@@ -748,7 +784,7 @@ export class Vault extends Entity {
                       event.args.asset?.toLowerCase() === this._asset
                   ),
               },
-              this.chainId
+              this.centrifugeId
             )
           )
         )
@@ -762,10 +798,14 @@ export class Vault extends Entity {
    */
   _availableBalance() {
     return this._query(['availableBalance'], () =>
-      combineLatest([this._root._protocolAddresses(this.chainId), this._investmentCurrency()]).pipe(
-        switchMap(([{ balanceSheet }, asset]) =>
+      combineLatest([
+        this._root.getClient(this.centrifugeId),
+        this._root._protocolAddresses(this.centrifugeId),
+        this._investmentCurrency(),
+      ]).pipe(
+        switchMap(([client, { balanceSheet }, asset]) =>
           defer(async () => {
-            const availableBalance = await this._root.getClient(this.chainId).readContract({
+            const availableBalance = await client.readContract({
               address: balanceSheet,
               abi: ABI.BalanceSheet,
               functionName: 'availableBalanceOf',
@@ -786,7 +826,7 @@ export class Vault extends Entity {
                       event.args.asset?.toLowerCase() === this._asset
                   ),
               },
-              this.chainId
+              this.centrifugeId
             )
           )
         )
