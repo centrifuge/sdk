@@ -54,7 +54,7 @@ const centrifuge = new Centrifuge({
   environment: 'mainnet' | 'testnet',         // optional, defaults to 'mainnet'
   rpcUrls?: { [chainId: number]: string },     // optional RPC endpoints
   indexerUrl?: string,                         // optional indexer API URL
-  ipfsUrl?: string                             // optional IPFS gateway, default: https://centrifuge.mypinata.cloud
+  ipfsUrl?: string                             // optional IPFS gateway, default: https://ipfs.centrifuge.io
 })
 ```
 
@@ -249,7 +249,7 @@ const account = privateKeyToAccount('0xPrivateKey')
 cent.setSigner(account)
 
 async function main() {
-  const client = cent.getClient(chainId)
+  const client = cent.getClient(centrifugeId)
 
   const pool = await cent.pool(new PoolId('PoolId'))
   const scId = new ShareClassId('0x00010000000000010000000000000001')

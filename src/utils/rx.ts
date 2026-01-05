@@ -4,6 +4,7 @@ import type { Abi, Log } from 'viem'
 import type { Centrifuge } from '../Centrifuge.js'
 import { HexString } from '../types/index.js'
 import type { Query } from '../types/query.js'
+import { CentrifugeId } from './types.js'
 
 export function shareReplayWithDelayedReset<T>(config?: {
   bufferSize?: number
@@ -27,11 +28,11 @@ export function repeatOnEvents<T>(
     eventName: string | string[]
     filter?: (events: (Log<bigint, number, false, undefined, true, Abi, string> & { args: any })[]) => boolean
   },
-  chainId: number
+  centrifugeId: CentrifugeId
 ): MonoTypeOperatorFunction<T> {
   return repeat({
     delay: () =>
-      centrifuge._filteredEvents(opts.address, opts.eventName, chainId).pipe(
+      centrifuge._filteredEvents(opts.address, opts.eventName, centrifugeId).pipe(
         filter((events) => {
           return opts.filter ? opts.filter(events) : true
         })

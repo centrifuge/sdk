@@ -125,13 +125,13 @@ export type EIP1193ProviderLike = {
 }
 export type Signer = EIP1193ProviderLike | LocalAccount
 
-export type Transaction = Query<OperationStatus> & { chainId: number }
+export type Transaction = Query<OperationStatus> & { centrifugeId: number }
 
 export type TransactionContext = {
   isBatching?: boolean
   signingAddress: HexString
   chain: Chain
-  chainId: number
+  centrifugeId: number
   publicClient: PublicClient
   walletClient: WalletClient<any, Chain, Account>
   signer: Signer
@@ -139,23 +139,14 @@ export type TransactionContext = {
 }
 
 export enum MessageType {
+  /// @dev Placeholder for null message type
   _Invalid,
   // -- Pool independent messages
   ScheduleUpgrade,
   CancelUpgrade,
   RecoverTokens,
   RegisterAsset,
-  _Placeholder5,
-  _Placeholder6,
-  _Placeholder7,
-  _Placeholder8,
-  _Placeholder9,
-  _Placeholder10,
-  _Placeholder11,
-  _Placeholder12,
-  _Placeholder13,
-  _Placeholder14,
-  _Placeholder15,
+  SetPoolAdapters,
   // -- Pool dependent messages
   NotifyPool,
   NotifyShareClass,
@@ -166,16 +157,18 @@ export enum MessageType {
   InitiateTransferShares,
   ExecuteTransferShares,
   UpdateRestriction,
-  UpdateContract,
   UpdateVault,
   UpdateBalanceSheetManager,
+  UpdateGatewayManager,
   UpdateHoldingAmount,
   UpdateShares,
-  MaxAssetPriceAge,
-  MaxSharePriceAge,
+  SetMaxAssetPriceAge,
+  SetMaxSharePriceAge,
   Request,
   RequestCallback,
   SetRequestManager,
+  TrustedContractUpdate,
+  UntrustedContractUpdate,
 }
 
 export enum VaultUpdateKind {

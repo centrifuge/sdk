@@ -58,7 +58,7 @@ const investment = await vault.investment(address)
 if (!investment.isAllowedToInvest) {
   console.error('Investor not whitelisted or membership expired')
   // Pool manager needs to call:
-  // await shareClass.updateMember(address, validUntil, chainId)
+  // await shareClass.updateMember(address, validUntil, centrifugeId)
 }
 ```
 
@@ -72,7 +72,7 @@ console.log(centrifuge.config.indexerUrl)
 
 // 2. Verify pool exists
 const pools = await centrifuge.pools()
-const poolExists = pools.some(p => p.id.equals(poolId))
+const poolExists = pools.some((p) => p.id.equals(poolId))
 
 // 3. Try direct blockchain queries
 const shareClasses = await pool.shareClasses()
@@ -85,11 +85,8 @@ const shareClasses = await pool.shareClasses()
 const centrifuge = new Centrifuge({
   environment: 'mainnet',
   rpcUrls: {
-    1: [
-      'https://primary-rpc.com',
-      'https://fallback-rpc.com',
-    ],
-  }
+    1: ['https://primary-rpc.com', 'https://fallback-rpc.com'],
+  },
 })
 ```
 
@@ -103,9 +100,7 @@ const result = await vault.investment(address).pipe(skip(1))
 
 // ✅ CORRECT: Add timeout
 try {
-  const result = await firstValueFrom(
-    vault.investment(address).pipe(skip(1), timeout(30000))
-  )
+  const result = await firstValueFrom(vault.investment(address).pipe(skip(1), timeout(30000)))
 } catch (error) {
   if (error.name === 'TimeoutError') {
     console.error('Query timed out after 30 seconds')
@@ -125,7 +120,7 @@ const shares = Balance.fromFloat(100, 18)
 const total = usdc.add(shares) // Error!
 
 // ✅ CORRECT: Convert decimals or don't add different tokens
-const usdcIn18 = new Balance(usdc.toBigInt() * 10n**12n, 18)
+const usdcIn18 = new Balance(usdc.toBigInt() * 10n ** 12n, 18)
 const total = usdcIn18.add(shares)
 ```
 
@@ -149,8 +144,8 @@ await vault.increaseInvestOrder(amount)
 import { tap, catchError } from 'rxjs'
 
 const result = await vault.investment(address).pipe(
-  tap(inv => console.log('Investment data:', inv)),
-  catchError(err => {
+  tap((inv) => console.log('Investment data:', inv)),
+  catchError((err) => {
     console.error('Query error:', err)
     throw err
   })
@@ -168,7 +163,7 @@ vault.increaseInvestOrder(amount).subscribe({
   error: (err) => {
     console.error('Transaction error:', err)
     console.error('Error stack:', err.stack)
-  }
+  },
 })
 ```
 
@@ -178,11 +173,11 @@ vault.increaseInvestOrder(amount).subscribe({
 import { getContract } from 'viem'
 import { ABI } from './abi/index.js'
 
-const client = centrifuge.getClient(chainId)
+const client = await centrifuge.getClient(centrifugeId)
 const vault = getContract({
   address: vaultAddress,
   abi: ABI.AsyncVault,
-  client
+  client,
 })
 
 // Read contract directly
@@ -193,12 +188,12 @@ console.log('Max mint (raw):', maxMint)
 ### Verify Contract Addresses
 
 ```typescript
-const addresses = await centrifuge._protocolAddresses(chainId)
+const addresses = await centrifuge._protocolAddresses(centrifugeId)
 console.log('Hub:', addresses.hub)
 console.log('Gateway:', addresses.gateway)
 
 // Verify bytecode exists
-const client = centrifuge.getClient(chainId)
+const client = await centrifuge.getClient(centrifugeId)
 const bytecode = await client.getBytecode({ address: addresses.hub })
 console.log('Hub has bytecode:', bytecode !== undefined)
 ```

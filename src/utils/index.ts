@@ -1,7 +1,18 @@
+import { concatHex, padHex, toHex } from 'viem'
 import { HexString } from '../types/index.js'
 
 export function addressToBytes32(address: HexString) {
   return address.padEnd(66, '0').toLowerCase() as HexString
+}
+
+export function encode(values: unknown[]): HexString {
+  return concatHex(
+    values.map((v) =>
+      typeof v === 'string' && v.startsWith('0x')
+        ? padHex(v as HexString, { dir: 'right', size: 32 })
+        : toHex(v as any, { size: 32 })
+    )
+  )
 }
 
 export function randomUint(bitLength: number) {

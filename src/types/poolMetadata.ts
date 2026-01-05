@@ -137,7 +137,7 @@ export type PoolMetadata = {
       }
     }
   >
-  // chainId => strategist => policies
+  // centrifugeId => strategist => policies
   merkleProofManager?: Record<
     string,
     Record<
