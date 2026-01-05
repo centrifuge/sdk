@@ -203,7 +203,7 @@ export class OnOffRampManager extends Entity {
   setRelayer(relayer: HexString, enabled: boolean = true) {
     const self = this
     return this._transact(async function* (ctx) {
-      const { hub } = await self._root._protocolAddresses(self.network.centrifugeId)
+      const { hub } = await self._root._protocolAddresses(self.network.pool.centrifugeId)
 
       yield* wrapTransaction(enabled ? 'Enable Relayer' : 'Disable Relayer', ctx, {
         contract: hub,
@@ -220,7 +220,7 @@ export class OnOffRampManager extends Entity {
             ctx.signingAddress,
           ],
         }),
-        messages: { [id]: [MessageType.TrustedContractUpdate] },
+        messages: { [self.network.centrifugeId]: [MessageType.TrustedContractUpdate] },
       })
     }, this.network.centrifugeId)
   }
@@ -228,7 +228,7 @@ export class OnOffRampManager extends Entity {
   setAsset(assetId: AssetId) {
     const self = this
     return this._transact(async function* (ctx) {
-      const { hub } = await self._root._protocolAddresses(self.network.centrifugeId)
+      const { hub } = await self._root._protocolAddresses(self.network.pool.centrifugeId)
 
       yield* wrapTransaction('Set Asset', ctx, {
         contract: hub,
@@ -245,7 +245,7 @@ export class OnOffRampManager extends Entity {
             ctx.signingAddress,
           ],
         }),
-        messages: { [id]: [MessageType.TrustedContractUpdate] },
+        messages: { [self.network.centrifugeId]: [MessageType.TrustedContractUpdate] },
       })
     }, this.network.centrifugeId)
   }

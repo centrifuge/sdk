@@ -56,9 +56,11 @@ export class PoolSharePricesReport extends Entity {
     return this._query(['report', from?.toString(), to?.toString(), groupBy?.toString()], () =>
       combineLatest([this.pool._shareClassIds(), this.pool.currency(), this.pool.activeNetworks()]).pipe(
         switchMap(([shareClassIds, poolCurrency, activeNetworks]) =>
-          this._root
-            ._queryIndexer<SharePriceData>(
-              `query ($filter: TokenInstanceSnapshotFilter) {
+          this._root._idToChain(activeNetworks[0]?.centrifugeId ?? this.pool.centrifugeId).pipe(
+            switchMap((chainId) =>
+              this._root
+                ._queryIndexer<SharePriceData>(
+                  `query ($filter: TokenInstanceSnapshotFilter) {
 								tokenInstanceSnapshots(
 									where: $filter
 									orderBy: "timestamp"
@@ -73,20 +75,22 @@ export class PoolSharePricesReport extends Entity {
 									}
 								}
 							}`,
-              {
-                filter: {
-                  tokenId_in: shareClassIds
-                    .filter((id) => !filter.shareClassId || filter.shareClassId.equals(id))
-                    .map((id) => id.toString()),
-                  trigger_ends_with: 'NewPeriod',
-                  triggerChainId: String(activeNetworks[0]?.chainId ?? this.pool.chainId),
-                  // TODO from/to
-                } satisfies TokenInstanceSnapshotFilter,
-              },
-              undefined,
-              60 * 60 * 1000
+                  {
+                    filter: {
+                      tokenId_in: shareClassIds
+                        .filter((id) => !filter.shareClassId || filter.shareClassId.equals(id))
+                        .map((id) => id.toString()),
+                      trigger_ends_with: 'NewPeriod',
+                      triggerChainId: String(chainId),
+                      // TODO from/to
+                    } satisfies TokenInstanceSnapshotFilter,
+                  },
+                  undefined,
+                  60 * 60 * 1000
+                )
+                .pipe(map((data) => this._process(data, filter, poolCurrency)))
             )
-            .pipe(map((data) => this._process(data, filter, poolCurrency)))
+          )
         )
       )
     )
