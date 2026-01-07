@@ -127,6 +127,8 @@ export async function* wrapTransaction(
           ],
         })
 
+        console.log('Simulation multicall results', { results })
+
         simulationResult = { results }
       }
 
