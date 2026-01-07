@@ -112,6 +112,8 @@ export async function* wrapTransaction(
           ],
         })
 
+        console.log('Simulation single call results', { results })
+
         simulationResult = { results }
       } else {
         const { results } = await ctx.publicClient.simulateCalls({
