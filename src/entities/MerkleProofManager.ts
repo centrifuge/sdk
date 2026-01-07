@@ -298,7 +298,7 @@ export class MerkleProofManager extends Entity {
         })
 
         const argsEncoded = policy.inputCombinations.find((ic) =>
-          ic.inputs.every((input, i) => input === null || JSON.stringify(inputs[i]) === JSON.stringify(input))
+          ic.inputs.every((input, i) => input === null || inputs[i] === input)
         )?.inputsEncoded
 
         console.log({ argsEncoded, combinations: policy.inputCombinations, inputs, policy })
