@@ -201,15 +201,15 @@ export class MerkleProofManager extends Entity {
         rootHash = tree.root as HexString
       }
 
-      const templates = metadata?.merkleProofManager?.[self.chainId]?.[strategist.toLowerCase() as any]?.templates || []
-
+      // Whenever we update, add or delete policies, we also have to clean templates for particular strategist
+      // Otherwise order of policies might impact the actions in template and cause unexpected behavior in workflows
       const newMetadata = {
         ...metadata,
         merkleProofManager: {
           ...metadata?.merkleProofManager,
           [self.chainId]: {
             ...metadata?.merkleProofManager?.[self.chainId],
-            [strategist.toLowerCase()]: { templates, policies: policies satisfies MerkleProofPolicy[] },
+            [strategist.toLowerCase()]: { templates: [], policies: policies satisfies MerkleProofPolicy[] },
           },
         },
       }
