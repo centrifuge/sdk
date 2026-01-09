@@ -288,14 +288,26 @@ export class Pool extends Entity {
           })
         }),
         switchMap((rawCurrency: bigint) => {
+          // TODO: Remove this once v3.1 testnet and mainnet data are properly synced
+          // Handle case where currency is not set (returns 0)
+          // Return a placeholder currency to allow the pool to load
+          if (rawCurrency === 0n) {
+            return of({
+              name: 'Unknown',
+              symbol: '???',
+              decimals: 18,
+            })
+          }
+
           const assetId = new AssetId(rawCurrency)
           const countryCode = assetId.nationalCurrencyCode
 
-          if (!countryCode) {
+          // Check isNationalCurrency to handle country code 0 edge case
+          if (!assetId.isNationalCurrency || !countryCode) {
             return this._root.assetCurrency(assetId)
           }
 
-          const currency = NATIONAL_CURRENCY_METADATA[countryCode]
+          const currency = NATIONAL_CURRENCY_METADATA[countryCode!]
 
           if (!currency) {
             throw new Error(`No currency found for country code ${countryCode}`)
