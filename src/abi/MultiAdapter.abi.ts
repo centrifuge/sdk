@@ -1,7 +1,7 @@
 export default [
   // 'function GLOBAL_POOL() view returns (uint64)',
   // 'function activeSessionId(uint16 centrifugeId, uint64 poolId) view returns (uint64)',
-  // 'function adapters(uint16 centrifugeId, uint64, uint256) view returns (address)',
+  'function adapters(uint16 centrifugeId, uint64, uint256) view returns (address)',
   // 'function deny(address user)',
   'function estimate(uint16 centrifugeId, bytes payload, uint256 gasLimit) view returns (uint256 total)',
   // 'function file(bytes32 what, address instance)',
@@ -10,8 +10,7 @@ export default [
   // 'function inbound(uint16 centrifugeId, bytes32 payloadHash) view returns (uint64 sessionId)',
   // 'function localCentrifugeId() view returns (uint16)',
   // 'function messageProperties() view returns (address)',
-  // 'function poolAdapters(uint16 centrifugeId, uint64 poolId) view returns (address[] adapters_)',
-  // 'function quorum(uint16 centrifugeId, uint64 poolId) view returns (uint8)',
+  'function quorum(uint16 centrifugeId, uint64 poolId) view returns (uint8)',
   // 'function recoveryIndex(uint16 centrifugeId, uint64 poolId) view returns (uint8)',
   // 'function rely(address user)',
   // 'function send(uint16 centrifugeId, bytes payload, uint256 gasLimit, address refund) payable returns (bytes32)',

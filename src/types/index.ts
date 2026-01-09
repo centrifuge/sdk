@@ -84,4 +84,5 @@ export type ProtocolContracts = {
   navManager: HexString
   simplePriceManager: HexString
   layerZeroAdapter?: HexString
+  chainlinkAdapter?: HexString
 }
