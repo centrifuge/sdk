@@ -615,6 +615,24 @@ export class Centrifuge {
   }
 
   /**
+   * Get the adapter addresses that are available for cross-chain communication.
+   */
+  adapters(centrifugeId: CentrifugeId) {
+    return this._query(['adapters', centrifugeId], () =>
+      this._protocolAddresses(centrifugeId).pipe(
+        map(({ axelarAdapter, wormholeAdapter, layerZeroAdapter, chainlinkAdapter }) => {
+          return {
+            axelarAdapter,
+            wormholeAdapter,
+            layerZeroAdapter,
+            chainlinkAdapter,
+          }
+        })
+      )
+    )
+  }
+
+  /**
    * Register an asset
    * @param originCentrifugeId - The centrifuge ID where the asset exists
    * @param registerOnCentrifugeId - The centrifuge ID where the asset should be registered
@@ -1260,6 +1278,7 @@ export class Centrifuge {
                 balanceSheet
                 centrifugeId
                 chainId
+                chainlinkAdapter
                 freezeOnlyHook
                 fullRestrictionsHook
                 gasService
