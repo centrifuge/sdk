@@ -802,7 +802,7 @@ export class Pool extends Entity {
               args: [centrifugeId, this.id.raw],
             })
             const adapters = await Promise.all(
-              Array.from({ length: Number(quorum) }, (_, index) =>
+              Array.from({ length: quorum }, (_, index) =>
                 client.readContract({
                   address: multiAdapter,
                   abi: ABI.MultiAdapter,
