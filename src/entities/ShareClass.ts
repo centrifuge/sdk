@@ -153,7 +153,7 @@ export class ShareClass extends Entity {
                   tokenPrice
                   address
                   blockchain {
-                    id
+                    centrifugeId
                   }
                 }
               }
@@ -164,13 +164,13 @@ export class ShareClass extends Entity {
                 items: {
                   totalIssuance: bigint
                   tokenPrice: bigint
-                  blockchain: { id: string }
+                  blockchain: { centrifugeId: string }
                   address: HexString
                 }[]
               }
             }) =>
               data.tokenInstances.items.map((item) => ({
-                centrifugeId: Number(item.blockchain.id),
+                centrifugeId: Number(item.blockchain.centrifugeId),
                 totalIssuance: new Balance(item.totalIssuance, poolCurrency.decimals),
                 pricePerShare: new Price(item.tokenPrice),
                 nav: new Balance(item.totalIssuance, poolCurrency.decimals).mul(new Price(item.tokenPrice)),
@@ -2148,7 +2148,7 @@ export class ShareClass extends Entity {
               assetAddress
               status
               blockchain {
-                id
+                centrifugeId
               }
             }
           }
@@ -2160,7 +2160,7 @@ export class ShareClass extends Entity {
             address: HexString
             poolId: string
             assetAddress: HexString
-            blockchain: { id: string }
+            blockchain: { centrifugeId: string }
             asset: { id: string }
             status: 'Linked' | 'Unlinked'
           }[]
@@ -2168,7 +2168,7 @@ export class ShareClass extends Entity {
       }) =>
         data.vaults.items.map(({ blockchain, asset, ...rest }) => ({
           ...rest,
-          centrifugeId: Number(blockchain.id),
+          centrifugeId: Number(blockchain.centrifugeId),
           assetId: new AssetId(asset.id),
         }))
     )
