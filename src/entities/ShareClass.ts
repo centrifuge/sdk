@@ -1272,7 +1272,7 @@ export class ShareClass extends Entity {
                   return {
                     address: investor.address,
                     amount: new Balance(outstandingInvest?.pendingAmount ?? 0n, assetDecimals),
-                    centrifugeId: investor.centrifugeId,
+                    centrifugeId: Number(investor.centrifugeId),
                     createdAt: investor.createdAt,
                     holdings: new Balance(positionBalance, poolCurrency.decimals),
                     isFrozen: investor.isFrozen ?? positionData?.isFrozen,

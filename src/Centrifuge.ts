@@ -111,6 +111,9 @@ export class Centrifuge {
   get chains() {
     return [...this.#clients.keys()]
   }
+  get chainConfigs() {
+    return [...this.#clients.values()].map((client) => client.chain)
+  }
   getChainConfig(centrifugeId: CentrifugeId) {
     return this._query(['chainConfig', centrifugeId], () =>
       this.getClient(centrifugeId).pipe(map((client) => client.chain))
@@ -329,6 +332,7 @@ export class Centrifuge {
           items {
             explorer
             chainId
+            centrifugeId
             icon
             name
             network
@@ -341,6 +345,7 @@ export class Centrifuge {
           items: {
             explorer: string | null
             chainId: string
+            centrifugeId: string
             icon: string | null
             name: string
             network: string
@@ -350,6 +355,7 @@ export class Centrifuge {
         return data.blockchains.items.map((blockchain) => ({
           explorer: blockchain.explorer,
           chainId: Number(blockchain.chainId),
+          centrifugeId: Number(blockchain.centrifugeId),
           icon: blockchain.icon,
           name: blockchain.name,
           network: blockchain.network,
