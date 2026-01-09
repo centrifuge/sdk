@@ -752,6 +752,84 @@ export class Pool extends Entity {
     }, this.centrifugeId)
   }
 
+  /**
+   * Set adapters for multiple networks at once.
+   */
+  setAdapters(
+    updates: {
+      centrifugeId: CentrifugeId
+      localAdapters: HexString[]
+      remoteAdapters: HexString[]
+      threshold?: number
+      recoveryIndex?: number
+    }[]
+  ) {
+    const self = this
+    return this._transact(async function* (ctx) {
+      const { hub } = await self._root._protocolAddresses(self.centrifugeId)
+
+      const batch = updates.map(({ centrifugeId, localAdapters, remoteAdapters, threshold, recoveryIndex }) =>
+        encodeFunctionData({
+          abi: ABI.Hub,
+          functionName: 'setAdapters',
+          args: [
+            self.id.raw,
+            centrifugeId,
+            localAdapters,
+            remoteAdapters.map(addressToBytes32),
+            threshold ?? localAdapters.length,
+            recoveryIndex ?? localAdapters.length,
+            ctx.signingAddress,
+          ],
+        })
+      )
+
+      const messages: Record<number, MessageType[]> = {}
+      updates.forEach(({ centrifugeId }) => {
+        if (!messages[centrifugeId]) messages[centrifugeId] = []
+        messages[centrifugeId].push(MessageType.SetPoolAdapters)
+      })
+
+      yield* wrapTransaction('Set pool adapters', ctx, {
+        contract: hub,
+        data: batch,
+        messages,
+      })
+    }, this.centrifugeId)
+  }
+
+  /**
+   * Get the configured adapters for a specific network.
+   * @param centrifugeId - The centrifuge ID of the network
+   */
+  adapters(centrifugeId: CentrifugeId) {
+    return this._query(['adapters', this.id.toString(), centrifugeId], () =>
+      combineLatest([this._root._protocolAddresses(this.centrifugeId), this._root.getClient(this.centrifugeId)]).pipe(
+        switchMap(([{ multiAdapter }, client]) =>
+          defer(async () => {
+            const quorum = await client.readContract({
+              address: multiAdapter,
+              abi: ABI.MultiAdapter,
+              functionName: 'quorum',
+              args: [centrifugeId, this.id.raw],
+            })
+            const adapters = await Promise.all(
+              Array.from({ length: quorum }, (_, index) =>
+                client.readContract({
+                  address: multiAdapter,
+                  abi: ABI.MultiAdapter,
+                  functionName: 'adapters',
+                  args: [centrifugeId, this.id.raw, BigInt(index)],
+                })
+              )
+            )
+            return adapters.map((addr) => addr.toLowerCase()) as HexString[]
+          })
+        )
+      )
+    )
+  }
+
   createAccounts(accounts: { accountId: bigint; isDebitNormal: boolean }[]) {
     const self = this
     return this._transact(async function* (ctx) {
