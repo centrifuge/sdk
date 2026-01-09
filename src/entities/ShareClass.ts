@@ -234,7 +234,7 @@ export class ShareClass extends Entity {
               items.map((holding) => {
                 if (!holding.holding) return of(null)
                 const assetId = new AssetId(holding.assetId)
-                return this._holding(assetId)
+                return this._holding(assetId).pipe(catchError(() => of(null)))
               })
             ),
             combineLatest(
