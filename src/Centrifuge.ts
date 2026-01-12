@@ -1209,8 +1209,8 @@ export class Centrifuge {
               return client.readContract({
                 address: gasService,
                 abi: ABI.GasService,
-                functionName: 'messageGasLimit',
-                args: [0, data],
+                functionName: 'messageOverallGasLimit',
+                args: [toCentrifugeId, data],
               })
             }),
           ]).pipe(

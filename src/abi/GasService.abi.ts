@@ -5,7 +5,7 @@ export default [
   // 'function initiateTransferShares() view returns (uint128)',
   // 'function maxAssetPriceAge() view returns (uint128)',
   // 'function maxSharePriceAge() view returns (uint128)',
-  'function messageGasLimit(uint16, bytes message) view returns (uint128)',
+  'function messageOverallGasLimit(uint16, bytes message) view returns (uint128)',
   // 'function notifyPool() view returns (uint128)',
   // 'function notifyPricePoolPerAsset() view returns (uint128)',
   // 'function notifyPricePoolPerShare() view returns (uint128)',
