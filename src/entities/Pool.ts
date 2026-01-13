@@ -7,7 +7,7 @@ import { PoolMetadataInput, ShareClassInput } from '../types/poolInput.js'
 import { PoolMetadata } from '../types/poolMetadata.js'
 import { MessageType } from '../types/transaction.js'
 import { NATIONAL_CURRENCY_METADATA } from '../utils/currencies.js'
-import { addressToBytes32, randomUint } from '../utils/index.js'
+import { addressToBytes32, generateShareClassSalt } from '../utils/index.js'
 import { repeatOnEvents } from '../utils/rx.js'
 import { wrapTransaction } from '../utils/transaction.js'
 import { AssetId, CentrifugeId, PoolId, ShareClassId } from '../utils/types.js'
@@ -608,7 +608,7 @@ export class Pool extends Entity {
               self.id.raw,
               sc.tokenName,
               sc.symbolName,
-              sc.salt?.startsWith('0x') ? (sc.salt as HexString) : toHex(sc.salt ?? randomUint(256), { size: 32 }),
+              sc.salt?.startsWith('0x') ? (sc.salt as HexString) : generateShareClassSalt(self.id.raw),
             ],
           })
         )

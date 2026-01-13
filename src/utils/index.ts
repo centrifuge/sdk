@@ -38,3 +38,15 @@ export function randomUint(bitLength: number) {
 
   return result
 }
+
+/**
+ * Generate a valid salt for addShareClass.
+ * The salt must have the poolId encoded in its first 8 bytes.
+ * Format: [poolId (8 bytes)][random (24 bytes)] = 32 bytes total
+ */
+export function generateShareClassSalt(poolId: bigint): HexString {
+  const randomPart = randomUint(192)
+  const salt = (poolId << 192n) | randomPart
+
+  return toHex(salt, { size: 32 })
+}

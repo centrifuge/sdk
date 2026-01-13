@@ -57,7 +57,7 @@ import {
   type TransactionContext,
 } from './types/transaction.js'
 import { Balance } from './utils/BigInt.js'
-import { randomUint } from './utils/index.js'
+import { generateShareClassSalt, randomUint } from './utils/index.js'
 import { createPinning, getUrlFromHash } from './utils/ipfs.js'
 import { hashKey } from './utils/query.js'
 import { makeThenable, repeatOnEvents, shareReplayWithDelayedReset } from './utils/rx.js'
@@ -271,7 +271,7 @@ export class Centrifuge {
             poolId.raw,
             sc.tokenName,
             sc.symbolName,
-            sc.salt?.startsWith('0x') ? (sc.salt as HexString) : toHex(sc.salt ?? randomUint(256), { size: 32 }),
+            sc.salt?.startsWith('0x') ? (sc.salt as HexString) : generateShareClassSalt(poolId.raw),
           ],
         })
       )
