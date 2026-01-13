@@ -183,8 +183,8 @@ export function emptyMessage(type: MessageType, subtype?: VaultUpdateKind): HexS
   switch (type) {
     case MessageType.UpdateVault:
       return encodePacked(
-        ['uint8', 'uint64', 'bytes16', 'uint128', 'bytes32', 'uint8'],
-        [type, 0n, toHex(0, { size: 16 }), 0n, toHex(0, { size: 32 }), subtype ?? VaultUpdateKind.DeployAndLink]
+        ['uint8', 'uint64', 'bytes16', 'uint128', 'bytes32', 'uint8', 'uint128'],
+        [type, 0n, toHex(0, { size: 16 }), 0n, toHex(0, { size: 32 }), subtype ?? VaultUpdateKind.DeployAndLink, 0n]
       )
     default:
       // Empty message with the length of the longest fixed-size message (NotifyShareClass with 250 bytes)
