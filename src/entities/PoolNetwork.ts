@@ -237,20 +237,22 @@ export class PoolNetwork extends Entity {
         ),
         this.pool.balanceSheetManagers(),
       ]).pipe(
-        map(([deployedOnOffRampManager, balanceSheetManagers]) => {
-          const onoffRampManager = deployedOnOffRampManager[0]
-
-          if (!onoffRampManager) {
+        map(([deployedOnOffRampManagers, balanceSheetManagers]) => {
+          if (!deployedOnOffRampManagers.length) {
             throw new Error('OnOffRampManager not found')
           }
 
-          const verifiedManager = balanceSheetManagers.find(
-            (manager) => manager.address.toLowerCase() === onoffRampManager.address.toLowerCase()
+          const bsManagerAddresses = new Set(balanceSheetManagers.map((m) => m.address.toLowerCase()))
+          const verifiedManagers = deployedOnOffRampManagers.filter((deployed) =>
+            bsManagerAddresses.has(deployed.address.toLowerCase())
           )
 
-          if (!verifiedManager) {
+          if (!verifiedManagers.length) {
             throw new Error('OnOffRampManager not found in balance sheet managers')
           }
+
+          // Use the last verified manager (most recent deployment)
+          const verifiedManager = verifiedManagers[verifiedManagers.length - 1]!
 
           return new OnOffRampManager(
             this._root,
@@ -668,7 +670,7 @@ export class PoolNetwork extends Entity {
               vault.shareClassId.raw,
               vault.assetId.raw,
               addressToBytes32(existingVault.address),
-              VaultUpdateKind.Unlink,
+              VaultUpdateKind.Link,
               0n, // gas limit
               ctx.signingAddress,
             ],
