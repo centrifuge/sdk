@@ -1501,10 +1501,121 @@ export class ShareClass extends Entity {
                 chainId
               }
             }
+<<<<<<< Updated upstream
             token {
               decimals
               blockchain {
                 chainId
+=======
+          }`,
+          { scId: this.id.raw },
+          (data: any) => data.epochInvestOrders.items
+        )
+        .pipe(
+          switchMap((epochs: any[]) => {
+            if (epochs.length === 0) return of([])
+
+            return combineLatest(
+              epochs.map((epochData: any) =>
+                this._root._queryIndexer(
+                  `query ($scId: String!, $assetId: BigInt!, $index: Int!) {
+                    investOrders(where: {
+                      tokenId: $scId,
+                      assetId: $assetId,
+                      index: $index,
+                      issuedAt_not: null
+                    }, limit: 1000) {
+                      items {
+                        account
+                        index
+                        assetId
+                        approvedAssetsAmount
+                        approvedAt
+                        issuedSharesAmount
+                        issuedAt
+                        issuedWithNavAssetPerShare
+                        issuedWithNavPoolPerShare
+                        claimedAt
+                        claimedAtBlock
+                        asset {
+                          id
+                          decimals
+                          symbol
+                          name
+                          blockchain {
+                            chainId
+                          }
+                        }
+                        token {
+                          decimals
+                          blockchain {
+                            chainId
+                          }
+                        }
+                      }
+                    }
+                  }`,
+                  { scId: this.id.raw, assetId: epochData.assetId, index: epochData.index },
+                  (orderData: any) => ({ epochData, orders: orderData.investOrders.items })
+                )
+              )
+            )
+          }),
+          map((results: any[]) => {
+            const allOrders: any[] = []
+
+            results.forEach((result: any) => {
+              const { epochData, orders } = result
+
+              if (orders.length === 0 && epochData.issuedAt) {
+                allOrders.push({
+                  investor: null,
+                  index: epochData.index,
+                  assetId: new AssetId(epochData.assetId),
+                  approvedAmount: new Balance(epochData.approvedAssetsAmount || 0n, epochData.asset.decimals),
+                  approvedAt: epochData.approvedAt ? epochData.approvedAt : null,
+                  issuedAmount: new Balance(epochData.issuedSharesAmount || 0n, epochData.token.decimals),
+                  issuedAt: epochData.issuedAt,
+                  priceAsset: new Price(epochData.issuedWithNavAssetPerShare || 0n),
+                  pricePerShare: new Price(epochData.issuedWithNavPoolPerShare || 0n),
+                  claimedAt: null,
+                  isClaimed: false,
+                  asset: {
+                    symbol: epochData.asset.symbol,
+                    name: epochData.asset.name,
+                    decimals: epochData.asset.decimals,
+                  },
+                  chainId: epochData.asset.blockchain.chainId,
+                  token: {
+                    decimals: epochData.token.decimals,
+                  },
+                })
+              } else {
+                orders.forEach((order: any) => {
+                  allOrders.push({
+                    investor: order.account.toLowerCase() as HexString,
+                    index: order.index,
+                    assetId: new AssetId(order.assetId),
+                    approvedAmount: new Balance(order.approvedAssetsAmount || 0n, order.asset.decimals),
+                    approvedAt: order.approvedAt ? order.approvedAt : null,
+                    issuedAmount: new Balance(order.issuedSharesAmount || 0n, order.token.decimals),
+                    issuedAt: order.issuedAt ? order.issuedAt : null,
+                    priceAsset: new Price(order.issuedWithNavAssetPerShare || 0n),
+                    pricePerShare: new Price(order.issuedWithNavPoolPerShare || 0n),
+                    claimedAt: order.claimedAt ? order.claimedAt : null,
+                    isClaimed: !!order.claimedAtBlock,
+                    asset: {
+                      symbol: order.asset.symbol,
+                      name: order.asset.name,
+                      decimals: order.asset.decimals,
+                    },
+                    chainId: order.asset.blockchain.chainId,
+                    token: {
+                      decimals: order.token.decimals,
+                    },
+                  })
+                })
+>>>>>>> Stashed changes
               }
             }
           }
@@ -1576,6 +1687,7 @@ export class ShareClass extends Entity {
    */
   closedRedemptions() {
     return this._query(['closedRedemptions'], () =>
+<<<<<<< Updated upstream
       this._root._queryIndexer(
         `query ($scId: String!) {
         redeemOrders(where: { tokenId: $scId, revokedAt_not: null }, limit: 1000) {
@@ -1604,6 +1716,146 @@ export class ShareClass extends Entity {
               decimals
               blockchain {
                 chainId
+=======
+      this._root
+        ._queryIndexer(
+          `query ($scId: String!) {
+            epochRedeemOrders(where: {tokenId: $scId}, limit: 1000) {
+              items {
+                assetId
+                index
+                revokedAt
+                approvedAt
+                approvedSharesAmount
+                revokedSharesAmount
+                revokedAssetsAmount
+                revokedWithNavPoolPerShare
+                revokedWithNavAssetPerShare
+                asset {
+                  decimals
+                  symbol
+                  name
+                  blockchain {
+                    chainId
+                  }
+                }
+                token {
+                  decimals
+                  blockchain {
+                    chainId
+                  }
+                }
+              }
+            }
+          }`,
+          { scId: this.id.raw },
+          (data: any) => data.epochRedeemOrders.items
+        )
+        .pipe(
+          switchMap((epochs: any[]) => {
+            if (epochs.length === 0) return of([])
+
+            return combineLatest(
+              epochs.map((epochData: any) =>
+                this._root._queryIndexer(
+                  `query ($scId: String!, $assetId: BigInt!, $index: Int!) {
+                    redeemOrders(where: {
+                      tokenId: $scId,
+                      assetId: $assetId,
+                      index: $index,
+                      revokedAt_not: null
+                    }, limit: 1000) {
+                      items {
+                        account
+                        index
+                        assetId
+                        approvedSharesAmount
+                        approvedAt
+                        revokedAssetsAmount
+                        revokedAt
+                        revokedWithNavAssetPerShare
+                        revokedWithNavPoolPerShare
+                        claimedAt
+                        claimedAtBlock
+                        asset {
+                          id
+                          decimals
+                          symbol
+                          name
+                          blockchain {
+                            chainId
+                          }
+                        }
+                        token {
+                          decimals
+                          blockchain {
+                            chainId
+                          }
+                        }
+                      }
+                    }
+                  }`,
+                  { scId: this.id.raw, assetId: epochData.assetId, index: epochData.index },
+                  (orderData: any) => ({ epochData, orders: orderData.redeemOrders.items })
+                )
+              )
+            )
+          }),
+          map((results: any[]) => {
+            const allOrders: any[] = []
+
+            results.forEach((result: any) => {
+              const { epochData, orders } = result
+
+              if (orders.length === 0 && epochData.revokedAt) {
+                allOrders.push({
+                  investor: null,
+                  index: epochData.index,
+                  assetId: new AssetId(epochData.assetId),
+                  approvedAmount: new Balance(epochData.approvedSharesAmount || 0n, epochData.token.decimals),
+                  approvedAt: epochData.approvedAt ? epochData.approvedAt : null,
+                  payoutAmount: new Balance(epochData.revokedAssetsAmount || 0n, epochData.asset.decimals),
+                  revokedAt: epochData.revokedAt,
+                  priceAsset: new Price(epochData.revokedWithNavAssetPerShare || 0n),
+                  pricePerShare: new Price(epochData.revokedWithNavPoolPerShare || 0n),
+                  claimedAt: null,
+                  isClaimed: false,
+                  asset: {
+                    symbol: epochData.asset.symbol,
+                    name: epochData.asset.name,
+                    decimals: epochData.asset.decimals,
+                  },
+                  chainId: epochData.asset.blockchain.chainId,
+                  token: {
+                    decimals: epochData.token.decimals,
+                  },
+                })
+              } else {
+                orders.forEach((order: any) => {
+                  allOrders.push({
+                    investor: order.account.toLowerCase() as HexString,
+                    index: order.index,
+                    assetId: new AssetId(order.assetId),
+                    approvedAmount: new Balance(order.approvedSharesAmount || 0n, order.token.decimals),
+                    approvedAt: order.approvedAt ? order.approvedAt : null,
+                    payoutAmount: new Balance(order.revokedAssetsAmount || 0n, order.asset.decimals),
+                    revokedAt: order.revokedAt ? order.revokedAt : null,
+                    priceAsset: new Price(order.revokedWithNavAssetPerShare || 0n),
+                    pricePerShare: new Price(order.revokedWithNavPoolPerShare || 0n),
+                    claimedAt: order.claimedAt ? order.claimedAt : null,
+                    isClaimed: !!order.claimedAtBlock,
+                    asset: {
+                      symbol: order.asset.symbol,
+                      name: order.asset.name,
+                      decimals: order.asset.decimals,
+                    },
+                    chainId: order.asset.blockchain.chainId,
+                    token: {
+                      decimals: order.token.decimals,
+                    },
+                  })
+                })
+>>>>>>> Stashed changes
               }
             }
           }
