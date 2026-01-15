@@ -1571,7 +1571,7 @@ export class ShareClass extends Entity {
                   investor: null,
                   index: epochData.index,
                   assetId: new AssetId(epochData.assetId),
-                  approvedAmount: new Balance(0n, epochData.asset.decimals),
+                  approvedAmount: new Balance(epochData.approvedAssetsAmount || 0n, epochData.asset.decimals),
                   approvedAt: epochData.approvedAt ? epochData.approvedAt : null,
                   issuedAmount: new Balance(epochData.issuedSharesAmount || 0n, epochData.token.decimals),
                   issuedAt: epochData.issuedAt,
@@ -1638,6 +1638,7 @@ export class ShareClass extends Entity {
                 index
                 revokedAt
                 approvedAt
+                approvedSharesAmount
                 revokedSharesAmount
                 revokedAssetsAmount
                 revokedWithNavPoolPerShare
@@ -1723,7 +1724,7 @@ export class ShareClass extends Entity {
                   investor: null,
                   index: epochData.index,
                   assetId: new AssetId(epochData.assetId),
-                  approvedAmount: new Balance(0n, epochData.token.decimals),
+                  approvedAmount: new Balance(epochData.approvedSharesAmount || 0n, epochData.token.decimals),
                   approvedAt: epochData.approvedAt ? epochData.approvedAt : null,
                   payoutAmount: new Balance(epochData.revokedAssetsAmount || 0n, epochData.asset.decimals),
                   revokedAt: epochData.revokedAt,
