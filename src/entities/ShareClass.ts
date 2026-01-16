@@ -979,12 +979,31 @@ export class ShareClass extends Entity {
 
   /**
    * Update a member of the share class.
-   * @param address Address of the investor
-   * @param validUntil Time in seconds from Unix epoch until the investor is valid
-   * @param chainId Chain ID of the network on which to update the member
+   * @param memberOrMembers Member or array of members to update
+   * @param validUntil Time in seconds from Unix epoch until the investor is valid (if single member)
+   * @param chainId Chain ID of the network on which to update the member (if single member)
    */
-  updateMember(address: HexString, validUntil: number, chainId: number) {
-    return this.updateMembers([{ address, validUntil, chainId }])
+  updateMember(
+    memberOrMembers: HexString | { address: HexString; validUntil: number; chainId: number } | { address: HexString; validUntil: number; chainId: number }[],
+    validUntil?: number,
+    chainId?: number
+  ) {
+    const members = Array.isArray(memberOrMembers)
+      ? memberOrMembers
+      : [
+        {
+          address: (memberOrMembers as any).address || (memberOrMembers as any) as HexString, // Handle case where first arg is address string vs object
+          validUntil: validUntil!,
+          chainId: chainId!,
+        },
+      ]
+
+    // Check if the first argument is actually a string (address) for backward compatibility
+    if (typeof memberOrMembers === 'string') {
+      return this.updateMembers([{ address: memberOrMembers, validUntil: validUntil!, chainId: chainId! }])
+    }
+
+    return this.updateMembers(members)
   }
 
   /**
@@ -1095,58 +1114,105 @@ export class ShareClass extends Entity {
           this.pool.currency(),
           this._investorOrders(),
           this._tokenInstancePositions({ limit, offset, orderBy, orderDirection, filter }),
+          this._whitelistedInvestors({ limit, offset }), // Fetch whitelist as well
         ]).pipe(
           switchMap(
             ([
               deployments,
               poolCurrency,
               { outstandingInvests, outstandingRedeems },
-              { items: tokenInstancePositions, assets, pageInfo, totalCount },
+              { items: tokenInstancePositions, assets, pageInfo: posPageInfo, totalCount: posTotalCount },
+              { items: whitelistedInvestors, assets: wlAssets, pageInfo: wlPageInfo, totalCount: wlTotalCount },
             ]) => {
-              // Handle empty positions case or else combineLatest([]) can hang indefinitely
-              if (tokenInstancePositions.length === 0) {
+              if (tokenInstancePositions.length === 0 && whitelistedInvestors.length === 0) {
                 return of({
                   investors: [],
-                  pageInfo,
-                  totalCount,
+                  pageInfo: posPageInfo, // Default to pos info
+                  totalCount: posTotalCount,
                 })
               }
 
-              const whitelistedQueries = tokenInstancePositions.map((position) =>
-                this._whitelistedInvestor({
-                  accountAddress: position.accountAddress,
-                  centrifugeId: position.centrifugeId,
-                  tokenId: this.id.raw,
-                }).pipe(catchError(() => of(null)))
-              )
+              const accounts = new Set([
+                ...tokenInstancePositions.map((p) => p.accountAddress),
+                ...whitelistedInvestors.map((w) => w.address),
+              ])
+
+              // Resolvers for missing data
+              const queries = Array.from(accounts).map((account) => {
+                const pos = tokenInstancePositions.find((p) => p.accountAddress === account)
+                const wl = whitelistedInvestors.find((w) => w.address === account)
+
+                // If missing position, fetch it
+                const posQuery = pos
+                  ? of(pos)
+                  : this._tokenInstancePosition({ accountAddress: account, centrifugeId: '0', tokenId: this.id.raw }).pipe( // '0' is placeholder, ideally we find it or iterate chains? Actually _tokenInstancePosition might iterate?
+                    catchError(() => of(null))
+                  )
+
+                // If missing whitelist, fetch it
+                const wlQuery = wl
+                  ? of(wl)
+                  : this._whitelistedInvestor({
+                    accountAddress: account,
+                    centrifugeId: '0', // Placeholder
+                    tokenId: this.id.raw,
+                  }).pipe(catchError(() => of(null)))
+
+                // Wait, _tokenInstancePosition takes centrifugeId. We might not know it if we only have address from whitelist.
+                // Whitelisted investor has 'centrifugeId'.
+                // Position has 'centrifugeId'.
+
+                // Refined logic:
+                // If we have 'pos', we have centrifugeId.
+                // If we have 'wl', we have centrifugeId.
+                // If we have neither... impossible since we iterate union.
+
+                const centrifugeId = pos?.centrifugeId || wl?.centrifugeId
+
+                // If we only have account but no ID (shouldn't happen given sources), we can't query efficienty without iteration. 
+                // But both sources provide centrifugeId.
+
+                return combineLatest([
+                  pos ? of(pos) : this._tokenInstancePosition({ accountAddress: account, centrifugeId: centrifugeId!, tokenId: this.id.raw }).pipe(catchError(() => of(null))),
+                  wl ? of(wl) : this._whitelistedInvestor({ accountAddress: account, centrifugeId: centrifugeId!, tokenId: this.id.raw }).pipe(catchError(() => of(null)))
+                ]).pipe(
+                  map(([fetchedPos, fetchedWl]) => ({ account, pos: fetchedPos, wl: fetchedWl, centrifugeId }))
+                )
+              })
 
               const chainsById = new Map(deployments.blockchains.items.map((chain) => [chain.centrifugeId, chain.id]))
 
-              return combineLatest(whitelistedQueries).pipe(
-                map((whitelistResults) => {
-                  const investors = tokenInstancePositions.map((position, i) => {
-                    const whitelistData = whitelistResults[i]
-                    const chainId = Number(chainsById.get(position.centrifugeId)!)
-                    const outstandingInvest = outstandingInvests.find(
-                      (order) => order.investor === position.accountAddress
-                    )
-                    const outstandingRedeem = outstandingRedeems.find(
-                      (order) => order.investor === position.accountAddress
-                    )
+              return combineLatest(queries).pipe(
+                map((results) => {
+                  const investors = results.map(({ account, pos, wl, centrifugeId }) => {
+                    const chainId = Number(chainsById.get(centrifugeId!)!)
+                    const outstandingInvest = outstandingInvests.find((order) => order.investor === account)
+                    const outstandingRedeem = outstandingRedeems.find((order) => order.investor === account)
+
                     const assetId = outstandingInvest?.assetId.toString()
-                    const assetDecimals =
-                      assets.find((asset: { id: string; decimals: number }) => asset.id === assetId)?.decimals ?? 18
-                    const isWhitelistedStatus = whitelistData
-                      ? parseInt(whitelistData.validUntil, 10) > Date.now()
+                    // Asset decimals might be in 'assets' from positions query. If we didn't get positions query main result, we might miss 'assets'.
+                    // We should probably rely on default or fetch? 'assets' comes from _tokenInstancePositions query result.
+                    // If we only hit whitelist, we don't have 'assets'. But _whitelistedInvestors ALSO returns 'assets'.
+                    // I need to start taking assets from both sources or check if available.
+
+                    // Actually, _whitelistedInvestors returns assets too (checked in previous view).
+                    // So I can merge assets.
+
+                    const combinedAssets = [...(assets || []), ...(wlAssets || [])]
+
+                    const assetDecimals = combinedAssets.find((a: any) => a.id === assetId)?.decimals ?? 18
+
+                    const isWhitelistedStatus = wl
+                      ? parseInt(wl.validUntil, 10) > Date.now()
                       : false
 
                     return {
-                      address: position.accountAddress,
+                      address: account,
                       amount: new Balance(outstandingInvest?.pendingAmount ?? 0n, assetDecimals),
                       chainId,
-                      createdAt: whitelistData?.createdAt ?? '',
-                      holdings: new Balance(position.balance, poolCurrency.decimals),
-                      isFrozen: whitelistData?.isFrozen ?? position.isFrozen,
+                      createdAt: wl?.createdAt ?? '',
+                      holdings: new Balance(pos?.balance ?? 0n, poolCurrency.decimals),
+                      isFrozen: wl?.isFrozen ?? pos?.isFrozen,
                       outstandingInvest: outstandingInvest
                         ? new Balance(outstandingInvest.pendingAmount, assetDecimals).scale(poolCurrency.decimals)
                         : new Balance(0n, poolCurrency.decimals),
@@ -1164,6 +1230,8 @@ export class ShareClass extends Entity {
                   })
 
                   investors.sort((a, b) => {
+                    // Custom sort or use orderBy params. 
+                    // For now maintain balance sort
                     const aValue = BigInt(a.holdings.toBigInt())
                     const bValue = BigInt(b.holdings.toBigInt())
                     return aValue > bValue ? -1 : aValue < bValue ? 1 : 0
@@ -1171,8 +1239,8 @@ export class ShareClass extends Entity {
 
                   return {
                     investors,
-                    pageInfo,
-                    totalCount,
+                    pageInfo: posPageInfo, // Approximation
+                    totalCount: Math.max(posTotalCount, wlTotalCount), // Approximation
                   }
                 })
               )
