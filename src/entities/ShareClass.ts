@@ -1406,8 +1406,6 @@ export class ShareClass extends Entity {
 
               const basePendingDeposit = pendingMatch?.pendingDeposit ?? new Balance(0n, 18)
               const basePendingRedeem = pendingMatch?.pendingRedeem ?? new Balance(0n, 18)
-              const queuedInvest = pendingMatch?.queuedInvest ?? new Balance(0n, 18)
-              const queuedRedeem = pendingMatch?.queuedRedeem ?? new Balance(0n, 18)
 
               const allPendingIssuances = pendingMatch?.pendingIssuances ?? []
               const allPendingRevocations = pendingMatch?.pendingRevocations ?? []
@@ -1430,42 +1428,174 @@ export class ShareClass extends Entity {
 
                       return {
                         investor,
+                        investment,
                         assetId: vault.assetId,
                         chainId: vault.chainId,
-                        pendingDepositAssets: investment.pendingDepositAssets || basePendingDeposit,
-                        pendingRedeemShares: basePendingRedeem,
-                        claimableDepositShares: investment.claimableDepositShares,
-                        claimableRedeemAssets: investment.claimableRedeemAssets,
-                        queuedInvest,
-                        queuedRedeem,
-                        depositEpoch: pendingMatch?.depositEpoch,
-                        redeemEpoch: pendingMatch?.redeemEpoch,
-                        issueEpoch: pendingMatch?.issueEpoch,
-                        revokeEpoch: pendingMatch?.revokeEpoch,
                         pendingIssuances,
                         pendingRevocations,
+                        pendingMatch,
                       }
                     }),
                     catchError(() =>
                       of({
                         investor,
+                        investment: null,
                         assetId: vault.assetId,
                         chainId: vault.chainId,
-                        pendingDepositAssets: new Balance(0n, 18),
-                        pendingRedeemShares: new Balance(0n, 18),
-                        claimableDepositShares: new Balance(0n, 18),
-                        claimableRedeemAssets: new Balance(0n, 18),
-                        queuedInvest: new Balance(0n, 18),
-                        queuedRedeem: new Balance(0n, 18),
                         pendingIssuances: [],
                         pendingRevocations: [],
+                        pendingMatch: null,
                       })
                     )
                   )
                 )
               )
             })
-          ).pipe(map((results) => results.flat()))
+          ).pipe(
+            map((vaultResults) => {
+              const expandedRecords: Array<{
+                investor: HexString
+                assetId: AssetId
+                chainId: number
+                epoch: number
+                epochType: 'deposit' | 'issue' | 'redeem' | 'revoke'
+                investorAmount: Balance
+                totalEpochAmount: Balance
+                claimableDepositShares?: Balance
+                claimableRedeemAssets?: Balance
+                pendingIssuances: any[]
+                pendingRevocations: any[]
+              }> = []
+
+              vaultResults.forEach((vaultInvestments) => {
+                // Group by asset to calculate totals
+                const investmentsByAsset = new Map<string, typeof vaultInvestments>()
+                vaultInvestments.forEach((inv) => {
+                  const key = inv.assetId.toString()
+                  if (!investmentsByAsset.has(key)) {
+                    investmentsByAsset.set(key, [])
+                  }
+                  investmentsByAsset.get(key)!.push(inv)
+                })
+
+                investmentsByAsset.forEach((assetInvestments) => {
+                  if (assetInvestments.length === 0) return
+
+                  const totalPendingDeposits = assetInvestments.reduce((sum, inv) => {
+                    if (!inv.investment) return sum
+                    return sum.add(inv.investment.pendingDepositAssets)
+                  }, new Balance(0n, assetInvestments[0]?.investment?.pendingDepositAssets?.decimals ?? 18))
+
+                  const totalPendingRedeems = assetInvestments.reduce((sum, inv) => {
+                    if (!inv.investment) return sum
+                    return sum.add(inv.investment.pendingRedeemShares)
+                  }, new Balance(0n, assetInvestments[0]?.investment?.pendingRedeemShares?.decimals ?? 18))
+
+                  assetInvestments.forEach((inv) => {
+                    if (!inv.investment || !inv.pendingMatch) return
+
+                    if (inv.pendingMatch.depositEpoch !== undefined && !inv.investment.pendingDepositAssets.isZero()) {
+                      const investorRatio = totalPendingDeposits.isZero()
+                        ? 0
+                        : inv.investment.pendingDepositAssets.toDecimal().div(totalPendingDeposits.toDecimal()).toNumber()
+                      const investorAmount = Balance.fromFloat(
+                        inv.pendingMatch.pendingDeposit.toDecimal().mul(investorRatio),
+                        inv.pendingMatch.pendingDeposit.decimals
+                      )
+
+                      expandedRecords.push({
+                        investor: inv.investor,
+                        assetId: inv.assetId,
+                        chainId: inv.chainId,
+                        epoch: inv.pendingMatch.depositEpoch,
+                        epochType: 'deposit',
+                        investorAmount,
+                        totalEpochAmount: inv.pendingMatch.pendingDeposit,
+                        claimableDepositShares: inv.investment.claimableDepositShares,
+                        pendingIssuances: inv.pendingIssuances,
+                        pendingRevocations: inv.pendingRevocations,
+                      })
+                    }
+
+                    inv.pendingIssuances.forEach((issuance) => {
+                      if (!inv.investment.pendingDepositAssets.isZero()) {
+                        const investorRatio = totalPendingDeposits.isZero()
+                          ? 0
+                          : inv.investment.pendingDepositAssets.toDecimal().div(totalPendingDeposits.toDecimal()).toNumber()
+                        const investorAmount = Balance.fromFloat(
+                          issuance.amount.toDecimal().mul(investorRatio),
+                          issuance.amount.decimals
+                        )
+
+                        expandedRecords.push({
+                          investor: inv.investor,
+                          assetId: inv.assetId,
+                          chainId: inv.chainId,
+                          epoch: issuance.epoch,
+                          epochType: 'issue',
+                          investorAmount,
+                          totalEpochAmount: issuance.amount,
+                          claimableDepositShares: inv.investment.claimableDepositShares,
+                          pendingIssuances: inv.pendingIssuances,
+                          pendingRevocations: inv.pendingRevocations,
+                        })
+                      }
+                    })
+
+                    if (inv.pendingMatch.redeemEpoch !== undefined && !inv.investment.pendingRedeemShares.isZero()) {
+                      const investorRatio = totalPendingRedeems.isZero()
+                        ? 0
+                        : inv.investment.pendingRedeemShares.toDecimal().div(totalPendingRedeems.toDecimal()).toNumber()
+                      const investorAmount = Balance.fromFloat(
+                        inv.pendingMatch.pendingRedeem.toDecimal().mul(investorRatio),
+                        inv.pendingMatch.pendingRedeem.decimals
+                      )
+
+                      expandedRecords.push({
+                        investor: inv.investor,
+                        assetId: inv.assetId,
+                        chainId: inv.chainId,
+                        epoch: inv.pendingMatch.redeemEpoch,
+                        epochType: 'redeem',
+                        investorAmount,
+                        totalEpochAmount: inv.pendingMatch.pendingRedeem,
+                        claimableRedeemAssets: inv.investment.claimableRedeemAssets,
+                        pendingIssuances: inv.pendingIssuances,
+                        pendingRevocations: inv.pendingRevocations,
+                      })
+                    }
+
+                    inv.pendingRevocations.forEach((revocation) => {
+                      if (!inv.investment.pendingRedeemShares.isZero()) {
+                        const investorRatio = totalPendingRedeems.isZero()
+                          ? 0
+                          : inv.investment.pendingRedeemShares.toDecimal().div(totalPendingRedeems.toDecimal()).toNumber()
+                        const investorAmount = Balance.fromFloat(
+                          revocation.amount.toDecimal().mul(investorRatio),
+                          revocation.amount.decimals
+                        )
+
+                        expandedRecords.push({
+                          investor: inv.investor,
+                          assetId: inv.assetId,
+                          chainId: inv.chainId,
+                          epoch: revocation.epoch,
+                          epochType: 'revoke',
+                          investorAmount,
+                          totalEpochAmount: revocation.amount,
+                          claimableRedeemAssets: inv.investment.claimableRedeemAssets,
+                          pendingIssuances: inv.pendingIssuances,
+                          pendingRevocations: inv.pendingRevocations,
+                        })
+                      }
+                    })
+                  })
+                })
+              })
+
+              return expandedRecords
+            })
+          )
         })
       )
     )
