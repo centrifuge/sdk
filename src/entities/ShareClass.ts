@@ -1404,9 +1404,6 @@ export class ShareClass extends Entity {
                 (p) => p.assetId.equals(vault.assetId) && p.chainId === vault.chainId
               )
 
-              const basePendingDeposit = pendingMatch?.pendingDeposit ?? new Balance(0n, 18)
-              const basePendingRedeem = pendingMatch?.pendingRedeem ?? new Balance(0n, 18)
-
               const allPendingIssuances = pendingMatch?.pendingIssuances ?? []
               const allPendingRevocations = pendingMatch?.pendingRevocations ?? []
 
@@ -1481,15 +1478,21 @@ export class ShareClass extends Entity {
                 investmentsByAsset.forEach((assetInvestments) => {
                   if (assetInvestments.length === 0) return
 
-                  const totalPendingDeposits = assetInvestments.reduce((sum, inv) => {
-                    if (!inv.investment) return sum
-                    return sum.add(inv.investment.pendingDepositAssets)
-                  }, new Balance(0n, assetInvestments[0]?.investment?.pendingDepositAssets?.decimals ?? 18))
+                  const totalPendingDeposits = assetInvestments.reduce(
+                    (sum, inv) => {
+                      if (!inv.investment) return sum
+                      return sum.add(inv.investment.pendingDepositAssets)
+                    },
+                    new Balance(0n, assetInvestments[0]?.investment?.pendingDepositAssets?.decimals ?? 18)
+                  )
 
-                  const totalPendingRedeems = assetInvestments.reduce((sum, inv) => {
-                    if (!inv.investment) return sum
-                    return sum.add(inv.investment.pendingRedeemShares)
-                  }, new Balance(0n, assetInvestments[0]?.investment?.pendingRedeemShares?.decimals ?? 18))
+                  const totalPendingRedeems = assetInvestments.reduce(
+                    (sum, inv) => {
+                      if (!inv.investment) return sum
+                      return sum.add(inv.investment.pendingRedeemShares)
+                    },
+                    new Balance(0n, assetInvestments[0]?.investment?.pendingRedeemShares?.decimals ?? 18)
+                  )
 
                   assetInvestments.forEach((inv) => {
                     if (!inv.investment || !inv.pendingMatch) return
@@ -1497,7 +1500,10 @@ export class ShareClass extends Entity {
                     if (inv.pendingMatch.depositEpoch !== undefined && !inv.investment.pendingDepositAssets.isZero()) {
                       const investorRatio = totalPendingDeposits.isZero()
                         ? 0
-                        : inv.investment.pendingDepositAssets.toDecimal().div(totalPendingDeposits.toDecimal()).toNumber()
+                        : inv.investment.pendingDepositAssets
+                            .toDecimal()
+                            .div(totalPendingDeposits.toDecimal())
+                            .toNumber()
                       const investorAmount = Balance.fromFloat(
                         inv.pendingMatch.pendingDeposit.toDecimal().mul(investorRatio),
                         inv.pendingMatch.pendingDeposit.decimals
@@ -1521,7 +1527,10 @@ export class ShareClass extends Entity {
                       if (!inv.investment.pendingDepositAssets.isZero()) {
                         const investorRatio = totalPendingDeposits.isZero()
                           ? 0
-                          : inv.investment.pendingDepositAssets.toDecimal().div(totalPendingDeposits.toDecimal()).toNumber()
+                          : inv.investment.pendingDepositAssets
+                              .toDecimal()
+                              .div(totalPendingDeposits.toDecimal())
+                              .toNumber()
                         const investorAmount = Balance.fromFloat(
                           issuance.amount.toDecimal().mul(investorRatio),
                           issuance.amount.decimals
@@ -1569,7 +1578,10 @@ export class ShareClass extends Entity {
                       if (!inv.investment.pendingRedeemShares.isZero()) {
                         const investorRatio = totalPendingRedeems.isZero()
                           ? 0
-                          : inv.investment.pendingRedeemShares.toDecimal().div(totalPendingRedeems.toDecimal()).toNumber()
+                          : inv.investment.pendingRedeemShares
+                              .toDecimal()
+                              .div(totalPendingRedeems.toDecimal())
+                              .toNumber()
                         const investorAmount = Balance.fromFloat(
                           revocation.amount.toDecimal().mul(investorRatio),
                           revocation.amount.decimals
