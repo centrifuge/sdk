@@ -1302,6 +1302,8 @@ export class ShareClass extends Entity {
                   maxDepositClaims: number
                   pendingRedeem: bigint
                   pendingDeposit: bigint
+                  queuedInvest: bigint
+                  queuedRedeem: bigint
                 }[]
               >()
 
@@ -2302,11 +2304,20 @@ export class ShareClass extends Entity {
               client: this._root.getClient(this.pool.chainId),
             })
 
-            const [maxDepositClaims, maxRedeemClaims, [pendingDeposit], [pendingRedeem]] = await Promise.all([
+            const [
+              maxDepositClaims,
+              maxRedeemClaims,
+              [pendingDeposit],
+              [pendingRedeem],
+              [, queuedInvest],
+              [, queuedRedeem],
+            ] = await Promise.all([
               contract.read.maxDepositClaims([this.id.raw, addressToBytes32(investor), assetId.raw]),
               contract.read.maxRedeemClaims([this.id.raw, addressToBytes32(investor), assetId.raw]),
               contract.read.depositRequest([this.id.raw, assetId.raw, addressToBytes32(investor)]),
               contract.read.redeemRequest([this.id.raw, assetId.raw, addressToBytes32(investor)]),
+              contract.read.queuedDepositRequest([this.id.raw, assetId.raw, addressToBytes32(investor)]),
+              contract.read.queuedRedeemRequest([this.id.raw, assetId.raw, addressToBytes32(investor)]),
             ])
 
             return {
@@ -2316,6 +2327,8 @@ export class ShareClass extends Entity {
               maxRedeemClaims,
               pendingDeposit,
               pendingRedeem,
+              queuedInvest,
+              queuedRedeem,
             }
           }).pipe(
             repeatOnEvents(
