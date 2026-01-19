@@ -785,20 +785,18 @@ describe('ShareClass', () => {
     expect(result.length).to.be.greaterThan(0)
 
     const item = result[0]!
-    expect(item).to.have.keys([
-      'investor',
-      'assetId',
-      'pendingDepositAssets',
-      'pendingRedeemShares',
-      'claimableDepositShares',
-      'claimableRedeemAssets',
-    ])
+    expect(item).to.have.property('investor')
+    expect(item).to.have.property('assetId')
+    expect(item).to.have.property('chainId')
+    expect(item).to.have.property('epoch')
+    expect(item).to.have.property('epochType')
+    expect(item).to.have.property('investorAmount')
+    expect(item).to.have.property('totalEpochAmount')
 
     expect(item.assetId).to.be.instanceOf(AssetId)
-    expect(item.pendingDepositAssets).to.be.instanceOf(Balance)
-    expect(item.pendingRedeemShares).to.be.instanceOf(Balance)
-    expect(item.claimableDepositShares).to.be.instanceOf(Balance)
-    expect(item.claimableRedeemAssets).to.be.instanceOf(Balance)
+    expect(item.investorAmount).to.be.instanceOf(Balance)
+    expect(item.totalEpochAmount).to.be.instanceOf(Balance)
+    expect(['deposit', 'issue', 'redeem', 'revoke']).to.include(item.epochType)
   })
 
   describe('closedInvestments', () => {

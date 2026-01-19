@@ -57,7 +57,10 @@ export type MerkleProofPolicy = {
   }[]
 }
 
-export type MerkleProofPolicyInput = Pick<MerkleProofPolicy, 'target' | 'decoder' | 'name' | 'selector' | 'inputs'> & {
+export type MerkleProofPolicyInput = Pick<
+  MerkleProofPolicy,
+  'target' | 'targetName' | 'decoder' | 'name' | 'selector' | 'inputs'
+> & {
   valueNonZero?: boolean
 }
 

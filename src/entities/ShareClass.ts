@@ -1334,6 +1334,8 @@ export class ShareClass extends Entity {
                   maxDepositClaims: number
                   pendingRedeem: bigint
                   pendingDeposit: bigint
+                  queuedInvest: bigint
+                  queuedRedeem: bigint
                 }[]
               >()
 
@@ -1442,11 +1444,6 @@ export class ShareClass extends Entity {
                 (p) => p.assetId.equals(vault.assetId) && p.centrifugeId === vault.centrifugeId
               )
 
-              const basePendingDeposit = pendingMatch?.pendingDeposit ?? new Balance(0n, 18)
-              const basePendingRedeem = pendingMatch?.pendingRedeem ?? new Balance(0n, 18)
-              const queuedInvest = pendingMatch?.queuedInvest ?? new Balance(0n, 18)
-              const queuedRedeem = pendingMatch?.queuedRedeem ?? new Balance(0n, 18)
-
               const allPendingIssuances = pendingMatch?.pendingIssuances ?? []
               const allPendingRevocations = pendingMatch?.pendingRevocations ?? []
 
@@ -1468,42 +1465,180 @@ export class ShareClass extends Entity {
 
                       return {
                         investor,
+                        investment,
                         assetId: vault.assetId,
                         centrifugeId: vault.centrifugeId,
-                        pendingDepositAssets: investment.pendingDepositAssets || basePendingDeposit,
-                        pendingRedeemShares: basePendingRedeem,
-                        claimableDepositShares: investment.claimableDepositShares,
-                        claimableRedeemAssets: investment.claimableRedeemAssets,
-                        queuedInvest,
-                        queuedRedeem,
-                        depositEpoch: pendingMatch?.depositEpoch,
-                        redeemEpoch: pendingMatch?.redeemEpoch,
-                        issueEpoch: pendingMatch?.issueEpoch,
-                        revokeEpoch: pendingMatch?.revokeEpoch,
                         pendingIssuances,
                         pendingRevocations,
+                        pendingMatch,
                       }
                     }),
                     catchError(() =>
                       of({
                         investor,
+                        investment: null,
                         assetId: vault.assetId,
                         centrifugeId: vault.centrifugeId,
-                        pendingDepositAssets: new Balance(0n, 18),
-                        pendingRedeemShares: new Balance(0n, 18),
-                        claimableDepositShares: new Balance(0n, 18),
-                        claimableRedeemAssets: new Balance(0n, 18),
-                        queuedInvest: new Balance(0n, 18),
-                        queuedRedeem: new Balance(0n, 18),
                         pendingIssuances: [],
                         pendingRevocations: [],
+                        pendingMatch: null,
                       })
                     )
                   )
                 )
               )
             })
-          ).pipe(map((results) => results.flat()))
+          ).pipe(
+            map((vaultResults) => {
+              const expandedRecords: Array<{
+                investor: HexString
+                assetId: AssetId
+                centrifugeId: number
+                epoch: number
+                epochType: 'deposit' | 'issue' | 'redeem' | 'revoke'
+                investorAmount: Balance
+                totalEpochAmount: Balance
+                claimableDepositShares?: Balance
+                claimableRedeemAssets?: Balance
+                pendingIssuances: any[]
+                pendingRevocations: any[]
+              }> = []
+
+              vaultResults.forEach((vaultInvestments) => {
+                // Group by asset to calculate totals
+                const investmentsByAsset = new Map<string, typeof vaultInvestments>()
+                vaultInvestments.forEach((inv) => {
+                  const key = inv.assetId.toString()
+                  if (!investmentsByAsset.has(key)) {
+                    investmentsByAsset.set(key, [])
+                  }
+                  investmentsByAsset.get(key)!.push(inv)
+                })
+
+                investmentsByAsset.forEach((assetInvestments) => {
+                  if (assetInvestments.length === 0) return
+
+                  const totalPendingDeposits = assetInvestments.reduce(
+                    (sum, inv) => {
+                      if (!inv.investment) return sum
+                      return sum.add(inv.investment.pendingDepositAssets)
+                    },
+                    new Balance(0n, assetInvestments[0]?.investment?.pendingDepositAssets?.decimals ?? 18)
+                  )
+
+                  const totalPendingRedeems = assetInvestments.reduce(
+                    (sum, inv) => {
+                      if (!inv.investment) return sum
+                      return sum.add(inv.investment.pendingRedeemShares)
+                    },
+                    new Balance(0n, assetInvestments[0]?.investment?.pendingRedeemShares?.decimals ?? 18)
+                  )
+
+                  assetInvestments.forEach((inv) => {
+                    if (!inv.investment || !inv.pendingMatch) return
+
+                    if (inv.pendingMatch.depositEpoch !== undefined && !inv.investment.pendingDepositAssets.isZero()) {
+                      const investorRatio = totalPendingDeposits.isZero()
+                        ? 0
+                        : inv.investment.pendingDepositAssets.toDecimal().div(totalPendingDeposits.toDecimal())
+                      const investorAmount = Balance.fromFloat(
+                        inv.pendingMatch.pendingDeposit.toDecimal().mul(investorRatio),
+                        inv.pendingMatch.pendingDeposit.decimals
+                      )
+
+                      expandedRecords.push({
+                        investor: inv.investor,
+                        assetId: inv.assetId,
+                        centrifugeId: inv.centrifugeId,
+                        epoch: inv.pendingMatch.depositEpoch,
+                        epochType: 'deposit',
+                        investorAmount,
+                        totalEpochAmount: inv.pendingMatch.pendingDeposit,
+                        claimableDepositShares: inv.investment.claimableDepositShares,
+                        pendingIssuances: inv.pendingIssuances,
+                        pendingRevocations: inv.pendingRevocations,
+                      })
+                    }
+
+                    inv.pendingIssuances.forEach((issuance) => {
+                      if (!inv.investment.pendingDepositAssets.isZero()) {
+                        const investorRatio = totalPendingDeposits.isZero()
+                          ? 0
+                          : inv.investment.pendingDepositAssets.toDecimal().div(totalPendingDeposits.toDecimal())
+                        const investorAmount = Balance.fromFloat(
+                          issuance.amount.toDecimal().mul(investorRatio),
+                          issuance.amount.decimals
+                        )
+
+                        expandedRecords.push({
+                          investor: inv.investor,
+                          assetId: inv.assetId,
+                          centrifugeId: inv.centrifugeId,
+                          epoch: issuance.epoch,
+                          epochType: 'issue',
+                          investorAmount,
+                          totalEpochAmount: issuance.amount,
+                          claimableDepositShares: inv.investment.claimableDepositShares,
+                          pendingIssuances: inv.pendingIssuances,
+                          pendingRevocations: inv.pendingRevocations,
+                        })
+                      }
+                    })
+
+                    if (inv.pendingMatch.redeemEpoch !== undefined && !inv.investment.pendingRedeemShares.isZero()) {
+                      const investorRatio = totalPendingRedeems.isZero()
+                        ? 0
+                        : inv.investment.pendingRedeemShares.toDecimal().div(totalPendingRedeems.toDecimal())
+                      const investorAmount = Balance.fromFloat(
+                        inv.pendingMatch.pendingRedeem.toDecimal().mul(investorRatio),
+                        inv.pendingMatch.pendingRedeem.decimals
+                      )
+
+                      expandedRecords.push({
+                        investor: inv.investor,
+                        assetId: inv.assetId,
+                        centrifugeId: inv.centrifugeId,
+                        epoch: inv.pendingMatch.redeemEpoch,
+                        epochType: 'redeem',
+                        investorAmount,
+                        totalEpochAmount: inv.pendingMatch.pendingRedeem,
+                        claimableRedeemAssets: inv.investment.claimableRedeemAssets,
+                        pendingIssuances: inv.pendingIssuances,
+                        pendingRevocations: inv.pendingRevocations,
+                      })
+                    }
+
+                    inv.pendingRevocations.forEach((revocation) => {
+                      if (!inv.investment.pendingRedeemShares.isZero()) {
+                        const investorRatio = totalPendingRedeems.isZero()
+                          ? 0
+                          : inv.investment.pendingRedeemShares.toDecimal().div(totalPendingRedeems.toDecimal())
+                        const investorAmount = Balance.fromFloat(
+                          revocation.amount.toDecimal().mul(investorRatio),
+                          revocation.amount.decimals
+                        )
+
+                        expandedRecords.push({
+                          investor: inv.investor,
+                          assetId: inv.assetId,
+                          centrifugeId: inv.centrifugeId,
+                          epoch: revocation.epoch,
+                          epochType: 'revoke',
+                          investorAmount,
+                          totalEpochAmount: revocation.amount,
+                          claimableRedeemAssets: inv.investment.claimableRedeemAssets,
+                          pendingIssuances: inv.pendingIssuances,
+                          pendingRevocations: inv.pendingRevocations,
+                        })
+                      }
+                    })
+                  })
+                })
+              })
+
+              return expandedRecords
+            })
+          )
         })
       )
     )
@@ -1515,86 +1650,140 @@ export class ShareClass extends Entity {
    */
   closedInvestments() {
     return this._query(['closedInvestments'], () =>
-      this._root._queryIndexer(
-        `query ($scId: String!) {
-        investOrders(where: { tokenId: $scId, issuedAt_not: null }, limit: 1000) {
-          items {
-            account
-            index
-            assetId
-            approvedAssetsAmount
-            approvedAt
-            issuedSharesAmount
-            issuedAt
-            issuedWithNavAssetPerShare
-            issuedWithNavPoolPerShare
-            claimedAt
-            claimedAtBlock
-            asset {
-              id
-              decimals
-              symbol
-              name
-              centrifugeId
-            }
-            token {
-              decimals
-            }
-          }
-        }
-      }`,
-        { scId: this.id.raw },
-        (data: {
-          investOrders: {
-            items: {
-              account: HexString
-              index: number
-              assetId: string
-              approvedAssetsAmount: string
-              approvedAt: string | null
-              issuedSharesAmount: string
-              issuedAt: string | null
-              issuedWithNavAssetPerShare: string
-              issuedWithNavPoolPerShare: string
-              claimedAt: string | null
-              claimedAtBlock: string | null
-              asset: {
-                id: string
-                decimals: number
-                symbol: string
-                name: string
-                centrifugeId: string
+      this._root
+        ._queryIndexer(
+          `query ($scId: String!) {
+            epochInvestOrders(where: {tokenId: $scId}, limit: 1000) {
+              items {
+                assetId
+                index
+                issuedAt
+                approvedAt
+                issuedSharesAmount
+                approvedAssetsAmount
+                issuedWithNavPoolPerShare
+                issuedWithNavAssetPerShare
+                asset {
+                  decimals
+                  symbol
+                  name
+                  centrifugeId
+                }
+                token {
+                  decimals
+                }
               }
-              token: {
-                decimals: number
+            }
+          }`,
+          { scId: this.id.raw },
+          (data: any) => data.epochInvestOrders.items
+        )
+        .pipe(
+          switchMap((epochs: any[]) => {
+            if (epochs.length === 0) return of([])
+
+            return combineLatest(
+              epochs.map((epochData: any) =>
+                this._root._queryIndexer(
+                  `query ($scId: String!, $assetId: BigInt!, $index: Int!) {
+                    investOrders(where: {
+                      tokenId: $scId,
+                      assetId: $assetId,
+                      index: $index,
+                      issuedAt_not: null
+                    }, limit: 1000) {
+                      items {
+                        account
+                        index
+                        assetId
+                        approvedAssetsAmount
+                        approvedAt
+                        issuedSharesAmount
+                        issuedAt
+                        issuedWithNavAssetPerShare
+                        issuedWithNavPoolPerShare
+                        claimedAt
+                        claimedAtBlock
+                        asset {
+                          id
+                          decimals
+                          symbol
+                          name
+                          centrifugeId
+                        }
+                        token {
+                          decimals
+                          }
+                        }
+                      }
+                    }
+                  }`,
+                  { scId: this.id.raw, assetId: epochData.assetId, index: epochData.index },
+                  (orderData: any) => ({ epochData, orders: orderData.investOrders.items })
+                )
+              )
+            )
+          }),
+          map((results: any[]) => {
+            const allOrders: any[] = []
+
+            results.forEach((result: any) => {
+              const { epochData, orders } = result
+
+              if (orders.length === 0 && epochData.issuedAt) {
+                allOrders.push({
+                  investor: null,
+                  index: epochData.index,
+                  assetId: new AssetId(epochData.assetId),
+                  approvedAmount: new Balance(epochData.approvedAssetsAmount || 0n, epochData.asset.decimals),
+                  approvedAt: epochData.approvedAt ? epochData.approvedAt : null,
+                  issuedAmount: new Balance(epochData.issuedSharesAmount || 0n, epochData.token.decimals),
+                  issuedAt: epochData.issuedAt,
+                  priceAsset: new Price(epochData.issuedWithNavAssetPerShare || 0n),
+                  pricePerShare: new Price(epochData.issuedWithNavPoolPerShare || 0n),
+                  claimedAt: null,
+                  isClaimed: false,
+                  asset: {
+                    symbol: epochData.asset.symbol,
+                    name: epochData.asset.name,
+                    decimals: epochData.asset.decimals,
+                  },
+                  chainId: epochData.asset.blockchain.chainId,
+                  token: {
+                    decimals: epochData.token.decimals,
+                  },
+                })
+              } else {
+                orders.forEach((order: any) => {
+                  allOrders.push({
+                    investor: order.account.toLowerCase() as HexString,
+                    index: order.index,
+                    assetId: new AssetId(order.assetId),
+                    approvedAmount: new Balance(order.approvedAssetsAmount || 0n, order.asset.decimals),
+                    approvedAt: order.approvedAt ? order.approvedAt : null,
+                    issuedAmount: new Balance(order.issuedSharesAmount || 0n, order.token.decimals),
+                    issuedAt: order.issuedAt ? order.issuedAt : null,
+                    priceAsset: new Price(order.issuedWithNavAssetPerShare || 0n),
+                    pricePerShare: new Price(order.issuedWithNavPoolPerShare || 0n),
+                    claimedAt: order.claimedAt ? order.claimedAt : null,
+                    isClaimed: !!order.claimedAtBlock,
+                    asset: {
+                      symbol: order.asset.symbol,
+                      name: order.asset.name,
+                      decimals: order.asset.decimals,
+                    },
+                    chainId: order.asset.blockchain.chainId,
+                    token: {
+                      decimals: order.token.decimals,
+                    },
+                  })
+                })
               }
-            }[]
-          }
-        }) => {
-          return data.investOrders.items.map((order) => ({
-            investor: order.account.toLowerCase() as HexString,
-            index: order.index,
-            assetId: new AssetId(order.assetId),
-            approvedAmount: new Balance(order.approvedAssetsAmount || 0n, order.asset.decimals),
-            approvedAt: order.approvedAt ? order.approvedAt : null,
-            issuedAmount: new Balance(order.issuedSharesAmount || 0n, order.token.decimals),
-            issuedAt: order.issuedAt ? order.issuedAt : null,
-            priceAsset: new Price(order.issuedWithNavAssetPerShare || 0n),
-            pricePerShare: new Price(order.issuedWithNavPoolPerShare || 0n),
-            claimedAt: order.claimedAt ? order.claimedAt : null,
-            isClaimed: !!order.claimedAtBlock,
-            asset: {
-              symbol: order.asset.symbol,
-              name: order.asset.name,
-              decimals: order.asset.decimals,
-            },
-            centrifugeId: Number(order.asset.centrifugeId) as CentrifugeId,
-            token: {
-              decimals: order.token.decimals,
-            },
-          }))
-        }
-      )
+            })
+
+            return allOrders
+          })
+        )
     )
   }
 
@@ -1604,86 +1793,140 @@ export class ShareClass extends Entity {
    */
   closedRedemptions() {
     return this._query(['closedRedemptions'], () =>
-      this._root._queryIndexer(
-        `query ($scId: String!) {
-        redeemOrders(where: { tokenId: $scId, revokedAt_not: null }, limit: 1000) {
-          items {
-            account
-            index
-            assetId
-            approvedSharesAmount
-            approvedAt
-            revokedAssetsAmount
-            revokedAt
-            revokedWithNavAssetPerShare
-            revokedWithNavPoolPerShare
-            claimedAt
-            claimedAtBlock
-            asset {
-              id
-              decimals
-              symbol
-              name
-              centrifugeId
-            }
-            token {
-              decimals
-            }
-          }
-        }
-      }`,
-        { scId: this.id.raw },
-        (data: {
-          redeemOrders: {
-            items: {
-              account: HexString
-              index: number
-              assetId: string
-              approvedSharesAmount: string
-              approvedAt: string | null
-              revokedAssetsAmount: string
-              revokedAt: string | null
-              revokedWithNavAssetPerShare: string
-              revokedWithNavPoolPerShare: string
-              claimedAt: string | null
-              claimedAtBlock: string | null
-              asset: {
-                id: string
-                decimals: number
-                symbol: string
-                name: string
-                centrifugeId: string
+      this._root
+        ._queryIndexer(
+          `query ($scId: String!) {
+            epochRedeemOrders(where: {tokenId: $scId}, limit: 1000) {
+              items {
+                assetId
+                index
+                revokedAt
+                approvedAt
+                approvedSharesAmount
+                revokedSharesAmount
+                revokedAssetsAmount
+                revokedWithNavPoolPerShare
+                revokedWithNavAssetPerShare
+                asset {
+                  decimals
+                  symbol
+                  name
+                  centrifugeId
+                }
+                token {
+                  decimals
+                }
               }
-              token: {
-                decimals: number
+            }
+          }`,
+          { scId: this.id.raw },
+          (data: any) => data.epochRedeemOrders.items
+        )
+        .pipe(
+          switchMap((epochs: any[]) => {
+            if (epochs.length === 0) return of([])
+
+            return combineLatest(
+              epochs.map((epochData: any) =>
+                this._root._queryIndexer(
+                  `query ($scId: String!, $assetId: BigInt!, $index: Int!) {
+                    redeemOrders(where: {
+                      tokenId: $scId,
+                      assetId: $assetId,
+                      index: $index,
+                      revokedAt_not: null
+                    }, limit: 1000) {
+                      items {
+                        account
+                        index
+                        assetId
+                        approvedSharesAmount
+                        approvedAt
+                        revokedAssetsAmount
+                        revokedAt
+                        revokedWithNavAssetPerShare
+                        revokedWithNavPoolPerShare
+                        claimedAt
+                        claimedAtBlock
+                        asset {
+                          id
+                          decimals
+                          symbol
+                          name
+                          centrifugeId
+                        }
+                        token {
+                          decimals
+                        }
+                      }
+                    }
+                  }`,
+                  { scId: this.id.raw, assetId: epochData.assetId, index: epochData.index },
+                  (orderData: any) => ({ epochData, orders: orderData.redeemOrders.items })
+                )
+              )
+            )
+          }),
+          map((results: any[]) => {
+            const allOrders: any[] = []
+
+            results.forEach((result: any) => {
+              const { epochData, orders } = result
+
+              if (orders.length === 0 && epochData.revokedAt) {
+                allOrders.push({
+                  investor: null,
+                  index: epochData.index,
+                  assetId: new AssetId(epochData.assetId),
+                  approvedAmount: new Balance(epochData.approvedSharesAmount || 0n, epochData.token.decimals),
+                  approvedAt: epochData.approvedAt ? epochData.approvedAt : null,
+                  payoutAmount: new Balance(epochData.revokedAssetsAmount || 0n, epochData.asset.decimals),
+                  revokedAt: epochData.revokedAt,
+                  priceAsset: new Price(epochData.revokedWithNavAssetPerShare || 0n),
+                  pricePerShare: new Price(epochData.revokedWithNavPoolPerShare || 0n),
+                  claimedAt: null,
+                  isClaimed: false,
+                  asset: {
+                    symbol: epochData.asset.symbol,
+                    name: epochData.asset.name,
+                    decimals: epochData.asset.decimals,
+                  },
+                  chainId: epochData.asset.blockchain.chainId,
+                  token: {
+                    decimals: epochData.token.decimals,
+                  },
+                })
+              } else {
+                orders.forEach((order: any) => {
+                  allOrders.push({
+                    investor: order.account.toLowerCase() as HexString,
+                    index: order.index,
+                    assetId: new AssetId(order.assetId),
+                    approvedAmount: new Balance(order.approvedSharesAmount || 0n, order.token.decimals),
+                    approvedAt: order.approvedAt ? order.approvedAt : null,
+                    payoutAmount: new Balance(order.revokedAssetsAmount || 0n, order.asset.decimals),
+                    revokedAt: order.revokedAt ? order.revokedAt : null,
+                    priceAsset: new Price(order.revokedWithNavAssetPerShare || 0n),
+                    pricePerShare: new Price(order.revokedWithNavPoolPerShare || 0n),
+                    claimedAt: order.claimedAt ? order.claimedAt : null,
+                    isClaimed: !!order.claimedAtBlock,
+                    asset: {
+                      symbol: order.asset.symbol,
+                      name: order.asset.name,
+                      decimals: order.asset.decimals,
+                    },
+                    chainId: order.asset.blockchain.chainId,
+                    token: {
+                      decimals: order.token.decimals,
+                    },
+                  })
+                })
               }
-            }[]
-          }
-        }) => {
-          return data.redeemOrders.items.map((order) => ({
-            investor: order.account.toLowerCase() as HexString,
-            index: order.index,
-            assetId: new AssetId(order.assetId),
-            approvedAmount: new Balance(order.approvedSharesAmount || 0n, order.token.decimals),
-            approvedAt: order.approvedAt ? order.approvedAt : null,
-            payoutAmount: new Balance(order.revokedAssetsAmount || 0n, order.asset.decimals),
-            revokedAt: order.revokedAt ? order.revokedAt : null,
-            priceAsset: new Price(order.revokedWithNavAssetPerShare || 0n),
-            pricePerShare: new Price(order.revokedWithNavPoolPerShare || 0n),
-            claimedAt: order.claimedAt ? order.claimedAt : null,
-            isClaimed: !!order.claimedAtBlock,
-            asset: {
-              symbol: order.asset.symbol,
-              name: order.asset.name,
-              decimals: order.asset.decimals,
-            },
-            centrifugeId: Number(order.asset.centrifugeId) as CentrifugeId,
-            token: {
-              decimals: order.token.decimals,
-            },
-          }))
-        }
-      )
+            })
+
+            return allOrders
+          })
+        )
     )
   }
 
@@ -2090,11 +2333,30 @@ export class ShareClass extends Entity {
               client,
             })
 
-            const [maxDepositClaims, maxRedeemClaims, [pendingDeposit], [pendingRedeem]] = await Promise.all([
+            const [
+              maxDepositClaims,
+              maxRedeemClaims,
+              [pendingDeposit],
+              [pendingRedeem],
+              [, queuedInvest],
+              [, queuedRedeem],
+            ] = await Promise.all([
               contract.read.maxDepositClaims([this.pool.id.raw, this.id.raw, addressToBytes32(investor), assetId.raw]),
               contract.read.maxRedeemClaims([this.pool.id.raw, this.id.raw, addressToBytes32(investor), assetId.raw]),
               contract.read.depositRequest([this.pool.id.raw, this.id.raw, assetId.raw, addressToBytes32(investor)]),
               contract.read.redeemRequest([this.pool.id.raw, this.id.raw, assetId.raw, addressToBytes32(investor)]),
+              contract.read.queuedDepositRequest([
+                this.pool.id.raw,
+                this.id.raw,
+                assetId.raw,
+                addressToBytes32(investor),
+              ]),
+              contract.read.queuedRedeemRequest([
+                this.pool.id.raw,
+                this.id.raw,
+                assetId.raw,
+                addressToBytes32(investor),
+              ]),
             ])
 
             return {
@@ -2104,6 +2366,8 @@ export class ShareClass extends Entity {
               maxRedeemClaims,
               pendingDeposit,
               pendingRedeem,
+              queuedInvest,
+              queuedRedeem,
             }
           }).pipe(
             repeatOnEvents(

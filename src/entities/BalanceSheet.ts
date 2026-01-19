@@ -204,7 +204,8 @@ export class BalanceSheet extends Entity {
 
       let shares = amount
       if (pricePerShare.toBigInt() !== 0n) {
-        shares = amount.div(pricePerShare.toDecimal())
+        const sharesBigInt = (amount.toBigInt() * 10n ** BigInt(amount.decimals)) / pricePerShare.toBigInt()
+        shares = new Balance(sharesBigInt, amount.decimals)
       }
 
       if (shares.eq(0n)) throw new Error('Cannot issue 0 shares')
@@ -256,7 +257,8 @@ export class BalanceSheet extends Entity {
 
       let shares = amount
       if (pricePerShare.toBigInt() !== 0n) {
-        shares = amount.div(pricePerShare.toDecimal())
+        const sharesBigInt = (amount.toBigInt() * 10n ** BigInt(amount.decimals)) / pricePerShare.toBigInt()
+        shares = new Balance(sharesBigInt, amount.decimals)
       }
 
       if (shares.eq(0n)) throw new Error('Cannot revoke 0 shares')
