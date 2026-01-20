@@ -7,12 +7,14 @@ This file provides guidance to Claude Code when working with code in this reposi
 This is the **Centrifuge SDK** - a TypeScript middleware layer providing a JavaScript/TypeScript interface to the [Centrifuge Protocol](https://github.com/centrifuge/protocol) smart contracts.
 
 **Purpose:**
+
 1. Expose EVM contract ABIs to JS/TS projects
 2. Provide typed, developer-friendly API for protocol contracts
 3. Handle blockchain interactions via Viem
 4. Manage observable-based queries and transaction flows
 
 **Bridge Between:**
+
 - **Backend**: Solidity contracts in [protocol repository](https://github.com/centrifuge/protocol) (Foundry)
 - **Frontend**: JS/TS apps like [apps-v3](https://github.com/centrifuge/apps-v3)
 
@@ -21,35 +23,42 @@ This is the **Centrifuge SDK** - a TypeScript middleware layer providing a JavaS
 ## Development Commands
 
 ### Package Manager
+
 This project uses **pnpm** (version 10.10.0). All commands use `pnpm`.
 
 ### Build and Development
+
 - `pnpm build` - Compile TypeScript to `dist/`
 - `pnpm dev` - Watch mode compilation
 - `pnpm prepare` - Auto-build (package manager hooks)
 
 ### Testing
+
 - `pnpm test` - Run all tests with Tenderly
 - `pnpm test:single <path>` - Run single test with Tenderly
 - `pnpm test:simple:single <path>` - Run single test without Tenderly (faster)
 
 **Test Setup:**
+
 - Copy `src/tests/env.example` to `.env`
 - Add Tenderly credentials: `TENDERLY_ACCESS_KEY`, `PROJECT_SLUG`, `ACCOUNT_SLUG`
 - Set `DEBUG=true` to keep Tenderly RPC alive after tests
 - Set `LOCAL=true` to use local Anvil forks
 
 **What Tests Validate:**
+
 - ABI correctness (indirectly via contract calls)
 - Transaction flows (invest/redeem, pool management)
 - State changes and error conditions
 - Multi-chain operations
 
 ### Code Quality
+
 - `pnpm format` - Format with Prettier
 - ESLint config in `eslint.config.js`
 
 ### Documentation
+
 - `pnpm gen:docs` - Generate TypeDoc in `docs/`
 
 ## Architecture Overview
@@ -102,6 +111,7 @@ src/
 ### Key Components
 
 **Centrifuge Class** (`src/Centrifuge.ts`)
+
 - Primary SDK interface
 - Manages blockchain clients (Viem)
 - Handles signers (EIP-1193 or Viem LocalAccount)
@@ -109,21 +119,25 @@ src/
 - Creates entity instances
 
 **Entity Base Class** (`src/entities/Entity.ts`)
+
 - Base for all domain objects
 - `_query()` for cached observable queries
 - `_transact()` for multi-step transactions
 - Query key hierarchy for cache invalidation
 
 **ABI Management** (`src/abi/`)
+
 - Human-readable format (array of strings)
 - Parsed via `viem.parseAbi()` in `src/abi/index.ts`
 - One file per contract, exported via `ABI` object
 - Type-safe with `viem.getContract()`
 
 **Transaction Flow:**
+
 1. User calls entity method → 2. Method uses `_transact()` generator → 3. Yields steps (signing, sending, waiting) → 4. Returns Observable with status updates → 5. Can be awaited or subscribed
 
 **Query Flow:**
+
 1. User calls entity method → 2. Method uses `_query()` with cache keys → 3. Returns Observable from cache or creates new → 4. Can poll or subscribe → 5. Can be awaited or subscribed
 
 ## Protocol Integration & ABI Updates
@@ -168,6 +182,7 @@ Benefits: Readable, includes only needed functions, parsed by `viem.parseAbi()`,
 8. **Document in `PROTOCOL_VERSION.md`** (if exists)
 
 **Historical References:**
+
 - Commit `47a5a19` - Bulk ABI updates for v3.1 (23 files)
 - Commit `1598ce3` - Breaking protocol changes (22 files)
 
@@ -176,18 +191,21 @@ Benefits: Readable, includes only needed functions, parsed by `viem.parseAbi()`,
 ### ABI Validation
 
 **IMPORTANT:** No automated ABI validation exists. Correctness relies on:
+
 1. Manual extraction/conversion
 2. Integration tests (indirect validation via contract calls)
 3. Developer vigilance
 4. Code review
 
 **What Tests Catch:**
+
 - ✅ Function signature mismatches (encoding errors)
 - ✅ Return type mismatches (decoding errors)
 - ✅ Missing required functions (TypeScript errors)
 - ✅ Event structure issues (for tested events)
 
 **What Tests DON'T Catch:**
+
 - ❌ Unused functions with incorrect signatures
 - ❌ Events not subscribed in tests
 - ❌ Error types not triggered in tests
@@ -254,12 +272,12 @@ import { ABI } from '../abi/index.js'
 const hub = getContract({
   address: this.network.hub,
   abi: ABI.Hub,
-  client: this._root.getClient(chainId)
+  client: await this._root.getClient(centrifugeId),
 })
 
 // TypeScript knows methods and signatures
-const result = await hub.read.someViewFunction([arg1, arg2])
-await hub.write.someStateChangingFunction([arg1, arg2])
+const result = await hub.read.someViewFunction(arg1, arg2)
+await hub.write.someStateChangingFunction(arg1, arg2)
 ```
 
 ### Balance Handling
@@ -270,7 +288,7 @@ Always use SDK's `Balance`, `Price`, `Rate` classes:
 import { Balance } from './utils/BigInt.js'
 
 // Create from float (requires decimals)
-const amount = Balance.fromFloat(1000.50, 6) // USDC (6 decimals)
+const amount = Balance.fromFloat(1000.5, 6) // USDC (6 decimals)
 
 // Create from bigint (raw on-chain)
 const amount = new Balance(1000500000n, 6)
@@ -296,8 +314,8 @@ const details = await details$
 
 // Subscribe for updates
 const sub = details$.subscribe(
-  data => console.log(data),
-  error => console.error(error)
+  (data) => console.log(data),
+  (error) => console.error(error)
 )
 // Always unsubscribe: sub.unsubscribe()
 ```
@@ -383,6 +401,7 @@ pnpm test:simple:single src/utils/BigInt.test.ts
 ## Supported Chains
 
 See `src/config/chains.ts`:
+
 - **Mainnet:** Ethereum, Base, Arbitrum, Avalanche, Plume
 - **Testnet:** Sepolia, Base Sepolia, Arbitrum Sepolia
 
@@ -404,6 +423,7 @@ docker compose down -v
 ```
 
 Debug script should point to:
+
 - Local RPC: `rpcUrls: { 1: 'http://127.0.0.1:8545' }`
 - Local indexer: `indexerUrl: 'http://localhost:8000'`
 
@@ -420,16 +440,19 @@ Debug script should point to:
 ## Quick Troubleshooting
 
 **Transaction fails:**
+
 - Check balance and allowance
 - Verify investor whitelisted (`investment.isAllowedToInvest`)
 - Check `maxInvest` before placing orders
 
 **Query fails:**
+
 - Verify indexer URL correct
 - Try direct blockchain queries instead
 - Check RPC endpoint availability
 
 **Type errors:**
+
 - Use `Balance.fromFloat()` with correct decimals
 - Can't add balances with different decimals
 - Always use `toFloat()` for display

@@ -1,7 +1,18 @@
+import { concatHex, padHex, toHex } from 'viem'
 import { HexString } from '../types/index.js'
 
 export function addressToBytes32(address: HexString) {
   return address.padEnd(66, '0').toLowerCase() as HexString
+}
+
+export function encode(values: unknown[]): HexString {
+  return concatHex(
+    values.map((v) =>
+      typeof v === 'string' && v.startsWith('0x')
+        ? padHex(v as HexString, { dir: 'right', size: 32 })
+        : toHex(v as any, { size: 32 })
+    )
+  )
 }
 
 export function randomUint(bitLength: number) {
@@ -26,4 +37,16 @@ export function randomUint(bitLength: number) {
   }
 
   return result
+}
+
+/**
+ * Generate a valid salt for addShareClass.
+ * The salt must have the poolId encoded in its first 8 bytes.
+ * Format: [poolId (8 bytes)][random (24 bytes)] = 32 bytes total
+ */
+export function generateShareClassSalt(poolId: bigint): HexString {
+  const randomPart = randomUint(192)
+  const salt = (poolId << 192n) | randomPart
+
+  return toHex(salt, { size: 32 })
 }

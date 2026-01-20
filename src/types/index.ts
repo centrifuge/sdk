@@ -33,13 +33,12 @@ export type CurrencyDetails = {
   decimals: number
   name: string
   symbol: string
-  chainId: number
+  centrifugeId: number
   supportsPermit: boolean
 }
 
 export type ProtocolContracts = {
   root: HexString
-  guardian: HexString
   gasService: HexString
   gateway: HexString
   multiAdapter: HexString
@@ -49,6 +48,7 @@ export type ProtocolContracts = {
   accounting: HexString
   holdings: HexString
   shareClassManager: HexString
+  batchRequestManager: HexString
   hub: HexString
   identityValuation: HexString
   poolEscrowFactory: HexString
@@ -66,8 +66,23 @@ export type ProtocolContracts = {
   axelarAdapter?: HexString
   syncDepositVaultFactory: HexString
   spoke: HexString
+  vaultRegistry: HexString
   vaultRouter: HexString
   balanceSheet: HexString
   merkleProofManagerFactory: HexString
   onOfframpManagerFactory: HexString
+  tokenRecoverer: HexString
+  contractUpdater: HexString
+  vaultDecoder: HexString
+  circleDecoder: HexString
+  hubHandler: HexString
+  protocolGuardian: HexString
+  opsGuardian: HexString
+  refundEscrowFactory: HexString
+  queueManager: HexString
+  oracleValuation: HexString
+  navManager: HexString
+  simplePriceManager: HexString
+  layerZeroAdapter?: HexString
+  chainlinkAdapter?: HexString
 }

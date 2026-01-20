@@ -16,7 +16,7 @@ describe('PoolSharePricesReport', () => {
 
   before(() => {
     const { centrifuge } = context
-    const pool = new Pool(centrifuge, poolId, chainId)
+    const pool = new Pool(centrifuge, poolId)
     const poolReports = new PoolReports(centrifuge, pool)
     poolSharePricesReport = new PoolSharePricesReport(centrifuge, poolReports)
   })

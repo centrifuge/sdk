@@ -1,16 +1,22 @@
 import { combineLatest, map, of, switchMap } from 'rxjs'
-import { encodeFunctionData, encodePacked, toHex } from 'viem'
+import { encodeFunctionData } from 'viem'
 import { ABI } from '../abi/index.js'
 import { Centrifuge } from '../Centrifuge.js'
 import { HexString } from '../types/index.js'
 import { MessageType } from '../types/transaction.js'
 import { Balance } from '../utils/BigInt.js'
-import { addressToBytes32 } from '../utils/index.js'
+import { addressToBytes32, encode } from '../utils/index.js'
 import { doTransaction, wrapTransaction } from '../utils/transaction.js'
 import { AssetId } from '../utils/types.js'
 import { Entity } from './Entity.js'
 import { PoolNetwork } from './PoolNetwork.js'
 import { ShareClass } from './ShareClass.js'
+
+enum OnOffRampManagerTrustedCall {
+  Onramp,
+  Relayer,
+  Offramp,
+}
 
 export class OnOffRampManager extends Entity {
   /** @internal */
@@ -20,7 +26,7 @@ export class OnOffRampManager extends Entity {
     public shareClass: ShareClass,
     public onrampAddress: HexString
   ) {
-    super(_root, ['onofframpmanager', shareClass.id.toString(), network.chainId])
+    super(_root, ['onofframpmanager', shareClass.id.toString(), network.centrifugeId])
 
     this.onrampAddress = onrampAddress
   }
@@ -30,7 +36,7 @@ export class OnOffRampManager extends Entity {
    */
   receivers() {
     return this._query(null, () =>
-      this._root.id(this.network.chainId).pipe(
+      of(this.network.centrifugeId).pipe(
         switchMap((centrifugeId) =>
           this._root._queryIndexer(
             `query ($scId: String!, $centrifugeId: String!) {
@@ -72,7 +78,7 @@ export class OnOffRampManager extends Entity {
 
   relayers() {
     return this._query(null, () =>
-      this._root.id(this.network.chainId).pipe(
+      of(this.network.centrifugeId).pipe(
         switchMap((centrifugeId) =>
           this._root._queryIndexer(
             `query ($scId: String!, $centrifugeId: String!) {
@@ -103,7 +109,7 @@ export class OnOffRampManager extends Entity {
 
   assets() {
     return this._query(null, () =>
-      this._root.id(this.network.chainId).pipe(
+      of(this.network.centrifugeId).pipe(
         switchMap((centrifugeId) =>
           this._root._queryIndexer(
             `query ($scId: String!, $centrifugeId: String!) {
@@ -147,7 +153,9 @@ export class OnOffRampManager extends Entity {
           if (onRampAssets.length === 0) return of([])
 
           return combineLatest(
-            onRampAssets.map((item) => this._root.balance(item.assetAddress, this.onrampAddress, this.network.chainId))
+            onRampAssets.map((item) =>
+              this._root.balance(item.assetAddress, this.onrampAddress, this.network.centrifugeId)
+            )
           )
         }),
         map((balances) => balances.filter((b) => b.balance.gt(0n)))
@@ -163,10 +171,7 @@ export class OnOffRampManager extends Entity {
   setReceiver(assetId: AssetId, receiver: HexString, enabled: boolean = true) {
     const self = this
     return this._transact(async function* (ctx) {
-      const [id, { hub }] = await Promise.all([
-        self._root.id(self.network.chainId),
-        self._root._protocolAddresses(self.shareClass.pool.chainId),
-      ])
+      const { hub } = await self._root._protocolAddresses(self.network.centrifugeId)
 
       yield* wrapTransaction(enabled ? 'Enable Receiver' : 'Disable Receiver', ctx, {
         contract: hub,
@@ -176,18 +181,18 @@ export class OnOffRampManager extends Entity {
           args: [
             self.network.pool.id.raw,
             self.shareClass.id.raw,
-            id,
+            self.network.centrifugeId,
             addressToBytes32(self.onrampAddress),
-            encodePacked(
-              ['uint8', 'bytes32', 'uint128', 'bytes32', 'bool'],
-              [3, toHex('offramp', { size: 32 }), assetId.raw, addressToBytes32(receiver), enabled]
-            ),
+            encode([OnOffRampManagerTrustedCall.Offramp, assetId.raw, receiver, enabled]),
             0n,
+            ctx.signingAddress,
           ],
         }),
-        messages: { [id]: [MessageType.UpdateContract] },
+        messages: {
+          [self.network.centrifugeId]: [MessageType.TrustedContractUpdate],
+        },
       })
-    }, this.shareClass.pool.chainId)
+    }, this.network.centrifugeId)
   }
 
   /**
@@ -198,10 +203,7 @@ export class OnOffRampManager extends Entity {
   setRelayer(relayer: HexString, enabled: boolean = true) {
     const self = this
     return this._transact(async function* (ctx) {
-      const [id, { hub }] = await Promise.all([
-        self._root.id(self.network.chainId),
-        self._root._protocolAddresses(self.shareClass.pool.chainId),
-      ])
+      const { hub } = await self._root._protocolAddresses(self.network.pool.centrifugeId)
 
       yield* wrapTransaction(enabled ? 'Enable Relayer' : 'Disable Relayer', ctx, {
         contract: hub,
@@ -211,27 +213,22 @@ export class OnOffRampManager extends Entity {
           args: [
             self.network.pool.id.raw,
             self.shareClass.id.raw,
-            id,
+            self.network.centrifugeId,
             addressToBytes32(self.onrampAddress),
-            encodePacked(
-              ['uint8', 'bytes32', 'uint128', 'bytes32', 'bool'],
-              [3, toHex('relayer', { size: 32 }), 0n, addressToBytes32(relayer), enabled]
-            ),
+            encode([OnOffRampManagerTrustedCall.Relayer, relayer, enabled]),
             0n,
+            ctx.signingAddress,
           ],
         }),
-        messages: { [id]: [MessageType.UpdateContract] },
+        messages: { [self.network.centrifugeId]: [MessageType.TrustedContractUpdate] },
       })
-    }, this.shareClass.pool.chainId)
+    }, this.network.centrifugeId)
   }
 
   setAsset(assetId: AssetId) {
     const self = this
     return this._transact(async function* (ctx) {
-      const [id, { hub }] = await Promise.all([
-        self._root.id(self.network.chainId),
-        self._root._protocolAddresses(self.shareClass.pool.chainId),
-      ])
+      const { hub } = await self._root._protocolAddresses(self.network.pool.centrifugeId)
 
       yield* wrapTransaction('Set Asset', ctx, {
         contract: hub,
@@ -241,24 +238,16 @@ export class OnOffRampManager extends Entity {
           args: [
             self.network.pool.id.raw,
             self.shareClass.id.raw,
-            id,
+            self.network.centrifugeId,
             addressToBytes32(self.onrampAddress),
-            encodePacked(
-              ['uint8', 'bytes32', 'uint128', 'bytes32', 'bool'],
-              [
-                /* UpdateContractType.UpdateAddress */ 3,
-                toHex('onramp', { size: 32 }),
-                assetId.raw,
-                toHex(0, { size: 32 }),
-                true,
-              ]
-            ),
+            encode([OnOffRampManagerTrustedCall.Onramp, assetId.raw, true]),
             0n,
+            ctx.signingAddress,
           ],
         }),
-        messages: { [id]: [MessageType.UpdateContract] },
+        messages: { [self.network.centrifugeId]: [MessageType.TrustedContractUpdate] },
       })
-    }, this.shareClass.pool.chainId)
+    }, this.network.centrifugeId)
   }
 
   deposit(assetAddress: HexString, amount: Balance, receiverAddress: HexString) {
@@ -272,7 +261,7 @@ export class OnOffRampManager extends Entity {
           args: [assetAddress, 0n, amount.toBigInt(), receiverAddress],
         })
       )
-    }, self.network.chainId)
+    }, self.network.centrifugeId)
   }
 
   withdraw(assetAddress: HexString, amount: Balance, receiverAddress: HexString) {
@@ -286,6 +275,6 @@ export class OnOffRampManager extends Entity {
           args: [assetAddress, 0n, amount.toBigInt(), receiverAddress],
         })
       )
-    }, self.network.chainId)
+    }, self.network.centrifugeId)
   }
 }

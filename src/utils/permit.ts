@@ -21,21 +21,26 @@ export async function signPermit(
 ) {
   let domainOrCurrency: HexString | Domain = currencyAddress
   const USDC = '0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48'
+  const chainId = await ctx.root._idToChain(ctx.centrifugeId)
   if (currencyAddress.toLowerCase() === USDC) {
     // USDC has a custom version
-    domainOrCurrency = { name: 'USD Coin', version: '2', chainId: ctx.chainId, verifyingContract: currencyAddress }
-  } else if (ctx.root.getChainConfig(ctx.chainId).testnet) {
-    // Assume that the currencies used on testnets have our custom domain
-    domainOrCurrency = { name: 'Centrifuge', version: '1', chainId: ctx.chainId, verifyingContract: currencyAddress }
+    domainOrCurrency = { name: 'USD Coin', version: '2', chainId, verifyingContract: currencyAddress }
+  } else {
+    const chainConfig = await ctx.root.getChainConfig(ctx.centrifugeId)
+    if (chainConfig.testnet) {
+      // Assume that the currencies used on testnets have our custom domain
+      domainOrCurrency = { name: 'Centrifuge', version: '1', chainId, verifyingContract: currencyAddress }
+    }
   }
 
   const deadline = Math.floor(Date.now() / 1000) + 3600 // 1 hour
-  const permit = await signERC2612Permit(ctx, domainOrCurrency, spender, amount, deadline)
+  const permit = await signERC2612Permit(ctx, chainId, domainOrCurrency, spender, amount, deadline)
   return permit
 }
 
 export async function signERC2612Permit(
   ctx: TransactionContext,
+  chainId: number,
   currencyOrDomain: HexString | Domain,
   spender: HexString,
   value?: string | number | bigint,
@@ -56,7 +61,7 @@ export async function signERC2612Permit(
       ? {
           name: await getName(ctx.publicClient, currencyOrDomain),
           version: '1',
-          chainId: ctx.chainId,
+          chainId,
           verifyingContract: currencyOrDomain,
         }
       : currencyOrDomain

@@ -9,12 +9,12 @@ import { HexString, parseEventLogs } from '../index.js'
 import { context } from '../tests/setup.js'
 import { randomAddress } from '../tests/utils.js'
 import { MerkleProofPolicy, MerkleProofPolicyInput } from '../types/poolMetadata.js'
+import { SimulationStatus } from '../types/transaction.js'
 import { makeThenable } from '../utils/rx.js'
-import { PoolId, ShareClassId } from '../utils/types.js'
+import { AssetId, PoolId, ShareClassId } from '../utils/types.js'
 import { generateCombinations, getMerkleTree, MerkleProofManager } from './MerkleProofManager.js'
 import { Pool } from './Pool.js'
 import { PoolNetwork } from './PoolNetwork.js'
-import { SimulationStatus } from '../types/transaction.js'
 
 type FromArgs = { from: HexString; to: HexString; value: bigint }
 
@@ -27,7 +27,7 @@ const scId = ShareClassId.from(poolId, 1)
 const someErc20 = '0x3aaaa86458d576BafCB1B7eD290434F0696dA65c'
 
 const fundManager = '0x423420Ae467df6e90291fd0252c0A8a637C1e03f'
-const mpmAddress = '0x9E14250c4C53bdcA1437F7EDa25B0D9ca46CfFE2'
+const mpmAddress = '0x9E5FD1A9D960d8CfA76Ad1dd2F5D8FEeB5bdD382'
 const vaultDecoder = '0x8E5bE47D081F53033eb7C9DB3ad31BaF67F15585'
 
 describe('MerkleProofManager', () => {
@@ -38,9 +38,9 @@ describe('MerkleProofManager', () => {
   const strategist = randomAddress()
   before(async () => {
     const { centrifuge } = context
-    const { balanceSheet, vaultRouter } = await centrifuge._protocolAddresses(chainId)
-    pool = new Pool(centrifuge, poolId.raw, chainId)
-    const poolNetwork = new PoolNetwork(centrifuge, pool, chainId)
+    const { balanceSheet, vaultRouter } = await centrifuge._protocolAddresses(centId)
+    pool = new Pool(centrifuge, poolId.raw)
+    const poolNetwork = new PoolNetwork(centrifuge, pool, centId)
     merkleProofManager = new MerkleProofManager(centrifuge, poolNetwork, mpmAddress)
     const decoder = vaultDecoder
     const target = balanceSheet
@@ -397,7 +397,7 @@ describe('MerkleProofManager', () => {
     context.tenderlyFork.impersonateAddress = fundManager
     context.centrifuge.setSigner(context.tenderlyFork.signer)
 
-    await pool.updateBalanceSheetManagers([{ chainId, address: mpmAddress, canManage: true }])
+    await pool.updateBalanceSheetManagers([{ centrifugeId: centId, address: mpmAddress, canManage: true }])
   })
 
   it('correctly constructs the merkle tree', async () => {
@@ -531,7 +531,9 @@ describe('MerkleProofManager', () => {
 
     const tree = getMerkleTree(SimpleMerkleTree, mockPolicies)
 
-    const rootHash = await centrifugeWithPin.getClient(chainId).readContract({
+    const rootHash = await (
+      await centrifugeWithPin.getClient(centId)
+    ).readContract({
       address: mpmAddress,
       abi: ABI.MerkleProofManager,
       functionName: 'policy',
@@ -542,7 +544,7 @@ describe('MerkleProofManager', () => {
   })
 
   it('can execute calls', async () => {
-    const { vaultRouter } = await context.centrifuge._protocolAddresses(chainId)
+    const { vaultRouter } = await context.centrifuge._protocolAddresses(centId)
 
     const mock = sinon.stub(merkleProofManager.pool, 'metadata')
     mock.returns(
@@ -577,7 +579,9 @@ describe('MerkleProofManager', () => {
 
     await merkleProofManager.execute([{ policy: mockPolicies[0]!, inputs: [vaultRouter, 123_000_000n] }])
 
-    const balance = await context.centrifuge.getClient(chainId).readContract({
+    const balance = await (
+      await context.centrifuge.getClient(chainId)
+    ).readContract({
       address: someErc20,
       abi: ABI.Currency,
       functionName: 'allowance',
@@ -590,7 +594,7 @@ describe('MerkleProofManager', () => {
   })
 
   it('cannot execute calls with invalid proof', async () => {
-    const { vaultRouter } = await context.centrifuge._protocolAddresses(chainId)
+    const { vaultRouter } = await context.centrifuge._protocolAddresses(centId)
 
     const mock = sinon.stub(merkleProofManager.pool, 'metadata')
     mock.returns(
@@ -758,7 +762,7 @@ describe('MerkleProofManager', () => {
   // Enable once Tenderly supports eth_simulateV1 calls
   describe.skip('simulate', () => {
     it('simulates execution of calls', async () => {
-      const { vaultRouter } = await context.centrifuge._protocolAddresses(chainId)
+      const { vaultRouter } = await context.centrifuge._protocolAddresses(centId)
 
       const mock = sinon.stub(merkleProofManager.pool, 'metadata')
       mock.returns(

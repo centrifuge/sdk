@@ -1,10 +1,9 @@
 export default [
-  // 'receive() external payable',
   // 'function authTransferTo(address asset, uint256 tokenId, address receiver, uint256 amount)',
   // 'function availableBalanceOf(bytes16 scId, address asset, uint256 tokenId) view returns (uint128)',
   // 'function deny(address user)',
   // 'function deposit(bytes16 scId, address asset, uint256 tokenId, uint128 value)',
-  'function holding(bytes16 scId, address asset, uint256 tokenId) view returns (uint128 total, uint128 reserved)',
+  'function holding(bytes16, address asset, uint256 tokenId) view returns (uint128 total, uint128 reserved)',
   // 'function poolId() view returns (uint64)',
   // 'function recoverTokens(address token, address receiver, uint256 amount)',
   // 'function recoverTokens(address token, uint256 tokenId, address receiver, uint256 amount)',

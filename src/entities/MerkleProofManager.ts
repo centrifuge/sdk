@@ -1,5 +1,5 @@
 import type { SimpleMerkleTree } from '@openzeppelin/merkle-tree'
-import { map, switchMap } from 'rxjs'
+import { firstValueFrom, map, switchMap } from 'rxjs'
 import { AbiFunction, encodeFunctionData, encodePacked, keccak256, parseAbiItem, toFunctionSelector, toHex } from 'viem'
 import { ABI } from '../abi/index.js'
 import type { Centrifuge } from '../Centrifuge.js'
@@ -8,7 +8,7 @@ import type { HexString } from '../types/index.js'
 import { MerkleProofPolicy, MerkleProofPolicyInput, MerkleProofTemplate } from '../types/poolMetadata.js'
 import { MessageType } from '../types/transaction.js'
 import { Balance, BigIntWrapper, Price } from '../utils/BigInt.js'
-import { addressToBytes32 } from '../utils/index.js'
+import { addressToBytes32, encode } from '../utils/index.js'
 import { wrapTransaction } from '../utils/transaction.js'
 import { Entity } from './Entity.js'
 import type { Pool } from './Pool.js'
@@ -19,7 +19,6 @@ import { PoolNetwork } from './PoolNetwork.js'
  */
 export class MerkleProofManager extends Entity {
   pool: Pool
-  chainId: number
 
   /**
    * The contract address of the Merkle Proof Manager.
@@ -31,8 +30,7 @@ export class MerkleProofManager extends Entity {
     public network: PoolNetwork,
     address: HexString
   ) {
-    super(_root, ['merkleProofManager', network.chainId, network.pool.id.toString()])
-    this.chainId = network.chainId
+    super(_root, ['merkleProofManager', network.centrifugeId, network.pool.id.toString()])
     this.pool = network.pool
     this.address = address.toLowerCase() as HexString
   }
@@ -41,7 +39,12 @@ export class MerkleProofManager extends Entity {
     return this._query(['policiesAndTemplates', strategist.toLowerCase()], () =>
       this.pool
         .metadata()
-        .pipe(map((metadata) => metadata?.merkleProofManager?.[this.chainId]?.[strategist.toLowerCase() as any] ?? []))
+        .pipe(
+          map(
+            (metadata) =>
+              metadata?.merkleProofManager?.[this.network.centrifugeId]?.[strategist.toLowerCase() as any] ?? []
+          )
+        )
     )
   }
 
@@ -49,7 +52,7 @@ export class MerkleProofManager extends Entity {
     return this._query(['strategists'], () =>
       this.pool.metadata().pipe(
         switchMap(async (metadata) => {
-          const strategists = metadata?.merkleProofManager?.[this.chainId]
+          const strategists = metadata?.merkleProofManager?.[this.network.centrifugeId]
           const importedMerkleTree = await import('@openzeppelin/merkle-tree')
           const { SimpleMerkleTree: SimpleMerkleTreeConstructor } = importedMerkleTree.default || importedMerkleTree
 
@@ -58,7 +61,7 @@ export class MerkleProofManager extends Entity {
           return Object.entries(strategists)
             .filter(([_, { policies }]) => policies.length > 0)
             .map(([address, { policies, templates }]) => ({
-              chainId: this.chainId,
+              centrifugeId: this.network.centrifugeId,
               address,
               policies,
               templates: templates ?? [],
@@ -73,19 +76,20 @@ export class MerkleProofManager extends Entity {
     const self = this
     return this._transact(async function* (ctx) {
       const [{ hub }, poolDetails] = await Promise.all([
-        self._root._protocolAddresses(self.pool.chainId),
+        self._root._protocolAddresses(self.pool.centrifugeId),
         self.pool.details(),
       ])
 
       const { metadata } = poolDetails
-      const policies = metadata?.merkleProofManager?.[self.chainId]?.[strategist.toLowerCase() as any]?.policies || []
+      const policies =
+        metadata?.merkleProofManager?.[self.network.centrifugeId]?.[strategist.toLowerCase() as any]?.policies || []
 
       const newMetadata = {
         ...metadata,
         merkleProofManager: {
           ...metadata?.merkleProofManager,
-          [self.chainId]: {
-            ...metadata?.merkleProofManager?.[self.chainId],
+          [self.network.centrifugeId]: {
+            ...metadata?.merkleProofManager?.[self.network.centrifugeId],
             [strategist.toLowerCase()]: { policies, templates: templates satisfies MerkleProofTemplate[] },
           },
         },
@@ -103,7 +107,7 @@ export class MerkleProofManager extends Entity {
           }),
         ],
       })
-    }, this.pool.chainId)
+    }, this.pool.centrifugeId)
   }
 
   setPolicies(
@@ -115,16 +119,16 @@ export class MerkleProofManager extends Entity {
   ) {
     const self = this
     return this._transact(async function* (ctx) {
-      const [{ hub }, id, poolDetails, importedMerkleTree] = await Promise.all([
-        self._root._protocolAddresses(self.pool.chainId),
-        self._root.id(self.chainId),
+      const [{ hub }, id, poolDetails, importedMerkleTree, client] = await Promise.all([
+        self._root._protocolAddresses(self.pool.centrifugeId),
+        Promise.resolve(self.network.centrifugeId),
         self.pool.details(),
         import('@openzeppelin/merkle-tree'),
+        firstValueFrom(self._root.getClient(self.network.centrifugeId)),
       ])
 
       const { SimpleMerkleTree: SimpleMerkleTreeConstructor } = importedMerkleTree.default || importedMerkleTree
       const { metadata, shareClasses } = poolDetails
-      const client = self._root.getClient(self.chainId)
 
       // Get the encoded args from chain by calling the decoder contract.
       async function getEncodedArgs(policy: MerkleProofPolicyInput, policyCombinations: (string | null)[][]) {
@@ -207,8 +211,8 @@ export class MerkleProofManager extends Entity {
         ...metadata,
         merkleProofManager: {
           ...metadata?.merkleProofManager,
-          [self.chainId]: {
-            ...metadata?.merkleProofManager?.[self.chainId],
+          [self.network.centrifugeId]: {
+            ...metadata?.merkleProofManager?.[self.network.centrifugeId],
             [strategist.toLowerCase()]: { templates: [], policies: policies satisfies MerkleProofPolicy[] },
           },
         },
@@ -235,19 +239,17 @@ export class MerkleProofManager extends Entity {
                 shareClasses[0]!.shareClass.id.raw,
                 id,
                 addressToBytes32(self.address),
-                encodePacked(
-                  ['uint8', 'bytes32', 'bytes32'],
-                  [/* UpdateContractType.Policy */ 4, addressToBytes32(strategist), rootHash]
-                ),
+                encode([strategist, rootHash]),
                 0n,
+                ctx.signingAddress,
               ],
             }),
           ],
-          messages: { [id]: [MessageType.UpdateContract] },
+          messages: { [id]: [MessageType.TrustedContractUpdate] },
         },
         options && { simulate: options.simulate }
       )
-    }, this.pool.chainId)
+    }, this.pool.centrifugeId)
   }
 
   /**
@@ -278,10 +280,12 @@ export class MerkleProofManager extends Entity {
       const { SimpleMerkleTree: SimpleMerkleTreeConstructor } = importedMerkleTree.default || importedMerkleTree
 
       const policiesForStrategist =
-        metadata?.merkleProofManager?.[self.chainId]?.[ctx.signingAddress.toLowerCase() as any]?.policies
+        metadata?.merkleProofManager?.[self.network.centrifugeId]?.[ctx.signingAddress.toLowerCase() as any]?.policies
 
       if (!policiesForStrategist) {
-        throw new Error(`No policies found for strategist "${ctx.signingAddress}" on chain "${self.chainId}"`)
+        throw new Error(
+          `No policies found for strategist "${ctx.signingAddress}" on centrifuge network "${self.network.centrifugeId}"`
+        )
       }
 
       const tree = getMerkleTree(SimpleMerkleTreeConstructor, policiesForStrategist)
@@ -334,7 +338,7 @@ export class MerkleProofManager extends Entity {
         },
         options && { simulate: options.simulate }
       )
-    }, this.chainId)
+    }, this.network.centrifugeId)
   }
 }
 
