@@ -446,6 +446,20 @@ export class PoolNetwork extends Entity {
         )
         messageTypes.push(MessageType.UpdateBalanceSheetManager)
       }
+
+      // notifyPool must come before setRequestManager because setRequestManager sends a message
+      // to the Spoke, which calls Spoke.setRequestManager, and that requires isPoolActive == true
+      if (!details.isActive) {
+        batch.push(
+          encodeFunctionData({
+            abi: ABI.Hub,
+            functionName: 'notifyPool',
+            args: [self.pool.id.raw, self.centrifugeId, ctx.signingAddress],
+          })
+        )
+        messageTypes.push(MessageType.NotifyPool)
+      }
+
       if (existingRequestManager === NULL_ADDRESS) {
         batch.push(
           encodeFunctionData({
@@ -461,17 +475,6 @@ export class PoolNetwork extends Entity {
           })
         )
         messageTypes.push(MessageType.SetRequestManager)
-      }
-
-      if (!details.isActive) {
-        batch.push(
-          encodeFunctionData({
-            abi: ABI.Hub,
-            functionName: 'notifyPool',
-            args: [self.pool.id.raw, self.centrifugeId, ctx.signingAddress],
-          })
-        )
-        messageTypes.push(MessageType.NotifyPool)
       }
 
       const enabledShareClasses = new Set(details.activeShareClasses.map((sc) => sc.id.raw))
