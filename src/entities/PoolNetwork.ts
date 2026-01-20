@@ -339,24 +339,46 @@ export class PoolNetwork extends Entity {
   }
 
   /**
-   * Enable and deploy share classes/vaults.
+   * Enable share classes on this network.
    * @param shareClasses - An array of share classes to enable
+   */
+  deployShareClasses(shareClasses: { id: ShareClassId; hook: HexString }[]) {
+    return this.deploy(shareClasses, [])
+  }
+
+  /**
+   * Deploy vaults for share classes that are already enabled on this network.
    * @param vaults - An array of vaults to deploy
    */
-  deploy(
-    shareClasses: { id: ShareClassId; hook: HexString }[] = [],
+  deployVaults(
     vaults: {
       shareClassId: ShareClassId
       assetId: AssetId
       kind: 'async' | 'syncDeposit'
       factory?: HexString
-      hook?: HexString
-    }[] = []
+    }[]
+  ) {
+    return this.deploy([], vaults)
+  }
+
+  /**
+   * Enable and deploy share classes/vaults.
+   * @param shareClasses - An array of share classes to enable
+   * @param vaults - An array of vaults to deploy
+   */
+  deploy(
+    shareClasses: { id: ShareClassId; hook: HexString }[],
+    vaults: {
+      shareClassId: ShareClassId
+      assetId: AssetId
+      kind: 'async' | 'syncDeposit'
+      factory?: HexString
+    }[]
   ) {
     const self = this
     return this._transact(async function* (ctx) {
       const [
-        { hub },
+        { hub, layerZeroAdapter: localLzAdapter, wormholeAdapter: localWhAdapter },
         {
           spoke,
           balanceSheet,
@@ -365,6 +387,8 @@ export class PoolNetwork extends Entity {
           syncManager,
           asyncRequestManager,
           batchRequestManager,
+          layerZeroAdapter: remoteLzAdapter,
+          wormholeAdapter: remoteWhAdapter,
         },
         details,
         spokeClient,
@@ -469,24 +493,24 @@ export class PoolNetwork extends Entity {
         messageTypes.push(MessageType.NotifyShareClass)
       }
 
-      const shareClassesNeedingNotification = new Map<ShareClassId['raw'], HexString>()
       for (const vault of vaults) {
         if (!enabledShareClasses.has(vault.shareClassId.raw)) {
-          const hook = vault.hook ?? NULL_ADDRESS
-          shareClassesNeedingNotification.set(vault.shareClassId.raw, hook)
+          enabledShareClasses.add(vault.shareClassId.raw)
+          batch.push(
+            encodeFunctionData({
+              abi: ABI.Hub,
+              functionName: 'notifyShareClass',
+              args: [
+                self.pool.id.raw,
+                vault.shareClassId.raw,
+                self.centrifugeId,
+                addressToBytes32(NULL_ADDRESS),
+                ctx.signingAddress,
+              ],
+            })
+          )
+          messageTypes.push(MessageType.NotifyShareClass)
         }
-      }
-
-      for (const [shareClassIdRaw, hook] of shareClassesNeedingNotification) {
-        enabledShareClasses.add(shareClassIdRaw)
-        batch.push(
-          encodeFunctionData({
-            abi: ABI.Hub,
-            functionName: 'notifyShareClass',
-            args: [self.pool.id.raw, shareClassIdRaw, self.centrifugeId, addressToBytes32(hook), ctx.signingAddress],
-          })
-        )
-        messageTypes.push(MessageType.NotifyShareClass)
       }
 
       for (const vault of vaults) {
@@ -494,7 +518,7 @@ export class PoolNetwork extends Entity {
           throw new Error(`Share class "${vault.shareClassId.raw}" is not enabled in pool "${self.pool.id.raw}"`)
         }
 
-        const factoryAddress: HexString = vault.factory
+        const factoryAddress = vault.factory
           ? vault.factory
           : vault.kind === 'syncDeposit'
             ? syncDepositVaultFactory

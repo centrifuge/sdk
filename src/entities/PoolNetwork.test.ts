@@ -328,7 +328,7 @@ describe.skip('PoolNetwork', () => {
         args: [poolId.raw],
       })
 
-      await poolNetwork.deploy([{ id: ShareClassId.from(pool.id, shareClassesCount), hook: '0x' }])
+      await poolNetwork.deploy([{ id: ShareClassId.from(pool.id, shareClassesCount), hook: '0x' }], [])
 
       const result = await poolNetwork.deployOnOfframpManager(ShareClassId.from(pool.id, shareClassesCount))
 
@@ -365,7 +365,7 @@ describe.skip('PoolNetwork', () => {
         args: [poolId.raw],
       })
 
-      await poolNetwork.deploy([{ id: ShareClassId.from(pool.id, shareClassesCount), hook: '0x' }])
+      await poolNetwork.deploy([{ id: ShareClassId.from(pool.id, shareClassesCount), hook: '0x' }], [])
 
       await poolNetwork.deployOnOfframpManager(ShareClassId.from(pool.id, shareClassesCount))
 
