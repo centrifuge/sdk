@@ -459,6 +459,31 @@ export class PoolNetwork extends Entity {
         )
         messageTypes.push(MessageType.NotifyPool)
       }
+      if (
+        details.activeShareClasses.length === 0 &&
+        self.pool.centrifugeId !== self.centrifugeId &&
+        localLzAdapter &&
+        localWhAdapter &&
+        remoteLzAdapter &&
+        remoteWhAdapter
+      ) {
+        batch.push(
+          encodeFunctionData({
+            abi: ABI.Hub,
+            functionName: 'setAdapters',
+            args: [
+              self.pool.id.raw,
+              self.centrifugeId,
+              [localLzAdapter, localWhAdapter],
+              [remoteLzAdapter, remoteWhAdapter].map(addressToBytes32),
+              2, // threshold
+              2, // recovery index
+              ctx.signingAddress,
+            ],
+          })
+        )
+        messageTypes.push(MessageType.SetPoolAdapters)
+      }
 
       if (existingRequestManager === NULL_ADDRESS) {
         batch.push(
@@ -494,26 +519,6 @@ export class PoolNetwork extends Entity {
           })
         )
         messageTypes.push(MessageType.NotifyShareClass)
-      }
-
-      for (const vault of vaults) {
-        if (!enabledShareClasses.has(vault.shareClassId.raw)) {
-          enabledShareClasses.add(vault.shareClassId.raw)
-          batch.push(
-            encodeFunctionData({
-              abi: ABI.Hub,
-              functionName: 'notifyShareClass',
-              args: [
-                self.pool.id.raw,
-                vault.shareClassId.raw,
-                self.centrifugeId,
-                addressToBytes32(NULL_ADDRESS),
-                ctx.signingAddress,
-              ],
-            })
-          )
-          messageTypes.push(MessageType.NotifyShareClass)
-        }
       }
 
       for (const vault of vaults) {
