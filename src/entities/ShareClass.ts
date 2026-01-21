@@ -2269,18 +2269,17 @@ export class ShareClass extends Entity {
         investOrders(where: {tokenId: $scId}) {
           items {
             account
+            assetId
+            tokenId
             approvedAssetsAmount
             approvedAt
-            assetId
             claimedSharesAmount
             claimedAt
             issuedSharesAmount
             issuedAt
-            postedAssetsAmount
+            pendingAssetsAmount
             postedAt
-            vaultDeposit {
-              assetsAmount
-            }
+            queuedAssetsAmount
           }
         }
         redeemOrders(where: {tokenId: $scId}) {
@@ -2292,15 +2291,13 @@ export class ShareClass extends Entity {
             approvedAt
             claimedAssetsAmount
             claimedAt
-            postedSharesAmount
+            pendingSharesAmount
             postedAt
             revokedSharesAmount
             revokedAssetsAmount
             revokedPoolAmount
             revokedAt
-            vaultRedeem {
-              sharesAmount
-            }
+            queuedSharesAmount
           }
         }
         }`,
@@ -2309,18 +2306,17 @@ export class ShareClass extends Entity {
         investOrders: {
           items: {
             account: HexString
+            assetId: string
+            tokenId: HexString
             approvedAssetsAmount: string
             approvedAt: string | null
-            assetId: string
             claimedSharesAmount: string
             claimedAt: string | null
             issuedSharesAmount: string
             issuedAt: string | null
-            postedAssetsAmount: string
+            pendingAssetsAmount: string
             postedAt: string | null
-            vaultDeposit?: {
-              assetsAmount: string
-            }
+            queuedAssetsAmount: string
           }[]
         }
         redeemOrders: {
@@ -2332,15 +2328,13 @@ export class ShareClass extends Entity {
             approvedAt: string | null
             claimedAssetsAmount: string
             claimedAt: string | null
-            postedSharesAmount: string
+            pendingSharesAmount: string
             postedAt: string | null
             revokedSharesAmount: string
             revokedAssetsAmount: string
             revokedPoolAmount: string
             revokedAt: string | null
-            vaultRedeem?: {
-              sharesAmount: string
-            }
+            queuedSharesAmount: string
           }[]
         }
       }) => ({
@@ -2349,30 +2343,30 @@ export class ShareClass extends Entity {
           assetId: new AssetId(item.assetId),
           account: item.account.toLowerCase() as HexString,
           investor: item.account.toLowerCase() as HexString,
+          tokenId: item.tokenId.toLowerCase() as HexString,
         })),
         outstandingInvests: data.investOrders.items.map((item) => ({
           assetId: new AssetId(item.assetId),
           account: item.account.toLowerCase() as HexString,
           investor: item.account.toLowerCase() as HexString,
-          pendingAmount: item.approvedAt === null ? item.postedAssetsAmount : '',
-          queuedAmount: !item.vaultDeposit?.assetsAmount
-            ? ''
-            : String(BigInt(item.vaultDeposit?.assetsAmount) - BigInt(item.postedAssetsAmount)),
+          tokenId: item.tokenId.toLowerCase() as HexString,
+          pendingAmount: item.pendingAssetsAmount,
+          queuedAmount: item.queuedAssetsAmount,
         })),
         redeemOrders: data.redeemOrders.items.map((item) => ({
           ...item,
           assetId: new AssetId(item.assetId),
           account: item.account.toLowerCase() as HexString,
           investor: item.account.toLowerCase() as HexString,
+          tokenId: item.tokenId.toLowerCase() as HexString,
         })),
         outstandingRedeems: data.redeemOrders.items.map((item) => ({
           assetId: new AssetId(item.assetId),
           account: item.account.toLowerCase() as HexString,
           investor: item.account.toLowerCase() as HexString,
-          pendingAmount: item.approvedAt === null ? item.postedSharesAmount : '',
-          queuedAmount: !item.vaultRedeem?.sharesAmount
-            ? ''
-            : String(BigInt(item.vaultRedeem?.sharesAmount) - BigInt(item.postedSharesAmount)),
+          tokenId: item.tokenId.toLowerCase() as HexString,
+          pendingAmount: item.pendingSharesAmount,
+          queuedAmount: item.queuedSharesAmount,
         })),
       })
     )

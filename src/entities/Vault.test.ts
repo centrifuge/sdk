@@ -81,6 +81,7 @@ describe.skip('Vault', () => {
               {
                 assetId,
                 account: investorA,
+                tokenId: assetId.addr,
                 investor: investorA,
                 queuedAmount: '',
                 pendingAmount: '',
@@ -90,6 +91,7 @@ describe.skip('Vault', () => {
               {
                 assetId,
                 account: investorA,
+                tokenId: assetId.addr,
                 investor: investorA,
                 queuedAmount: '',
                 pendingAmount: '',
