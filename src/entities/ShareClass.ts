@@ -1748,7 +1748,7 @@ export class ShareClass extends Entity {
                     name: epochData.asset.name,
                     decimals: epochData.asset.decimals,
                   },
-                  chainId: epochData.asset.blockchain.chainId,
+                  centrifugeId: epochData.asset.centrifugeId,
                   token: {
                     decimals: epochData.token.decimals,
                   },
@@ -1772,7 +1772,7 @@ export class ShareClass extends Entity {
                       name: order.asset.name,
                       decimals: order.asset.decimals,
                     },
-                    chainId: order.asset.blockchain.chainId,
+                    centrifugeId: order.asset.centrifugeId,
                     token: {
                       decimals: order.token.decimals,
                     },
@@ -1780,7 +1780,6 @@ export class ShareClass extends Entity {
                 })
               }
             })
-
             return allOrders
           })
         )
@@ -1891,7 +1890,7 @@ export class ShareClass extends Entity {
                     name: epochData.asset.name,
                     decimals: epochData.asset.decimals,
                   },
-                  chainId: epochData.asset.blockchain.chainId,
+                  centrifugeId: epochData.asset.centrifugeId,
                   token: {
                     decimals: epochData.token.decimals,
                   },
@@ -1915,7 +1914,7 @@ export class ShareClass extends Entity {
                       name: order.asset.name,
                       decimals: order.asset.decimals,
                     },
-                    chainId: order.asset.blockchain.chainId,
+                    centrifugeId: order.asset.centrifugeId,
                     token: {
                       decimals: order.token.decimals,
                     },
