@@ -2265,86 +2265,47 @@ export class ShareClass extends Entity {
   _investorOrders() {
     return this._root._queryIndexer(
       `query ($scId: String!) {
-        investOrders(where: {tokenId: $scId}) {
+        pendingInvestOrders(where: {tokenId: $scId}) {
           items {
             account
             assetId
             tokenId
-            approvedAssetsAmount
-            approvedAt
-            claimedSharesAmount
-            claimedAt
-            issuedSharesAmount
-            issuedAt
             pendingAssetsAmount
-            postedAt
             queuedAssetsAmount
           }
         }
-        redeemOrders(where: {tokenId: $scId}) {
+        pendingRedeemOrders(where: {tokenId: $scId}) {
           items {
             account
             assetId
             tokenId
-            approvedSharesAmount
-            approvedAt
-            claimedAssetsAmount
-            claimedAt
             pendingSharesAmount
-            postedAt
-            revokedSharesAmount
-            revokedAssetsAmount
-            revokedPoolAmount
-            revokedAt
             queuedSharesAmount
           }
         }
         }`,
       { scId: this.id.raw },
       (data: {
-        investOrders: {
+        pendingInvestOrders: {
           items: {
             account: HexString
             assetId: string
             tokenId: HexString
-            approvedAssetsAmount: string
-            approvedAt: string | null
-            claimedSharesAmount: string
-            claimedAt: string | null
-            issuedSharesAmount: string
-            issuedAt: string | null
             pendingAssetsAmount: string
-            postedAt: string | null
             queuedAssetsAmount: string
           }[]
         }
-        redeemOrders: {
+        pendingRedeemOrders: {
           items: {
             account: HexString
             assetId: string
             tokenId: HexString
-            approvedSharesAmount: string
-            approvedAt: string | null
-            claimedAssetsAmount: string
-            claimedAt: string | null
             pendingSharesAmount: string
-            postedAt: string | null
-            revokedSharesAmount: string
-            revokedAssetsAmount: string
-            revokedPoolAmount: string
-            revokedAt: string | null
             queuedSharesAmount: string
           }[]
         }
       }) => ({
-        investOrders: data.investOrders.items.map((item) => ({
-          ...item,
-          assetId: new AssetId(item.assetId),
-          account: item.account.toLowerCase() as HexString,
-          investor: item.account.toLowerCase() as HexString,
-          tokenId: item.tokenId.toLowerCase() as HexString,
-        })),
-        outstandingInvests: data.investOrders.items.map((item) => ({
+        outstandingInvests: data.pendingInvestOrders.items.map((item) => ({
           assetId: new AssetId(item.assetId),
           account: item.account.toLowerCase() as HexString,
           investor: item.account.toLowerCase() as HexString,
@@ -2352,14 +2313,7 @@ export class ShareClass extends Entity {
           pendingAmount: item.pendingAssetsAmount,
           queuedAmount: item.queuedAssetsAmount,
         })),
-        redeemOrders: data.redeemOrders.items.map((item) => ({
-          ...item,
-          assetId: new AssetId(item.assetId),
-          account: item.account.toLowerCase() as HexString,
-          investor: item.account.toLowerCase() as HexString,
-          tokenId: item.tokenId.toLowerCase() as HexString,
-        })),
-        outstandingRedeems: data.redeemOrders.items.map((item) => ({
+        outstandingRedeems: data.pendingRedeemOrders.items.map((item) => ({
           assetId: new AssetId(item.assetId),
           account: item.account.toLowerCase() as HexString,
           investor: item.account.toLowerCase() as HexString,
