@@ -75,8 +75,6 @@ describe.skip('Vault', () => {
       mock.returns(
         makeThenable(
           of({
-            investOrders: [],
-            redeemOrders: [],
             outstandingInvests: [
               {
                 assetId,
