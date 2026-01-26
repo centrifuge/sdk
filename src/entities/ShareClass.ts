@@ -2059,7 +2059,7 @@ export class ShareClass extends Entity {
               self.id.raw,
               centrifugeId,
               addressToBytes32(spokeAddresses.syncManager),
-              encodePacked(['uint8', 'bytes32'], [/* UpdateContractType.Valuation */ 1, addressToBytes32(valuation)]),
+              encode([VaultManagerTrustedCall.Valuation, addressToBytes32(valuation)]),
               0n,
               ctx.signingAddress,
             ],
