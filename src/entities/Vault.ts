@@ -1,18 +1,18 @@
 import { combineLatest, defer, map, switchMap } from 'rxjs'
-import { encodeFunctionData, encodePacked, getContract } from 'viem'
+import { encodeFunctionData, getContract } from 'viem'
 import { ABI } from '../abi/index.js'
 import type { Centrifuge } from '../Centrifuge.js'
 import type { HexString } from '../types/index.js'
 import { MessageType } from '../types/transaction.js'
 import { Balance } from '../utils/BigInt.js'
-import { addressToBytes32 } from '../utils/index.js'
+import { addressToBytes32, encode } from '../utils/index.js'
 import { Permit, signPermit } from '../utils/permit.js'
 import { repeatOnEvents } from '../utils/rx.js'
 import { doSignMessage, doTransaction, wrapTransaction } from '../utils/transaction.js'
 import { AssetId } from '../utils/types.js'
 import { Entity } from './Entity.js'
 import type { Pool } from './Pool.js'
-import { PoolNetwork } from './PoolNetwork.js'
+import { PoolNetwork, VaultManagerTrustedCall } from './PoolNetwork.js'
 import { ShareClass } from './ShareClass.js'
 
 // const ASYNC_OPERATOR_INTERFACE_ID = '0xe3bc4e65'
@@ -620,10 +620,7 @@ export class Vault extends Entity {
             self.shareClass.id.raw,
             self.centrifugeId,
             addressToBytes32(syncManager),
-            encodePacked(
-              ['uint8', 'uint128', 'uint128'],
-              [/* UpdateContractType.SyncDepositMaxReserve */ 2, self.assetId.raw, maxReserve.toBigInt()]
-            ),
+            encode([VaultManagerTrustedCall.MaxReserve, self.assetId.raw, maxReserve.toBigInt()]),
             0n,
             ctx.signingAddress,
           ],
