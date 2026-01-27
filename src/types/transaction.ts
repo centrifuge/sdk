@@ -111,6 +111,11 @@ export type SimulationStatus = {
   result: SimulationResult[]
 }
 
+export type DeployedOnOfframpManagerStatus = {
+  type: 'DeployedOnOfframpManager'
+  address: HexString
+}
+
 export type OperationStatus =
   | OperationSigningStatus
   | OperationSigningMessageStatus
@@ -119,6 +124,7 @@ export type OperationStatus =
   | OperationConfirmedStatus
   | OperationSwitchChainStatus
   | SimulationStatus
+  | DeployedOnOfframpManagerStatus
 
 export type EIP1193ProviderLike = {
   request(...args: any): Promise<any>
