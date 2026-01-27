@@ -7,7 +7,7 @@ import { HexString } from '../types/index.js'
 import { MessageType, MessageTypeWithSubType, VaultUpdateKind } from '../types/transaction.js'
 import { addressToBytes32, encode } from '../utils/index.js'
 import { repeatOnEvents } from '../utils/rx.js'
-import { doTransaction, wrapTransaction } from '../utils/transaction.js'
+import { doTransaction, parseEventLogs, wrapTransaction } from '../utils/transaction.js'
 import { AssetId, CentrifugeId, ShareClassId } from '../utils/types.js'
 import { BalanceSheet } from './BalanceSheet.js'
 import { Entity } from './Entity.js'
@@ -321,13 +321,18 @@ export class PoolNetwork extends Entity {
     }, this.centrifugeId)
   }
 
+  /**
+   * Deploy an On/Off Ramp Manager for a share class.
+   * Yields the deployed manager address as a custom 'DeployedOnOfframpManager' status.
+   * @param scId - The share class ID
+   */
   deployOnOfframpManager(scId: ShareClassId) {
     const self = this
 
     return this._transact(async function* (ctx) {
       const { onOfframpManagerFactory } = await self._root._protocolAddresses(self.centrifugeId)
 
-      yield* doTransaction('DeployOnOfframpManager', ctx, () =>
+      const result = yield* doTransaction('DeployOnOfframpManager', ctx, () =>
         ctx.walletClient.writeContract({
           address: onOfframpManagerFactory,
           abi: ABI.OnOffRampManagerFactory,
@@ -335,7 +340,41 @@ export class PoolNetwork extends Entity {
           args: [self.pool.id.raw, scId.raw],
         })
       )
+
+      const events = parseEventLogs({
+        logs: result.receipt.logs,
+        eventName: 'DeployOnOfframpManager',
+        address: onOfframpManagerFactory,
+      })
+
+      const deployEvent = events[0]
+      const args = deployEvent?.args as { manager?: HexString } | undefined
+      if (!args?.manager) {
+        throw new Error('DeployOnOfframpManager event not found')
+      }
+
+      const managerAddress = args.manager
+
+      yield {
+        type: 'DeployedOnOfframpManager',
+        address: managerAddress,
+      } as const
     }, self.centrifugeId)
+  }
+
+  /**
+   * Register an On/Off Ramp Manager as a Balance Sheet Manager.
+   * Use this with the address obtained from deployOnOfframpManager().
+   * @param managerAddress - The deployed manager's contract address
+   */
+  registerOnOffRampManagerAsBSManager(managerAddress: HexString) {
+    return this.pool.updateBalanceSheetManagers([
+      {
+        centrifugeId: this.centrifugeId,
+        address: managerAddress,
+        canManage: true,
+      },
+    ])
   }
 
   /**
