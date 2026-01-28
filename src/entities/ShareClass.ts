@@ -2071,38 +2071,117 @@ export class ShareClass extends Entity {
   }
 
   /**
-   * Get detailed order information.
-   *  @returns both pending orders and approved orders with investor details.
+   * Get detailed order information including per-user breakdowns with helper methods.
+   * @returns Order data with helper methods for efficient lookups
    */
   orderDetails() {
     return this._query(['orderDetails'], () =>
       combineLatest([this._investOrders(), this._redeemOrders(), this.balances()]).pipe(
         map(([investData, redeemData, balancesData]) => {
-          const priceByAsset = new Map<string, Price>()
-          balancesData.forEach((b) => priceByAsset.set(b.assetId.toString(), b.price))
+          const assetPrices = new Map<string, Price>()
+          balancesData.forEach((b) => assetPrices.set(b.assetId.toString(), b.price))
+
+          type PendingInvestOrder = (typeof investData.investsPending)[number]
+          const pendingInvestsByVault = new Map<string, PendingInvestOrder[]>()
+          const queuedInvestByAsset = new Map<string, Balance>()
+
+          for (const order of investData.investsPending) {
+            const vaultKey = `${order.assetId.toString()}-${order.centrifugeId}`
+            if (!pendingInvestsByVault.has(vaultKey)) {
+              pendingInvestsByVault.set(vaultKey, [])
+            }
+            pendingInvestsByVault.get(vaultKey)!.push(order)
+
+            const assetKey = order.assetId.toString()
+            const existing = queuedInvestByAsset.get(assetKey)
+            if (existing) {
+              queuedInvestByAsset.set(assetKey, existing.add(order.queuedAmount))
+            } else {
+              queuedInvestByAsset.set(assetKey, order.queuedAmount)
+            }
+          }
+
+          type PendingRedeemOrder = (typeof redeemData.redeemsPending)[number]
+          const pendingRedeemsByVault = new Map<string, PendingRedeemOrder[]>()
+          const queuedRedeemByAsset = new Map<string, Balance>()
+
+          for (const order of redeemData.redeemsPending) {
+            const vaultKey = `${order.assetId.toString()}-${order.centrifugeId}`
+            if (!pendingRedeemsByVault.has(vaultKey)) {
+              pendingRedeemsByVault.set(vaultKey, [])
+            }
+            pendingRedeemsByVault.get(vaultKey)!.push(order)
+
+            const assetKey = order.assetId.toString()
+            const existing = queuedRedeemByAsset.get(assetKey)
+            if (existing) {
+              queuedRedeemByAsset.set(assetKey, existing.add(order.queuedAmount))
+            } else {
+              queuedRedeemByAsset.set(assetKey, order.queuedAmount)
+            }
+          }
+
+          type ApprovedInvestOrder = (typeof investData.investsApproved)[number]
+          const approvedInvestsByVaultAndEpoch = new Map<string, ApprovedInvestOrder[]>()
+          const filteredApprovedInvests = investData.investsApproved.filter((i) => !!i.approvedAt && !i.issuedAt)
+
+          for (const order of filteredApprovedInvests) {
+            const key = `${order.assetId.toString()}-${order.centrifugeId}-${order.index}`
+            if (!approvedInvestsByVaultAndEpoch.has(key)) {
+              approvedInvestsByVaultAndEpoch.set(key, [])
+            }
+            approvedInvestsByVaultAndEpoch.get(key)!.push(order)
+          }
+
+          type ApprovedRedeemOrder = (typeof redeemData.redeemsApproved)[number]
+          const approvedRedeemsByVaultAndEpoch = new Map<string, ApprovedRedeemOrder[]>()
+          const filteredApprovedRedeems = redeemData.redeemsApproved.filter((i) => !!i.approvedAt && !i.revokedAt)
+
+          for (const order of filteredApprovedRedeems) {
+            const key = `${order.assetId.toString()}-${order.centrifugeId}-${order.index}`
+            if (!approvedRedeemsByVaultAndEpoch.has(key)) {
+              approvedRedeemsByVaultAndEpoch.set(key, [])
+            }
+            approvedRedeemsByVaultAndEpoch.get(key)!.push(order)
+          }
+
+          const toAssetKey = (assetId: AssetId | string): string =>
+            typeof assetId === 'string' ? assetId : assetId.toString()
 
           return {
-            pendingInvests: {
-              byAsset: investData.totalPending,
-              byInvestor: investData.investsPending,
+            getPendingInvestsByVault: (assetId: AssetId | string, centrifugeId: CentrifugeId): PendingInvestOrder[] => {
+              const key = `${toAssetKey(assetId)}-${centrifugeId}`
+              return pendingInvestsByVault.get(key) ?? []
             },
-
-            pendingRedeems: {
-              byAsset: redeemData.totalPending,
-              byInvestor: redeemData.redeemsPending,
+            getPendingRedeemsByVault: (assetId: AssetId | string, centrifugeId: CentrifugeId): PendingRedeemOrder[] => {
+              const key = `${toAssetKey(assetId)}-${centrifugeId}`
+              return pendingRedeemsByVault.get(key) ?? []
             },
-
-            approvedInvests: {
-              byEpoch: investData.epochOrders,
-              byInvestor: investData.investsApproved.filter((i) => !!i.approvedAt && !i.issuedAt),
+            getApprovedInvestsByVaultAndEpoch: (
+              assetId: AssetId | string,
+              centrifugeId: CentrifugeId,
+              epoch: number
+            ): ApprovedInvestOrder[] => {
+              const key = `${toAssetKey(assetId)}-${centrifugeId}-${epoch}`
+              return approvedInvestsByVaultAndEpoch.get(key) ?? []
             },
-
-            approvedRedeems: {
-              byEpoch: redeemData.epochOrders,
-              byInvestor: redeemData.redeemsApproved.filter((i) => !!i.approvedAt && !i.revokedAt),
+            getApprovedRedeemsByVaultAndEpoch: (
+              assetId: AssetId | string,
+              centrifugeId: CentrifugeId,
+              epoch: number
+            ): ApprovedRedeemOrder[] => {
+              const key = `${toAssetKey(assetId)}-${centrifugeId}-${epoch}`
+              return approvedRedeemsByVaultAndEpoch.get(key) ?? []
             },
-
-            assetPrices: priceByAsset,
+            getQueuedInvestByAsset: (assetId: AssetId | string): Balance | undefined => {
+              return queuedInvestByAsset.get(toAssetKey(assetId))
+            },
+            getQueuedRedeemByAsset: (assetId: AssetId | string): Balance | undefined => {
+              return queuedRedeemByAsset.get(toAssetKey(assetId))
+            },
+            getAssetPrice: (assetId: AssetId | string): Price | undefined => {
+              return assetPrices.get(toAssetKey(assetId))
+            },
           }
         })
       )
