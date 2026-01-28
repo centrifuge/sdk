@@ -297,9 +297,9 @@ export class ShareClass extends Entity {
         this._allVaults().pipe(map((vaults) => vaults.filter((v) => v.status === 'Linked'))),
         this._investOrders(),
         this._redeemOrders(),
-            this.balances(),
+        this.balances(),
         this.pool.currency(),
-          ]).pipe(
+      ]).pipe(
         map(([vaults, investData, redeemData, balancesData, poolCurrency]) => {
           const poolDecimals = poolCurrency.decimals
 
@@ -376,8 +376,8 @@ export class ShareClass extends Entity {
             }
           })
 
-              const priceByAsset = new Map<string, Price>()
-              balancesData.forEach((b) => priceByAsset.set(b.assetId.toString(), b.price))
+          const priceByAsset = new Map<string, Price>()
+          balancesData.forEach((b) => priceByAsset.set(b.assetId.toString(), b.price))
 
           let totalPendingInvestments = new Balance(0n, poolDecimals)
           let totalPendingRedemptions = new Balance(0n, poolDecimals)
@@ -385,7 +385,7 @@ export class ShareClass extends Entity {
           let totalApprovedRedemptions = new Balance(0n, poolDecimals)
 
           const byVault = vaults.map((vault) => {
-                const key = `${vault.assetId.toString()}-${vault.centrifugeId}`
+            const key = `${vault.assetId.toString()}-${vault.centrifugeId}`
 
             const pendingDeposit = investmentsPending.get(key) ?? new Balance(0n, 18)
             const pendingRedeem = redemptionsPending.get(key) ?? new Balance(0n, 18)
@@ -405,7 +405,7 @@ export class ShareClass extends Entity {
             const queuedInvest = queuedInvestments.get(key) ?? new Balance(0n, 18)
             const queuedRedeem = queuedRedemptions.get(key) ?? new Balance(0n, 18)
 
-                const assetPrice = priceByAsset.get(vault.assetId.toString()) ?? Price.fromFloat(1)
+            const assetPrice = priceByAsset.get(vault.assetId.toString()) ?? Price.fromFloat(1)
 
             const pendingDepositInPoolCurrency = pendingDeposit.mul(assetPrice).scale(poolDecimals)
             totalPendingInvestments = totalPendingInvestments.add(pendingDepositInPoolCurrency)
@@ -430,24 +430,24 @@ export class ShareClass extends Entity {
             const minRedeemIndex =
               pendingRevocations.length > 0 ? Math.min(...pendingRevocations.map((p) => p.epoch)) : maxRedeemIndex + 1
 
-                return {
-                  assetId: vault.assetId,
-                  centrifugeId: vault.centrifugeId,
+            return {
+              assetId: vault.assetId,
+              centrifugeId: vault.centrifugeId,
               pendingDeposit,
               pendingRedeem,
               pendingIssuances,
               pendingIssuancesTotal,
               pendingRevocations,
               pendingRevocationsTotal,
-                  queuedInvest,
-                  queuedRedeem,
-                  assetPrice,
+              queuedInvest,
+              queuedRedeem,
+              assetPrice,
               depositEpoch: maxInvestIndex + 1,
               redeemEpoch: maxRedeemIndex + 1,
               issueEpoch: minInvestIndex,
               revokeEpoch: minRedeemIndex,
-                }
-              })
+            }
+          })
 
           return {
             byVault,
@@ -2071,6 +2071,45 @@ export class ShareClass extends Entity {
   }
 
   /**
+   * Get detailed order information.
+   *  @returns both pending orders and approved orders with investor details.
+   */
+  orderDetails() {
+    return this._query(['orderDetails'], () =>
+      combineLatest([this._investOrders(), this._redeemOrders(), this.balances()]).pipe(
+        map(([investData, redeemData, balancesData]) => {
+          const priceByAsset = new Map<string, Price>()
+          balancesData.forEach((b) => priceByAsset.set(b.assetId.toString(), b.price))
+
+          return {
+            pendingInvests: {
+              byAsset: investData.totalPending,
+              byInvestor: investData.investsPending,
+            },
+
+            pendingRedeems: {
+              byAsset: redeemData.totalPending,
+              byInvestor: redeemData.redeemsPending,
+            },
+
+            approvedInvests: {
+              byEpoch: investData.epochOrders,
+              byInvestor: investData.investsApproved.filter((i) => !!i.approvedAt && !i.issuedAt),
+            },
+
+            approvedRedeems: {
+              byEpoch: redeemData.epochOrders,
+              byInvestor: redeemData.redeemsApproved.filter((i) => !!i.approvedAt && !i.revokedAt),
+            },
+
+            assetPrices: priceByAsset,
+          }
+        })
+      )
+    )
+  }
+
+  /**
    * Get the valuation contract address for this share class on a specific chain.
    * @param centrifugeId
    */
@@ -2406,13 +2445,13 @@ export class ShareClass extends Entity {
   _investOrders() {
     return this._query(['investOrders'], () =>
       this._root._queryIndexer(
-      `query ($scId: String!) {
+        `query ($scId: String!) {
           epochOutstandingInvests(where: { tokenId: $scId }, limit: 1000) {
-          items {
-            assetId
+            items {
+              assetId
               poolId
-            tokenId
-            pendingAssetsAmount
+              tokenId
+              pendingAssetsAmount
               asset { decimals centrifugeId }
             }
           }
@@ -2435,15 +2474,15 @@ export class ShareClass extends Entity {
               account
               assetId
               tokenId
-            queuedAssetsAmount
+              queuedAssetsAmount
               pendingAssetsAmount
+            }
           }
-        }
           investOrders(where: { tokenId: $scId, issuedAt: null }, limit: 1000) {
-          items {
-            account
-            assetId
-            tokenId
+            items {
+              account
+              assetId
+              tokenId
               index
               approvedAt
               approvedAssetsAmount
@@ -2452,11 +2491,11 @@ export class ShareClass extends Entity {
               claimedAt
               claimedSharesAmount
               asset { decimals centrifugeId }
+            }
           }
-        }
         }`,
-      { scId: this.id.raw },
-      (data: {
+        { scId: this.id.raw },
+        (data: {
           epochOutstandingInvests: {
             items: {
               assetId: string
@@ -2480,19 +2519,19 @@ export class ShareClass extends Entity {
               asset: { decimals: number; centrifugeId: string }
             }[]
           }
-        pendingInvestOrders: {
-          items: {
-            account: HexString
-            assetId: string
+          pendingInvestOrders: {
+            items: {
+              account: HexString
+              assetId: string
               tokenId: string
-            queuedAssetsAmount: string
+              queuedAssetsAmount: string
               pendingAssetsAmount: string
-          }[]
-        }
+            }[]
+          }
           investOrders: {
-          items: {
-            account: HexString
-            assetId: string
+            items: {
+              account: HexString
+              assetId: string
               tokenId: string
               index: number
               approvedAt: string | null
@@ -2502,8 +2541,8 @@ export class ShareClass extends Entity {
               claimedAt: string | null
               claimedSharesAmount: string
               asset: { decimals: number; centrifugeId: string }
-          }[]
-        }
+            }[]
+          }
         }) => {
           const assetLookup = new Map<string, { decimals: number; centrifugeId: string }>()
           for (const item of data.epochOutstandingInvests.items) {
@@ -2568,14 +2607,14 @@ export class ShareClass extends Entity {
               approvedAmount: new Balance(item.approvedAssetsAmount || '0', item.asset.decimals),
               issuedAt: item.issuedAt ? new Date(item.issuedAt) : null,
             })),
-        outstandingInvests: data.pendingInvestOrders.items.map((item) => ({
-          assetId: new AssetId(item.assetId),
-          account: item.account.toLowerCase() as HexString,
-          investor: item.account.toLowerCase() as HexString,
-          tokenId: item.tokenId.toLowerCase() as HexString,
-          pendingAmount: item.pendingAssetsAmount,
-          queuedAmount: item.queuedAssetsAmount,
-        })),
+            outstandingInvests: data.pendingInvestOrders.items.map((item) => ({
+              assetId: new AssetId(item.assetId),
+              account: item.account.toLowerCase() as HexString,
+              investor: item.account.toLowerCase() as HexString,
+              tokenId: item.tokenId.toLowerCase() as HexString,
+              pendingAmount: item.pendingAssetsAmount,
+              queuedAmount: item.queuedAssetsAmount,
+            })),
           }
         }
       )
@@ -2754,14 +2793,14 @@ export class ShareClass extends Entity {
               approvedAmount: new Balance(item.approvedSharesAmount || '0', 18),
               revokedAt: item.revokedAt ? new Date(item.revokedAt) : null,
             })),
-        outstandingRedeems: data.pendingRedeemOrders.items.map((item) => ({
-          assetId: new AssetId(item.assetId),
-          account: item.account.toLowerCase() as HexString,
-          investor: item.account.toLowerCase() as HexString,
-          tokenId: item.tokenId.toLowerCase() as HexString,
-          pendingAmount: item.pendingSharesAmount,
-          queuedAmount: item.queuedSharesAmount,
-        })),
+            outstandingRedeems: data.pendingRedeemOrders.items.map((item) => ({
+              assetId: new AssetId(item.assetId),
+              account: item.account.toLowerCase() as HexString,
+              investor: item.account.toLowerCase() as HexString,
+              tokenId: item.tokenId.toLowerCase() as HexString,
+              pendingAmount: item.pendingSharesAmount,
+              queuedAmount: item.queuedSharesAmount,
+            })),
           }
         }
       )
@@ -2960,16 +2999,16 @@ export class ShareClass extends Entity {
                   'RemoteIssueShares',
                   'RemoteRevokeShares',
                   'UpdateShareClass',
-                  ],
-                  filter: (events) => {
-                    return events.some((event) => {
-                      return event.args.scId === this.id.raw
-                    })
-                  },
+                ],
+                filter: (events) => {
+                  return events.some((event) => {
+                    return event.args.scId === this.id.raw
+                  })
                 },
-                this.pool.centrifugeId
-              )
+              },
+              this.pool.centrifugeId
             )
+          )
         )
       )
     )
