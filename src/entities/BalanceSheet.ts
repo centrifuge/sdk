@@ -97,37 +97,36 @@ export class BalanceSheet extends Entity {
           { to: balanceSheet, data: depositTxData },
         ]
 
+        // Try EIP-5792 wallet_sendCalls for batching approve + deposit
         try {
-          // Try EIP-5792 wallet_sendCalls for batching approve + deposit
-          yield* doTransaction('Approve and Deposit', ctx, async () => {
-            const batchCallId = await provider.request({
-              method: 'wallet_sendCalls',
-              params: [
-                {
-                  version: '1.0',
-                  chainId: toHex(self.network.centrifugeId),
-                  from: ctx.signingAddress,
-                  calls,
-                },
-              ],
-            })
-            return batchCallId as HexString
+          const batchCallId = await provider.request({
+            method: 'wallet_sendCalls',
+            params: [
+              {
+                version: '1.0',
+                chainId: toHex(self.network.centrifugeId),
+                from: ctx.signingAddress,
+                calls,
+              },
+            ],
           })
+          yield* doTransaction('Approve and Deposit', ctx, async () => batchCallId as HexString)
           return
         } catch (error) {
           console.warn('Batching not supported, using sequential transactions:', error)
-
-          // Fallback to sequential transactions if batching fails
-          for (const [index, call] of calls.entries()) {
-            yield* doTransaction(`Approve and Deposit (${index + 1}/${calls.length})`, ctx, () =>
-              ctx.walletClient.sendTransaction({
-                to: call.to,
-                data: call.data,
-              })
-            )
-          }
-          return
         }
+
+        // Fallback to sequential transactions if batching fails
+        const callLabels = ['Approve', 'Deposit']
+        for (const [index, call] of calls.entries()) {
+          yield* doTransaction(`${callLabels[index]} (${index + 1}/${calls.length})`, ctx, () =>
+            ctx.walletClient.sendTransaction({
+              to: call.to,
+              data: call.data,
+            })
+          )
+        }
+        return
       }
 
       if (needsApproval) {
