@@ -1854,7 +1854,6 @@ export class ShareClass extends Entity {
                         }
                         token {
                           decimals
-                          }
                         }
                       }
                     }
