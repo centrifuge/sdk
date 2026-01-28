@@ -71,10 +71,15 @@ describe.skip('Vault', () => {
 
     // TODO: Passes locally with both forge and tenderly, fails on CI, possibly due to order - can be resolved with proper data setup
     it.skip('completes the invest/redeem flow', async () => {
-      const mock = sinon.stub(vault.shareClass, '_investorOrders')
-      mock.returns(
+      const mockInvest = sinon.stub(vault.shareClass, '_investOrders')
+      mockInvest.returns(
         makeThenable(
           of({
+            maxEpochByAsset: new Map(),
+            totalPending: [],
+            epochOrders: [],
+            investsPending: [],
+            investsApproved: [],
             outstandingInvests: [
               {
                 assetId,
@@ -85,6 +90,18 @@ describe.skip('Vault', () => {
                 pendingAmount: '',
               },
             ],
+          })
+        )
+      )
+      const mockRedeem = sinon.stub(vault.shareClass, '_redeemOrders')
+      mockRedeem.returns(
+        makeThenable(
+          of({
+            maxEpochByAsset: new Map(),
+            totalPending: [],
+            epochOrders: [],
+            redeemsPending: [],
+            redeemsApproved: [],
             outstandingRedeems: [
               {
                 assetId,
@@ -147,7 +164,8 @@ describe.skip('Vault', () => {
       context.tenderlyFork.impersonateAddress = fundManager
       context.centrifuge.setSigner(context.tenderlyFork.signer)
 
-      let pendingAmounts = await vault.shareClass.pendingAmounts()
+      let pendingAmountsData = await vault.shareClass.pendingAmounts()
+      let pendingAmounts = pendingAmountsData.byVault
       let pendingAmount = pendingAmounts.find((p) => p.assetId.equals(assetId))!
 
       // Approve deposits, notifyDeposit should be called automatically
@@ -180,7 +198,7 @@ describe.skip('Vault', () => {
       expect(investment.shareBalance.toBigInt()).to.equal(defaultSharesAmount.toBigInt())
 
       const redeemShares = Balance.fromFloat(40, 18)
-      ;[, investment, pendingAmounts] = await Promise.all([
+      ;[, investment, pendingAmountsData] = await Promise.all([
         vault.asyncRedeem(redeemShares),
         firstValueFrom(
           vault.investment(investorA).pipe(skipWhile((i) => !i.pendingRedeemShares.eq(redeemShares.toBigInt())))
@@ -188,9 +206,10 @@ describe.skip('Vault', () => {
         firstValueFrom(
           vault.shareClass
             .pendingAmounts()
-            .pipe(skipWhile((p) => p.find((a) => a.assetId.equals(assetId))!.pendingRedeem.eq(0n)))
+            .pipe(skipWhile((p) => p.byVault.find((a) => a.assetId.equals(assetId))!.pendingRedeem.eq(0n)))
         ),
       ])
+      pendingAmounts = pendingAmountsData.byVault
 
       expect(investment.pendingRedeemShares.toBigInt()).to.equal(redeemShares.toBigInt())
       expect(investment.shareBalance.toBigInt()).to.equal(defaultSharesAmount.toBigInt() - redeemShares.toBigInt())
@@ -224,7 +243,8 @@ describe.skip('Vault', () => {
       expect(result.type).to.equal('TransactionConfirmed')
       expect(investment.shareBalance.toBigInt()).to.equal(Balance.fromFloat(60, 18).toBigInt())
 
-      mock.restore()
+      mockInvest.restore()
+      mockRedeem.restore()
     })
 
     it("throws when placing an invest order larger than the users's balance", async () => {
