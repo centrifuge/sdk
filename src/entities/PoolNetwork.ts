@@ -457,6 +457,53 @@ export class PoolNetwork extends Entity {
       const batch: HexString[] = []
       const messageTypes: (MessageType | MessageTypeWithSubType)[] = []
 
+      // notifyPool must come first when deploying the first token to a network
+      // It must also come before setRequestManager because setRequestManager sends a message
+      // to the Spoke, which calls Spoke.setRequestManager, and that requires isPoolActive == true
+      if (!details.isActive) {
+        batch.push(
+          encodeFunctionData({
+            abi: ABI.Hub,
+            functionName: 'notifyPool',
+            args: [self.pool.id.raw, self.centrifugeId, ctx.signingAddress],
+          })
+        )
+        messageTypes.push(MessageType.NotifyPool)
+      }
+
+      if (details.activeShareClasses.length === 0 && self.pool.centrifugeId !== self.centrifugeId) {
+        const localAdapters: HexString[] = []
+        const remoteAdapters: HexString[] = []
+
+        if (localLzAdapter && remoteLzAdapter) {
+          localAdapters.push(localLzAdapter)
+          remoteAdapters.push(remoteLzAdapter)
+        }
+        if (localWhAdapter && remoteWhAdapter) {
+          localAdapters.push(localWhAdapter)
+          remoteAdapters.push(remoteWhAdapter)
+        }
+
+        if (localAdapters.length > 0) {
+          batch.push(
+            encodeFunctionData({
+              abi: ABI.Hub,
+              functionName: 'setAdapters',
+              args: [
+                self.pool.id.raw,
+                self.centrifugeId,
+                localAdapters,
+                remoteAdapters.map(addressToBytes32),
+                localAdapters.length, // threshold
+                localAdapters.length, // recovery index
+                ctx.signingAddress,
+              ],
+            })
+          )
+          messageTypes.push(MessageType.SetPoolAdapters)
+        }
+      }
+
       // Set vault managers as balance sheet managers if not already set
       // Always set async manager, as it's used by both async and sync deposit vaults
       if (!isAsyncManagerSetOnBalanceSheet) {
@@ -484,44 +531,6 @@ export class PoolNetwork extends Entity {
           })
         )
         messageTypes.push(MessageType.UpdateBalanceSheetManager)
-      }
-
-      // notifyPool must come before setRequestManager because setRequestManager sends a message
-      // to the Spoke, which calls Spoke.setRequestManager, and that requires isPoolActive == true
-      if (!details.isActive) {
-        batch.push(
-          encodeFunctionData({
-            abi: ABI.Hub,
-            functionName: 'notifyPool',
-            args: [self.pool.id.raw, self.centrifugeId, ctx.signingAddress],
-          })
-        )
-        messageTypes.push(MessageType.NotifyPool)
-      }
-      if (
-        details.activeShareClasses.length === 0 &&
-        self.pool.centrifugeId !== self.centrifugeId &&
-        localLzAdapter &&
-        localWhAdapter &&
-        remoteLzAdapter &&
-        remoteWhAdapter
-      ) {
-        batch.push(
-          encodeFunctionData({
-            abi: ABI.Hub,
-            functionName: 'setAdapters',
-            args: [
-              self.pool.id.raw,
-              self.centrifugeId,
-              [localLzAdapter, localWhAdapter],
-              [remoteLzAdapter, remoteWhAdapter].map(addressToBytes32),
-              2, // threshold
-              2, // recovery index
-              ctx.signingAddress,
-            ],
-          })
-        )
-        messageTypes.push(MessageType.SetPoolAdapters)
       }
 
       if (existingRequestManager === NULL_ADDRESS) {

@@ -1303,6 +1303,7 @@ export class Centrifuge {
                 syncDepositVaultFactory
                 syncManager
                 wormholeAdapter
+                layerZeroAdapter
                 vaultRouter
                 tokenFactory
                 onOfframpManagerFactory

@@ -97,7 +97,7 @@ export class BalanceSheet extends Entity {
           { to: balanceSheet, data: depositTxData },
         ]
 
-        // Try EIP-5792 wallet_sendCalls for batching approve + deposit (without showing toast until success)
+        // Try EIP-5792 wallet_sendCalls for batching approve + deposit
         try {
           const batchCallId = await provider.request({
             method: 'wallet_sendCalls',
@@ -110,7 +110,6 @@ export class BalanceSheet extends Entity {
               },
             ],
           })
-          // Batch succeeded - now yield the transaction to show toast
           yield* doTransaction('Approve and Deposit', ctx, async () => batchCallId as HexString)
           return
         } catch (error) {
