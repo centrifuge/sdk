@@ -293,46 +293,171 @@ export class ShareClass extends Entity {
    */
   pendingAmounts() {
     return this._query(['pendingAmounts'], () =>
-      this._allVaults().pipe(
-        map((vaults) => vaults.filter((v) => v.status === 'Linked')),
-        switchMap((vaults) => {
-          if (vaults.length === 0) return of([])
-
-          return combineLatest([
-            combineLatest(vaults.map((v) => this._epoch(v.assetId))),
-            this._epochOutstandingInvests(),
-            this._epochOutstandingRedeems(),
+      combineLatest([
+        this._allVaults().pipe(map((vaults) => vaults.filter((v) => v.status === 'Linked'))),
+        this._investOrders(),
+        this._redeemOrders(),
             this.balances(),
+        this.pool.currency(),
           ]).pipe(
-            map(([epochs, outInv, outRed, balancesData]) => {
-              const invByKey = new Map<string, Balance>()
-              outInv.forEach((o) => invByKey.set(`${o.assetId.toString()}-${o.centrifugeId}`, o.amount))
+        map(([vaults, investData, redeemData, balancesData, poolCurrency]) => {
+          const poolDecimals = poolCurrency.decimals
 
-              const redByKey = new Map<string, Balance>()
-              outRed.forEach((o) => redByKey.set(`${o.assetId.toString()}-${o.centrifugeId}`, o.amount))
+          if (vaults.length === 0) {
+            const zeroBalance = new Balance(0n, poolDecimals)
+            return {
+              byVault: [],
+              poolTotals: {
+                pendingInvestments: zeroBalance,
+                pendingRedemptions: zeroBalance,
+                approvedInvestments: zeroBalance,
+                approvedRedemptions: zeroBalance,
+              },
+            }
+          }
+
+          const investmentsPending = new Map<string, Balance>()
+          investData.totalPending.forEach((order) => {
+            investmentsPending.set(`${order.assetId.toString()}-${order.centrifugeId}`, order.pendingAmount)
+          })
+
+          const redemptionsPending = new Map<string, Balance>()
+          redeemData.totalPending.forEach((order) => {
+            redemptionsPending.set(`${order.assetId.toString()}-${order.centrifugeId}`, order.pendingAmount)
+          })
+
+          const investmentsApproved = new Map<string, { amount: Balance; approvedAt: Date | null; epoch: number }[]>()
+          investData.epochOrders.forEach((order) => {
+            const isApproved = !!order.approvedAt && !order.issuedAt
+            const key = `${order.assetId.toString()}-${order.centrifugeId}`
+            if (isApproved) {
+              if (!investmentsApproved.has(key)) investmentsApproved.set(key, [])
+              investmentsApproved.get(key)!.push({
+                amount: order.approvedAmount,
+                approvedAt: order.approvedAt,
+                epoch: order.index,
+              })
+            }
+          })
+
+          const redemptionsApproved = new Map<string, { amount: Balance; approvedAt: Date | null; epoch: number }[]>()
+          redeemData.epochOrders.forEach((order) => {
+            const isApproved = !!order.approvedAt && !order.revokedAt
+            const key = `${order.assetId.toString()}-${order.centrifugeId}`
+            if (isApproved) {
+              if (!redemptionsApproved.has(key)) redemptionsApproved.set(key, [])
+              redemptionsApproved.get(key)!.push({
+                amount: order.approvedAmount,
+                approvedAt: order.approvedAt,
+                epoch: order.index,
+              })
+            }
+          })
+
+          const queuedInvestments = new Map<string, Balance>()
+          investData.investsPending.forEach((order) => {
+            const key = `${order.assetId.toString()}-${order.centrifugeId}`
+            const existing = queuedInvestments.get(key)
+            if (existing) {
+              queuedInvestments.set(key, existing.add(order.queuedAmount))
+            } else {
+              queuedInvestments.set(key, order.queuedAmount)
+            }
+          })
+
+          const queuedRedemptions = new Map<string, Balance>()
+          redeemData.redeemsPending.forEach((order) => {
+            const key = `${order.assetId.toString()}-${order.centrifugeId}`
+            const existing = queuedRedemptions.get(key)
+            if (existing) {
+              queuedRedemptions.set(key, existing.add(order.queuedAmount))
+            } else {
+              queuedRedemptions.set(key, order.queuedAmount)
+            }
+          })
 
               const priceByAsset = new Map<string, Price>()
               balancesData.forEach((b) => priceByAsset.set(b.assetId.toString(), b.price))
 
-              return epochs.map((epoch, i) => {
-                const vault = vaults[i]!
+          let totalPendingInvestments = new Balance(0n, poolDecimals)
+          let totalPendingRedemptions = new Balance(0n, poolDecimals)
+          let totalApprovedInvestments = new Balance(0n, poolDecimals)
+          let totalApprovedRedemptions = new Balance(0n, poolDecimals)
+
+          const byVault = vaults.map((vault) => {
                 const key = `${vault.assetId.toString()}-${vault.centrifugeId}`
 
-                const queuedInvest = invByKey.get(key) ?? new Balance(0n, 18)
-                const queuedRedeem = redByKey.get(key) ?? new Balance(0n, 18)
+            const pendingDeposit = investmentsPending.get(key) ?? new Balance(0n, 18)
+            const pendingRedeem = redemptionsPending.get(key) ?? new Balance(0n, 18)
+
+            const pendingIssuances = investmentsApproved.get(key) ?? []
+            const pendingRevocations = redemptionsApproved.get(key) ?? []
+
+            const pendingIssuancesTotal = pendingIssuances.reduce(
+              (acc, curr) => acc.add(curr.amount),
+              new Balance(0n, pendingIssuances[0]?.amount.decimals ?? 18)
+            )
+            const pendingRevocationsTotal = pendingRevocations.reduce(
+              (acc, curr) => acc.add(curr.amount),
+              new Balance(0n, 18)
+            )
+
+            const queuedInvest = queuedInvestments.get(key) ?? new Balance(0n, 18)
+            const queuedRedeem = queuedRedemptions.get(key) ?? new Balance(0n, 18)
+
                 const assetPrice = priceByAsset.get(vault.assetId.toString()) ?? Price.fromFloat(1)
+
+            const pendingDepositInPoolCurrency = pendingDeposit.mul(assetPrice).scale(poolDecimals)
+            totalPendingInvestments = totalPendingInvestments.add(pendingDepositInPoolCurrency)
+
+            const pendingRedeemScaled = pendingRedeem.scale(poolDecimals)
+            totalPendingRedemptions = totalPendingRedemptions.add(pendingRedeemScaled)
+
+            const approvedInvestInPoolCurrency = pendingIssuancesTotal.mul(assetPrice).scale(poolDecimals)
+            totalApprovedInvestments = totalApprovedInvestments.add(approvedInvestInPoolCurrency)
+
+            const approvedRedeemScaled = pendingRevocationsTotal.scale(poolDecimals)
+            totalApprovedRedemptions = totalApprovedRedemptions.add(approvedRedeemScaled)
+
+            const maxInvestIndex =
+              investData.maxEpochByAsset.get(vault.assetId.toString()) ??
+              (pendingIssuances.length > 0 ? Math.max(...pendingIssuances.map((p) => p.epoch)) : 0)
+            const minInvestIndex =
+              pendingIssuances.length > 0 ? Math.min(...pendingIssuances.map((p) => p.epoch)) : maxInvestIndex + 1
+            const maxRedeemIndex =
+              redeemData.maxEpochByAsset.get(vault.assetId.toString()) ??
+              (pendingRevocations.length > 0 ? Math.max(...pendingRevocations.map((p) => p.epoch)) : 0)
+            const minRedeemIndex =
+              pendingRevocations.length > 0 ? Math.min(...pendingRevocations.map((p) => p.epoch)) : maxRedeemIndex + 1
 
                 return {
                   assetId: vault.assetId,
                   centrifugeId: vault.centrifugeId,
+              pendingDeposit,
+              pendingRedeem,
+              pendingIssuances,
+              pendingIssuancesTotal,
+              pendingRevocations,
+              pendingRevocationsTotal,
                   queuedInvest,
                   queuedRedeem,
                   assetPrice,
-                  ...epoch,
+              depositEpoch: maxInvestIndex + 1,
+              redeemEpoch: maxRedeemIndex + 1,
+              issueEpoch: minInvestIndex,
+              revokeEpoch: minRedeemIndex,
                 }
               })
-            })
-          )
+
+          return {
+            byVault,
+            poolTotals: {
+              pendingInvestments: totalPendingInvestments,
+              pendingRedemptions: totalPendingRedemptions,
+              approvedInvestments: totalApprovedInvestments,
+              approvedRedemptions: totalApprovedRedemptions,
+            },
+          }
         })
       )
     )
