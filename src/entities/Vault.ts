@@ -21,9 +21,9 @@ import { ShareClass } from './ShareClass.js'
 // const ASYNC_CANCEL_DEPOSIT_INTERFACE_ID = '0x8bf840e3'
 // const ASYNC_CANCEL_REDEEM_INTERFACE_ID = '0xe76cffc7'
 
-// ESCROW_HOOK_ID differs between mainnet and testnet contracts
-const ESCROW_HOOK_ID_MAINNET = '0x000000000000000000000000000000000001cf60'
-const ESCROW_HOOK_ID_TESTNET = '0x00000000000000000000000000000000000000ce'
+// ESCROW_HOOK_ID used for redeem requests - same value for all environments
+// Matches protocol constant: address(uint160(0x1CF60))
+const ESCROW_HOOK_ID = '0x000000000000000000000000000000000001cf60'
 
 /**
  * Query and interact with a vault, which is the main entry point for investing and redeeming funds.
@@ -173,9 +173,6 @@ export class Vault extends Entity {
                   abi: ABI.PoolEscrow,
                   client,
                 })
-                const ESCROW_HOOK_ID =
-                  this._root.config.environment === 'mainnet' ? ESCROW_HOOK_ID_MAINNET : ESCROW_HOOK_ID_TESTNET
-
                 const [
                   isAllowedToDeposit,
                   maxDeposit,
