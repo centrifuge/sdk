@@ -767,21 +767,22 @@ export class ShareClass extends Entity {
   ) {
     const self = this
     return this._transact(async function* (ctx) {
-      const [{ batchRequestManager }, pendingAmounts, orders] = await Promise.all([
+      const [{ batchRequestManager }, pendingAmountsData, orders] = await Promise.all([
         self._root._protocolAddresses(self.pool.centrifugeId),
         self.pendingAmounts(),
         firstValueFrom(
-          self._investorOrders().pipe(
-            switchMap((orders) => {
-              if (orders.outstandingInvests.length === 0) return of([])
+          self._investOrders().pipe(
+            switchMap((investOrders) => {
+              if (investOrders.outstandingInvests.length === 0) return of([])
 
               return combineLatest(
-                orders.outstandingInvests.map((order) => self._investorOrder(order.assetId, order.investor))
+                investOrders.outstandingInvests.map((order) => self._investorOrder(order.assetId, order.investor))
               )
             })
           )
         ),
       ])
+      const pendingAmounts = pendingAmountsData.byVault
       const assetsWithApprove = assets.filter((a) => 'approveAssetAmount' in a).length
       const assetsWithIssue = assets.filter((a) => 'issuePricePerShare' in a).length
       const gasLimitPerAsset = assetsWithIssue ? GAS_LIMIT / BigInt(assetsWithIssue) : 0n
@@ -939,21 +940,22 @@ export class ShareClass extends Entity {
   ) {
     const self = this
     return this._transact(async function* (ctx) {
-      const [{ batchRequestManager }, pendingAmounts, orders] = await Promise.all([
+      const [{ batchRequestManager }, pendingAmountsData, orders] = await Promise.all([
         self._root._protocolAddresses(self.pool.centrifugeId),
         self.pendingAmounts(),
         firstValueFrom(
-          self._investorOrders().pipe(
-            switchMap((orders) => {
-              if (orders.outstandingRedeems.length === 0) return of([])
+          self._redeemOrders().pipe(
+            switchMap((redeemOrders) => {
+              if (redeemOrders.outstandingRedeems.length === 0) return of([])
 
               return combineLatest(
-                orders.outstandingRedeems.map((order) => self._investorOrder(order.assetId, order.investor))
+                redeemOrders.outstandingRedeems.map((order) => self._investorOrder(order.assetId, order.investor))
               )
             })
           )
         ),
       ])
+      const pendingAmounts = pendingAmountsData.byVault
 
       const assetsWithApprove = assets.filter((a) => 'approveShareAmount' in a).length
       const assetsWithRevoke = assets.filter((a) => 'revokePricePerShare' in a).length
@@ -1262,13 +1264,15 @@ export class ShareClass extends Entity {
       () =>
         combineLatest([
           this.pool.currency(),
-          this._investorOrders(),
+          this._investOrders(),
+          this._redeemOrders(),
           this._tokenInstancePositions({ limit, offset, orderBy, orderDirection, filter }),
         ]).pipe(
           switchMap(
             ([
               poolCurrency,
-              { outstandingInvests, outstandingRedeems },
+              { outstandingInvests },
+              { outstandingRedeems },
               { items: tokenInstancePositions, assets, pageInfo, totalCount },
             ]) => {
               // Handle empty positions case or else combineLatest([]) can hang indefinitely
@@ -1359,11 +1363,17 @@ export class ShareClass extends Entity {
     const offset = options?.offset ?? 0
 
     return this._query(['whitelistedHolders', this.id.raw, limit, offset], () =>
-      combineLatest([this.pool.currency(), this._investorOrders(), this._whitelistedInvestors({ limit, offset })]).pipe(
+      combineLatest([
+        this.pool.currency(),
+        this._investOrders(),
+        this._redeemOrders(),
+        this._whitelistedInvestors({ limit, offset }),
+      ]).pipe(
         switchMap(
           ([
             poolCurrency,
-            { outstandingInvests, outstandingRedeems },
+            { outstandingInvests },
+            { outstandingRedeems },
             { items: whitelistedInvestors, assets, pageInfo, totalCount },
           ]) => {
             if (whitelistedInvestors.length === 0) {
@@ -1444,11 +1454,11 @@ export class ShareClass extends Entity {
     const self = this
 
     return this._query(['investorOrders'], () =>
-      self._investorOrders().pipe(
-        switchMap((orders) =>
+      combineLatest([self._investOrders(), self._redeemOrders()]).pipe(
+        switchMap(([investOrders, redeemOrders]) =>
           combineLatest([
-            ...orders.outstandingInvests.map((order) => self._investorOrder(order.assetId, order.investor)),
-            ...orders.outstandingRedeems.map((order) => self._investorOrder(order.assetId, order.investor)),
+            ...investOrders.outstandingInvests.map((order) => self._investorOrder(order.assetId, order.investor)),
+            ...redeemOrders.outstandingRedeems.map((order) => self._investorOrder(order.assetId, order.investor)),
           ]).pipe(
             map((investorOrders) => {
               const ordersByInvestor = new AddressMap<
@@ -1543,23 +1553,29 @@ export class ShareClass extends Entity {
    */
   investmentsByVault(centrifugeId: CentrifugeId) {
     return this._query(['investmentsByVault', centrifugeId], () =>
-      combineLatest([this._investorOrders(), this.vaults(centrifugeId), this.pendingAmounts()]).pipe(
-        switchMap(([orders, vaults, pendingAmounts]) => {
+      combineLatest([
+        this._investOrders(),
+        this._redeemOrders(),
+        this.vaults(centrifugeId),
+        this.pendingAmounts(),
+      ]).pipe(
+        switchMap(([investOrders, redeemOrders, vaults, pendingAmountsData]) => {
           if (!vaults.length) return of([])
+          const pendingAmounts = pendingAmountsData.byVault
 
           const allInvestors = new Set<HexString>()
-          orders.outstandingInvests.forEach((o) => allInvestors.add(o.investor))
-          orders.outstandingRedeems.forEach((o) => allInvestors.add(o.investor))
+          investOrders.outstandingInvests.forEach((o) => allInvestors.add(o.investor))
+          redeemOrders.outstandingRedeems.forEach((o) => allInvestors.add(o.investor))
 
           if (allInvestors.size === 0) return of([])
 
           return combineLatest(
             vaults.map((vault) => {
               const vaultInvestors = new Set<HexString>()
-              orders.outstandingInvests
+              investOrders.outstandingInvests
                 .filter((o) => o.assetId.equals(vault.assetId))
                 .forEach((o) => vaultInvestors.add(o.investor))
-              orders.outstandingRedeems
+              redeemOrders.outstandingRedeems
                 .filter((o) => o.assetId.equals(vault.assetId))
                 .forEach((o) => vaultInvestors.add(o.investor))
 
