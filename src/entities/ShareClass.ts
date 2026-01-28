@@ -354,25 +354,31 @@ export class ShareClass extends Entity {
             }
           })
 
+          const assetDecimals = new Map<string, number>()
+          balancesData.forEach((b) => assetDecimals.set(b.assetId.toString(), b.asset.decimals))
+
           const queuedInvestments = new Map<string, Balance>()
           investData.investsPending.forEach((order) => {
             const key = `${order.assetId.toString()}-${order.centrifugeId}`
+            const decimals = assetDecimals.get(order.assetId.toString()) ?? 18
+            const queuedAmount = new Balance(order.queuedAmount, decimals)
             const existing = queuedInvestments.get(key)
             if (existing) {
-              queuedInvestments.set(key, existing.add(order.queuedAmount))
+              queuedInvestments.set(key, existing.add(queuedAmount))
             } else {
-              queuedInvestments.set(key, order.queuedAmount)
+              queuedInvestments.set(key, queuedAmount)
             }
           })
 
           const queuedRedemptions = new Map<string, Balance>()
           redeemData.redeemsPending.forEach((order) => {
             const key = `${order.assetId.toString()}-${order.centrifugeId}`
+            const queuedAmount = new Balance(order.queuedAmount, 18) // Share tokens are always 18 decimals
             const existing = queuedRedemptions.get(key)
             if (existing) {
-              queuedRedemptions.set(key, existing.add(order.queuedAmount))
+              queuedRedemptions.set(key, existing.add(queuedAmount))
             } else {
-              queuedRedemptions.set(key, order.queuedAmount)
+              queuedRedemptions.set(key, queuedAmount)
             }
           })
 
@@ -2078,7 +2084,11 @@ export class ShareClass extends Entity {
       combineLatest([this._investOrders(), this._redeemOrders(), this.balances()]).pipe(
         map(([investData, redeemData, balancesData]) => {
           const assetPrices = new Map<string, Price>()
-          balancesData.forEach((b) => assetPrices.set(b.assetId.toString(), b.price))
+          const assetDecimals = new Map<string, number>()
+          balancesData.forEach((b) => {
+            assetPrices.set(b.assetId.toString(), b.price)
+            assetDecimals.set(b.assetId.toString(), b.asset.decimals)
+          })
 
           type PendingInvestOrder = (typeof investData.investsPending)[number]
           const pendingInvestsByVault = new Map<string, PendingInvestOrder[]>()
@@ -2092,11 +2102,13 @@ export class ShareClass extends Entity {
             pendingInvestsByVault.get(vaultKey)!.push(order)
 
             const assetKey = order.assetId.toString()
+            const decimals = assetDecimals.get(assetKey) ?? 18
+            const queuedAmount = new Balance(order.queuedAmount, decimals)
             const existing = queuedInvestByAsset.get(assetKey)
             if (existing) {
-              queuedInvestByAsset.set(assetKey, existing.add(order.queuedAmount))
+              queuedInvestByAsset.set(assetKey, existing.add(queuedAmount))
             } else {
-              queuedInvestByAsset.set(assetKey, order.queuedAmount)
+              queuedInvestByAsset.set(assetKey, queuedAmount)
             }
           }
 
@@ -2112,11 +2124,12 @@ export class ShareClass extends Entity {
             pendingRedeemsByVault.get(vaultKey)!.push(order)
 
             const assetKey = order.assetId.toString()
+            const queuedAmount = new Balance(order.queuedAmount, 18) // Share tokens are always 18 decimals
             const existing = queuedRedeemByAsset.get(assetKey)
             if (existing) {
-              queuedRedeemByAsset.set(assetKey, existing.add(order.queuedAmount))
+              queuedRedeemByAsset.set(assetKey, existing.add(queuedAmount))
             } else {
-              queuedRedeemByAsset.set(assetKey, order.queuedAmount)
+              queuedRedeemByAsset.set(assetKey, queuedAmount)
             }
           }
 
@@ -2622,21 +2635,6 @@ export class ShareClass extends Entity {
             }[]
           }
         }) => {
-          const assetLookup = new Map<string, { decimals: number; centrifugeId: string }>()
-          for (const item of data.epochOutstandingInvests.items) {
-            assetLookup.set(item.assetId, item.asset)
-          }
-          for (const item of data.epochInvestOrders.items) {
-            if (!assetLookup.has(item.assetId)) {
-              assetLookup.set(item.assetId, item.asset)
-            }
-          }
-          for (const item of data.investOrders.items) {
-            if (!assetLookup.has(item.assetId)) {
-              assetLookup.set(item.assetId, item.asset)
-            }
-          }
-
           const maxEpochByAsset = new Map<string, number>()
           for (const item of data.epochInvestOrders.items) {
             const current = maxEpochByAsset.get(item.assetId) ?? -1
@@ -2662,29 +2660,30 @@ export class ShareClass extends Entity {
               tokenDecimals: item.token.decimals,
               assetDecimals: item.asset.decimals,
             })),
-            investsPending: data.pendingInvestOrders.items
-              .filter((item) => assetLookup.has(item.assetId))
-              .map((item) => {
-                const asset = assetLookup.get(item.assetId)!
-                return {
-                  assetId: new AssetId(item.assetId),
-                  centrifugeId: Number(asset.centrifugeId) as CentrifugeId,
-                  account: item.account.toLowerCase() as HexString,
-                  investor: item.account.toLowerCase() as HexString,
-                  pendingAmount: new Balance(item.pendingAssetsAmount || '0', asset.decimals),
-                  queuedAmount: new Balance(item.queuedAssetsAmount || '0', asset.decimals),
-                }
-              }),
-            investsApproved: data.investOrders.items.map((item) => ({
-              assetId: new AssetId(item.assetId),
-              centrifugeId: Number(item.asset.centrifugeId) as CentrifugeId,
-              account: item.account.toLowerCase() as HexString,
-              investor: item.account.toLowerCase() as HexString,
-              index: item.index,
-              approvedAt: item.approvedAt ? new Date(item.approvedAt) : null,
-              approvedAmount: new Balance(item.approvedAssetsAmount || '0', item.asset.decimals),
-              issuedAt: item.issuedAt ? new Date(item.issuedAt) : null,
-            })),
+            investsPending: data.pendingInvestOrders.items.map((item) => {
+              const assetId = new AssetId(item.assetId)
+              return {
+                assetId,
+                centrifugeId: assetId.centrifugeId,
+                account: item.account.toLowerCase() as HexString,
+                investor: item.account.toLowerCase() as HexString,
+                pendingAmount: item.pendingAssetsAmount || '0',
+                queuedAmount: item.queuedAssetsAmount || '0',
+              }
+            }),
+            investsApproved: data.investOrders.items.map((item) => {
+              const assetId = new AssetId(item.assetId)
+              return {
+                assetId,
+                centrifugeId: assetId.centrifugeId,
+                account: item.account.toLowerCase() as HexString,
+                investor: item.account.toLowerCase() as HexString,
+                index: item.index,
+                approvedAt: item.approvedAt ? new Date(item.approvedAt) : null,
+                approvedAmount: new Balance(item.approvedAssetsAmount || '0', item.asset.decimals),
+                issuedAt: item.issuedAt ? new Date(item.issuedAt) : null,
+              }
+            }),
             outstandingInvests: data.pendingInvestOrders.items.map((item) => ({
               assetId: new AssetId(item.assetId),
               account: item.account.toLowerCase() as HexString,
@@ -2808,21 +2807,6 @@ export class ShareClass extends Entity {
             }[]
           }
         }) => {
-          const assetLookup = new Map<string, { decimals: number; centrifugeId: string }>()
-          for (const item of data.epochOutstandingRedeems.items) {
-            assetLookup.set(item.assetId, item.asset)
-          }
-          for (const item of data.epochRedeemOrders.items) {
-            if (!assetLookup.has(item.assetId)) {
-              assetLookup.set(item.assetId, item.asset)
-            }
-          }
-          for (const item of data.redeemOrders.items) {
-            if (!assetLookup.has(item.assetId)) {
-              assetLookup.set(item.assetId, item.asset)
-            }
-          }
-
           const maxEpochByAsset = new Map<string, number>()
           for (const item of data.epochRedeemOrders.items) {
             const current = maxEpochByAsset.get(item.assetId) ?? -1
@@ -2833,44 +2817,51 @@ export class ShareClass extends Entity {
 
           return {
             maxEpochByAsset,
-            totalPending: data.epochOutstandingRedeems.items.map((item) => ({
-              assetId: new AssetId(item.assetId),
-              centrifugeId: Number(item.asset.centrifugeId) as CentrifugeId,
-              pendingAmount: new Balance(item.pendingSharesAmount || '0', 18),
-            })),
-            epochOrders: data.epochRedeemOrders.items.map((item) => ({
-              assetId: new AssetId(item.assetId),
-              centrifugeId: Number(item.asset.centrifugeId) as CentrifugeId,
-              index: item.index,
-              approvedAt: item.approvedAt ? new Date(item.approvedAt) : null,
-              revokedAt: item.revokedAt ? new Date(item.revokedAt) : null,
-              approvedAmount: new Balance(item.approvedSharesAmount || '0', 18),
-              tokenDecimals: item.token.decimals,
-              assetDecimals: item.asset.decimals,
-            })),
-            redeemsPending: data.pendingRedeemOrders.items
-              .filter((item) => assetLookup.has(item.assetId))
-              .map((item) => {
-                const asset = assetLookup.get(item.assetId)!
-                return {
-                  assetId: new AssetId(item.assetId),
-                  centrifugeId: Number(asset.centrifugeId) as CentrifugeId,
-                  account: item.account.toLowerCase() as HexString,
-                  investor: item.account.toLowerCase() as HexString,
-                  pendingAmount: new Balance(item.pendingSharesAmount || '0', 18),
-                  queuedAmount: new Balance(item.queuedSharesAmount || '0', 18),
-                }
-              }),
-            redeemsApproved: data.redeemOrders.items.map((item) => ({
-              assetId: new AssetId(item.assetId),
-              centrifugeId: Number(item.asset.centrifugeId) as CentrifugeId,
-              account: item.account.toLowerCase() as HexString,
-              investor: item.account.toLowerCase() as HexString,
-              index: item.index,
-              approvedAt: item.approvedAt ? new Date(item.approvedAt) : null,
-              approvedAmount: new Balance(item.approvedSharesAmount || '0', 18),
-              revokedAt: item.revokedAt ? new Date(item.revokedAt) : null,
-            })),
+            totalPending: data.epochOutstandingRedeems.items.map((item) => {
+              const assetId = new AssetId(item.assetId)
+              return {
+                assetId,
+                centrifugeId: assetId.centrifugeId,
+                pendingAmount: new Balance(item.pendingSharesAmount || '0', 18),
+              }
+            }),
+            epochOrders: data.epochRedeemOrders.items.map((item) => {
+              const assetId = new AssetId(item.assetId)
+              return {
+                assetId,
+                centrifugeId: assetId.centrifugeId,
+                index: item.index,
+                approvedAt: item.approvedAt ? new Date(item.approvedAt) : null,
+                revokedAt: item.revokedAt ? new Date(item.revokedAt) : null,
+                approvedAmount: new Balance(item.approvedSharesAmount || '0', 18),
+                tokenDecimals: item.token.decimals,
+                assetDecimals: item.asset.decimals,
+              }
+            }),
+            redeemsPending: data.pendingRedeemOrders.items.map((item) => {
+              const assetId = new AssetId(item.assetId)
+              return {
+                assetId,
+                centrifugeId: assetId.centrifugeId,
+                account: item.account.toLowerCase() as HexString,
+                investor: item.account.toLowerCase() as HexString,
+                pendingAmount: item.pendingSharesAmount || '0',
+                queuedAmount: item.queuedSharesAmount || '0',
+              }
+            }),
+            redeemsApproved: data.redeemOrders.items.map((item) => {
+              const assetId = new AssetId(item.assetId)
+              return {
+                assetId,
+                centrifugeId: assetId.centrifugeId,
+                account: item.account.toLowerCase() as HexString,
+                investor: item.account.toLowerCase() as HexString,
+                index: item.index,
+                approvedAt: item.approvedAt ? new Date(item.approvedAt) : null,
+                approvedAmount: new Balance(item.approvedSharesAmount || '0', 18),
+                revokedAt: item.revokedAt ? new Date(item.revokedAt) : null,
+              }
+            }),
             outstandingRedeems: data.pendingRedeemOrders.items.map((item) => ({
               assetId: new AssetId(item.assetId),
               account: item.account.toLowerCase() as HexString,
