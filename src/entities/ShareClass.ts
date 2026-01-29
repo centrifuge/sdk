@@ -2124,7 +2124,7 @@ export class ShareClass extends Entity {
             pendingRedeemsByVault.get(vaultKey)!.push(order)
 
             const assetKey = order.assetId.toString()
-            const queuedAmount = new Balance(order.queuedAmount, 18) // Share tokens are always 18 decimals
+            const queuedAmount = new Balance(order.queuedAmount, 18)
             const existing = queuedRedeemByAsset.get(assetKey)
             if (existing) {
               queuedRedeemByAsset.set(assetKey, existing.add(queuedAmount))
