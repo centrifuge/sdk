@@ -307,7 +307,7 @@ export class ShareClass extends Entity {
             const zeroBalance = new Balance(0n, poolDecimals)
             return {
               byVault: [],
-              poolTotals: {
+              shareClassTotals: {
                 pendingInvestments: zeroBalance,
                 pendingRedemptions: zeroBalance,
                 approvedInvestments: zeroBalance,
@@ -457,7 +457,7 @@ export class ShareClass extends Entity {
 
           return {
             byVault,
-            poolTotals: {
+            shareClassTotals: {
               pendingInvestments: totalPendingInvestments,
               pendingRedemptions: totalPendingRedemptions,
               approvedInvestments: totalApprovedInvestments,

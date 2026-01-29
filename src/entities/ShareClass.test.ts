@@ -275,10 +275,10 @@ describe('ShareClass', () => {
     expect(pendingAmounts[0]!.pendingIssuancesTotal).to.be.instanceOf(Balance)
     expect(pendingAmounts[0]!.pendingRevocationsTotal).to.be.instanceOf(Balance)
     // Check totals
-    expect(pendingAmountsData.poolTotals.pendingInvestments).to.be.instanceOf(Balance)
-    expect(pendingAmountsData.poolTotals.pendingRedemptions).to.be.instanceOf(Balance)
-    expect(pendingAmountsData.poolTotals.approvedInvestments).to.be.instanceOf(Balance)
-    expect(pendingAmountsData.poolTotals.approvedRedemptions).to.be.instanceOf(Balance)
+    expect(pendingAmountsData.shareClassTotals.pendingInvestments).to.be.instanceOf(Balance)
+    expect(pendingAmountsData.shareClassTotals.pendingRedemptions).to.be.instanceOf(Balance)
+    expect(pendingAmountsData.shareClassTotals.approvedInvestments).to.be.instanceOf(Balance)
+    expect(pendingAmountsData.shareClassTotals.approvedRedemptions).to.be.instanceOf(Balance)
 
     // TODO:
     // expect approvedAt values once they are available, right now we pendingIssuances and pendingRevocations return as empty list
