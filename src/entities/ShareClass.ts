@@ -2076,13 +2076,13 @@ export class ShareClass extends Entity {
   }
 
   /**
-   * Get detailed order information including per-user breakdowns with helper methods.
-   * @returns Order data with helper methods for efficient lookups
+   * Get detailed invest order information including per-user breakdowns with helper methods.
+   * @returns Invest order data with helper methods for efficient lookups
    */
-  orderDetails() {
-    return this._query(['orderDetails'], () =>
-      combineLatest([this._investOrders(), this._redeemOrders(), this.balances()]).pipe(
-        map(([investData, redeemData, balancesData]) => {
+  investOrdersDetails() {
+    return this._query(['investOrdersDetails'], () =>
+      combineLatest([this._investOrders(), this.balances()]).pipe(
+        map(([investData, balancesData]) => {
           const assetPrices = new Map<string, Price>()
           const assetDecimals = new Map<string, number>()
           balancesData.forEach((b) => {
@@ -2124,6 +2124,59 @@ export class ShareClass extends Entity {
             }
           }
 
+          type ApprovedInvestOrder = (typeof investData.investOrders)[number]
+          const approvedInvestsByVaultAndEpoch = new Map<string, ApprovedInvestOrder[]>()
+          const filteredApprovedInvests = investData.investOrders.filter((i) => !!i.approvedAt && !i.issuedAt)
+
+          for (const order of filteredApprovedInvests) {
+            const key = `${order.assetId.toString()}-${order.centrifugeId}-${order.index}`
+            if (!approvedInvestsByVaultAndEpoch.has(key)) {
+              approvedInvestsByVaultAndEpoch.set(key, [])
+            }
+            approvedInvestsByVaultAndEpoch.get(key)!.push(order)
+          }
+
+          const toAssetKey = (assetId: AssetId | string): string =>
+            typeof assetId === 'string' ? assetId : assetId.toString()
+
+          return {
+            getPendingInvestsByVault: (assetId: AssetId | string, centrifugeId: CentrifugeId): PendingInvestOrder[] => {
+              const key = `${toAssetKey(assetId)}-${centrifugeId}`
+              return pendingInvestsByVault.get(key) ?? []
+            },
+            getApprovedInvestsByVaultAndEpoch: (
+              assetId: AssetId | string,
+              centrifugeId: CentrifugeId,
+              epoch: number
+            ): ApprovedInvestOrder[] => {
+              const key = `${toAssetKey(assetId)}-${centrifugeId}-${epoch}`
+              return approvedInvestsByVaultAndEpoch.get(key) ?? []
+            },
+            getQueuedInvestByAsset: (assetId: AssetId | string): Balance | undefined => {
+              return queuedInvestByAsset.get(toAssetKey(assetId))
+            },
+            getAssetPrice: (assetId: AssetId | string): Price | undefined => {
+              return assetPrices.get(toAssetKey(assetId))
+            },
+          }
+        })
+      )
+    )
+  }
+
+  /**
+   * Get detailed redeem order information including per-user breakdowns with helper methods.
+   * @returns Redeem order data with helper methods for efficient lookups
+   */
+  redeemOrdersDetails() {
+    return this._query(['redeemOrdersDetails'], () =>
+      combineLatest([this._redeemOrders(), this.balances()]).pipe(
+        map(([redeemData, balancesData]) => {
+          const assetPrices = new Map<string, Price>()
+          balancesData.forEach((b) => {
+            assetPrices.set(b.assetId.toString(), b.price)
+          })
+
           type PendingRedeemOrder = Omit<
             (typeof redeemData.pendingRedeemOrders)[number],
             'pendingAmount' | 'queuedAmount'
@@ -2157,18 +2210,6 @@ export class ShareClass extends Entity {
             }
           }
 
-          type ApprovedInvestOrder = (typeof investData.investOrders)[number]
-          const approvedInvestsByVaultAndEpoch = new Map<string, ApprovedInvestOrder[]>()
-          const filteredApprovedInvests = investData.investOrders.filter((i) => !!i.approvedAt && !i.issuedAt)
-
-          for (const order of filteredApprovedInvests) {
-            const key = `${order.assetId.toString()}-${order.centrifugeId}-${order.index}`
-            if (!approvedInvestsByVaultAndEpoch.has(key)) {
-              approvedInvestsByVaultAndEpoch.set(key, [])
-            }
-            approvedInvestsByVaultAndEpoch.get(key)!.push(order)
-          }
-
           type ApprovedRedeemOrder = (typeof redeemData.redeemOrders)[number]
           const approvedRedeemsByVaultAndEpoch = new Map<string, ApprovedRedeemOrder[]>()
           const filteredApprovedRedeems = redeemData.redeemOrders.filter((i) => !!i.approvedAt && !i.revokedAt)
@@ -2185,21 +2226,9 @@ export class ShareClass extends Entity {
             typeof assetId === 'string' ? assetId : assetId.toString()
 
           return {
-            getPendingInvestsByVault: (assetId: AssetId | string, centrifugeId: CentrifugeId): PendingInvestOrder[] => {
-              const key = `${toAssetKey(assetId)}-${centrifugeId}`
-              return pendingInvestsByVault.get(key) ?? []
-            },
             getPendingRedeemsByVault: (assetId: AssetId | string, centrifugeId: CentrifugeId): PendingRedeemOrder[] => {
               const key = `${toAssetKey(assetId)}-${centrifugeId}`
               return pendingRedeemsByVault.get(key) ?? []
-            },
-            getApprovedInvestsByVaultAndEpoch: (
-              assetId: AssetId | string,
-              centrifugeId: CentrifugeId,
-              epoch: number
-            ): ApprovedInvestOrder[] => {
-              const key = `${toAssetKey(assetId)}-${centrifugeId}-${epoch}`
-              return approvedInvestsByVaultAndEpoch.get(key) ?? []
             },
             getApprovedRedeemsByVaultAndEpoch: (
               assetId: AssetId | string,
@@ -2208,9 +2237,6 @@ export class ShareClass extends Entity {
             ): ApprovedRedeemOrder[] => {
               const key = `${toAssetKey(assetId)}-${centrifugeId}-${epoch}`
               return approvedRedeemsByVaultAndEpoch.get(key) ?? []
-            },
-            getQueuedInvestByAsset: (assetId: AssetId | string): Balance | undefined => {
-              return queuedInvestByAsset.get(toAssetKey(assetId))
             },
             getQueuedRedeemByAsset: (assetId: AssetId | string): Balance | undefined => {
               return queuedRedeemByAsset.get(toAssetKey(assetId))
