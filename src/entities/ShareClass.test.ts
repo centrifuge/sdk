@@ -284,27 +284,6 @@ describe('ShareClass', () => {
     // expect approvedAt values once they are available, right now we pendingIssuances and pendingRevocations return as empty list
   })
 
-  it.skip('gets queued (outstanding) amounts per asset and chain', async () => {
-    const outstandingInvests = await firstValueFrom(shareClass._epochOutstandingInvests())
-    const outstandingRedeems = await firstValueFrom(shareClass._epochOutstandingRedeems())
-
-    expect(outstandingInvests.length).to.be.greaterThan(0)
-    expect(outstandingRedeems.length).to.be.greaterThan(0)
-
-    expect(outstandingInvests[0]!.assetId).to.be.instanceOf(AssetId)
-    expect(outstandingInvests[0]!.amount).to.be.instanceOf(Balance)
-    expect(outstandingInvests[0]!.centrifugeId).to.be.a('string')
-
-    expect(outstandingRedeems[0]!.assetId).to.be.instanceOf(AssetId)
-    expect(outstandingRedeems[0]!.amount).to.be.instanceOf(Balance)
-    expect(outstandingRedeems[0]!.centrifugeId).to.be.a('string')
-
-    const pendingAmountsData = await shareClass.pendingAmounts()
-    const pendingAmounts = pendingAmountsData.byVault
-    const row = pendingAmounts.find((r) => r.assetId.equals(assetId) && r.centrifugeId === centId)!
-    expect(row.queuedInvest).to.be.instanceOf(Balance)
-    expect(row.queuedRedeem).to.be.instanceOf(Balance)
-  })
 
   it('gets investor orders', async () => {
     const investorOrders = await shareClass.investorOrders()

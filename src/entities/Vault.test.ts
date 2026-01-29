@@ -76,18 +76,20 @@ describe.skip('Vault', () => {
         makeThenable(
           of({
             maxEpochByAsset: new Map(),
-            totalPending: [],
-            epochOrders: [],
-            investsPending: [],
-            investsApproved: [],
+            epochOutstandingInvests: [],
+            epochInvestOrders: [],
+            pendingInvestOrders: [],
+            investOrders: [],
             outstandingInvests: [
               {
                 assetId,
                 account: investorA,
                 tokenId: assetId.addr,
                 investor: investorA,
-                queuedAmount: '',
+                approvedAmount: '',
+                depositAmount: '',
                 pendingAmount: '',
+                queuedAmount: '',
               },
             ],
           })
@@ -98,16 +100,19 @@ describe.skip('Vault', () => {
         makeThenable(
           of({
             maxEpochByAsset: new Map(),
-            totalPending: [],
-            epochOrders: [],
-            redeemsPending: [],
-            redeemsApproved: [],
+            epochOutstandingRedeems: [],
+            epochRedeemOrders: [],
+            pendingRedeemOrders: [],
+            redeemOrders: [],
             outstandingRedeems: [
               {
                 assetId,
                 account: investorA,
                 tokenId: assetId.addr,
                 investor: investorA,
+                approvedAt: null,
+                approvedAmount: '',
+                depositAmount: '',
                 queuedAmount: '',
                 pendingAmount: '',
               },
