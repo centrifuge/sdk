@@ -479,10 +479,12 @@ export class PoolNetwork extends Entity {
           localAdapters.push(localLzAdapter)
           remoteAdapters.push(remoteLzAdapter)
         }
-        if (localWhAdapter && remoteWhAdapter) {
-          localAdapters.push(localWhAdapter)
-          remoteAdapters.push(remoteWhAdapter)
-        }
+        // TODO: Temporarily disabled Wormhole adapter for testing - Wormhole costs much more than LayerZero
+        // and the SDK estimate uses GLOBAL_POOL which may only have LayerZero configured
+        // if (localWhAdapter && remoteWhAdapter) {
+        //   localAdapters.push(localWhAdapter)
+        //   remoteAdapters.push(remoteWhAdapter)
+        // }
 
         if (localAdapters.length > 0) {
           batch.push(
