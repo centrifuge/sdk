@@ -60,7 +60,6 @@ describe('Centrifuge', () => {
       'hub',
       'identityValuation',
       'poolEscrowFactory',
-      'routerEscrow',
       'globalEscrow',
       'freezeOnlyHook',
       'redemptionRestrictionsHook',
