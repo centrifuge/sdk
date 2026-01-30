@@ -271,6 +271,8 @@ export class MerkleProofManager extends Entity {
     }
   ) {
     const self = this
+
+    console.log('SDK', { calls })
     return this._transact(async function* (ctx) {
       const [metadata, importedMerkleTree] = await Promise.all([
         self.pool.metadata(),
@@ -303,6 +305,8 @@ export class MerkleProofManager extends Entity {
           ic.inputs.every((input, i) => input === null || inputs[i] === input)
         )?.inputsEncoded
 
+        console.log({ argsEncoded, combinations: policy.inputCombinations, inputs, policy })
+
         if (!argsEncoded) {
           throw new Error(`No encoded args found for policy with selector "${policy.selector}" and inputs [${inputs}]`)
         }
@@ -323,6 +327,10 @@ export class MerkleProofManager extends Entity {
           proof,
         }
       })
+
+      console.log('SDK formattedCalls', { formattedCalls })
+      const value = calls.reduce((acc, call) => acc + (call.value ?? 0n), 0n)
+      console.log('SDK total value', { value })
 
       yield* wrapTransaction(
         'Execute calls',
