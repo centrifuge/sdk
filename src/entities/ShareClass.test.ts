@@ -265,7 +265,8 @@ describe('ShareClass', () => {
   })
 
   it.skip('gets pending amounts', async () => {
-    const pendingAmounts = await shareClass.pendingAmounts()
+    const pendingAmountsData = await shareClass.pendingAmounts()
+    const pendingAmounts = pendingAmountsData.byVault
     expect(pendingAmounts.length).to.be.greaterThan(0)
     expect(pendingAmounts[0]!.assetId.equals(assetId)).to.be.true
     expect(pendingAmounts[0]!.centrifugeId).to.equal(centId)
@@ -273,31 +274,16 @@ describe('ShareClass', () => {
     expect(pendingAmounts[0]!.pendingRedeem).to.be.instanceOf(Balance)
     expect(pendingAmounts[0]!.pendingIssuancesTotal).to.be.instanceOf(Balance)
     expect(pendingAmounts[0]!.pendingRevocationsTotal).to.be.instanceOf(Balance)
+    // Check totals
+    expect(pendingAmountsData.shareClassTotals.pendingInvestments).to.be.instanceOf(Balance)
+    expect(pendingAmountsData.shareClassTotals.pendingRedemptions).to.be.instanceOf(Balance)
+    expect(pendingAmountsData.shareClassTotals.approvedInvestments).to.be.instanceOf(Balance)
+    expect(pendingAmountsData.shareClassTotals.approvedRedemptions).to.be.instanceOf(Balance)
 
     // TODO:
     // expect approvedAt values once they are available, right now we pendingIssuances and pendingRevocations return as empty list
   })
 
-  it.skip('gets queued (outstanding) amounts per asset and chain', async () => {
-    const outstandingInvests = await firstValueFrom(shareClass._epochOutstandingInvests())
-    const outstandingRedeems = await firstValueFrom(shareClass._epochOutstandingRedeems())
-
-    expect(outstandingInvests.length).to.be.greaterThan(0)
-    expect(outstandingRedeems.length).to.be.greaterThan(0)
-
-    expect(outstandingInvests[0]!.assetId).to.be.instanceOf(AssetId)
-    expect(outstandingInvests[0]!.amount).to.be.instanceOf(Balance)
-    expect(outstandingInvests[0]!.centrifugeId).to.be.a('string')
-
-    expect(outstandingRedeems[0]!.assetId).to.be.instanceOf(AssetId)
-    expect(outstandingRedeems[0]!.amount).to.be.instanceOf(Balance)
-    expect(outstandingRedeems[0]!.centrifugeId).to.be.a('string')
-
-    const pendingAmounts = await shareClass.pendingAmounts()
-    const row = pendingAmounts.find((r) => r.assetId.equals(assetId) && r.centrifugeId === centId)!
-    expect(row.queuedInvest).to.be.instanceOf(Balance)
-    expect(row.queuedRedeem).to.be.instanceOf(Balance)
-  })
 
   it('gets investor orders', async () => {
     const investorOrders = await shareClass.investorOrders()
@@ -336,7 +322,8 @@ describe('ShareClass', () => {
       context.tenderlyFork.impersonateAddress = fundManager
       context.centrifuge.setSigner(context.tenderlyFork.signer)
 
-      const pendingAmounts = await vault.shareClass.pendingAmounts()
+      const pendingAmountsData = await vault.shareClass.pendingAmounts()
+      const pendingAmounts = pendingAmountsData.byVault
       const pendingAmount = pendingAmounts.find((p) => p.assetId.equals(assetId))!
 
       try {
@@ -356,7 +343,8 @@ describe('ShareClass', () => {
       context.tenderlyFork.impersonateAddress = fundManager
       context.centrifuge.setSigner(context.tenderlyFork.signer)
 
-      const pendingAmounts = await vault.shareClass.pendingAmounts()
+      const pendingAmountsData = await vault.shareClass.pendingAmounts()
+      const pendingAmounts = pendingAmountsData.byVault
       const pendingAmount = pendingAmounts.find((p) => p.assetId.equals(assetId))!
 
       const tx = await shareClass.approveDepositsAndIssueShares([
@@ -374,7 +362,8 @@ describe('ShareClass', () => {
       context.tenderlyFork.impersonateAddress = fundManager
       context.centrifuge.setSigner(context.tenderlyFork.signer)
 
-      const pendingAmounts = await vault.shareClass.pendingAmounts()
+      const pendingAmountsData = await vault.shareClass.pendingAmounts()
+      const pendingAmounts = pendingAmountsData.byVault
       const pendingAmount = pendingAmounts.find((p) => p.assetId.equals(assetId))!
 
       try {
@@ -399,7 +388,8 @@ describe('ShareClass', () => {
       context.tenderlyFork.impersonateAddress = fundManager
       context.centrifuge.setSigner(context.tenderlyFork.signer)
 
-      const pendingAmounts = await vault.shareClass.pendingAmounts()
+      const pendingAmountsData = await vault.shareClass.pendingAmounts()
+      const pendingAmounts = pendingAmountsData.byVault
       const pendingAmount = pendingAmounts.find((p) => p.assetId.equals(assetId))!
 
       try {
@@ -451,7 +441,7 @@ describe('ShareClass', () => {
 
   describe.skip('approveRedeemsAndRevokeShares', () => {
     let vault: Vault
-    let pendingAmount: Awaited<ReturnType<typeof shareClass.pendingAmounts>>[number]
+    let pendingAmount: Awaited<ReturnType<typeof shareClass.pendingAmounts>>['byVault'][number]
 
     before(async () => {
       const { centrifuge } = context
@@ -494,7 +484,8 @@ describe('ShareClass', () => {
       context.tenderlyFork.impersonateAddress = fundManager
       context.centrifuge.setSigner(context.tenderlyFork.signer)
 
-      let pendingAmounts = await vault.shareClass.pendingAmounts()
+      let pendingAmountsData = await vault.shareClass.pendingAmounts()
+      let pendingAmounts = pendingAmountsData.byVault
       pendingAmount = pendingAmounts.find((p) => p.assetId.equals(assetId))!
 
       // Approve deposits
@@ -524,7 +515,7 @@ describe('ShareClass', () => {
       ])
 
       const redeemShares = Balance.fromFloat(40, 18)
-      ;[, investment, pendingAmounts] = await Promise.all([
+      ;[, investment, pendingAmountsData] = await Promise.all([
         vault.asyncRedeem(redeemShares),
         firstValueFrom(
           vault.investment(investor).pipe(skipWhile((i) => !i.pendingRedeemShares.eq(redeemShares.toBigInt())))
@@ -532,9 +523,10 @@ describe('ShareClass', () => {
         firstValueFrom(
           vault.shareClass
             .pendingAmounts()
-            .pipe(skipWhile((p) => p.find((a) => a.assetId.equals(assetId))!.pendingRedeem.eq(0n)))
+            .pipe(skipWhile((p) => p.byVault.find((a) => a.assetId.equals(assetId))!.pendingRedeem.eq(0n)))
         ),
       ])
+      pendingAmounts = pendingAmountsData.byVault
 
       context.tenderlyFork.impersonateAddress = fundManager
       context.centrifuge.setSigner(context.tenderlyFork.signer)
@@ -672,7 +664,8 @@ describe('ShareClass', () => {
       context.tenderlyFork.impersonateAddress = fundManager
       context.centrifuge.setSigner(context.tenderlyFork.signer)
 
-      let pendingAmounts = await vault.shareClass.pendingAmounts()
+      let pendingAmountsData = await vault.shareClass.pendingAmounts()
+      let pendingAmounts = pendingAmountsData.byVault
       let pendingAmount = pendingAmounts.find((p) => p.assetId.equals(assetId))!
 
       await vault.shareClass.approveDepositsAndIssueShares([
@@ -703,7 +696,7 @@ describe('ShareClass', () => {
       ])
 
       const redeemShares = Balance.fromFloat(40, 18)
-      ;[, investment, pendingAmounts] = await Promise.all([
+      ;[, investment, pendingAmountsData] = await Promise.all([
         vault.asyncRedeem(redeemShares),
         firstValueFrom(
           vault.investment(investor).pipe(skipWhile((i) => !i.pendingRedeemShares.eq(redeemShares.toBigInt())))
@@ -711,9 +704,10 @@ describe('ShareClass', () => {
         firstValueFrom(
           vault.shareClass
             .pendingAmounts()
-            .pipe(skipWhile((p) => p.find((a) => a.assetId.equals(assetId))!.pendingRedeem.eq(0n)))
+            .pipe(skipWhile((p) => p.byVault.find((a) => a.assetId.equals(assetId))!.pendingRedeem.eq(0n)))
         ),
       ])
+      pendingAmounts = pendingAmountsData.byVault
 
       context.tenderlyFork.impersonateAddress = fundManager
       context.centrifuge.setSigner(context.tenderlyFork.signer)
