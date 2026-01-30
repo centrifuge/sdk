@@ -507,8 +507,8 @@ export class PoolNetwork extends Entity {
       }
 
       // Set vault managers as balance sheet managers if not already set
-      // Always set async manager, as it's used by both async and sync deposit vaults
-      if (!isAsyncManagerSetOnBalanceSheet) {
+      // Async manager is used by both async and sync deposit vaults, so set it when deploying any vault
+      if (!isAsyncManagerSetOnBalanceSheet && vaults.length > 0) {
         batch.push(
           encodeFunctionData({
             abi: ABI.Hub,
