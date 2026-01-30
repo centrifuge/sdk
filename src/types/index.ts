@@ -52,7 +52,6 @@ export type ProtocolContracts = {
   hub: HexString
   identityValuation: HexString
   poolEscrowFactory: HexString
-  routerEscrow: HexString
   globalEscrow: HexString
   freezeOnlyHook: HexString
   redemptionRestrictionsHook: HexString

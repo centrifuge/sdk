@@ -1284,7 +1284,8 @@ export class Centrifuge {
                 gasService
                 gateway
                 globalEscrow
-                guardian
+                opsGuardian
+                protocolGuardian
                 holdings
                 hub
                 hubRegistry
@@ -1295,7 +1296,6 @@ export class Centrifuge {
                 poolEscrowFactory
                 redemptionRestrictionsHook
                 root
-                routerEscrow
                 shareClassManager
                 batchRequestManager
                 spoke
