@@ -493,7 +493,7 @@ export class PoolNetwork extends Entity {
         }
       }
 
-      // notifyPool must come before the other messages, because they depend on the pool being active
+      // notifyPool must come before the other pool-related messages, because they depend on the pool being active
       if (!details.isActive) {
         batch.push(
           encodeFunctionData({
