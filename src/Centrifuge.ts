@@ -1279,6 +1279,7 @@ export class Centrifuge {
                 centrifugeId
                 chainId
                 chainlinkAdapter
+                freelyTransferableHook
                 freezeOnlyHook
                 fullRestrictionsHook
                 gasService
