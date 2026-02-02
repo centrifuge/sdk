@@ -49,7 +49,7 @@ export class Vault extends Entity {
     address: HexString,
     public assetId: AssetId
   ) {
-    super(_root, ['vault', network.centrifugeId, shareClass.id.toString(), asset.toLowerCase()])
+    super(_root, ['vault', network.centrifugeId, shareClass.id.toString(), asset.toLowerCase(), address.toLowerCase()])
     this.pool = network.pool
     this._asset = asset.toLowerCase() as HexString
     this.address = address.toLowerCase() as HexString
