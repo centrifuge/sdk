@@ -417,7 +417,11 @@ export class PoolNetwork extends Entity {
     const self = this
     return this._transact(async function* (ctx) {
       const [
-        { hub, layerZeroAdapter: localLzAdapter, wormholeAdapter: localWhAdapter },
+        {
+          hub,
+          layerZeroAdapter: localLzAdapter,
+          // wormholeAdapter: localWhAdapter
+        },
         {
           spoke,
           balanceSheet,
@@ -427,7 +431,7 @@ export class PoolNetwork extends Entity {
           asyncRequestManager,
           batchRequestManager,
           layerZeroAdapter: remoteLzAdapter,
-          wormholeAdapter: remoteWhAdapter,
+          // wormholeAdapter: remoteWhAdapter,
         },
         details,
         spokeClient,
