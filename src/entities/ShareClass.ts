@@ -3300,8 +3300,8 @@ export class ShareClass extends Entity {
         orderDirection,
       ],
       () =>
-        this._root._protocolAddresses(this.pool.centrifugeId).pipe(
-          switchMap((protocolAddresses) => {
+        combineLatest([this._root._protocolAddresses(this.pool.centrifugeId), this.pool._escrow()]).pipe(
+          switchMap(([protocolAddresses, escrowAddress]) => {
             // Build where clause dynamically based on which filters are provided
             const whereConditions = ['tokenId: $scId', 'accountAddress_not_in: $excludedAddresses']
             if (balance_gt !== undefined) whereConditions.push('balance_gt: $balance_gt')
@@ -3329,10 +3329,10 @@ export class ShareClass extends Entity {
               orderBy,
               orderDirection,
               excludedAddresses: [
-                protocolAddresses.globalEscrow.toLowerCase(),
                 protocolAddresses.balanceSheet.toLowerCase(),
                 protocolAddresses.asyncRequestManager.toLowerCase(),
                 protocolAddresses.syncManager.toLowerCase(),
+                escrowAddress.toLowerCase(),
               ],
             }
             if (balance_gt !== undefined) variables.balance_gt = balance_gt.toString()
