@@ -417,7 +417,11 @@ export class PoolNetwork extends Entity {
     const self = this
     return this._transact(async function* (ctx) {
       const [
-        { hub, layerZeroAdapter: localLzAdapter, wormholeAdapter: localWhAdapter },
+        {
+          hub,
+          layerZeroAdapter: localLzAdapter,
+          // wormholeAdapter: localWhAdapter
+        },
         {
           spoke,
           balanceSheet,
@@ -427,7 +431,7 @@ export class PoolNetwork extends Entity {
           asyncRequestManager,
           batchRequestManager,
           layerZeroAdapter: remoteLzAdapter,
-          wormholeAdapter: remoteWhAdapter,
+          // wormholeAdapter: remoteWhAdapter,
         },
         details,
         spokeClient,
@@ -457,20 +461,8 @@ export class PoolNetwork extends Entity {
       const batch: HexString[] = []
       const messageTypes: (MessageType | MessageTypeWithSubType)[] = []
 
-      // notifyPool must come first when deploying the first token to a network
-      // It must also come before setRequestManager because setRequestManager sends a message
-      // to the Spoke, which calls Spoke.setRequestManager, and that requires isPoolActive == true
-      if (!details.isActive) {
-        batch.push(
-          encodeFunctionData({
-            abi: ABI.Hub,
-            functionName: 'notifyPool',
-            args: [self.pool.id.raw, self.centrifugeId, ctx.signingAddress],
-          })
-        )
-        messageTypes.push(MessageType.NotifyPool)
-      }
-
+      // setAdapters must be called first, because all other messages are pool-dependent
+      // and require the pool to have adapters set
       if (details.activeShareClasses.length === 0 && self.pool.centrifugeId !== self.centrifugeId) {
         const localAdapters: HexString[] = []
         const remoteAdapters: HexString[] = []
@@ -485,7 +477,6 @@ export class PoolNetwork extends Entity {
         //   localAdapters.push(localWhAdapter)
         //   remoteAdapters.push(remoteWhAdapter)
         // }
-
         if (localAdapters.length > 0) {
           batch.push(
             encodeFunctionData({
@@ -504,6 +495,18 @@ export class PoolNetwork extends Entity {
           )
           messageTypes.push(MessageType.SetPoolAdapters)
         }
+      }
+
+      // notifyPool must come before the other pool-related messages, because they depend on the pool being active
+      if (!details.isActive) {
+        batch.push(
+          encodeFunctionData({
+            abi: ABI.Hub,
+            functionName: 'notifyPool',
+            args: [self.pool.id.raw, self.centrifugeId, ctx.signingAddress],
+          })
+        )
+        messageTypes.push(MessageType.NotifyPool)
       }
 
       // Set vault managers as balance sheet managers if not already set
