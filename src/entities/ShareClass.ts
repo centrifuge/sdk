@@ -76,6 +76,7 @@ export class ShareClass extends Entity {
             symbol: metadata.symbol,
             totalIssuance,
             pricePerShare: metrics.pricePerShare,
+            priceComputedAt: metrics.priceComputedAt,
             nav: totalIssuance.mul(metrics.pricePerShare),
             navPerNetwork,
             icon: meta?.icon || null,
@@ -3155,7 +3156,7 @@ export class ShareClass extends Entity {
               client,
             })
 
-            const [totalIssuance, [pricePerShare]] = await Promise.all([
+            const [totalIssuance, [pricePerShare, computedAt]] = await Promise.all([
               contract.read.totalIssuance([this.pool.id.raw, this.id.raw]),
               contract.read.pricePoolPerShare([this.pool.id.raw, this.id.raw]),
             ])
@@ -3163,6 +3164,7 @@ export class ShareClass extends Entity {
             return {
               totalIssuance: new Balance(totalIssuance, 18),
               pricePerShare: new Price(pricePerShare),
+              priceComputedAt: computedAt > 0n ? new Date(Number(computedAt) * 1000) : null,
             }
           }).pipe(
             repeatOnEvents(
