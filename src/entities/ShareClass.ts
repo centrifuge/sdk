@@ -650,12 +650,7 @@ export class ShareClass extends Entity {
         encodeFunctionData({
           abi: ABI.Hub,
           functionName: 'updateSharePrice',
-          args: [
-            self.pool.id.raw,
-            self.id.raw,
-            pricePerShare.toBigInt(),
-            BigInt(Math.floor(updatedAt.getTime() / 1000)),
-          ],
+          args: [self.pool.id.raw, self.id.raw, pricePerShare.toBigInt(), BigInt(Math.floor(updatedAt.getTime()))],
         })
       )
 
