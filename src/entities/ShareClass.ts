@@ -780,10 +780,12 @@ export class ShareClass extends Entity {
         firstValueFrom(
           self._investOrders().pipe(
             switchMap((investOrders) => {
-              if (investOrders.pendingInvestOrders.length === 0) return of([])
+              if (investOrders.investOrders.length === 0) return of([])
 
               return combineLatest(
-                investOrders.pendingInvestOrders.map((order) => self._investorOrder(order.assetId, order.investor))
+                investOrders.investOrders
+                  .filter((order) => !order.issuedAt)
+                  .map((order) => self._investorOrder(order.assetId, order.investor))
               )
             })
           )
@@ -953,10 +955,12 @@ export class ShareClass extends Entity {
         firstValueFrom(
           self._redeemOrders().pipe(
             switchMap((redeemOrders) => {
-              if (redeemOrders.pendingRedeemOrders.length === 0) return of([])
+              if (redeemOrders.redeemOrders.length === 0) return of([])
 
               return combineLatest(
-                redeemOrders.pendingRedeemOrders.map((order) => self._investorOrder(order.assetId, order.investor))
+                redeemOrders.redeemOrders
+                  .filter((order) => !order.revokedAt)
+                  .map((order) => self._investorOrder(order.assetId, order.investor))
               )
             })
           )
