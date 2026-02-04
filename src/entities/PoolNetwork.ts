@@ -469,7 +469,6 @@ export class PoolNetwork extends Entity {
         const localAdapters: HexString[] = []
         const remoteAdapters: HexString[] = []
 
-        // Default adapters: LayerZero and Axelar (2/2 required)
         if (localLzAdapter && remoteLzAdapter) {
           localAdapters.push(localLzAdapter)
           remoteAdapters.push(remoteLzAdapter)
