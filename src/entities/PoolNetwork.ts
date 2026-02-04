@@ -420,6 +420,7 @@ export class PoolNetwork extends Entity {
         {
           hub,
           layerZeroAdapter: localLzAdapter,
+          axelarAdapter: localAxelarAdapter,
           // wormholeAdapter: localWhAdapter
         },
         {
@@ -431,6 +432,7 @@ export class PoolNetwork extends Entity {
           asyncRequestManager,
           batchRequestManager,
           layerZeroAdapter: remoteLzAdapter,
+          axelarAdapter: remoteAxelarAdapter,
           // wormholeAdapter: remoteWhAdapter,
         },
         details,
@@ -467,9 +469,14 @@ export class PoolNetwork extends Entity {
         const localAdapters: HexString[] = []
         const remoteAdapters: HexString[] = []
 
+        // Default adapters: LayerZero and Axelar (2/2 required)
         if (localLzAdapter && remoteLzAdapter) {
           localAdapters.push(localLzAdapter)
           remoteAdapters.push(remoteLzAdapter)
+        }
+        if (localAxelarAdapter && remoteAxelarAdapter) {
+          localAdapters.push(localAxelarAdapter)
+          remoteAdapters.push(remoteAxelarAdapter)
         }
         // TODO: Temporarily disabled Wormhole adapter for testing - Wormhole costs much more than LayerZero
         // and the SDK estimate uses GLOBAL_POOL which may only have LayerZero configured
