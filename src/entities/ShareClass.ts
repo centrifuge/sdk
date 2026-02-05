@@ -803,6 +803,9 @@ export class ShareClass extends Entity {
         if (order.pendingDeposit === 0n) return
         const id = order.assetId.toString()
         if (!ordersByAssetId[id]) ordersByAssetId[id] = []
+        // Prevent deduplicate investor orders: _investorOrder returns investor-level data (not per-epoch),
+        // so multiple epoch entries for the same investor will cause duplicate notifyDeposit calls
+        if (ordersByAssetId[id].some((o) => o.investor === order.investor)) return
         ordersByAssetId[id].push(order)
       })
 
@@ -905,7 +908,7 @@ export class ShareClass extends Entity {
                       self.id.raw,
                       asset.assetId.raw,
                       addressToBytes32(order.investor),
-                      order.maxDepositClaims + i, // +i to ensure the additional epochs that are being issued are included
+                      order.maxDepositClaims + i, // maxDepositClaims is the current claimable count, +i for the newly issued epochs in this batch
                       ctx.signingAddress,
                     ],
                   })
@@ -979,6 +982,9 @@ export class ShareClass extends Entity {
         if (order.pendingRedeem === 0n) return
         const id = order.assetId.toString()
         if (!ordersByAssetId[id]) ordersByAssetId[id] = []
+        // Prevent deduplicate investor orders: _investorOrder returns investor-level data (not per-epoch),
+        // so multiple epoch entries for the same investor will cause duplicate notifyRedeem calls
+        if (ordersByAssetId[id].some((o) => o.investor === order.investor)) return
         ordersByAssetId[id].push(order)
       })
 
@@ -1078,7 +1084,7 @@ export class ShareClass extends Entity {
                       self.id.raw,
                       asset.assetId.raw,
                       addressToBytes32(order.investor),
-                      order.maxRedeemClaims + 1, // +1 to ensure the order that's being issued is included
+                      order.maxRedeemClaims + i, // maxRedeemClaims is the current claimable count, +i for the newly revoked epochs in this batch
                       ctx.signingAddress,
                     ],
                   })
