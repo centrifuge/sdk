@@ -3225,6 +3225,7 @@ export class ShareClass extends Entity {
                   'RemoteIssueShares',
                   'RemoteRevokeShares',
                   'UpdateShareClass',
+                  'UpdatePricePoolPerShare',
                 ],
                 filter: (events) => {
                   return events.some((event) => {
