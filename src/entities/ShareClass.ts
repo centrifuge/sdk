@@ -3464,8 +3464,10 @@ export class ShareClass extends Entity {
     const MAX_CENTRIFUGE_ID = 100n
 
     return this._query(['whitelistedInvestors', this.id.raw, limit, offset], () =>
+      this._root._protocolAddresses(this.pool.centrifugeId).pipe(
+        switchMap(({ hub }) =>
       this._root
-        ._queryIndexer<{
+            ._getIndexerObservable<{
           whitelistedInvestors: {
             items: {
               accountAddress: HexString
@@ -3536,7 +3538,18 @@ export class ShareClass extends Entity {
               totalCount: data.whitelistedInvestors.totalCount,
               assets: data.assets.items,
             }
-          })
+              }),
+              repeatOnEvents(
+                this._root,
+                {
+                  address: hub,
+                  eventName: 'UpdateRestriction',
+                  filter: (events) => events.some((event) => event.args.scId === this.id.raw),
+                },
+                this.pool.centrifugeId
+              )
+            )
+        )
         )
     )
   }
@@ -3546,8 +3559,10 @@ export class ShareClass extends Entity {
     return this._query(
       ['whitelistedInvestor', this.id.raw, params.accountAddress, params.centrifugeId, params.tokenId],
       () =>
+        this._root._protocolAddresses(this.pool.centrifugeId).pipe(
+          switchMap(({ hub }) =>
         this._root
-          ._queryIndexer<{
+              ._getIndexerObservable<{
             whitelistedInvestor: {
               accountAddress: HexString
               centrifugeId: string
@@ -3579,7 +3594,23 @@ export class ShareClass extends Entity {
                 address: accountAddress.toLowerCase() as HexString,
                 ...rest,
               }
-            })
+                }),
+                repeatOnEvents(
+                  this._root,
+                  {
+                    address: hub,
+                    eventName: 'UpdateRestriction',
+                    filter: (events) =>
+                      events.some(
+                        (event) =>
+                          event.args.scId === this.id.raw &&
+                          event.args.user?.toLowerCase() === params.accountAddress.toLowerCase()
+                      ),
+                  },
+                  this.pool.centrifugeId
+                )
+              )
+          )
           )
     )
   }
