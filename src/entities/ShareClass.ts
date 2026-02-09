@@ -1523,20 +1523,22 @@ export class ShareClass extends Entity {
     const self = this
 
     return this._transact(async function* (ctx) {
-      const [share, restrictionManager] = await Promise.all([
-        firstValueFrom(self._share(centrifugeId)),
-        firstValueFrom(self._restrictionManager(centrifugeId)),
-      ])
+      const { hub } = await self._root._protocolAddresses(self.pool.centrifugeId)
+      const payload = encodePacked(
+        ['uint8', 'bytes32'],
+        [/* UpdateRestrictionType.Freeze */ 2, addressToBytes32(address)]
+      )
 
       yield* wrapTransaction('Freeze member', ctx, {
-        contract: restrictionManager,
+        contract: hub,
         data: encodeFunctionData({
-          abi: ABI.RestrictionManager,
-          functionName: 'freeze',
-          args: [share, address],
+          abi: ABI.Hub,
+          functionName: 'updateRestriction',
+          args: [self.pool.id.raw, self.id.raw, centrifugeId, payload, 0n, ctx.signingAddress],
         }),
+        messages: { [centrifugeId]: [MessageType.UpdateRestriction] },
       })
-    }, centrifugeId)
+    }, this.pool.centrifugeId)
   }
 
   /**
@@ -1548,20 +1550,22 @@ export class ShareClass extends Entity {
     const self = this
 
     return this._transact(async function* (ctx) {
-      const [share, restrictionManager] = await Promise.all([
-        firstValueFrom(self._share(centrifugeId)),
-        firstValueFrom(self._restrictionManager(centrifugeId)),
-      ])
+      const { hub } = await self._root._protocolAddresses(self.pool.centrifugeId)
+      const payload = encodePacked(
+        ['uint8', 'bytes32'],
+        [/* UpdateRestrictionType.Unfreeze */ 3, addressToBytes32(address)]
+      )
 
       yield* wrapTransaction('Unfreeze member', ctx, {
-        contract: restrictionManager,
+        contract: hub,
         data: encodeFunctionData({
-          abi: ABI.RestrictionManager,
-          functionName: 'unfreeze',
-          args: [share, address],
+          abi: ABI.Hub,
+          functionName: 'updateRestriction',
+          args: [self.pool.id.raw, self.id.raw, centrifugeId, payload, 0n, ctx.signingAddress],
         }),
+        messages: { [centrifugeId]: [MessageType.UpdateRestriction] },
       })
-    }, centrifugeId)
+    }, this.pool.centrifugeId)
   }
 
   /**
