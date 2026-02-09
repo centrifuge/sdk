@@ -59,6 +59,7 @@ import {
 import { Balance } from './utils/BigInt.js'
 import { generateShareClassSalt, randomUint } from './utils/index.js'
 import { createPinning, getUrlFromHash } from './utils/ipfs.js'
+import { estimateBatchBridgeFee } from './utils/gas.js'
 import { hashKey } from './utils/query.js'
 import { makeThenable, repeatOnEvents, shareReplayWithDelayedReset } from './utils/rx.js'
 import {
@@ -1205,24 +1206,20 @@ export class Centrifuge {
             ...types.map((typeAndMaybeSubtype) => {
               const type = typeof typeAndMaybeSubtype === 'number' ? typeAndMaybeSubtype : typeAndMaybeSubtype.type
               const subtype = typeof typeAndMaybeSubtype === 'number' ? undefined : typeAndMaybeSubtype.subtype
-              const data = emptyMessage(type, subtype)
-              return client.readContract({
-                address: gasService,
-                abi: ABI.GasService,
-                functionName: 'messageOverallGasLimit',
-                args: [toCentrifugeId, data],
-              })
+              return of(emptyMessage(type, subtype))
             }),
           ]).pipe(
-            switchMap(async ([...gasLimits]) => {
-              const estimate = await client.readContract({
-                address: multiAdapter,
-                abi: ABI.MultiAdapter,
-                functionName: 'estimate',
-                args: [toCentrifugeId, '0x0', gasLimits.reduce((acc, val) => acc + val, 0n)],
+            switchMap(async (gasMessagePayloads) =>
+              estimateBatchBridgeFee({
+                readContract: client.readContract.bind(client),
+                gasService,
+                multiAdapter,
+                gasMessagePayloads,
+                toCentrifugeId,
+                gasServiceAbi: ABI.GasService,
+                multiAdapterAbi: ABI.MultiAdapter,
               })
-              return (estimate * 3n) / 2n // Add 50% buffer to the estimate
-            })
+            )
           )
         })
       )
