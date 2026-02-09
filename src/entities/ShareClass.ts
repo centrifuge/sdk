@@ -2596,7 +2596,10 @@ export class ShareClass extends Entity {
   /** @internal */
   _investOrders() {
     return this._query(['investOrders'], () =>
-      this._root._queryIndexer(
+      this._root._protocolAddresses(this.pool.centrifugeId).pipe(
+        switchMap(({ batchRequestManager }) =>
+          this._root
+            ._getIndexerObservable(
         `query ($scId: String!) {
           epochOutstandingInvests(where: { tokenId: $scId }, limit: 1000) {
             items {
@@ -2659,7 +2662,10 @@ export class ShareClass extends Entity {
             }
           }
         }`,
-        { scId: this.id.raw },
+              { scId: this.id.raw }
+            )
+            .pipe(
+              map(
         (data: {
           epochOutstandingInvests: {
             items: {
@@ -2783,6 +2789,19 @@ export class ShareClass extends Entity {
             })),
           }
         }
+              ),
+              repeatOnEvents(
+                this._root,
+                {
+                  address: batchRequestManager,
+                  eventName: ['UpdateDepositRequest', 'ApproveDeposits', 'IssueShares', 'ClaimDeposit'],
+                  filter: (events) =>
+                    events.some((event) => event.args.shareClassId === this.id.raw || event.args.scId === this.id.raw),
+                },
+                this.pool.centrifugeId
+              )
+            )
+        )
       )
     )
   }
@@ -2790,7 +2809,10 @@ export class ShareClass extends Entity {
   /** @internal */
   _redeemOrders() {
     return this._query(['redeemOrders'], () =>
-      this._root._queryIndexer(
+      this._root._protocolAddresses(this.pool.centrifugeId).pipe(
+        switchMap(({ batchRequestManager }) =>
+          this._root
+            ._getIndexerObservable(
         `query ($scId: String!) {
           epochOutstandingRedeems(where: { tokenId: $scId }, limit: 1000) {
             items {
@@ -2856,7 +2878,10 @@ export class ShareClass extends Entity {
             }
           }
         }`,
-        { scId: this.id.raw },
+              { scId: this.id.raw }
+            )
+            .pipe(
+              map(
         (data: {
           epochOutstandingRedeems: {
             items: {
@@ -2990,6 +3015,19 @@ export class ShareClass extends Entity {
             })),
           }
         }
+              ),
+              repeatOnEvents(
+                this._root,
+                {
+                  address: batchRequestManager,
+                  eventName: ['UpdateRedeemRequest', 'ApproveRedeems', 'RevokeShares', 'ClaimRedeem'],
+                  filter: (events) =>
+                    events.some((event) => event.args.shareClassId === this.id.raw || event.args.scId === this.id.raw),
+                },
+                this.pool.centrifugeId
+              )
+            )
+        )
       )
     )
   }
@@ -3187,6 +3225,7 @@ export class ShareClass extends Entity {
                   'RemoteIssueShares',
                   'RemoteRevokeShares',
                   'UpdateShareClass',
+                  'UpdatePricePoolPerShare',
                 ],
                 filter: (events) => {
                   return events.some((event) => {
@@ -3426,8 +3465,10 @@ export class ShareClass extends Entity {
     const MAX_CENTRIFUGE_ID = 100n
 
     return this._query(['whitelistedInvestors', this.id.raw, limit, offset], () =>
+      this._root._protocolAddresses(this.pool.centrifugeId).pipe(
+        switchMap(({ hub }) =>
       this._root
-        ._queryIndexer<{
+            ._getIndexerObservable<{
           whitelistedInvestors: {
             items: {
               accountAddress: HexString
@@ -3498,7 +3539,18 @@ export class ShareClass extends Entity {
               totalCount: data.whitelistedInvestors.totalCount,
               assets: data.assets.items,
             }
-          })
+              }),
+              repeatOnEvents(
+                this._root,
+                {
+                  address: hub,
+                  eventName: 'UpdateRestriction',
+                  filter: (events) => events.some((event) => event.args.scId === this.id.raw),
+                },
+                this.pool.centrifugeId
+              )
+            )
+        )
         )
     )
   }
@@ -3508,8 +3560,10 @@ export class ShareClass extends Entity {
     return this._query(
       ['whitelistedInvestor', this.id.raw, params.accountAddress, params.centrifugeId, params.tokenId],
       () =>
+        this._root._protocolAddresses(this.pool.centrifugeId).pipe(
+          switchMap(({ hub }) =>
         this._root
-          ._queryIndexer<{
+              ._getIndexerObservable<{
             whitelistedInvestor: {
               accountAddress: HexString
               centrifugeId: string
@@ -3541,7 +3595,23 @@ export class ShareClass extends Entity {
                 address: accountAddress.toLowerCase() as HexString,
                 ...rest,
               }
-            })
+                }),
+                repeatOnEvents(
+                  this._root,
+                  {
+                    address: hub,
+                    eventName: 'UpdateRestriction',
+                    filter: (events) =>
+                      events.some(
+                        (event) =>
+                          event.args.scId === this.id.raw &&
+                          event.args.user?.toLowerCase() === params.accountAddress.toLowerCase()
+                      ),
+                  },
+                  this.pool.centrifugeId
+                )
+              )
+          )
           )
     )
   }
