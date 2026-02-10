@@ -341,7 +341,10 @@ export class ShareClass extends Entity {
             }
           })
 
-          const redemptionsApproved = new Map<string, { amount: Balance; approvedAt: Date | null; epoch: number }[]>()
+          const redemptionsApproved = new Map<
+            string,
+            { amount: Balance; approvedAt: Date | null; epoch: number; approvedAtTxHash?: string | null }[]
+          >()
           redeemData.epochRedeemOrders.forEach((order) => {
             const isApproved = !!order.approvedAt && !order.revokedAt
             const key = `${order.assetId.toString()}-${order.centrifugeId}`
@@ -351,6 +354,7 @@ export class ShareClass extends Entity {
                 amount: order.approvedAmount,
                 approvedAt: order.approvedAt,
                 epoch: order.index,
+                approvedAtTxHash: order.approvedAtTxHash ?? null,
               })
             }
           })
@@ -1820,7 +1824,9 @@ export class ShareClass extends Entity {
                 assetId
                 index
                 issuedAt
+                issuedAtTxHash
                 approvedAt
+                approvedAtTxHash
                 issuedSharesAmount
                 approvedAssetsAmount
                 issuedWithNavPoolPerShare
@@ -1860,12 +1866,15 @@ export class ShareClass extends Entity {
                         assetId
                         approvedAssetsAmount
                         approvedAt
+                        approvedAtTxHash
                         issuedSharesAmount
                         issuedAt
+                        issuedAtTxHash
                         issuedWithNavAssetPerShare
                         issuedWithNavPoolPerShare
                         claimedAt
                         claimedAtBlock
+                        createdAtTxHash
                         asset {
                           id
                           decimals
@@ -1898,8 +1907,10 @@ export class ShareClass extends Entity {
                   assetId: new AssetId(epochData.assetId),
                   approvedAmount: new Balance(epochData.approvedAssetsAmount || 0n, epochData.asset.decimals),
                   approvedAt: epochData.approvedAt ? epochData.approvedAt : null,
+                  approvedAtTxHash: epochData.approvedAtTxHash ?? null,
                   issuedAmount: new Balance(epochData.issuedSharesAmount || 0n, epochData.token.decimals),
                   issuedAt: epochData.issuedAt,
+                  issuedAtTxHash: epochData.issuedAtTxHash ?? null,
                   priceAsset: new Price(epochData.issuedWithNavAssetPerShare || 0n),
                   pricePerShare: new Price(epochData.issuedWithNavPoolPerShare || 0n),
                   claimedAt: null,
@@ -1922,12 +1933,15 @@ export class ShareClass extends Entity {
                     assetId: new AssetId(order.assetId),
                     approvedAmount: new Balance(order.approvedAssetsAmount || 0n, order.asset.decimals),
                     approvedAt: order.approvedAt ? order.approvedAt : null,
+                    approvedAtTxHash: order.approvedAtTxHash ?? null,
                     issuedAmount: new Balance(order.issuedSharesAmount || 0n, order.token.decimals),
                     issuedAt: order.issuedAt ? order.issuedAt : null,
+                    issuedAtTxHash: order.issuedAtTxHash ?? null,
                     priceAsset: new Price(order.issuedWithNavAssetPerShare || 0n),
                     pricePerShare: new Price(order.issuedWithNavPoolPerShare || 0n),
                     claimedAt: order.claimedAt ? order.claimedAt : null,
                     isClaimed: !!order.claimedAtBlock,
+                    createdAtTxHash: order.createdAtTxHash ?? null,
                     asset: {
                       symbol: order.asset.symbol,
                       name: order.asset.name,
@@ -2611,6 +2625,8 @@ export class ShareClass extends Entity {
               poolId
               tokenId
               pendingAssetsAmount
+              createdAtTxHash
+              updatedAtTxHash
               asset { decimals centrifugeId }
             }
           }
@@ -2621,8 +2637,10 @@ export class ShareClass extends Entity {
               assetId
               index
               approvedAt
+              approvedAtTxHash
               approvedAssetsAmount
               issuedAt
+              issuedAtTxHash
               issuedSharesAmount
               token { decimals }
               asset { decimals centrifugeId }
@@ -2644,11 +2662,13 @@ export class ShareClass extends Entity {
               tokenId
               index
               approvedAt
+              approvedAtTxHash
               approvedAssetsAmount
               issuedAt
               issuedSharesAmount
               claimedAt
               claimedSharesAmount
+              createdAtTxHash
               asset { decimals centrifugeId }
             }
           }
@@ -2677,6 +2697,8 @@ export class ShareClass extends Entity {
               poolId: string
               tokenId: string
               pendingAssetsAmount: string
+              createdAtTxHash?: string | null
+              updatedAtTxHash?: string | null
               asset: { decimals: number; centrifugeId: string }
             }[]
           }
@@ -2687,8 +2709,10 @@ export class ShareClass extends Entity {
               assetId: string
               index: number
               approvedAt: string | null
+              approvedAtTxHash?: string | null
               approvedAssetsAmount: string
               issuedAt: string | null
+              issuedAtTxHash?: string | null
               issuedSharesAmount: string
               token: { decimals: number }
               asset: { decimals: number; centrifugeId: string }
@@ -2710,11 +2734,13 @@ export class ShareClass extends Entity {
               tokenId: string
               index: number
               approvedAt: string | null
+              approvedAtTxHash?: string | null
               approvedAssetsAmount: string
               issuedAt: string | null
               issuedSharesAmount: string
               claimedAt: string | null
               claimedSharesAmount: string
+              createdAtTxHash?: string | null
               asset: { decimals: number; centrifugeId: string }
             }[]
           }
@@ -2746,14 +2772,18 @@ export class ShareClass extends Entity {
               assetId: new AssetId(item.assetId),
               centrifugeId: Number(item.asset.centrifugeId) as CentrifugeId,
               pendingAmount: new Balance(item.pendingAssetsAmount || '0', item.asset.decimals),
+              createdAtTxHash: item.createdAtTxHash ?? null,
+              updatedAtTxHash: item.updatedAtTxHash ?? null,
             })),
             epochInvestOrders: data.epochInvestOrders.items.map((item) => ({
               assetId: new AssetId(item.assetId),
               centrifugeId: Number(item.asset.centrifugeId) as CentrifugeId,
               index: item.index,
               approvedAt: item.approvedAt ? new Date(item.approvedAt) : null,
+              approvedAtTxHash: item.approvedAtTxHash ?? null,
               approvedAmount: new Balance(item.approvedAssetsAmount || '0', item.asset.decimals),
               issuedAt: item.issuedAt,
+              issuedAtTxHash: item.issuedAtTxHash ?? null,
               tokenDecimals: item.token.decimals,
               assetDecimals: item.asset.decimals,
             })),
@@ -2777,8 +2807,10 @@ export class ShareClass extends Entity {
                 investor: item.account.toLowerCase() as HexString,
                 index: item.index,
                 approvedAt: item.approvedAt ? new Date(item.approvedAt) : null,
+                approvedAtTxHash: item.approvedAtTxHash ?? null,
                 approvedAmount: new Balance(item.approvedAssetsAmount || '0', item.asset.decimals),
                 issuedAt: item.issuedAt ? new Date(item.issuedAt) : null,
+                createdAtTxHash: item.createdAtTxHash ?? null,
               }
             }),
             outstandingInvests: data.outstandingInvests.items.map((item) => ({
@@ -2824,6 +2856,8 @@ export class ShareClass extends Entity {
               poolId
               tokenId
               pendingSharesAmount
+              createdAtTxHash
+              updatedAtTxHash
               asset { decimals centrifugeId }
             }
           }
@@ -2834,10 +2868,13 @@ export class ShareClass extends Entity {
               assetId
               index
               approvedAt
+              approvedAtTxHash
               approvedSharesAmount
               revokedAt
+              revokedAtTxHash
               revokedSharesAmount
               revokedAssetsAmount
+              createdAtTxHash
               token { decimals }
               asset { decimals centrifugeId }
             }
@@ -2849,6 +2886,8 @@ export class ShareClass extends Entity {
               tokenId
               queuedSharesAmount
               pendingSharesAmount
+              createdAtTxHash
+              updatedAtTxHash
             }
           }
           redeemOrders(where: { tokenId: $scId, revokedAt: null }, limit: 1000) {
@@ -2893,6 +2932,8 @@ export class ShareClass extends Entity {
               poolId: string
               tokenId: string
               pendingSharesAmount: string
+              createdAtTxHash?: string | null
+              updatedAtTxHash?: string | null
               asset: { decimals: number; centrifugeId: string }
             }[]
           }
@@ -2903,10 +2944,13 @@ export class ShareClass extends Entity {
               assetId: string
               index: number
               approvedAt: string | null
+              approvedAtTxHash?: string | null
               approvedSharesAmount: string
               revokedAt: string | null
+              revokedAtTxHash?: string | null
               revokedSharesAmount: string
               revokedAssetsAmount: string
+              createdAtTxHash?: string | null
               token: { decimals: number }
               asset: { decimals: number; centrifugeId: string }
             }[]
@@ -2918,6 +2962,8 @@ export class ShareClass extends Entity {
               tokenId: string
               queuedSharesAmount: string
               pendingSharesAmount: string
+              createdAtTxHash?: string | null
+              updatedAtTxHash?: string | null
             }[]
           }
           redeemOrders: {
@@ -2967,6 +3013,8 @@ export class ShareClass extends Entity {
                 assetId,
                 centrifugeId: assetId.centrifugeId,
                 pendingAmount: new Balance(item.pendingSharesAmount || '0', 18),
+                createdAtTxHash: item.createdAtTxHash ?? null,
+                updatedAtTxHash: item.updatedAtTxHash ?? null,
               }
             }),
             epochRedeemOrders: data.epochRedeemOrders.items.map((item) => {
@@ -2976,8 +3024,11 @@ export class ShareClass extends Entity {
                 centrifugeId: assetId.centrifugeId,
                 index: item.index,
                 approvedAt: item.approvedAt ? new Date(item.approvedAt) : null,
+                approvedAtTxHash: item.approvedAtTxHash ?? null,
                 revokedAt: item.revokedAt ? new Date(item.revokedAt) : null,
+                revokedAtTxHash: item.revokedAtTxHash ?? null,
                 approvedAmount: new Balance(item.approvedSharesAmount || '0', 18),
+                createdAtTxHash: item.createdAtTxHash ?? null,
                 tokenDecimals: item.token.decimals,
                 assetDecimals: item.asset.decimals,
               }
@@ -2991,6 +3042,8 @@ export class ShareClass extends Entity {
                 investor: item.account.toLowerCase() as HexString,
                 pendingAmount: item.pendingSharesAmount || '0',
                 queuedAmount: item.queuedSharesAmount || '0',
+                createdAtTxHash: item.createdAtTxHash ?? null,
+                updatedAtTxHash: item.updatedAtTxHash ?? null,
               }
             }),
             redeemOrders: data.redeemOrders.items.map((item) => {
