@@ -59,6 +59,7 @@ import {
 import { Balance } from './utils/BigInt.js'
 import { generateShareClassSalt, randomUint } from './utils/index.js'
 import { createPinning, getUrlFromHash } from './utils/ipfs.js'
+import { estimateBatchBridgeFee } from './utils/gas.js'
 import { hashKey } from './utils/query.js'
 import { makeThenable, repeatOnEvents, shareReplayWithDelayedReset } from './utils/rx.js'
 import {
@@ -1199,31 +1200,21 @@ export class Centrifuge {
   ) {
     return this._query(['estimate', fromCentrifugeId, toCentrifugeId, messageType], () =>
       combineLatest([this._protocolAddresses(fromCentrifugeId), this.getClient(fromCentrifugeId)]).pipe(
-        switchMap(([{ multiAdapter, gasService }, client]) => {
+        switchMap(([{ multiAdapter, gasService }, publicClient]) => {
           const types = Array.isArray(messageType) ? messageType : [messageType]
-          return combineLatest([
-            ...types.map((typeAndMaybeSubtype) => {
-              const type = typeof typeAndMaybeSubtype === 'number' ? typeAndMaybeSubtype : typeAndMaybeSubtype.type
-              const subtype = typeof typeAndMaybeSubtype === 'number' ? undefined : typeAndMaybeSubtype.subtype
-              const data = emptyMessage(type, subtype)
-              return client.readContract({
-                address: gasService,
-                abi: ABI.GasService,
-                functionName: 'messageOverallGasLimit',
-                args: [toCentrifugeId, data],
-              })
-            }),
-          ]).pipe(
-            switchMap(async ([...gasLimits]) => {
-              const estimate = await client.readContract({
-                address: multiAdapter,
-                abi: ABI.MultiAdapter,
-                functionName: 'estimate',
-                args: [toCentrifugeId, '0x0', gasLimits.reduce((acc, val) => acc + val, 0n)],
-              })
-              return (estimate * 3n) / 2n // Add 50% buffer to the estimate
-            })
-          )
+          const gasMessagePayloads = types.map((typeAndMaybeSubtype) => {
+            const type = typeof typeAndMaybeSubtype === 'number' ? typeAndMaybeSubtype : typeAndMaybeSubtype.type
+            const subtype = typeof typeAndMaybeSubtype === 'number' ? undefined : typeAndMaybeSubtype.subtype
+            return emptyMessage(type, subtype)
+          })
+
+          return estimateBatchBridgeFee({
+            publicClient,
+            gasService,
+            multiAdapter,
+            gasMessagePayloads,
+            toCentrifugeId,
+          })
         })
       )
     )

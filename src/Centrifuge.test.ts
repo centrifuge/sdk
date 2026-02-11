@@ -119,6 +119,65 @@ describe('Centrifuge', () => {
       const estimate2 = await context.centrifuge._estimate(centId, 2, MessageType.NotifyPool)
       expect(typeof estimate2).to.equal('bigint')
     })
+
+    it('should validate maxBatchGasLimit before estimating bridge fee', async () => {
+      const centrifuge = new Centrifuge({ environment: 'testnet' })
+      const readContract = sinon.stub()
+      const gasService = randomAddress()
+      const multiAdapter = randomAddress()
+
+      readContract.withArgs(sinon.match({ functionName: 'messageOverallGasLimit' })).resolves(120n)
+      readContract.withArgs(sinon.match({ functionName: 'maxBatchGasLimit' })).resolves(300n)
+      readContract.withArgs(sinon.match({ functionName: 'estimate' })).resolves(777n)
+
+      sinon.stub(centrifuge as any, '_protocolAddresses').returns(
+        of({
+          gasService,
+          multiAdapter,
+        } as any)
+      )
+      sinon.stub(centrifuge as any, 'getClient').returns(
+        of({
+          readContract,
+        } as any)
+      )
+
+      const estimate = await centrifuge._estimate(1, 2, [MessageType.NotifyPool, MessageType.NotifyShareClass])
+      expect(estimate).to.equal(1165n)
+      expect(
+        readContract.calledWithMatch({
+          functionName: 'estimate',
+          args: [2, '0x0', 240n],
+        })
+      ).to.equal(true)
+    })
+
+    it('should throw when estimated batch gas exceeds maxBatchGasLimit', async () => {
+      const centrifuge = new Centrifuge({ environment: 'testnet' })
+      const readContract = sinon.stub()
+
+      readContract.withArgs(sinon.match({ functionName: 'messageOverallGasLimit' })).resolves(200n)
+      readContract.withArgs(sinon.match({ functionName: 'maxBatchGasLimit' })).resolves(300n)
+
+      sinon.stub(centrifuge as any, '_protocolAddresses').returns(
+        of({
+          gasService: randomAddress(),
+          multiAdapter: randomAddress(),
+        } as any)
+      )
+      sinon.stub(centrifuge as any, 'getClient').returns(
+        of({
+          readContract,
+        } as any)
+      )
+
+      try {
+        await centrifuge._estimate(1, 2, [MessageType.NotifyPool, MessageType.NotifyShareClass])
+        expect.fail('Expected _estimate to throw when maxBatchGasLimit is exceeded')
+      } catch (error) {
+        expect((error as Error).message).to.equal('Batch gas 400 exceeds limit 300 for chain 2')
+      }
+    })
   })
 
   describe('Query', () => {
