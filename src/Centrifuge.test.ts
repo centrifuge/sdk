@@ -143,7 +143,7 @@ describe('Centrifuge', () => {
       )
 
       const estimate = await centrifuge._estimate(1, 2, [MessageType.NotifyPool, MessageType.NotifyShareClass])
-      expect(estimate).to.equal(777n)
+      expect(estimate).to.equal(1165n)
       expect(
         readContract.calledWithMatch({
           functionName: 'estimate',

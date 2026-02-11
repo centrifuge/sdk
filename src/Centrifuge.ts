@@ -1200,24 +1200,27 @@ export class Centrifuge {
   ) {
     return this._query(['estimate', fromCentrifugeId, toCentrifugeId, messageType], () =>
       combineLatest([this._protocolAddresses(fromCentrifugeId), this.getClient(fromCentrifugeId)]).pipe(
-        switchMap(([{ multiAdapter, gasService }, client]) => {
+        map(([{ multiAdapter, gasService }, client]) => ({
+          publicClient: client,
+          gasService,
+          multiAdapter,
+        })),
+        switchMap(({ publicClient, gasService, multiAdapter }) => {
           const types = Array.isArray(messageType) ? messageType : [messageType]
-          return combineLatest([
-            ...types.map((typeAndMaybeSubtype) => {
+          return combineLatest(
+            types.map((typeAndMaybeSubtype) => {
               const type = typeof typeAndMaybeSubtype === 'number' ? typeAndMaybeSubtype : typeAndMaybeSubtype.type
               const subtype = typeof typeAndMaybeSubtype === 'number' ? undefined : typeAndMaybeSubtype.subtype
               return of(emptyMessage(type, subtype))
-            }),
-          ]).pipe(
-            switchMap(async (gasMessagePayloads) =>
+            })
+          ).pipe(
+            switchMap((gasMessagePayloads) =>
               estimateBatchBridgeFee({
-                readContract: client.readContract.bind(client),
+                publicClient,
                 gasService,
                 multiAdapter,
                 gasMessagePayloads,
                 toCentrifugeId,
-                gasServiceAbi: ABI.GasService,
-                multiAdapterAbi: ABI.MultiAdapter,
               })
             )
           )
