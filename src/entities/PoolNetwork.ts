@@ -2,7 +2,7 @@ import { combineLatest, defer, EMPTY, firstValueFrom, map, of, switchMap } from 
 import { encodeFunctionData, getContract, maxUint128 } from 'viem'
 import { ABI } from '../abi/index.js'
 import type { Centrifuge } from '../Centrifuge.js'
-import { NULL_ADDRESS } from '../constants.js'
+import { NULL_ADDRESS, SAFE_PROXY_BYTECODE } from '../constants.js'
 import { HexString } from '../types/index.js'
 import { MessageType, MessageTypeWithSubType, VaultUpdateKind } from '../types/transaction.js'
 import { addressToBytes32, encode } from '../utils/index.js'
@@ -322,6 +322,31 @@ export class PoolNetwork extends Entity {
   }
 
   /**
+   * Compute the deterministic address for an OnOffRampManager before deployment.
+   * @param scId - The share class ID
+   * @returns The predicted contract address
+   */
+  async computeOnOffRampManagerAddress(scId: ShareClassId): Promise<HexString> {
+    const { onOfframpManagerFactory } = await this._root._protocolAddresses(this.centrifugeId)
+    const client = await this._root.getClient(this.centrifugeId)
+
+    try {
+      const { result } = await client.simulateContract({
+        address: onOfframpManagerFactory,
+        abi: ABI.OnOffRampManagerFactory,
+        functionName: 'newManager',
+        args: [this.pool.id.raw, scId.raw],
+      })
+
+      return result as HexString
+    } catch (error) {
+      throw new Error(
+        `Failed to compute OnOffRampManager address: ${error instanceof Error ? error.message : 'Unknown error'}`
+      )
+    }
+  }
+
+  /**
    * Deploy an On/Off Ramp Manager for a share class.
    * Yields the deployed manager address as a custom 'DeployedOnOfframpManager' status.
    * @param scId - The share class ID
@@ -375,6 +400,67 @@ export class PoolNetwork extends Entity {
         canManage: true,
       },
     ])
+  }
+
+  /**
+   * Deploy an On/Off Ramp Manager and register it as a Balance Sheet Manager.
+   * @param scId
+   */
+  deployAndRegisterOnOffRampManager(scId: ShareClassId) {
+    const self = this
+
+    return this._transact(async function* (ctx) {
+      const code = await ctx.publicClient.getCode({ address: ctx.signingAddress })
+      const isSafeWallet = code === SAFE_PROXY_BYTECODE
+
+      const { onOfframpManagerFactory } = await self._root._protocolAddresses(self.centrifugeId)
+      const { hub } = await self._root._protocolAddresses(self.pool.centrifugeId)
+
+      const precomputedAddress = isSafeWallet ? await self.computeOnOffRampManagerAddress(scId) : null
+
+      const result = yield* doTransaction('DeployOnOfframpManager', ctx, () =>
+        ctx.walletClient.writeContract({
+          address: onOfframpManagerFactory,
+          abi: ABI.OnOffRampManagerFactory,
+          functionName: 'newManager',
+          args: [self.pool.id.raw, scId.raw],
+        })
+      )
+
+
+      let finalManagerAddress: HexString
+      if (isSafeWallet && precomputedAddress) {
+        finalManagerAddress = precomputedAddress
+      } else {
+        const events = parseEventLogs({
+          logs: result.receipt.logs,
+          eventName: 'DeployOnOfframpManager',
+          address: onOfframpManagerFactory,
+        })
+
+        const deployEvent = events[0]
+        const args = deployEvent?.args as { manager?: HexString } | undefined
+        if (!args?.manager) {
+          throw new Error('DeployOnOfframpManager event not found')
+        }
+        finalManagerAddress = args.manager
+      }
+
+      yield {
+        type: 'DeployedOnOfframpManager',
+        address: finalManagerAddress,
+      } as const
+
+      yield* wrapTransaction('RegisterOnOffRampManagerAsBSManager', ctx, {
+        contract: hub,
+        data: encodeFunctionData({
+          abi: ABI.Hub,
+          functionName: 'updateBalanceSheetManager',
+          args: [self.pool.id.raw, self.centrifugeId, addressToBytes32(finalManagerAddress), true, ctx.signingAddress],
+        }),
+        messages: { [self.centrifugeId]: [MessageType.UpdateBalanceSheetManager] },
+      })
+    }, self.centrifugeId)
   }
 
   /**
