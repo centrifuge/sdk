@@ -45,5 +45,6 @@ export async function estimateBatchBridgeFee(params: {
 
   _assertBatchGasWithinLimit(batchGasLimit, maxBatchGasLimit, toCentrifugeId)
 
+  // Add 50% buffer to the estimate
   return (estimate * 3n) / 2n
 }
