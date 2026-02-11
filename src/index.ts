@@ -30,6 +30,7 @@ export type {
 export { Balance, Perquintill, Price, Rate } from './utils/BigInt.js'
 export type { GroupBy } from './utils/date.js'
 export * from './utils/types.js'
+export { chains } from './config/chains.js'
 
 export { Centrifuge }
 export default Centrifuge
