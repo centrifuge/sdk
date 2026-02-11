@@ -1200,30 +1200,21 @@ export class Centrifuge {
   ) {
     return this._query(['estimate', fromCentrifugeId, toCentrifugeId, messageType], () =>
       combineLatest([this._protocolAddresses(fromCentrifugeId), this.getClient(fromCentrifugeId)]).pipe(
-        map(([{ multiAdapter, gasService }, client]) => ({
-          publicClient: client,
-          gasService,
-          multiAdapter,
-        })),
-        switchMap(({ publicClient, gasService, multiAdapter }) => {
+        switchMap(([{ multiAdapter, gasService }, publicClient]) => {
           const types = Array.isArray(messageType) ? messageType : [messageType]
-          return combineLatest(
-            types.map((typeAndMaybeSubtype) => {
-              const type = typeof typeAndMaybeSubtype === 'number' ? typeAndMaybeSubtype : typeAndMaybeSubtype.type
-              const subtype = typeof typeAndMaybeSubtype === 'number' ? undefined : typeAndMaybeSubtype.subtype
-              return of(emptyMessage(type, subtype))
-            })
-          ).pipe(
-            switchMap((gasMessagePayloads) =>
-              estimateBatchBridgeFee({
-                publicClient,
-                gasService,
-                multiAdapter,
-                gasMessagePayloads,
-                toCentrifugeId,
-              })
-            )
-          )
+          const gasMessagePayloads = types.map((typeAndMaybeSubtype) => {
+            const type = typeof typeAndMaybeSubtype === 'number' ? typeAndMaybeSubtype : typeAndMaybeSubtype.type
+            const subtype = typeof typeAndMaybeSubtype === 'number' ? undefined : typeAndMaybeSubtype.subtype
+            return emptyMessage(type, subtype)
+          })
+
+          return estimateBatchBridgeFee({
+            publicClient,
+            gasService,
+            multiAdapter,
+            gasMessagePayloads,
+            toCentrifugeId,
+          })
         })
       )
     )
