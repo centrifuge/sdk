@@ -203,7 +203,7 @@ export class BalanceSheet extends Entity {
 
       let shares = amount
       if (!pricePerShare.isZero()) {
-        const sharesBigInt = (amount.toBigInt() * 10n ** BigInt(Price.decimals)) / pricePerShare.toBigInt()
+        const sharesBigInt = (amount.toBigInt() * 10n ** BigInt(pricePerShare.decimals)) / pricePerShare.toBigInt()
         shares = new Balance(sharesBigInt, amount.decimals)
       }
 
@@ -256,7 +256,7 @@ export class BalanceSheet extends Entity {
 
       let shares = amount
       if (!pricePerShare.isZero()) {
-        const sharesBigInt = (amount.toBigInt() * 10n ** BigInt(Price.decimals)) / pricePerShare.toBigInt()
+        const sharesBigInt = (amount.toBigInt() * 10n ** BigInt(pricePerShare.decimals)) / pricePerShare.toBigInt()
         shares = new Balance(sharesBigInt, amount.decimals)
       }
 
