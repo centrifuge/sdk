@@ -202,12 +202,12 @@ export class BalanceSheet extends Entity {
       if (!isManager) throw new Error('Signing address is not a BalanceSheetManager')
 
       let shares = amount
-      if (pricePerShare.toBigInt() !== 0n) {
-        const sharesBigInt = (amount.toBigInt() * 10n ** BigInt(amount.decimals)) / pricePerShare.toBigInt()
+      if (!pricePerShare.isZero()) {
+        const sharesBigInt = (amount.toBigInt() * 10n ** BigInt(Price.decimals)) / pricePerShare.toBigInt()
         shares = new Balance(sharesBigInt, amount.decimals)
       }
 
-      if (shares.eq(0n)) throw new Error('Cannot issue 0 shares')
+      if (shares.isZero()) throw new Error('Cannot issue 0 shares')
 
       const overrideTx = encodeFunctionData({
         abi: ABI.BalanceSheet,
@@ -255,12 +255,12 @@ export class BalanceSheet extends Entity {
       if (!isManager) throw new Error('Signing address is not a BalanceSheetManager')
 
       let shares = amount
-      if (pricePerShare.toBigInt() !== 0n) {
-        const sharesBigInt = (amount.toBigInt() * 10n ** BigInt(amount.decimals)) / pricePerShare.toBigInt()
+      if (!pricePerShare.isZero()) {
+        const sharesBigInt = (amount.toBigInt() * 10n ** BigInt(Price.decimals)) / pricePerShare.toBigInt()
         shares = new Balance(sharesBigInt, amount.decimals)
       }
 
-      if (shares.eq(0n)) throw new Error('Cannot revoke 0 shares')
+      if (shares.isZero()) throw new Error('Cannot revoke 0 shares')
 
       const transferTx = encodeFunctionData({
         abi: ABI.BalanceSheet,
