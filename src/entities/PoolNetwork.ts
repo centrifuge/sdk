@@ -1,4 +1,4 @@
-import { combineLatest, defer, EMPTY, firstValueFrom, map, of, switchMap } from 'rxjs'
+import { combineLatest, concat, defer, EMPTY, firstValueFrom, map, of, switchMap } from 'rxjs'
 import { encodeFunctionData, getContract, maxUint128 } from 'viem'
 import { ABI } from '../abi/index.js'
 import type { Centrifuge } from '../Centrifuge.js'
@@ -6,7 +6,7 @@ import { NULL_ADDRESS, SAFE_PROXY_BYTECODE } from '../constants.js'
 import { HexString } from '../types/index.js'
 import { MessageType, MessageTypeWithSubType, VaultUpdateKind } from '../types/transaction.js'
 import { addressToBytes32, encode } from '../utils/index.js'
-import { repeatOnEvents } from '../utils/rx.js'
+import { makeThenable, repeatOnEvents } from '../utils/rx.js'
 import { doTransaction, parseEventLogs, wrapTransaction } from '../utils/transaction.js'
 import { AssetId, CentrifugeId, ShareClassId } from '../utils/types.js'
 import { BalanceSheet } from './BalanceSheet.js'
@@ -408,14 +408,12 @@ export class PoolNetwork extends Entity {
    */
   deployAndRegisterOnOffRampManager(scId: ShareClassId) {
     const self = this
+    let managerAddress: HexString | null = null
 
-    return this._transact(async function* (ctx) {
+    const deployTransaction = this._transact(async function* (ctx) {
       const code = await ctx.publicClient.getCode({ address: ctx.signingAddress })
       const isSafeWallet = code === SAFE_PROXY_BYTECODE
-
       const { onOfframpManagerFactory } = await self._root._protocolAddresses(self.centrifugeId)
-      const { hub } = await self._root._protocolAddresses(self.pool.centrifugeId)
-
       const precomputedAddress = isSafeWallet ? await self.computeOnOffRampManagerAddress(scId) : null
 
       const result = yield* doTransaction('DeployOnOfframpManager', ctx, () =>
@@ -426,7 +424,6 @@ export class PoolNetwork extends Entity {
           args: [self.pool.id.raw, scId.raw],
         })
       )
-
 
       let finalManagerAddress: HexString
       if (isSafeWallet && precomputedAddress) {
@@ -446,21 +443,23 @@ export class PoolNetwork extends Entity {
         finalManagerAddress = args.manager
       }
 
+      managerAddress = finalManagerAddress
+
       yield {
         type: 'DeployedOnOfframpManager',
         address: finalManagerAddress,
       } as const
-
-      yield* wrapTransaction('RegisterOnOffRampManagerAsBSManager', ctx, {
-        contract: hub,
-        data: encodeFunctionData({
-          abi: ABI.Hub,
-          functionName: 'updateBalanceSheetManager',
-          args: [self.pool.id.raw, self.centrifugeId, addressToBytes32(finalManagerAddress), true, ctx.signingAddress],
-        }),
-        messages: { [self.centrifugeId]: [MessageType.UpdateBalanceSheetManager] },
-      })
     }, self.centrifugeId)
+
+    const registerTransaction = defer(() => {
+      if (!managerAddress) {
+        throw new Error('DeployOnOfframpManager event not found')
+      }
+      return self.registerOnOffRampManagerAsBSManager(managerAddress)
+    })
+
+    const transaction = makeThenable(concat(deployTransaction, registerTransaction), true)
+    return Object.assign(transaction, { centrifugeId: self.centrifugeId })
   }
 
   /**

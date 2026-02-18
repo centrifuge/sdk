@@ -48,6 +48,18 @@ describe('OnOffRampManager', () => {
       expect(managerOnNonHubNetwork.setRelayer(receiver).centrifugeId).to.equal(pool.centrifugeId)
       expect(managerOnNonHubNetwork.setReceiver(assetId, receiver).centrifugeId).to.equal(pool.centrifugeId)
     })
+
+    it('should route direct manager interactions through the manager chain', () => {
+      const nonHubNetwork = new PoolNetwork(context.centrifuge, pool, 2)
+      const managerOnNonHubNetwork = new OnOffRampManager(context.centrifuge, nonHubNetwork, shareClass, rampManager)
+
+      expect(managerOnNonHubNetwork.deposit(rampManager, new Balance(1n, 6), receiver).centrifugeId).to.equal(
+        nonHubNetwork.centrifugeId
+      )
+      expect(managerOnNonHubNetwork.withdraw(rampManager, new Balance(1n, 6), receiver).centrifugeId).to.equal(
+        nonHubNetwork.centrifugeId
+      )
+    })
   })
 
   describe('receivers', () => {
