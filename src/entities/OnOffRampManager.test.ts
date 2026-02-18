@@ -39,6 +39,17 @@ describe('OnOffRampManager', () => {
     onOffRampManager = new OnOffRampManager(context.centrifuge, poolNetwork, shareClass, rampManager)
   })
 
+  describe('hub routing', () => {
+    it('should route hub updates through the pool hub chain', () => {
+      const nonHubNetwork = new PoolNetwork(context.centrifuge, pool, 2)
+      const managerOnNonHubNetwork = new OnOffRampManager(context.centrifuge, nonHubNetwork, shareClass, rampManager)
+
+      expect(managerOnNonHubNetwork.setAsset(assetId).centrifugeId).to.equal(pool.centrifugeId)
+      expect(managerOnNonHubNetwork.setRelayer(receiver).centrifugeId).to.equal(pool.centrifugeId)
+      expect(managerOnNonHubNetwork.setReceiver(assetId, receiver).centrifugeId).to.equal(pool.centrifugeId)
+    })
+  })
+
   describe('receivers', () => {
     it('should set receiver', async () => {
       const address = randomAddress()
