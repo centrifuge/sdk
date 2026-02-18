@@ -171,7 +171,7 @@ export class OnOffRampManager extends Entity {
   setReceiver(assetId: AssetId, receiver: HexString, enabled: boolean = true) {
     const self = this
     return this._transact(async function* (ctx) {
-      const { hub } = await self._root._protocolAddresses(self.network.centrifugeId)
+      const { hub } = await self._root._protocolAddresses(self.network.pool.centrifugeId)
 
       yield* wrapTransaction(enabled ? 'Enable Receiver' : 'Disable Receiver', ctx, {
         contract: hub,
@@ -192,7 +192,7 @@ export class OnOffRampManager extends Entity {
           [self.network.centrifugeId]: [MessageType.TrustedContractUpdate],
         },
       })
-    }, this.network.centrifugeId)
+    }, self.network.pool.centrifugeId)
   }
 
   /**
@@ -222,7 +222,7 @@ export class OnOffRampManager extends Entity {
         }),
         messages: { [self.network.centrifugeId]: [MessageType.TrustedContractUpdate] },
       })
-    }, this.network.centrifugeId)
+    }, self.network.pool.centrifugeId)
   }
 
   setAsset(assetId: AssetId) {
@@ -247,7 +247,7 @@ export class OnOffRampManager extends Entity {
         }),
         messages: { [self.network.centrifugeId]: [MessageType.TrustedContractUpdate] },
       })
-    }, this.network.centrifugeId)
+    }, self.network.pool.centrifugeId)
   }
 
   deposit(assetAddress: HexString, amount: Balance, receiverAddress: HexString) {
