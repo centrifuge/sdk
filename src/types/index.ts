@@ -17,7 +17,6 @@ export type Config = {
   /**
    * Whether to disable EIP-2612 permit signatures and use standard ERC-20 approve instead.
    * Useful for Safe multisig wallets or integrations that don't support off-chain signing.
-   * @default false
    */
   permitDisabled?: boolean
 }
