@@ -14,6 +14,7 @@ import { Entity } from './Entity.js'
 import type { Pool } from './Pool.js'
 import { PoolNetwork, VaultManagerTrustedCall } from './PoolNetwork.js'
 import { ShareClass } from './ShareClass.js'
+import { SAFE_PROXY_BYTECODE } from '../constants.js'
 
 // const ASYNC_OPERATOR_INTERFACE_ID = '0xe3bc4e65'
 // const ASYNC_DEPOSIT_INTERFACE_ID = '0xce3bbe50'
@@ -295,7 +296,8 @@ export class Vault extends Entity {
       if (!isSyncDeposit) throw new Error('Vault does not support synchronous deposits')
 
       const { asset, assetBalance, assetAllowance, isAllowedToDeposit } = investment
-      const supportsPermit = asset.supportsPermit && signingAddressCode === undefined
+      const isSafeWallet = signingAddressCode === SAFE_PROXY_BYTECODE
+      const supportsPermit = asset.supportsPermit && signingAddressCode === undefined && !isSafeWallet
       const needsApproval = assetAllowance.lt(amount)
 
       if (!isAllowedToDeposit) throw new Error('Not allowed to deposit')
@@ -358,7 +360,8 @@ export class Vault extends Entity {
       if (isSyncDeposit) throw new Error('Vault does not support asynchronous deposits')
 
       const { asset, assetBalance, assetAllowance, isAllowedToDeposit } = investment
-      const supportsPermit = asset.supportsPermit && signingAddressCode === undefined
+      const isSafeWallet = signingAddressCode === SAFE_PROXY_BYTECODE
+      const supportsPermit = asset.supportsPermit && signingAddressCode === undefined && !isSafeWallet
       const needsApproval = assetAllowance.lt(amount)
 
       if (!isAllowedToDeposit) throw new Error('Not allowed to deposit')
