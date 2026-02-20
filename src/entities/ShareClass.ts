@@ -375,10 +375,15 @@ export class ShareClass extends Entity {
             }
           })
 
+          const redeemTokenDecimals =
+            redeemData.epochOutstandingRedeems[0]?.pendingAmount.decimals ??
+            redeemData.epochRedeemOrders[0]?.tokenDecimals ??
+            18
+
           const queuedRedemptions = new Map<string, Balance>()
           redeemData.pendingRedeemOrders.forEach((order) => {
             const key = `${order.assetId.toString()}-${order.centrifugeId}`
-            const queuedAmount = new Balance(order.queuedAmount, 18) // Share tokens are always 18 decimals
+            const queuedAmount = new Balance(order.queuedAmount, redeemTokenDecimals)
             const existing = queuedRedemptions.get(key)
             if (existing) {
               queuedRedemptions.set(key, existing.add(queuedAmount))
@@ -404,17 +409,18 @@ export class ShareClass extends Entity {
             const pendingIssuances = investmentsApproved.get(key) ?? []
             const pendingRevocations = redemptionsApproved.get(key) ?? []
 
+            const investTokenDecimals = assetDecimals.get(vault.assetId.toString()) ?? 18
             const pendingIssuancesTotal = pendingIssuances.reduce(
               (acc, curr) => acc.add(curr.amount),
-              new Balance(0n, pendingIssuances[0]?.amount.decimals ?? 18)
+              new Balance(0n, pendingIssuances[0]?.amount.decimals ?? investTokenDecimals)
             )
             const pendingRevocationsTotal = pendingRevocations.reduce(
               (acc, curr) => acc.add(curr.amount),
-              new Balance(0n, 18)
+              new Balance(0n, pendingRevocations[0]?.amount.decimals ?? redeemTokenDecimals)
             )
 
-            const queuedInvest = queuedInvestments.get(key) ?? new Balance(0n, 18)
-            const queuedRedeem = queuedRedemptions.get(key) ?? new Balance(0n, 18)
+            const queuedInvest = queuedInvestments.get(key) ?? new Balance(0n, investTokenDecimals)
+            const queuedRedeem = queuedRedemptions.get(key) ?? new Balance(0n, redeemTokenDecimals)
 
             const assetPrice = priceByAsset.get(vault.assetId.toString()) ?? Price.fromFloat(1)
 
@@ -2618,213 +2624,213 @@ export class ShareClass extends Entity {
         switchMap(({ batchRequestManager }) =>
           this._root
             ._getIndexerObservable(
-        `query ($scId: String!) {
-          epochOutstandingInvests(where: { tokenId: $scId }, limit: 1000) {
-            items {
-              assetId
-              poolId
-              tokenId
-              pendingAssetsAmount
-              createdAtTxHash
-              updatedAtTxHash
-              asset { decimals centrifugeId }
-            }
-          }
-          epochInvestOrders(where: { tokenId: $scId }, limit: 1000) {
-            items {
-              poolId
-              tokenId
-              assetId
-              index
-              approvedAt
-              approvedAtTxHash
-              approvedAssetsAmount
-              issuedAt
-              issuedAtTxHash
-              issuedSharesAmount
-              token { decimals }
-              asset { decimals centrifugeId }
-            }
-          }
-          pendingInvestOrders(where: { tokenId: $scId }, limit: 1000) {
-            items {
-              account
-              assetId
-              tokenId
-              queuedAssetsAmount
-              pendingAssetsAmount
-            }
-          }
-          investOrders(where: { tokenId: $scId, issuedAt: null }, limit: 1000) {
-            items {
-              account
-              assetId
-              tokenId
-              index
-              approvedAt
-              approvedAtTxHash
-              approvedAssetsAmount
-              issuedAt
-              issuedSharesAmount
-              claimedAt
-              claimedSharesAmount
-              createdAtTxHash
-              asset { decimals centrifugeId }
-            }
-          }
-          outstandingInvests(where: { tokenId: $scId }, limit: 1000) {
-            items {
-              account
-              assetId
-              tokenId
-              approvedAmount
-              approvedAt
-              depositAmount
-              epochIndex
-              pendingAmount
-              queuedAmount
-            }
-          }
-        }`,
+              `query ($scId: String!) {
+                epochOutstandingInvests(where: { tokenId: $scId }, limit: 1000) {
+                  items {
+                    assetId
+                    poolId
+                    tokenId
+                    pendingAssetsAmount
+                    createdAtTxHash
+                    updatedAtTxHash
+                    asset { decimals centrifugeId }
+                  }
+                }
+                epochInvestOrders(where: { tokenId: $scId }, limit: 1000) {
+                  items {
+                    poolId
+                    tokenId
+                    assetId
+                    index
+                    approvedAt
+                    approvedAtTxHash
+                    approvedAssetsAmount
+                    issuedAt
+                    issuedAtTxHash
+                    issuedSharesAmount
+                    token { decimals }
+                    asset { decimals centrifugeId }
+                  }
+                }
+                pendingInvestOrders(where: { tokenId: $scId }, limit: 1000) {
+                  items {
+                    account
+                    assetId
+                    tokenId
+                    queuedAssetsAmount
+                    pendingAssetsAmount
+                  }
+                }
+                investOrders(where: { tokenId: $scId, issuedAt: null }, limit: 1000) {
+                  items {
+                    account
+                    assetId
+                    tokenId
+                    index
+                    approvedAt
+                    approvedAtTxHash
+                    approvedAssetsAmount
+                    issuedAt
+                    issuedSharesAmount
+                    claimedAt
+                    claimedSharesAmount
+                    createdAtTxHash
+                    asset { decimals centrifugeId }
+                  }
+                }
+                outstandingInvests(where: { tokenId: $scId }, limit: 1000) {
+                  items {
+                    account
+                    assetId
+                    tokenId
+                    approvedAmount
+                    approvedAt
+                    depositAmount
+                    epochIndex
+                    pendingAmount
+                    queuedAmount
+                  }
+                }
+              }`,
               { scId: this.id.raw }
             )
             .pipe(
               map(
-        (data: {
-          epochOutstandingInvests: {
-            items: {
-              assetId: string
-              poolId: string
-              tokenId: string
-              pendingAssetsAmount: string
-              createdAtTxHash?: string | null
-              updatedAtTxHash?: string | null
-              asset: { decimals: number; centrifugeId: string }
-            }[]
-          }
-          epochInvestOrders: {
-            items: {
-              poolId: string
-              tokenId: string
-              assetId: string
-              index: number
-              approvedAt: string | null
-              approvedAtTxHash?: string | null
-              approvedAssetsAmount: string
-              issuedAt: string | null
-              issuedAtTxHash?: string | null
-              issuedSharesAmount: string
-              token: { decimals: number }
-              asset: { decimals: number; centrifugeId: string }
-            }[]
-          }
-          pendingInvestOrders: {
-            items: {
-              account: HexString
-              assetId: string
-              tokenId: string
-              queuedAssetsAmount: string
-              pendingAssetsAmount: string
-            }[]
-          }
-          investOrders: {
-            items: {
-              account: HexString
-              assetId: string
-              tokenId: string
-              index: number
-              approvedAt: string | null
-              approvedAtTxHash?: string | null
-              approvedAssetsAmount: string
-              issuedAt: string | null
-              issuedSharesAmount: string
-              claimedAt: string | null
-              claimedSharesAmount: string
-              createdAtTxHash?: string | null
-              asset: { decimals: number; centrifugeId: string }
-            }[]
-          }
-          outstandingInvests: {
-            items: {
-              account: HexString
-              assetId: string
-              tokenId: string
-              approvedAmount: string
-              approvedAt: string | null
-              depositAmount: string
-              epochIndex: number
-              pendingAmount: string
-              queuedAmount: string
-            }[]
-          }
-        }) => {
-          const maxEpochByAsset = new Map<string, number>()
-          for (const item of data.epochInvestOrders.items) {
-            const current = maxEpochByAsset.get(item.assetId) ?? -1
-            if (item.index > current) {
-              maxEpochByAsset.set(item.assetId, item.index)
-            }
-          }
+                (data: {
+                  epochOutstandingInvests: {
+                    items: {
+                      assetId: string
+                      poolId: string
+                      tokenId: string
+                      pendingAssetsAmount: string
+                      createdAtTxHash?: string | null
+                      updatedAtTxHash?: string | null
+                      asset: { decimals: number; centrifugeId: string }
+                    }[]
+                  }
+                  epochInvestOrders: {
+                    items: {
+                      poolId: string
+                      tokenId: string
+                      assetId: string
+                      index: number
+                      approvedAt: string | null
+                      approvedAtTxHash?: string | null
+                      approvedAssetsAmount: string
+                      issuedAt: string | null
+                      issuedAtTxHash?: string | null
+                      issuedSharesAmount: string
+                      token: { decimals: number }
+                      asset: { decimals: number; centrifugeId: string }
+                    }[]
+                  }
+                  pendingInvestOrders: {
+                    items: {
+                      account: HexString
+                      assetId: string
+                      tokenId: string
+                      queuedAssetsAmount: string
+                      pendingAssetsAmount: string
+                    }[]
+                  }
+                  investOrders: {
+                    items: {
+                      account: HexString
+                      assetId: string
+                      tokenId: string
+                      index: number
+                      approvedAt: string | null
+                      approvedAtTxHash?: string | null
+                      approvedAssetsAmount: string
+                      issuedAt: string | null
+                      issuedSharesAmount: string
+                      claimedAt: string | null
+                      claimedSharesAmount: string
+                      createdAtTxHash?: string | null
+                      asset: { decimals: number; centrifugeId: string }
+                    }[]
+                  }
+                  outstandingInvests: {
+                    items: {
+                      account: HexString
+                      assetId: string
+                      tokenId: string
+                      approvedAmount: string
+                      approvedAt: string | null
+                      depositAmount: string
+                      epochIndex: number
+                      pendingAmount: string
+                      queuedAmount: string
+                    }[]
+                  }
+                }) => {
+                  const maxEpochByAsset = new Map<string, number>()
+                  for (const item of data.epochInvestOrders.items) {
+                    const current = maxEpochByAsset.get(item.assetId) ?? -1
+                    if (item.index > current) {
+                      maxEpochByAsset.set(item.assetId, item.index)
+                    }
+                  }
 
-          return {
-            maxEpochByAsset,
-            epochOutstandingInvests: data.epochOutstandingInvests.items.map((item) => ({
-              assetId: new AssetId(item.assetId),
-              centrifugeId: Number(item.asset.centrifugeId) as CentrifugeId,
-              pendingAmount: new Balance(item.pendingAssetsAmount || '0', item.asset.decimals),
-              createdAtTxHash: item.createdAtTxHash ?? null,
-              updatedAtTxHash: item.updatedAtTxHash ?? null,
-            })),
-            epochInvestOrders: data.epochInvestOrders.items.map((item) => ({
-              assetId: new AssetId(item.assetId),
-              centrifugeId: Number(item.asset.centrifugeId) as CentrifugeId,
-              index: item.index,
-              approvedAt: item.approvedAt ? new Date(item.approvedAt) : null,
-              approvedAtTxHash: item.approvedAtTxHash ?? null,
-              approvedAmount: new Balance(item.approvedAssetsAmount || '0', item.asset.decimals),
-              issuedAt: item.issuedAt,
-              issuedAtTxHash: item.issuedAtTxHash ?? null,
-              tokenDecimals: item.token.decimals,
-              assetDecimals: item.asset.decimals,
-            })),
-            pendingInvestOrders: data.pendingInvestOrders.items.map((item) => {
-              const assetId = new AssetId(item.assetId)
-              return {
-                assetId,
-                centrifugeId: assetId.centrifugeId,
-                account: item.account.toLowerCase() as HexString,
-                investor: item.account.toLowerCase() as HexString,
-                pendingAmount: item.pendingAssetsAmount || '0',
-                queuedAmount: item.queuedAssetsAmount || '0',
-              }
-            }),
-            investOrders: data.investOrders.items.map((item) => {
-              const assetId = new AssetId(item.assetId)
-              return {
-                assetId,
-                centrifugeId: assetId.centrifugeId,
-                account: item.account.toLowerCase() as HexString,
-                investor: item.account.toLowerCase() as HexString,
-                index: item.index,
-                approvedAt: item.approvedAt ? new Date(item.approvedAt) : null,
-                approvedAtTxHash: item.approvedAtTxHash ?? null,
-                approvedAmount: new Balance(item.approvedAssetsAmount || '0', item.asset.decimals),
-                issuedAt: item.issuedAt ? new Date(item.issuedAt) : null,
-                createdAtTxHash: item.createdAtTxHash ?? null,
-              }
-            }),
-            outstandingInvests: data.outstandingInvests.items.map((item) => ({
-              assetId: new AssetId(item.assetId),
-              account: item.account.toLowerCase() as HexString,
-              investor: item.account.toLowerCase() as HexString,
-              tokenId: item.tokenId.toLowerCase() as HexString,
-              approvedAmount: item.approvedAmount,
-              depositAmount: item.depositAmount,
-              pendingAmount: item.pendingAmount,
-              queuedAmount: item.queuedAmount,
-            })),
-          }
-        }
+                  return {
+                    maxEpochByAsset,
+                    epochOutstandingInvests: data.epochOutstandingInvests.items.map((item) => ({
+                      assetId: new AssetId(item.assetId),
+                      centrifugeId: Number(item.asset.centrifugeId) as CentrifugeId,
+                      pendingAmount: new Balance(item.pendingAssetsAmount || '0', item.asset.decimals),
+                      createdAtTxHash: item.createdAtTxHash ?? null,
+                      updatedAtTxHash: item.updatedAtTxHash ?? null,
+                    })),
+                    epochInvestOrders: data.epochInvestOrders.items.map((item) => ({
+                      assetId: new AssetId(item.assetId),
+                      centrifugeId: Number(item.asset.centrifugeId) as CentrifugeId,
+                      index: item.index,
+                      approvedAt: item.approvedAt ? new Date(item.approvedAt) : null,
+                      approvedAtTxHash: item.approvedAtTxHash ?? null,
+                      approvedAmount: new Balance(item.approvedAssetsAmount || '0', item.asset.decimals),
+                      issuedAt: item.issuedAt,
+                      issuedAtTxHash: item.issuedAtTxHash ?? null,
+                      tokenDecimals: item.token.decimals,
+                      assetDecimals: item.asset.decimals,
+                    })),
+                    pendingInvestOrders: data.pendingInvestOrders.items.map((item) => {
+                      const assetId = new AssetId(item.assetId)
+                      return {
+                        assetId,
+                        centrifugeId: assetId.centrifugeId,
+                        account: item.account.toLowerCase() as HexString,
+                        investor: item.account.toLowerCase() as HexString,
+                        pendingAmount: item.pendingAssetsAmount || '0',
+                        queuedAmount: item.queuedAssetsAmount || '0',
+                      }
+                    }),
+                    investOrders: data.investOrders.items.map((item) => {
+                      const assetId = new AssetId(item.assetId)
+                      return {
+                        assetId,
+                        centrifugeId: assetId.centrifugeId,
+                        account: item.account.toLowerCase() as HexString,
+                        investor: item.account.toLowerCase() as HexString,
+                        index: item.index,
+                        approvedAt: item.approvedAt ? new Date(item.approvedAt) : null,
+                        approvedAtTxHash: item.approvedAtTxHash ?? null,
+                        approvedAmount: new Balance(item.approvedAssetsAmount || '0', item.asset.decimals),
+                        issuedAt: item.issuedAt ? new Date(item.issuedAt) : null,
+                        createdAtTxHash: item.createdAtTxHash ?? null,
+                      }
+                    }),
+                    outstandingInvests: data.outstandingInvests.items.map((item) => ({
+                      assetId: new AssetId(item.assetId),
+                      account: item.account.toLowerCase() as HexString,
+                      investor: item.account.toLowerCase() as HexString,
+                      tokenId: item.tokenId.toLowerCase() as HexString,
+                      approvedAmount: item.approvedAmount,
+                      depositAmount: item.depositAmount,
+                      pendingAmount: item.pendingAmount,
+                      queuedAmount: item.queuedAmount,
+                    })),
+                  }
+                }
               ),
               repeatOnEvents(
                 this._root,
@@ -2849,7 +2855,7 @@ export class ShareClass extends Entity {
         switchMap(({ batchRequestManager }) =>
           this._root
             ._getIndexerObservable(
-        `query ($scId: String!) {
+              `query ($scId: String!) {
           epochOutstandingRedeems(where: { tokenId: $scId }, limit: 1000) {
             items {
               assetId
@@ -2859,6 +2865,7 @@ export class ShareClass extends Entity {
               createdAtTxHash
               updatedAtTxHash
               asset { decimals centrifugeId }
+              token { decimals centrifugeId }
             }
           }
           epochRedeemOrders(where: { tokenId: $scId }, limit: 1000) {
@@ -2925,153 +2932,155 @@ export class ShareClass extends Entity {
             )
             .pipe(
               map(
-        (data: {
-          epochOutstandingRedeems: {
-            items: {
-              assetId: string
-              poolId: string
-              tokenId: string
-              pendingSharesAmount: string
-              createdAtTxHash?: string | null
-              updatedAtTxHash?: string | null
-              asset: { decimals: number; centrifugeId: string }
-            }[]
-          }
-          epochRedeemOrders: {
-            items: {
-              poolId: string
-              tokenId: string
-              assetId: string
-              index: number
-              approvedAt: string | null
-              approvedAtTxHash?: string | null
-              approvedSharesAmount: string
-              revokedAt: string | null
-              revokedAtTxHash?: string | null
-              revokedSharesAmount: string
-              revokedAssetsAmount: string
-              createdAtTxHash?: string | null
-              token: { decimals: number }
-              asset: { decimals: number; centrifugeId: string }
-            }[]
-          }
-          pendingRedeemOrders: {
-            items: {
-              account: HexString
-              assetId: string
-              tokenId: string
-              queuedSharesAmount: string
-              pendingSharesAmount: string
-              createdAtTxHash?: string | null
-              updatedAtTxHash?: string | null
-            }[]
-          }
-          redeemOrders: {
-            items: {
-              account: HexString
-              assetId: string
-              tokenId: string
-              index: number
-              approvedAt: string | null
-              approvedSharesAmount: string
-              revokedAt: string | null
-              revokedSharesAmount: string
-              revokedAssetsAmount: string
-              claimedAt: string | null
-              claimedAssetsAmount: string
-              asset: { decimals: number; centrifugeId: string }
-              token: { decimals: number }
-            }[]
-          }
-          outstandingRedeems: {
-            items: {
-              account: HexString
-              assetId: string
-              tokenId: string
-              epochIndex: number
-              approvedAmount: string
-              approvedAt: string | null
-              depositAmount: string
-              pendingAmount: string
-              queuedAmount: string
-            }[]
-          }
-        }) => {
-          const maxEpochByAsset = new Map<string, number>()
-          for (const item of data.epochRedeemOrders.items) {
-            const current = maxEpochByAsset.get(item.assetId) ?? -1
-            if (item.index > current) {
-              maxEpochByAsset.set(item.assetId, item.index)
-            }
-          }
+                (data: {
+                  epochOutstandingRedeems: {
+                    items: {
+                      assetId: string
+                      poolId: string
+                      tokenId: string
+                      pendingSharesAmount: string
+                      createdAtTxHash?: string | null
+                      updatedAtTxHash?: string | null
+                      asset: { decimals: number; centrifugeId: string }
+                      token: { decimals: number; centrifugeId: string }
+                    }[]
+                  }
+                  epochRedeemOrders: {
+                    items: {
+                      poolId: string
+                      tokenId: string
+                      assetId: string
+                      index: number
+                      approvedAt: string | null
+                      approvedAtTxHash?: string | null
+                      approvedSharesAmount: string
+                      revokedAt: string | null
+                      revokedAtTxHash?: string | null
+                      revokedSharesAmount: string
+                      revokedAssetsAmount: string
+                      createdAtTxHash?: string | null
+                      token: { decimals: number }
+                      asset: { decimals: number; centrifugeId: string }
+                    }[]
+                  }
+                  pendingRedeemOrders: {
+                    items: {
+                      account: HexString
+                      assetId: string
+                      tokenId: string
+                      queuedSharesAmount: string
+                      pendingSharesAmount: string
+                      createdAtTxHash?: string | null
+                      updatedAtTxHash?: string | null
+                    }[]
+                  }
+                  redeemOrders: {
+                    items: {
+                      account: HexString
+                      assetId: string
+                      tokenId: string
+                      index: number
+                      approvedAt: string | null
+                      approvedSharesAmount: string
+                      revokedAt: string | null
+                      revokedSharesAmount: string
+                      revokedAssetsAmount: string
+                      claimedAt: string | null
+                      claimedAssetsAmount: string
+                      asset: { decimals: number; centrifugeId: string }
+                      token: { decimals: number }
+                    }[]
+                  }
+                  outstandingRedeems: {
+                    items: {
+                      account: HexString
+                      assetId: string
+                      tokenId: string
+                      epochIndex: number
+                      approvedAmount: string
+                      approvedAt: string | null
+                      depositAmount: string
+                      pendingAmount: string
+                      queuedAmount: string
+                    }[]
+                  }
+                }) => {
+                  const maxEpochByAsset = new Map<string, number>()
+                  for (const item of data.epochRedeemOrders.items) {
+                    const current = maxEpochByAsset.get(item.assetId) ?? -1
+                    if (item.index > current) {
+                      maxEpochByAsset.set(item.assetId, item.index)
+                    }
+                  }
 
-          return {
-            maxEpochByAsset,
-            epochOutstandingRedeems: data.epochOutstandingRedeems.items.map((item) => {
-              const assetId = new AssetId(item.assetId)
-              return {
-                assetId,
-                centrifugeId: assetId.centrifugeId,
-                pendingAmount: new Balance(item.pendingSharesAmount || '0', 18),
-                createdAtTxHash: item.createdAtTxHash ?? null,
-                updatedAtTxHash: item.updatedAtTxHash ?? null,
-              }
-            }),
-            epochRedeemOrders: data.epochRedeemOrders.items.map((item) => {
-              const assetId = new AssetId(item.assetId)
-              return {
-                assetId,
-                centrifugeId: assetId.centrifugeId,
-                index: item.index,
-                approvedAt: item.approvedAt ? new Date(item.approvedAt) : null,
-                approvedAtTxHash: item.approvedAtTxHash ?? null,
-                revokedAt: item.revokedAt ? new Date(item.revokedAt) : null,
-                revokedAtTxHash: item.revokedAtTxHash ?? null,
-                approvedAmount: new Balance(item.approvedSharesAmount || '0', 18),
-                createdAtTxHash: item.createdAtTxHash ?? null,
-                tokenDecimals: item.token.decimals,
-                assetDecimals: item.asset.decimals,
-              }
-            }),
-            pendingRedeemOrders: data.pendingRedeemOrders.items.map((item) => {
-              const assetId = new AssetId(item.assetId)
-              return {
-                assetId,
-                centrifugeId: assetId.centrifugeId,
-                account: item.account.toLowerCase() as HexString,
-                investor: item.account.toLowerCase() as HexString,
-                pendingAmount: item.pendingSharesAmount || '0',
-                queuedAmount: item.queuedSharesAmount || '0',
-                createdAtTxHash: item.createdAtTxHash ?? null,
-                updatedAtTxHash: item.updatedAtTxHash ?? null,
-              }
-            }),
-            redeemOrders: data.redeemOrders.items.map((item) => {
-              const assetId = new AssetId(item.assetId)
-              return {
-                assetId,
-                centrifugeId: assetId.centrifugeId,
-                account: item.account.toLowerCase() as HexString,
-                investor: item.account.toLowerCase() as HexString,
-                index: item.index,
-                approvedAt: item.approvedAt ? new Date(item.approvedAt) : null,
-                approvedAmount: new Balance(item.approvedSharesAmount || '0', 18),
-                revokedAt: item.revokedAt ? new Date(item.revokedAt) : null,
-              }
-            }),
-            outstandingRedeems: data.outstandingRedeems.items.map((item) => ({
-              assetId: new AssetId(item.assetId),
-              account: item.account.toLowerCase() as HexString,
-              investor: item.account.toLowerCase() as HexString,
-              tokenId: item.tokenId.toLowerCase() as HexString,
-              approvedAt: item.approvedAt ? new Date(item.approvedAt) : null,
-              approvedAmount: item.approvedAmount,
-              depositAmount: item.depositAmount,
-              pendingAmount: item.pendingAmount,
-              queuedAmount: item.queuedAmount,
-            })),
-          }
-        }
+                  return {
+                    maxEpochByAsset,
+                    epochOutstandingRedeems: data.epochOutstandingRedeems.items.map((item) => {
+                      const assetId = new AssetId(item.assetId)
+                      return {
+                        assetId,
+                        centrifugeId: assetId.centrifugeId,
+                        pendingAmount: new Balance(item.pendingSharesAmount || '0', item.token.decimals),
+                        createdAtTxHash: item.createdAtTxHash ?? null,
+                        updatedAtTxHash: item.updatedAtTxHash ?? null,
+                      }
+                    }),
+                    epochRedeemOrders: data.epochRedeemOrders.items.map((item) => {
+                      const assetId = new AssetId(item.assetId)
+                      return {
+                        assetId,
+                        centrifugeId: assetId.centrifugeId,
+                        index: item.index,
+                        approvedAt: item.approvedAt ? new Date(item.approvedAt) : null,
+                        approvedAtTxHash: item.approvedAtTxHash ?? null,
+                        revokedAt: item.revokedAt ? new Date(item.revokedAt) : null,
+                        revokedAtTxHash: item.revokedAtTxHash ?? null,
+                        approvedAmount: new Balance(item.approvedSharesAmount || '0', item.token.decimals),
+                        createdAtTxHash: item.createdAtTxHash ?? null,
+                        tokenDecimals: item.token.decimals,
+                        assetDecimals: item.asset.decimals,
+                      }
+                    }),
+                    pendingRedeemOrders: data.pendingRedeemOrders.items.map((item) => {
+                      const assetId = new AssetId(item.assetId)
+                      return {
+                        assetId,
+                        centrifugeId: assetId.centrifugeId,
+                        account: item.account.toLowerCase() as HexString,
+                        investor: item.account.toLowerCase() as HexString,
+                        pendingAmount: item.pendingSharesAmount || '0',
+                        queuedAmount: item.queuedSharesAmount || '0',
+                        createdAtTxHash: item.createdAtTxHash ?? null,
+                        updatedAtTxHash: item.updatedAtTxHash ?? null,
+                        tokenId: item.tokenId,
+                      }
+                    }),
+                    redeemOrders: data.redeemOrders.items.map((item) => {
+                      const assetId = new AssetId(item.assetId)
+                      return {
+                        assetId,
+                        centrifugeId: assetId.centrifugeId,
+                        account: item.account.toLowerCase() as HexString,
+                        investor: item.account.toLowerCase() as HexString,
+                        index: item.index,
+                        approvedAt: item.approvedAt ? new Date(item.approvedAt) : null,
+                        approvedAmount: new Balance(item.approvedSharesAmount || '0', item.token.decimals),
+                        revokedAt: item.revokedAt ? new Date(item.revokedAt) : null,
+                      }
+                    }),
+                    outstandingRedeems: data.outstandingRedeems.items.map((item) => ({
+                      assetId: new AssetId(item.assetId),
+                      account: item.account.toLowerCase() as HexString,
+                      investor: item.account.toLowerCase() as HexString,
+                      tokenId: item.tokenId.toLowerCase() as HexString,
+                      approvedAt: item.approvedAt ? new Date(item.approvedAt) : null,
+                      approvedAmount: item.approvedAmount,
+                      depositAmount: item.depositAmount,
+                      pendingAmount: item.pendingAmount,
+                      queuedAmount: item.queuedAmount,
+                    })),
+                  }
+                }
               ),
               repeatOnEvents(
                 this._root,
@@ -3524,32 +3533,32 @@ export class ShareClass extends Entity {
     return this._query(['whitelistedInvestors', this.id.raw, limit, offset], () =>
       this._root._protocolAddresses(this.pool.centrifugeId).pipe(
         switchMap(({ hub }) =>
-      this._root
+          this._root
             ._getIndexerObservable<{
-          whitelistedInvestors: {
-            items: {
-              accountAddress: HexString
-              centrifugeId: string
-              createdAt: string
-              isFrozen: boolean
-              validUntil: string
-            }[]
-            pageInfo: {
-              hasNextPage: boolean
-              hasPreviousPage: boolean
-              startCursor: string
-              endCursor: string
-            }
-            totalCount: number
-          }
-          assets: {
-            items: {
-              decimals: number
-              id: string
-            }[]
-          }
-        }>(
-          `query ($tokenId: String!, $limit: Int!, $offset: Int!) {
+              whitelistedInvestors: {
+                items: {
+                  accountAddress: HexString
+                  centrifugeId: string
+                  createdAt: string
+                  isFrozen: boolean
+                  validUntil: string
+                }[]
+                pageInfo: {
+                  hasNextPage: boolean
+                  hasPreviousPage: boolean
+                  startCursor: string
+                  endCursor: string
+                }
+                totalCount: number
+              }
+              assets: {
+                items: {
+                  decimals: number
+                  id: string
+                }[]
+              }
+            }>(
+              `query ($tokenId: String!, $limit: Int!, $offset: Int!) {
             whitelistedInvestors(
             where: { tokenId: $tokenId }
               limit: $limit
@@ -3577,25 +3586,25 @@ export class ShareClass extends Entity {
               }
             }
           }`,
-          {
-            tokenId: this.id.raw,
-            limit,
-            offset,
-          }
-        )
-        .pipe(
-          map((data) => {
-            return {
-              items: data.whitelistedInvestors.items
-                .map(({ accountAddress, ...rest }) => ({
-                  address: accountAddress.toLowerCase() as HexString,
-                  ...rest,
-                }))
-                .filter((investor) => BigInt(investor.address) > MAX_CENTRIFUGE_ID),
-              pageInfo: data.whitelistedInvestors.pageInfo,
-              totalCount: data.whitelistedInvestors.totalCount,
-              assets: data.assets.items,
-            }
+              {
+                tokenId: this.id.raw,
+                limit,
+                offset,
+              }
+            )
+            .pipe(
+              map((data) => {
+                return {
+                  items: data.whitelistedInvestors.items
+                    .map(({ accountAddress, ...rest }) => ({
+                      address: accountAddress.toLowerCase() as HexString,
+                      ...rest,
+                    }))
+                    .filter((investor) => BigInt(investor.address) > MAX_CENTRIFUGE_ID),
+                  pageInfo: data.whitelistedInvestors.pageInfo,
+                  totalCount: data.whitelistedInvestors.totalCount,
+                  assets: data.assets.items,
+                }
               }),
               repeatOnEvents(
                 this._root,
@@ -3608,7 +3617,7 @@ export class ShareClass extends Entity {
               )
             )
         )
-        )
+      )
     )
   }
 
@@ -3619,17 +3628,17 @@ export class ShareClass extends Entity {
       () =>
         this._root._protocolAddresses(this.pool.centrifugeId).pipe(
           switchMap(({ hub }) =>
-        this._root
+            this._root
               ._getIndexerObservable<{
-            whitelistedInvestor: {
-              accountAddress: HexString
-              centrifugeId: string
-              createdAt: string
-              isFrozen: boolean
-              validUntil: string
-            } | null
-          }>(
-            `query ($accountAddress: String!, $centrifugeId: String!, $tokenId: String!) {
+                whitelistedInvestor: {
+                  accountAddress: HexString
+                  centrifugeId: string
+                  createdAt: string
+                  isFrozen: boolean
+                  validUntil: string
+                } | null
+              }>(
+                `query ($accountAddress: String!, $centrifugeId: String!, $tokenId: String!) {
           whitelistedInvestor(
             accountAddress: $accountAddress
             centrifugeId: $centrifugeId
@@ -3642,16 +3651,16 @@ export class ShareClass extends Entity {
             validUntil
           }
         }`,
-            params
-          )
-          .pipe(
-            map((data) => {
-              if (!data.whitelistedInvestor) return null
-              const { accountAddress, ...rest } = data.whitelistedInvestor
-              return {
-                address: accountAddress.toLowerCase() as HexString,
-                ...rest,
-              }
+                params
+              )
+              .pipe(
+                map((data) => {
+                  if (!data.whitelistedInvestor) return null
+                  const { accountAddress, ...rest } = data.whitelistedInvestor
+                  return {
+                    address: accountAddress.toLowerCase() as HexString,
+                    ...rest,
+                  }
                 }),
                 repeatOnEvents(
                   this._root,
@@ -3669,7 +3678,7 @@ export class ShareClass extends Entity {
                 )
               )
           )
-          )
+        )
     )
   }
 
