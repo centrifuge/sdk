@@ -14,6 +14,11 @@ export type Config = {
   indexerPollingInterval?: number
   pinJson?: (json: any) => Promise<string>
   pinFile?: (b64URI: string) => Promise<string>
+  /**
+   * Whether to disable EIP-2612 permit signatures and use standard ERC-20 approve instead.
+   * Useful for Safe multisig wallets or integrations that don't support off-chain signing.
+   */
+  permitDisabled?: boolean
 }
 
 export type UserProvidedConfig = Partial<Config>
