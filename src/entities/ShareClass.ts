@@ -375,20 +375,14 @@ export class ShareClass extends Entity {
             }
           })
 
-          const redeemTokenDecimals =
-            redeemData.epochOutstandingRedeems[0]?.pendingAmount.decimals ??
-            redeemData.epochRedeemOrders[0]?.tokenDecimals ??
-            18
-
           const queuedRedemptions = new Map<string, Balance>()
           redeemData.pendingRedeemOrders.forEach((order) => {
             const key = `${order.assetId.toString()}-${order.centrifugeId}`
-            const queuedAmount = new Balance(order.queuedAmount, redeemTokenDecimals)
             const existing = queuedRedemptions.get(key)
             if (existing) {
-              queuedRedemptions.set(key, existing.add(queuedAmount))
+              queuedRedemptions.set(key, existing.add(order.queuedAmount))
             } else {
-              queuedRedemptions.set(key, queuedAmount)
+              queuedRedemptions.set(key, order.queuedAmount)
             }
           })
 
@@ -414,6 +408,11 @@ export class ShareClass extends Entity {
               (acc, curr) => acc.add(curr.amount),
               new Balance(0n, pendingIssuances[0]?.amount.decimals ?? investTokenDecimals)
             )
+            const redeemTokenDecimals =
+              redeemData.epochRedeemOrders[0]?.tokenDecimals ??
+              redeemData.epochOutstandingRedeems[0]?.pendingAmount.decimals ??
+              18
+
             const pendingRevocationsTotal = pendingRevocations.reduce(
               (acc, curr) => acc.add(curr.amount),
               new Balance(0n, pendingRevocations[0]?.amount.decimals ?? redeemTokenDecimals)
@@ -1348,13 +1347,13 @@ export class ShareClass extends Entity {
                         ? new Balance(outstandingInvest.pendingAmount, assetDecimals).scale(poolCurrency.decimals)
                         : new Balance(0n, poolCurrency.decimals),
                       outstandingRedeem: outstandingRedeem
-                        ? new Balance(outstandingRedeem.pendingAmount, poolCurrency.decimals)
+                        ? outstandingRedeem.pendingAmount
                         : new Balance(0n, poolCurrency.decimals),
                       queuedInvest: outstandingInvest
                         ? new Balance(outstandingInvest.queuedAmount, assetDecimals).scale(poolCurrency.decimals)
                         : new Balance(0n, poolCurrency.decimals),
                       queuedRedeem: outstandingRedeem
-                        ? new Balance(outstandingRedeem.queuedAmount, poolCurrency.decimals)
+                        ? outstandingRedeem.queuedAmount
                         : new Balance(0n, poolCurrency.decimals),
                       isWhitelisted: isWhitelistedStatus,
                     }
@@ -1442,13 +1441,13 @@ export class ShareClass extends Entity {
                       ? new Balance(outstandingInvest.pendingAmount, assetDecimals).scale(poolCurrency.decimals)
                       : new Balance(0n, poolCurrency.decimals),
                     outstandingRedeem: outstandingRedeem
-                      ? new Balance(outstandingRedeem.pendingAmount, poolCurrency.decimals)
+                      ? outstandingRedeem.pendingAmount
                       : new Balance(0n, poolCurrency.decimals),
                     queuedInvest: outstandingInvest
                       ? new Balance(outstandingInvest.queuedAmount, assetDecimals).scale(poolCurrency.decimals)
                       : new Balance(0n, poolCurrency.decimals),
                     queuedRedeem: outstandingRedeem
-                      ? new Balance(outstandingRedeem.queuedAmount, poolCurrency.decimals)
+                      ? outstandingRedeem.queuedAmount
                       : new Balance(0n, poolCurrency.decimals),
                     isWhitelisted,
                   }
@@ -2212,36 +2211,23 @@ export class ShareClass extends Entity {
             assetPrices.set(b.assetId.toString(), b.price)
           })
 
-          type PendingRedeemOrder = Omit<
-            (typeof redeemData.pendingRedeemOrders)[number],
-            'pendingAmount' | 'queuedAmount'
-          > & {
-            pendingAmount: Balance
-            queuedAmount: Balance
-          }
+          type PendingRedeemOrder = (typeof redeemData.pendingRedeemOrders)[number]
           const pendingRedeemsByVault = new Map<string, PendingRedeemOrder[]>()
           const queuedRedeemByAsset = new Map<string, Balance>()
 
           for (const order of redeemData.pendingRedeemOrders) {
-            const parsedOrder: PendingRedeemOrder = {
-              ...order,
-              pendingAmount: new Balance(order.pendingAmount, 18),
-              queuedAmount: new Balance(order.queuedAmount, 18),
-            }
-
             const vaultKey = `${order.assetId.toString()}-${order.centrifugeId}`
             if (!pendingRedeemsByVault.has(vaultKey)) {
               pendingRedeemsByVault.set(vaultKey, [])
             }
-            pendingRedeemsByVault.get(vaultKey)!.push(parsedOrder)
+            pendingRedeemsByVault.get(vaultKey)!.push(order)
 
             const assetKey = order.assetId.toString()
-            const queuedAmount = parsedOrder.queuedAmount
             const existing = queuedRedeemByAsset.get(assetKey)
             if (existing) {
-              queuedRedeemByAsset.set(assetKey, existing.add(queuedAmount))
+              queuedRedeemByAsset.set(assetKey, existing.add(order.queuedAmount))
             } else {
-              queuedRedeemByAsset.set(assetKey, queuedAmount)
+              queuedRedeemByAsset.set(assetKey, order.queuedAmount)
             }
           }
 
@@ -2925,6 +2911,7 @@ export class ShareClass extends Entity {
               depositAmount
               pendingAmount
               queuedAmount
+              token { decimals }
             }
           }
         }`,
@@ -3002,6 +2989,7 @@ export class ShareClass extends Entity {
                       depositAmount: string
                       pendingAmount: string
                       queuedAmount: string
+                      token: { decimals: number }
                     }[]
                   }
                 }) => {
@@ -3043,13 +3031,17 @@ export class ShareClass extends Entity {
                     }),
                     pendingRedeemOrders: data.pendingRedeemOrders.items.map((item) => {
                       const assetId = new AssetId(item.assetId)
+                      const tokenDecimals =
+                        data.epochOutstandingRedeems.items[0]?.token.decimals ??
+                        data.epochRedeemOrders.items[0]?.token.decimals ??
+                        18
                       return {
                         assetId,
                         centrifugeId: assetId.centrifugeId,
                         account: item.account.toLowerCase() as HexString,
                         investor: item.account.toLowerCase() as HexString,
-                        pendingAmount: item.pendingSharesAmount || '0',
-                        queuedAmount: item.queuedSharesAmount || '0',
+                        pendingAmount: new Balance(item.pendingSharesAmount ?? '0', tokenDecimals),
+                        queuedAmount: new Balance(item.queuedSharesAmount ?? '0', tokenDecimals),
                         createdAtTxHash: item.createdAtTxHash ?? null,
                         updatedAtTxHash: item.updatedAtTxHash ?? null,
                         tokenId: item.tokenId,
@@ -3068,17 +3060,21 @@ export class ShareClass extends Entity {
                         revokedAt: item.revokedAt ? new Date(item.revokedAt) : null,
                       }
                     }),
-                    outstandingRedeems: data.outstandingRedeems.items.map((item) => ({
-                      assetId: new AssetId(item.assetId),
-                      account: item.account.toLowerCase() as HexString,
-                      investor: item.account.toLowerCase() as HexString,
-                      tokenId: item.tokenId.toLowerCase() as HexString,
-                      approvedAt: item.approvedAt ? new Date(item.approvedAt) : null,
-                      approvedAmount: item.approvedAmount,
-                      depositAmount: item.depositAmount,
-                      pendingAmount: item.pendingAmount,
-                      queuedAmount: item.queuedAmount,
-                    })),
+                    outstandingRedeems: data.outstandingRedeems.items.map((item) => {
+                      const tokenDecimals = item.token.decimals
+                      return {
+                        assetId: new AssetId(item.assetId),
+                        account: item.account.toLowerCase() as HexString,
+                        investor: item.account.toLowerCase() as HexString,
+                        tokenId: item.tokenId.toLowerCase() as HexString,
+                        approvedAt: item.approvedAt ? new Date(item.approvedAt) : null,
+                        approvedAmount: new Balance(item.approvedAmount, tokenDecimals),
+                        depositAmount: new Balance(item.depositAmount, tokenDecimals),
+                        pendingAmount: new Balance(item.pendingAmount, tokenDecimals),
+                        queuedAmount: new Balance(item.queuedAmount, tokenDecimals),
+                        tokenDecimals,
+                      }
+                    }),
                   }
                 }
               ),
