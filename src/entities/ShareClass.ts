@@ -1824,7 +1824,7 @@ export class ShareClass extends Entity {
       this._root
         ._queryIndexer(
           `query ($scId: String!) {
-            epochInvestOrders(where: {tokenId: $scId}, limit: 1000) {
+            epochInvestOrders(where: {tokenId: $scId, index_gte: 0}, limit: 1000) {
               items {
                 assetId
                 index
@@ -1975,7 +1975,7 @@ export class ShareClass extends Entity {
       this._root
         ._queryIndexer(
           `query ($scId: String!) {
-            epochRedeemOrders(where: {tokenId: $scId}, limit: 1000) {
+            epochRedeemOrders(where: {tokenId: $scId, index_gte: 0}, limit: 1000) {
               items {
                 assetId
                 index
