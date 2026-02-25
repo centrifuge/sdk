@@ -120,7 +120,7 @@ export class ShareClass extends Entity {
           return combineLatest(
             networks.map((network) =>
               combineLatest([
-                this._share(network.centrifugeId),
+                this._share(network.centrifugeId).pipe(catchError(() => of(null))),
                 this._restrictionManager(network.centrifugeId).pipe(catchError(() => of(null))),
                 this.valuation(network.centrifugeId),
                 of(network),
