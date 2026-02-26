@@ -194,6 +194,6 @@ export function emptyMessage(type: MessageType, subtype?: VaultUpdateKind): HexS
       )
     default:
       // Empty message with the length of the longest fixed-size message (NotifyShareClass with 250 bytes)
-      return encodePacked(['uint8', 'bytes'], [1, toHex(0, { size: 249 })])
+      return encodePacked(['uint8', 'bytes'], [type, toHex(0, { size: 249 })])
   }
 }
