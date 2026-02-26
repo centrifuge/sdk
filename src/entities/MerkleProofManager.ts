@@ -1,11 +1,12 @@
 import type { SimpleMerkleTree } from '@openzeppelin/merkle-tree'
 import { firstValueFrom, map, switchMap } from 'rxjs'
 import { AbiFunction, encodeFunctionData, encodePacked, keccak256, parseAbiItem, toFunctionSelector, toHex } from 'viem'
+import type { PublicClient } from 'viem'
 import { ABI } from '../abi/index.js'
 import type { Centrifuge } from '../Centrifuge.js'
 import { NULL_ADDRESS } from '../constants.js'
 import type { HexString } from '../types/index.js'
-import { MerkleProofPolicy, MerkleProofPolicyInput, MerkleProofTemplate } from '../types/poolMetadata.js'
+import { MerkleProofPolicy, MerkleProofPolicyInput, MerkleProofWorkflow } from '../types/poolMetadata.js'
 import { MessageType } from '../types/transaction.js'
 import { Balance, BigIntWrapper, Price } from '../utils/BigInt.js'
 import { addressToBytes32, encode } from '../utils/index.js'
@@ -13,6 +14,13 @@ import { wrapTransaction } from '../utils/transaction.js'
 import { Entity } from './Entity.js'
 import type { Pool } from './Pool.js'
 import { PoolNetwork } from './PoolNetwork.js'
+
+export type WorkflowDefaultValue = HexString | string | number | null
+
+export type WorkflowVerificationAction = {
+  policy: MerkleProofPolicyInput
+  defaultValues: WorkflowDefaultValue[]
+}
 
 /**
  * Query and interact with a Merkle Proof Manager.
@@ -35,8 +43,8 @@ export class MerkleProofManager extends Entity {
     this.address = address.toLowerCase() as HexString
   }
 
-  policiesAndTemplates(strategist: HexString) {
-    return this._query(['policiesAndTemplates', strategist.toLowerCase()], () =>
+  policiesAndWorkflows(strategist: HexString) {
+    return this._query(['policiesAndWorkflows', strategist.toLowerCase()], () =>
       this.pool
         .metadata()
         .pipe(
@@ -60,11 +68,11 @@ export class MerkleProofManager extends Entity {
 
           return Object.entries(strategists)
             .filter(([_, { policies }]) => policies.length > 0)
-            .map(([address, { policies, templates }]) => ({
+            .map(([address, { policies, workflows }]) => ({
               centrifugeId: this.network.centrifugeId,
               address,
               policies,
-              templates: templates ?? [],
+              workflows: workflows ?? [],
               policyRoot: getMerkleTree(SimpleMerkleTreeConstructor, policies),
             }))
         })
@@ -72,7 +80,11 @@ export class MerkleProofManager extends Entity {
     )
   }
 
-  setTemplates(strategist: HexString, templates: MerkleProofTemplate[]) {
+  setWorkflows(
+    strategist: HexString,
+    workflows: MerkleProofWorkflow[],
+    verificationSources?: Record<string, { actions: WorkflowVerificationAction[] }>
+  ) {
     const self = this
     return this._transact(async function* (ctx) {
       const [{ hub }, poolDetails] = await Promise.all([
@@ -83,6 +95,19 @@ export class MerkleProofManager extends Entity {
       const { metadata } = poolDetails
       const policies =
         metadata?.merkleProofManager?.[self.network.centrifugeId]?.[strategist.toLowerCase() as any]?.policies || []
+      const normalizedWorkflows = workflows.map((workflow) => ({
+        ...workflow,
+        actions: normalizeWorkflowActions(workflow.actions, policies),
+      }))
+      const workflowsWithVerification = normalizedWorkflows.map((workflow) => {
+        if (!verificationSources) return workflow
+
+        const verificationSource = workflow.template ? verificationSources[workflow.template] : undefined
+        return {
+          ...workflow,
+          isVerified: verificationSource ? isVerifiedWorkflow(workflow, policies, verificationSource.actions) : false,
+        }
+      })
 
       const newMetadata = {
         ...metadata,
@@ -90,14 +115,17 @@ export class MerkleProofManager extends Entity {
           ...metadata?.merkleProofManager,
           [self.network.centrifugeId]: {
             ...metadata?.merkleProofManager?.[self.network.centrifugeId],
-            [strategist.toLowerCase()]: { policies, templates: templates satisfies MerkleProofTemplate[] },
+            [strategist.toLowerCase()]: {
+              policies,
+              workflows: workflowsWithVerification satisfies MerkleProofWorkflow[],
+            },
           },
         },
       }
 
       const cid = await self._root.config.pinJson(newMetadata)
 
-      yield* wrapTransaction('Set metadata templates', ctx, {
+      yield* wrapTransaction('Set metadata workflows', ctx, {
         contract: hub,
         data: [
           encodeFunctionData({
@@ -107,6 +135,126 @@ export class MerkleProofManager extends Entity {
           }),
         ],
       })
+    }, this.pool.centrifugeId)
+  }
+
+  addPolicy(
+    strategist: HexString,
+    newPolicies: MerkleProofPolicyInput[],
+    workflowMetadata: {
+      id: string
+      name: string
+      category?: string
+      iconUrl?: string
+      template?: string
+      verificationActions?: WorkflowVerificationAction[]
+    },
+    options?: {
+      simulate: boolean
+    }
+  ) {
+    const self = this
+    return this._transact(async function* (ctx) {
+      const [{ hub }, id, poolDetails, importedMerkleTree, client] = await Promise.all([
+        self._root._protocolAddresses(self.pool.centrifugeId),
+        Promise.resolve(self.network.centrifugeId),
+        self.pool.details(),
+        import('@openzeppelin/merkle-tree'),
+        firstValueFrom(self._root.getClient(self.network.centrifugeId)),
+      ])
+
+      const { SimpleMerkleTree: SimpleMerkleTreeConstructor } = importedMerkleTree.default || importedMerkleTree
+      const { metadata, shareClasses } = poolDetails
+      const strategistAddress = strategist.toLowerCase()
+      const existingEntry = metadata?.merkleProofManager?.[self.network.centrifugeId]?.[strategistAddress as any]
+      const existingPolicies = existingEntry?.policies ?? []
+      const existingWorkflows = existingEntry?.workflows ?? []
+
+      const appendedPolicies = await buildPoliciesFromInputs(newPolicies, client)
+      const policies = [...existingPolicies, ...appendedPolicies]
+
+      const workflowActions = appendedPolicies.map((policy, index) => {
+        const defaultValues = normalizeDefaultValues(
+          workflowMetadata.verificationActions?.[index]?.defaultValues,
+          policy.inputs.length
+        )
+        return {
+          policyIndex: existingPolicies.length + index,
+          defaultValues,
+        }
+      })
+      const createdAt = new Date().toISOString()
+
+      const workflow: MerkleProofWorkflow = {
+        id: workflowMetadata.id,
+        name: workflowMetadata.name,
+        category: workflowMetadata.category,
+        iconUrl: workflowMetadata.iconUrl,
+        template: workflowMetadata.template,
+        createdAt,
+        actions: workflowActions,
+        isVerified: workflowMetadata.verificationActions
+          ? isVerifiedWorkflow(
+              {
+                ...workflowMetadata,
+                createdAt,
+                actions: workflowActions,
+              },
+              policies,
+              workflowMetadata.verificationActions
+            )
+          : false,
+      }
+
+      const workflows = [...existingWorkflows, workflow]
+
+      const rootHash =
+        policies.length === 0
+          ? toHex(0, { size: 32 })
+          : (getMerkleTree(SimpleMerkleTreeConstructor, policies).root as HexString)
+
+      const newMetadata = {
+        ...metadata,
+        merkleProofManager: {
+          ...metadata?.merkleProofManager,
+          [self.network.centrifugeId]: {
+            ...metadata?.merkleProofManager?.[self.network.centrifugeId],
+            [strategistAddress]: { policies, workflows },
+          },
+        },
+      }
+
+      const cid = await self._root.config.pinJson(newMetadata)
+
+      yield* wrapTransaction(
+        'Add policy',
+        ctx,
+        {
+          contract: hub,
+          data: [
+            encodeFunctionData({
+              abi: ABI.Hub,
+              functionName: 'setPoolMetadata',
+              args: [self.pool.id.raw, toHex(cid)],
+            }),
+            encodeFunctionData({
+              abi: ABI.Hub,
+              functionName: 'updateContract',
+              args: [
+                self.pool.id.raw,
+                shareClasses[0]!.shareClass.id.raw,
+                id,
+                addressToBytes32(self.address),
+                encode([strategist, rootHash]),
+                0n,
+                ctx.signingAddress,
+              ],
+            }),
+          ],
+          messages: { [id]: [MessageType.TrustedContractUpdate] },
+        },
+        options && { simulate: options.simulate }
+      )
     }, this.pool.centrifugeId)
   }
 
@@ -130,71 +278,7 @@ export class MerkleProofManager extends Entity {
       const { SimpleMerkleTree: SimpleMerkleTreeConstructor } = importedMerkleTree.default || importedMerkleTree
       const { metadata, shareClasses } = poolDetails
 
-      // Get the encoded args from chain by calling the decoder contract.
-      async function getEncodedArgs(policy: MerkleProofPolicyInput, policyCombinations: (string | null)[][]) {
-        const abi = parseAbiItem(policy.selector) as AbiFunction
-        return Promise.all(
-          policyCombinations.map(async (pc) => {
-            const args = pc.map((arg, i) => {
-              if (arg !== null) return arg
-              const { type } = abi.inputs[i] || {}
-              if (!type) {
-                throw new Error(
-                  `No type found for argument ${i} in abi item "${policy.selector}, inputs: ${policy.inputs}"`
-                )
-              }
-              if (type === 'address') {
-                return NULL_ADDRESS
-              } else if (type.includes('int')) {
-                return 0
-              } else if (type === 'bytes') {
-                return '0x'
-              } else if (type === 'bool') {
-                return false
-              } else if (type === 'string') {
-                return ''
-              } else if (type.startsWith('bytes')) {
-                return toHex(0, { size: parseInt(type.slice(5)) })
-              } else if (type.includes('[')) {
-                return []
-              }
-              throw new Error(`Unsupported type "${type}" for abi item "${policy.selector}"`)
-            })
-
-            abi.outputs = [
-              {
-                name: 'addressesFound',
-                type: 'bytes',
-                internalType: 'bytes',
-              },
-            ]
-
-            const encoded = await client.readContract({
-              address: policy.decoder,
-              abi: [abi],
-              functionName: abi.name,
-              args,
-            })
-
-            return encoded as any as HexString
-          })
-        )
-      }
-
-      const policies = await Promise.all(
-        policyInputs.map(async (input) => {
-          const policyCombinations = generateCombinations(input.inputs)
-          const argsEncoded = await getEncodedArgs(input, policyCombinations)
-          return {
-            ...input,
-            valueNonZero: input.valueNonZero ?? false,
-            inputCombinations: policyCombinations.map((inputs, i) => ({
-              inputs,
-              inputsEncoded: argsEncoded[i]!,
-            })),
-          } satisfies MerkleProofPolicy
-        })
-      )
+      const policies = await buildPoliciesFromInputs(policyInputs, client)
 
       let rootHash
       if (policies.length === 0) {
@@ -205,7 +289,7 @@ export class MerkleProofManager extends Entity {
         rootHash = tree.root as HexString
       }
 
-      // Whenever we update, add or delete policies, we also have to clean templates for particular strategist
+      // Whenever we update, add or delete policies, we also have to clean workflows for particular strategist
       // Otherwise order of policies might impact the actions in template and cause unexpected behavior in workflows
       const newMetadata = {
         ...metadata,
@@ -213,7 +297,7 @@ export class MerkleProofManager extends Entity {
           ...metadata?.merkleProofManager,
           [self.network.centrifugeId]: {
             ...metadata?.merkleProofManager?.[self.network.centrifugeId],
-            [strategist.toLowerCase()]: { templates: [], policies: policies satisfies MerkleProofPolicy[] },
+            [strategist.toLowerCase()]: { workflows: [], policies: policies satisfies MerkleProofPolicy[] },
           },
         },
       }
@@ -386,4 +470,154 @@ export function generateCombinations(inputs: MerkleProofPolicyInput['inputs']) {
   }
 
   return combine(0, [[]])
+}
+
+function defaultValueForAbiType(type: string): unknown {
+  if (type === 'address') {
+    return NULL_ADDRESS
+  } else if (type.includes('int')) {
+    return 0
+  } else if (type === 'bytes') {
+    return '0x'
+  } else if (type === 'bool') {
+    return false
+  } else if (type === 'string') {
+    return ''
+  } else if (type.startsWith('bytes')) {
+    return toHex(0, { size: parseInt(type.slice(5)) })
+  } else if (type.includes('[')) {
+    return []
+  }
+  throw new Error(`Unsupported type "${type}"`)
+}
+
+async function getEncodedArgs(
+  policy: MerkleProofPolicyInput,
+  policyCombinations: (HexString | null)[][],
+  client: PublicClient
+) {
+  const abi = parseAbiItem(policy.selector) as AbiFunction
+  return Promise.all(
+    policyCombinations.map(async (pc) => {
+      const args = pc.map((arg, i) => {
+        if (arg !== null) return arg
+        const { type } = abi.inputs[i] || {}
+        if (!type) {
+          throw new Error(`No type found for argument ${i} in abi item "${policy.selector}"`)
+        }
+        return defaultValueForAbiType(type)
+      })
+
+      abi.outputs = [
+        {
+          name: 'addressesFound',
+          type: 'bytes',
+          internalType: 'bytes',
+        },
+      ]
+
+      const encoded = await client.readContract({
+        address: policy.decoder,
+        abi: [abi],
+        functionName: abi.name,
+        args,
+      })
+
+      return encoded as HexString
+    })
+  )
+}
+
+async function buildPoliciesFromInputs(policyInputs: MerkleProofPolicyInput[], client: PublicClient) {
+  return Promise.all(
+    policyInputs.map(async (input) => {
+      const policyCombinations = generateCombinations(input.inputs)
+      const argsEncoded = await getEncodedArgs(input, policyCombinations, client)
+      return {
+        ...input,
+        valueNonZero: input.valueNonZero ?? false,
+        inputCombinations: policyCombinations.map((inputs, i) => ({
+          inputs,
+          inputsEncoded: argsEncoded[i]!,
+        })),
+      } satisfies MerkleProofPolicy
+    })
+  )
+}
+
+function normalizeAddress(value: HexString | string) {
+  return value.toLowerCase()
+}
+
+function normalizePolicyForVerification(policy: MerkleProofPolicy | MerkleProofPolicyInput) {
+  return {
+    decoder: normalizeAddress(policy.decoder),
+    target: normalizeAddress(policy.target),
+    selector: policy.selector,
+    valueNonZero: policy.valueNonZero ?? false,
+    inputs: policy.inputs.map((input) => ({
+      parameter: input.parameter,
+      label: input.label,
+      input: input.input.map((value) => normalizeAddress(value)),
+    })),
+  }
+}
+
+export function normalizeDefaultValues(
+  defaultValues: ReadonlyArray<WorkflowDefaultValue> | undefined,
+  expectedLength: number
+): WorkflowDefaultValue[] {
+  return Array.from({ length: expectedLength }, (_, index) => defaultValues?.[index] ?? null)
+}
+
+function normalizeWorkflowActions(actions: MerkleProofWorkflow['actions'], policies: MerkleProofPolicy[]) {
+  return actions.map((action) => {
+    const policy = policies[action.policyIndex]
+    if (!policy) return action
+
+    return {
+      ...action,
+      defaultValues: normalizeDefaultValues(action.defaultValues, policy.inputs.length),
+    }
+  })
+}
+
+export function isVerifiedWorkflow(
+  workflow: MerkleProofWorkflow,
+  allPolicies: MerkleProofPolicy[],
+  canonicalActions: WorkflowVerificationAction[]
+) {
+  if (workflow.actions.length !== canonicalActions.length) return false
+
+  for (let index = 0; index < workflow.actions.length; index++) {
+    const workflowAction = workflow.actions[index]
+    const canonicalAction = canonicalActions[index]
+    if (!workflowAction || !canonicalAction) return false
+
+    const storedPolicy = allPolicies[workflowAction.policyIndex]
+    if (!storedPolicy) return false
+
+    const workflowPolicyComparable = normalizePolicyForVerification(storedPolicy)
+    const canonicalPolicyComparable = normalizePolicyForVerification(canonicalAction.policy)
+    if (JSON.stringify(workflowPolicyComparable) !== JSON.stringify(canonicalPolicyComparable)) return false
+
+    const expectedLength = storedPolicy.inputs.length
+    if (
+      workflowAction.defaultValues.length !== expectedLength ||
+      canonicalAction.defaultValues.length !== expectedLength
+    ) {
+      return false
+    }
+
+    const normalizedWorkflowDefaults = normalizeDefaultValues(workflowAction.defaultValues, expectedLength)
+    const normalizedCanonicalDefaults = normalizeDefaultValues(canonicalAction.defaultValues, expectedLength)
+
+    for (let valueIndex = 0; valueIndex < expectedLength; valueIndex++) {
+      if (normalizedWorkflowDefaults[valueIndex] !== normalizedCanonicalDefaults[valueIndex]) {
+        return false
+      }
+    }
+  }
+
+  return true
 }
