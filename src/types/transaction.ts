@@ -10,6 +10,7 @@ import {
   type WalletClient,
 } from 'viem'
 import type { Centrifuge } from '../Centrifuge.js'
+import { PoolId } from '../utils/types.js'
 import type { HexString } from './index.js'
 import type { Query } from './query.js'
 
@@ -183,17 +184,61 @@ export enum VaultUpdateKind {
   Unlink,
 }
 
-export type MessageTypeWithSubType = MessageType | { type: MessageType; subtype: VaultUpdateKind }
+export type MessageTypeWithSubType =
+  | MessageType._Invalid
+  | MessageType.ScheduleUpgrade
+  | MessageType.CancelUpgrade
+  | MessageType.RecoverTokens
+  | MessageType.RegisterAsset
+  | MessageType.SetPoolAdapters
+  | {
+      type:
+        | MessageType.NotifyPool
+        | MessageType.NotifyShareClass
+        | MessageType.NotifyPricePoolPerShare
+        | MessageType.NotifyPricePoolPerAsset
+        | MessageType.NotifyShareMetadata
+        | MessageType.UpdateShareHook
+        | MessageType.InitiateTransferShares
+        | MessageType.ExecuteTransferShares
+        | MessageType.UpdateRestriction
+        | MessageType.UpdateBalanceSheetManager
+        | MessageType.UpdateGatewayManager
+        | MessageType.UpdateHoldingAmount
+        | MessageType.UpdateShares
+        | MessageType.SetMaxAssetPriceAge
+        | MessageType.SetMaxSharePriceAge
+        | MessageType.Request
+        | MessageType.RequestCallback
+        | MessageType.SetRequestManager
+        | MessageType.TrustedContractUpdate
+        | MessageType.UntrustedContractUpdate
+      poolId: PoolId
+    }
+  | { type: MessageType.UpdateVault; subtype: VaultUpdateKind; poolId: PoolId }
 
-export function emptyMessage(type: MessageType, subtype?: VaultUpdateKind): HexString {
-  switch (type) {
-    case MessageType.UpdateVault:
-      return encodePacked(
-        ['uint8', 'uint64', 'bytes16', 'uint128', 'bytes32', 'uint8', 'uint128'],
-        [type, 0n, toHex(0, { size: 16 }), 0n, toHex(0, { size: 32 }), subtype ?? VaultUpdateKind.DeployAndLink, 0n]
-      )
-    default:
-      // Empty message with the length of the longest fixed-size message (NotifyShareClass with 250 bytes)
-      return encodePacked(['uint8', 'bytes'], [type, toHex(0, { size: 249 })])
+export function emptyMessage(type: MessageTypeWithSubType): HexString {
+  if (typeof type === 'object' && type.type === MessageType.UpdateVault) {
+    return encodePacked(
+      ['uint8', 'uint64', 'bytes16', 'uint128', 'bytes32', 'uint8', 'uint128'],
+      [
+        type.type,
+        type.poolId.raw,
+        toHex(0, { size: 16 }),
+        0n,
+        toHex(0, { size: 32 }),
+        type.subtype ?? VaultUpdateKind.DeployAndLink,
+        0n,
+      ]
+    )
   }
+  if (typeof type === 'object') {
+    return encodePacked(
+      ['uint8', 'uint64', 'bytes'],
+      // Empty message with the length of the longest fixed-size message (NotifyShareClass with 250 bytes)
+      [type.type, type.poolId.raw, toHex(0, { size: 241 })]
+    )
+  }
+
+  return encodePacked(['uint8', 'bytes'], [type, toHex(0, { size: 249 })])
 }

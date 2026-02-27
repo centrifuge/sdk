@@ -113,10 +113,10 @@ describe('Centrifuge', () => {
     })
 
     it('should estimate the gas for a bridge transaction', async () => {
-      const estimate = await context.centrifuge._estimate(centId, centId, MessageType.NotifyPool)
+      const estimate = await context.centrifuge._estimate(centId, centId, { type: MessageType.NotifyPool, poolId })
       expect(estimate).to.equal(0n)
 
-      const estimate2 = await context.centrifuge._estimate(centId, 2, MessageType.NotifyPool)
+      const estimate2 = await context.centrifuge._estimate(centId, 2, { type: MessageType.NotifyPool, poolId })
       expect(typeof estimate2).to.equal('bigint')
     })
 
@@ -142,7 +142,7 @@ describe('Centrifuge', () => {
         } as any)
       )
 
-      const estimate = await centrifuge._estimate(1, 2, [MessageType.NotifyPool, MessageType.NotifyShareClass])
+      const estimate = await centrifuge._estimate(1, 2, [{ type: MessageType.NotifyPool, poolId }, { type: MessageType.NotifyShareClass, poolId }])
       expect(estimate).to.equal(1165n)
       expect(
         readContract.calledWithMatch({
@@ -172,7 +172,7 @@ describe('Centrifuge', () => {
       )
 
       try {
-        await centrifuge._estimate(1, 2, [MessageType.NotifyPool, MessageType.NotifyShareClass])
+        await centrifuge._estimate(1, 2, [{ type: MessageType.NotifyPool, poolId }, { type: MessageType.NotifyShareClass, poolId }])
         expect.fail('Expected _estimate to throw when maxBatchGasLimit is exceeded')
       } catch (error) {
         expect((error as Error).message).to.equal('Batch gas 400 exceeds limit 300 for chain 2')

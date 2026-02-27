@@ -245,7 +245,7 @@ export class MerkleProofManager extends Entity {
               ],
             }),
           ],
-          messages: { [id]: [MessageType.TrustedContractUpdate] },
+          messages: { [id]: [{ type: MessageType.TrustedContractUpdate, poolId: self.pool.id }] },
         },
         options && { simulate: options.simulate }
       )

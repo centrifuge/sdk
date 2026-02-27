@@ -546,7 +546,7 @@ export class PoolNetwork extends Entity {
         ])
 
       const batch: HexString[] = []
-      const messageTypes: (MessageType | MessageTypeWithSubType)[] = []
+      const messageTypes: MessageTypeWithSubType[] = []
 
       // setAdapters must be called first, because all other messages are pool-dependent
       // and require the pool to have adapters set
@@ -597,7 +597,7 @@ export class PoolNetwork extends Entity {
             args: [self.pool.id.raw, self.centrifugeId, ctx.signingAddress],
           })
         )
-        messageTypes.push(MessageType.NotifyPool)
+        messageTypes.push({ type: MessageType.NotifyPool, poolId: self.pool.id })
       }
 
       // Set vault managers as balance sheet managers if not already set
@@ -616,7 +616,7 @@ export class PoolNetwork extends Entity {
             ],
           })
         )
-        messageTypes.push(MessageType.UpdateBalanceSheetManager)
+        messageTypes.push({ type: MessageType.UpdateBalanceSheetManager, poolId: self.pool.id })
       }
       if (!isSyncManagerSetOnBalanceSheet && vaults.some((v) => v.kind === 'syncDeposit')) {
         batch.push(
@@ -626,7 +626,7 @@ export class PoolNetwork extends Entity {
             args: [self.pool.id.raw, self.centrifugeId, addressToBytes32(syncManager), true, ctx.signingAddress],
           })
         )
-        messageTypes.push(MessageType.UpdateBalanceSheetManager)
+        messageTypes.push({ type: MessageType.UpdateBalanceSheetManager, poolId: self.pool.id })
       }
 
       if (existingRequestManager === NULL_ADDRESS) {
@@ -643,7 +643,7 @@ export class PoolNetwork extends Entity {
             ],
           })
         )
-        messageTypes.push(MessageType.SetRequestManager)
+        messageTypes.push({ type: MessageType.SetRequestManager, poolId: self.pool.id })
       }
 
       const enabledShareClasses = new Set(details.activeShareClasses.map((sc) => sc.id.raw))
@@ -662,7 +662,7 @@ export class PoolNetwork extends Entity {
             args: [self.pool.id.raw, sc.id.raw, self.centrifugeId, addressToBytes32(sc.hook), ctx.signingAddress],
           })
         )
-        messageTypes.push(MessageType.NotifyShareClass)
+        messageTypes.push({ type: MessageType.NotifyShareClass, poolId: self.pool.id })
       }
 
       for (const vault of vaults) {
@@ -714,10 +714,10 @@ export class PoolNetwork extends Entity {
             ],
           })
         )
-        messageTypes.push(MessageType.NotifyPricePoolPerAsset, {
-          type: MessageType.UpdateVault,
-          subtype: VaultUpdateKind.DeployAndLink,
-        })
+        messageTypes.push(
+          { type: MessageType.NotifyPricePoolPerAsset, poolId: self.pool.id },
+          { type: MessageType.UpdateVault, subtype: VaultUpdateKind.DeployAndLink, poolId: self.pool.id }
+        )
       }
 
       if (batch.length === 0) {
@@ -779,7 +779,7 @@ export class PoolNetwork extends Entity {
             ],
           })
         )
-        messageTypes.push({ type: MessageType.UpdateVault, subtype: VaultUpdateKind.Unlink })
+        messageTypes.push({ type: MessageType.UpdateVault, subtype: VaultUpdateKind.Unlink, poolId: self.pool.id })
       }
 
       yield* wrapTransaction('Unlink vaults', ctx, {
@@ -852,7 +852,7 @@ export class PoolNetwork extends Entity {
             ],
           })
         )
-        messageTypes.push({ type: MessageType.UpdateVault, subtype: VaultUpdateKind.Link })
+        messageTypes.push({ type: MessageType.UpdateVault, subtype: VaultUpdateKind.Link, poolId: self.pool.id })
       }
 
       yield* wrapTransaction('Link vaults', ctx, {
