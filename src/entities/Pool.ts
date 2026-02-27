@@ -5,7 +5,7 @@ import type { Centrifuge } from '../Centrifuge.js'
 import { HexString } from '../types/index.js'
 import { PoolMetadataInput, ShareClassInput } from '../types/poolInput.js'
 import { PoolMetadata } from '../types/poolMetadata.js'
-import { MessageType } from '../types/transaction.js'
+import { MessageType, MessageTypeWithSubType } from '../types/transaction.js'
 import { NATIONAL_CURRENCY_METADATA } from '../utils/currencies.js'
 import { addressToBytes32, generateShareClassSalt } from '../utils/index.js'
 import { repeatOnEvents } from '../utils/rx.js'
@@ -582,8 +582,8 @@ export class Pool extends Entity {
       const newAccounts = [...updatedAccounts].filter((account) => !exsitingAccounts.has(account))
 
       const batch: HexString[] = []
-      const messages: Record<number, MessageType[]> = {}
-      function addMessage(centId: number, message: MessageType) {
+      const messages: Record<number, MessageTypeWithSubType[]> = {}
+      function addMessage(centId: number, message: MessageTypeWithSubType) {
         if (!messages[centId]) messages[centId] = []
         messages[centId].push(message)
       }
@@ -636,7 +636,7 @@ export class Pool extends Entity {
                 })
               )
 
-              addMessage(centId, MessageType.NotifyShareClass)
+              addMessage(centId, { type: MessageType.NotifyShareClass, poolId: self.id })
             })
           )
         }
@@ -738,10 +738,10 @@ export class Pool extends Entity {
           args: [self.id.raw, centrifugeId, addressToBytes32(address), canManage, ctx.signingAddress],
         })
       )
-      const messages: Record<number, MessageType[]> = {}
+      const messages: Record<number, MessageTypeWithSubType[]> = {}
       updates.forEach(({ centrifugeId }) => {
         if (!messages[centrifugeId]) messages[centrifugeId] = []
-        messages[centrifugeId].push(MessageType.UpdateBalanceSheetManager)
+        messages[centrifugeId].push({ type: MessageType.UpdateBalanceSheetManager, poolId: self.id })
       })
 
       yield* wrapTransaction('Update balance sheet managers', ctx, {
@@ -784,7 +784,7 @@ export class Pool extends Entity {
         })
       )
 
-      const messages: Record<number, MessageType[]> = {}
+      const messages: Record<number, MessageTypeWithSubType[]> = {}
       updates.forEach(({ centrifugeId }) => {
         if (!messages[centrifugeId]) messages[centrifugeId] = []
         messages[centrifugeId].push(MessageType.SetPoolAdapters)
