@@ -28,6 +28,8 @@ export async function pinToApi(url: string, reqInit?: RequestInit) {
 }
 
 export function getUrlFromHash(uriOrHash: string, ipfsGateway: string) {
+  if (!uriOrHash) return ''
+
   try {
     let newUrl
 
