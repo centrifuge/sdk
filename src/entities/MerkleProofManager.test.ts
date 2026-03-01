@@ -8,11 +8,11 @@ import { Centrifuge } from '../Centrifuge.js'
 import { HexString, parseEventLogs } from '../index.js'
 import { context } from '../tests/setup.js'
 import { randomAddress } from '../tests/utils.js'
-import { MerkleProofPolicy, MerkleProofPolicyInput } from '../types/poolMetadata.js'
+import { MerkleProofPolicy, MerkleProofPolicyInput, MerkleProofWorkflow } from '../types/poolMetadata.js'
 import { SimulationStatus } from '../types/transaction.js'
 import { makeThenable } from '../utils/rx.js'
-import { AssetId, PoolId, ShareClassId } from '../utils/types.js'
-import { generateCombinations, getMerkleTree, MerkleProofManager } from './MerkleProofManager.js'
+import { PoolId, ShareClassId } from '../utils/types.js'
+import { generateCombinations, getMerkleTree, isVerifiedWorkflow, MerkleProofManager } from './MerkleProofManager.js'
 import { Pool } from './Pool.js'
 import { PoolNetwork } from './PoolNetwork.js'
 
@@ -480,11 +480,11 @@ describe('MerkleProofManager', () => {
     expect(tree.root).to.equal(expectedRootHash)
   })
 
-  // TODO: Finish once pool tests are working and we can setup pool metadata and read it
-  it.skip('sets templates', async () => {
+  it('sets workflows', async () => {
     const centrifugeWithPin = new Centrifuge({
       environment: 'testnet',
-      pinJson: async () => {
+      pinJson: async (data) => {
+        expect(data.merkleProofManager[chainId][strategist].workflows).to.have.length(1)
         return 'abc'
       },
       rpcUrls: {
@@ -496,18 +496,21 @@ describe('MerkleProofManager', () => {
     context.tenderlyFork.impersonateAddress = fundManager
     centrifugeWithPin.setSigner(context.tenderlyFork.signer)
 
-    const template = {
-      id: 'template-1',
-      name: 'Default Template',
+    const workflow: MerkleProofWorkflow = {
+      id: 'workflow-1',
+      name: 'Default Workflow',
+      template: 'erc7540_requestDeposit',
+      category: 'Allocation',
+      iconUrl: 'ipfs://icon',
+      isVerified: false,
       actions: [
         { policyIndex: 0, defaultValues: ['0x', 987654321000] },
         { policyIndex: 1, defaultValues: [987654321000, '0x'] },
       ],
       createdAt: new Date().toISOString(),
-      updatedAt: undefined,
     }
 
-    await mpm.setTemplates(strategist, [template])
+    await mpm.setWorkflows(strategist, [workflow])
   })
 
   it('sets policies', async () => {
@@ -541,6 +544,286 @@ describe('MerkleProofManager', () => {
     })
 
     expect(rootHash).to.equal(tree.root)
+  })
+
+  it('addPolicy appends policies and keeps existing indices stable', async () => {
+    let pinnedMetadata: any
+    const centrifugeWithPin = new Centrifuge({
+      environment: 'testnet',
+      pinJson: async (data) => {
+        pinnedMetadata = data
+        return 'abc'
+      },
+      rpcUrls: {
+        11155111: context.tenderlyFork.rpcUrl,
+      },
+    })
+    const mpm = new MerkleProofManager(centrifugeWithPin, merkleProofManager.network, mpmAddress)
+
+    context.tenderlyFork.impersonateAddress = fundManager
+    centrifugeWithPin.setSigner(context.tenderlyFork.signer)
+
+    const details = await mpm.pool.details()
+    const existingWorkflow: MerkleProofWorkflow = {
+      id: 'existing-workflow',
+      name: 'Existing workflow',
+      createdAt: new Date().toISOString(),
+      actions: [
+        {
+          policyIndex: 0,
+          defaultValues: [mockPolicies[0]!.inputs[0]!.input[0]!, null],
+        },
+      ],
+      isVerified: false,
+    }
+
+    const detailsStub = sinon.stub(mpm.pool, 'details')
+    detailsStub.resolves({
+      ...details,
+      metadata: {
+        ...details.metadata,
+        merkleProofManager: {
+          ...details.metadata?.merkleProofManager,
+          [chainId]: {
+            ...details.metadata?.merkleProofManager?.[chainId],
+            [strategist.toLowerCase()]: {
+              policies: mockPolicies,
+              workflows: [existingWorkflow],
+            },
+          },
+        },
+      },
+    } as any)
+
+    const newPolicy: MerkleProofPolicyInput = {
+      decoder: mockPolicies[0]!.decoder,
+      target: mockPolicies[0]!.target,
+      targetName: mockPolicies[0]!.targetName,
+      name: mockPolicies[0]!.name,
+      selector: mockPolicies[0]!.selector,
+      valueNonZero: mockPolicies[0]!.valueNonZero,
+      inputs: mockPolicies[0]!.inputs,
+    }
+
+    const verificationActions = [
+      {
+        policy: newPolicy,
+        defaultValues: [mockPolicies[0]!.inputs[0]!.input[0]!, null],
+      },
+    ]
+
+    await mpm.addPolicy(strategist, [newPolicy], {
+      id: 'added-workflow',
+      name: 'Added workflow',
+      template: 'erc7540_requestDeposit',
+      category: 'Allocation',
+      iconUrl: 'ipfs://icon',
+      verificationActions,
+    })
+
+    const stored = pinnedMetadata.merkleProofManager[chainId][strategist.toLowerCase()]
+    expect(stored.policies).to.have.length(mockPolicies.length + 1)
+    expect(stored.policies.slice(0, mockPolicies.length)).to.deep.equal(mockPolicies)
+    expect(stored.workflows).to.have.length(2)
+
+    const addedWorkflow = stored.workflows.find((workflow: MerkleProofWorkflow) => workflow.id === 'added-workflow')
+    expect(addedWorkflow).to.exist
+    expect(addedWorkflow.actions[0]!.policyIndex).to.equal(mockPolicies.length)
+    expect(addedWorkflow.isVerified).to.equal(true)
+
+    const expectedTree = getMerkleTree(SimpleMerkleTree, stored.policies)
+    const rootHash = await (
+      await centrifugeWithPin.getClient(centId)
+    ).readContract({
+      address: mpmAddress,
+      abi: ABI.MerkleProofManager,
+      functionName: 'policy',
+      args: [strategist],
+    })
+    expect(rootHash).to.equal(expectedTree.root)
+
+    detailsStub.restore()
+  })
+
+  describe('isVerifiedWorkflow', () => {
+    it('returns true for exact policy and default-values match', () => {
+      const policyInput: MerkleProofPolicyInput = {
+        decoder: mockPolicies[0]!.decoder,
+        target: mockPolicies[0]!.target,
+        targetName: mockPolicies[0]!.targetName,
+        name: mockPolicies[0]!.name,
+        selector: mockPolicies[0]!.selector,
+        valueNonZero: mockPolicies[0]!.valueNonZero,
+        inputs: mockPolicies[0]!.inputs,
+      }
+      const workflow: MerkleProofWorkflow = {
+        id: 'workflow-1',
+        name: 'Workflow',
+        createdAt: new Date().toISOString(),
+        actions: [
+          {
+            policyIndex: 0,
+            defaultValues: [mockPolicies[0]!.inputs[0]!.input[0]!, null],
+          },
+        ],
+      }
+
+      expect(
+        isVerifiedWorkflow(
+          workflow,
+          [mockPolicies[0]!],
+          [
+            {
+              policy: policyInput,
+              defaultValues: [mockPolicies[0]!.inputs[0]!.input[0]!, null],
+            },
+          ]
+        )
+      ).to.equal(true)
+    })
+
+    it('returns false when action order differs', () => {
+      const workflow: MerkleProofWorkflow = {
+        id: 'workflow-2',
+        name: 'Workflow',
+        createdAt: new Date().toISOString(),
+        actions: [
+          {
+            policyIndex: 0,
+            defaultValues: [mockPolicies[0]!.inputs[0]!.input[0]!, null],
+          },
+          {
+            policyIndex: 1,
+            defaultValues: [null, randomUser],
+          },
+        ],
+      }
+
+      const canonicalActions: MerkleProofPolicyInput[] = [
+        {
+          decoder: mockPolicies[1]!.decoder,
+          target: mockPolicies[1]!.target,
+          targetName: mockPolicies[1]!.targetName,
+          name: mockPolicies[1]!.name,
+          selector: mockPolicies[1]!.selector,
+          valueNonZero: mockPolicies[1]!.valueNonZero,
+          inputs: mockPolicies[1]!.inputs,
+        },
+        {
+          decoder: mockPolicies[0]!.decoder,
+          target: mockPolicies[0]!.target,
+          targetName: mockPolicies[0]!.targetName,
+          name: mockPolicies[0]!.name,
+          selector: mockPolicies[0]!.selector,
+          valueNonZero: mockPolicies[0]!.valueNonZero,
+          inputs: mockPolicies[0]!.inputs,
+        },
+      ]
+
+      expect(
+        isVerifiedWorkflow(
+          workflow,
+          [mockPolicies[0]!, mockPolicies[1]!],
+          [
+            { policy: canonicalActions[0]!, defaultValues: [null, randomUser] },
+            { policy: canonicalActions[1]!, defaultValues: [mockPolicies[0]!.inputs[0]!.input[0]!, null] },
+          ]
+        )
+      ).to.equal(false)
+    })
+
+    it('returns false when policy structure differs', () => {
+      const policyInput: MerkleProofPolicyInput = {
+        decoder: mockPolicies[0]!.decoder,
+        target: randomAddress(),
+        targetName: mockPolicies[0]!.targetName,
+        name: mockPolicies[0]!.name,
+        selector: mockPolicies[0]!.selector,
+        valueNonZero: mockPolicies[0]!.valueNonZero,
+        inputs: mockPolicies[0]!.inputs,
+      }
+      const workflow: MerkleProofWorkflow = {
+        id: 'workflow-3',
+        name: 'Workflow',
+        createdAt: new Date().toISOString(),
+        actions: [
+          {
+            policyIndex: 0,
+            defaultValues: [mockPolicies[0]!.inputs[0]!.input[0]!, null],
+          },
+        ],
+      }
+
+      expect(
+        isVerifiedWorkflow(
+          workflow,
+          [mockPolicies[0]!],
+          [{ policy: policyInput, defaultValues: [mockPolicies[0]!.inputs[0]!.input[0]!, null] }]
+        )
+      ).to.equal(false)
+    })
+
+    it('returns false when default-values differ', () => {
+      const policyInput: MerkleProofPolicyInput = {
+        decoder: mockPolicies[0]!.decoder,
+        target: mockPolicies[0]!.target,
+        targetName: mockPolicies[0]!.targetName,
+        name: mockPolicies[0]!.name,
+        selector: mockPolicies[0]!.selector,
+        valueNonZero: mockPolicies[0]!.valueNonZero,
+        inputs: mockPolicies[0]!.inputs,
+      }
+      const workflow: MerkleProofWorkflow = {
+        id: 'workflow-4',
+        name: 'Workflow',
+        createdAt: new Date().toISOString(),
+        actions: [
+          {
+            policyIndex: 0,
+            defaultValues: [mockPolicies[0]!.inputs[0]!.input[0]!, null],
+          },
+        ],
+      }
+
+      expect(
+        isVerifiedWorkflow(
+          workflow,
+          [mockPolicies[0]!],
+          [{ policy: policyInput, defaultValues: [mockPolicies[0]!.inputs[0]!.input[0]!, 123] }]
+        )
+      ).to.equal(false)
+    })
+
+    it('returns false when default-values are not positional', () => {
+      const policyInput: MerkleProofPolicyInput = {
+        decoder: mockPolicies[0]!.decoder,
+        target: mockPolicies[0]!.target,
+        targetName: mockPolicies[0]!.targetName,
+        name: mockPolicies[0]!.name,
+        selector: mockPolicies[0]!.selector,
+        valueNonZero: mockPolicies[0]!.valueNonZero,
+        inputs: mockPolicies[0]!.inputs,
+      }
+      const workflow: MerkleProofWorkflow = {
+        id: 'workflow-5',
+        name: 'Workflow',
+        createdAt: new Date().toISOString(),
+        actions: [
+          {
+            policyIndex: 0,
+            defaultValues: [mockPolicies[0]!.inputs[0]!.input[0]!],
+          },
+        ],
+      }
+
+      expect(
+        isVerifiedWorkflow(
+          workflow,
+          [mockPolicies[0]!],
+          [{ policy: policyInput, defaultValues: [mockPolicies[0]!.inputs[0]!.input[0]!, null] }]
+        )
+      ).to.equal(false)
+    })
   })
 
   it('can execute calls', async () => {

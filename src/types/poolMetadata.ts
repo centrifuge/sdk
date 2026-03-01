@@ -2,9 +2,13 @@ import { HexString } from './index.js'
 
 export type FileType = { uri: string; mime: string }
 
-export type MerkleProofTemplate = {
+export type MerkleProofWorkflow = {
   id: string
   name: string
+  template?: string
+  category?: string
+  iconUrl?: string
+  isVerified?: boolean
   actions: MerkleProofTemplateAction[]
   createdAt: string
   updatedAt?: string
@@ -14,7 +18,7 @@ export type MerkleProofTemplateAction = {
   /** index of the policy in manager.policies[] */
   policyIndex: number
   /** possible inputs for the policy execution, matching input order from policy inputs */
-  defaultValues: (HexString | string | number)[]
+  defaultValues: (HexString | string | number | null)[]
 }
 
 export type MerkleProofPolicy = {
@@ -57,10 +61,7 @@ export type MerkleProofPolicy = {
   }[]
 }
 
-export type MerkleProofPolicyInput = Pick<
-  MerkleProofPolicy,
-  'target' | 'targetName' | 'decoder' | 'name' | 'selector' | 'inputs'
-> & {
+export type MerkleProofPolicyInput = Omit<MerkleProofPolicy, 'inputCombinations' | 'valueNonZero'> & {
   valueNonZero?: boolean
 }
 
@@ -144,7 +145,7 @@ export type PoolMetadata = {
       HexString,
       {
         policies: MerkleProofPolicy[]
-        templates?: MerkleProofTemplate[]
+        workflows?: MerkleProofWorkflow[]
       }
     >
   >
