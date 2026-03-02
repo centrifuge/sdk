@@ -169,6 +169,19 @@ export class MerkleProofManager extends Entity {
       const existingEntry = metadata?.merkleProofManager?.[self.network.centrifugeId]?.[strategistAddress as any]
       const existingPolicies = existingEntry?.policies ?? []
       const existingWorkflows = existingEntry?.workflows ?? []
+      const verificationActions = workflowMetadata.verificationActions
+
+      const duplicateWorkflow = verificationActions
+        ? existingWorkflows.find((workflow) =>
+            isDuplicateWorkflow(workflow, existingPolicies, workflowMetadata.template, verificationActions)
+          )
+        : undefined
+
+      if (duplicateWorkflow) {
+        throw new Error(
+          `Workflow "${workflowMetadata.template ?? workflowMetadata.name}" already exists for strategist "${strategistAddress}"`
+        )
+      }
 
       const appendedPolicies = await buildPoliciesFromInputs(newPolicies, client)
       const policies = [...existingPolicies, ...appendedPolicies]
@@ -193,7 +206,7 @@ export class MerkleProofManager extends Entity {
         template: workflowMetadata.template,
         createdAt,
         actions: workflowActions,
-        isVerified: workflowMetadata.verificationActions
+        isVerified: verificationActions
           ? isVerifiedWorkflow(
               {
                 ...workflowMetadata,
@@ -201,7 +214,7 @@ export class MerkleProofManager extends Entity {
                 actions: workflowActions,
               },
               policies,
-              workflowMetadata.verificationActions
+              verificationActions
             )
           : false,
       }
@@ -255,6 +268,108 @@ export class MerkleProofManager extends Entity {
         },
         options && { simulate: options.simulate }
       )
+    }, this.pool.centrifugeId)
+  }
+
+  addWorkflow(
+    strategist: HexString,
+    workflowMetadata: {
+      id: string
+      name: string
+      category?: string
+      iconUrl?: string
+      template?: string
+      verificationActions: WorkflowVerificationAction[]
+    },
+    options?: {
+      simulate: boolean
+    }
+  ) {
+    const self = this
+    return this._transact(async function* (ctx) {
+      const [{ hub }, poolDetails] = await Promise.all([
+        self._root._protocolAddresses(self.pool.centrifugeId),
+        self.pool.details(),
+      ])
+
+      const { metadata } = poolDetails
+      const strategistAddress = strategist.toLowerCase()
+      const existingEntry = metadata?.merkleProofManager?.[self.network.centrifugeId]?.[strategistAddress as any]
+      const existingPolicies = existingEntry?.policies ?? []
+      const existingWorkflows = existingEntry?.workflows ?? []
+      const verificationActions = workflowMetadata.verificationActions
+      const policyIndices = findWorkflowPolicyIndices(existingPolicies, verificationActions)
+
+      if (!policyIndices) {
+        throw new Error(
+          `Workflow "${workflowMetadata.template ?? workflowMetadata.name}" requires policies that do not exist for strategist "${strategistAddress}"`
+        )
+      }
+
+      const duplicateWorkflow = existingWorkflows.find((workflow) =>
+        isDuplicateWorkflow(workflow, existingPolicies, workflowMetadata.template, verificationActions)
+      )
+
+      if (duplicateWorkflow) {
+        throw new Error(
+          `Workflow "${workflowMetadata.template ?? workflowMetadata.name}" already exists for strategist "${strategistAddress}"`
+        )
+      }
+
+      const createdAt = new Date().toISOString()
+      const actions = policyIndices.map((policyIndex, index) => ({
+        policyIndex,
+        defaultValues: normalizeDefaultValues(
+          verificationActions[index]?.defaultValues,
+          existingPolicies[policyIndex]!.inputs.length
+        ),
+      }))
+
+      const workflow: MerkleProofWorkflow = {
+        id: workflowMetadata.id,
+        name: workflowMetadata.name,
+        category: workflowMetadata.category,
+        iconUrl: workflowMetadata.iconUrl,
+        template: workflowMetadata.template,
+        createdAt,
+        actions,
+        isVerified: isVerifiedWorkflow(
+          {
+            ...workflowMetadata,
+            createdAt,
+            actions,
+          },
+          existingPolicies,
+          verificationActions
+        ),
+      }
+
+      const newMetadata = {
+        ...metadata,
+        merkleProofManager: {
+          ...metadata?.merkleProofManager,
+          [self.network.centrifugeId]: {
+            ...metadata?.merkleProofManager?.[self.network.centrifugeId],
+            [strategistAddress]: {
+              policies: existingPolicies,
+              workflows: [...existingWorkflows, workflow] satisfies MerkleProofWorkflow[],
+            },
+          },
+        },
+      }
+
+      const cid = await self._root.config.pinJson(newMetadata)
+
+      yield* wrapTransaction('Add workflow', ctx, {
+        contract: hub,
+        data: [
+          encodeFunctionData({
+            abi: ABI.Hub,
+            functionName: 'setPoolMetadata',
+            args: [self.pool.id.raw, toHex(cid)],
+          }),
+        ],
+      })
     }, this.pool.centrifugeId)
   }
 
@@ -582,8 +697,31 @@ function normalizeWorkflowActions(actions: MerkleProofWorkflow['actions'], polic
   })
 }
 
+export function findWorkflowPolicyIndices(
+  allPolicies: MerkleProofPolicy[],
+  canonicalActions: WorkflowVerificationAction[]
+): number[] | null {
+  const policyIndices: number[] = []
+
+  for (const action of canonicalActions) {
+    const policyIndex = allPolicies.findIndex((policy) => arePoliciesEquivalent(policy, action.policy))
+    if (policyIndex < 0) return null
+    policyIndices.push(policyIndex)
+  }
+
+  return policyIndices
+}
+
 export function isVerifiedWorkflow(
   workflow: MerkleProofWorkflow,
+  allPolicies: MerkleProofPolicy[],
+  canonicalActions: WorkflowVerificationAction[]
+) {
+  return workflowMatchesActions(workflow, allPolicies, canonicalActions)
+}
+
+function workflowMatchesActions(
+  workflow: Pick<MerkleProofWorkflow, 'actions'>,
   allPolicies: MerkleProofPolicy[],
   canonicalActions: WorkflowVerificationAction[]
 ) {
@@ -597,9 +735,7 @@ export function isVerifiedWorkflow(
     const storedPolicy = allPolicies[workflowAction.policyIndex]
     if (!storedPolicy) return false
 
-    const workflowPolicyComparable = normalizePolicyForVerification(storedPolicy)
-    const canonicalPolicyComparable = normalizePolicyForVerification(canonicalAction.policy)
-    if (JSON.stringify(workflowPolicyComparable) !== JSON.stringify(canonicalPolicyComparable)) return false
+    if (!arePoliciesEquivalent(storedPolicy, canonicalAction.policy)) return false
 
     const expectedLength = storedPolicy.inputs.length
     if (
@@ -620,4 +756,22 @@ export function isVerifiedWorkflow(
   }
 
   return true
+}
+
+function arePoliciesEquivalent(
+  leftPolicy: MerkleProofPolicy | MerkleProofPolicyInput,
+  rightPolicy: MerkleProofPolicy | MerkleProofPolicyInput
+) {
+  return JSON.stringify(normalizePolicyForVerification(leftPolicy)) === JSON.stringify(normalizePolicyForVerification(rightPolicy))
+}
+
+function isDuplicateWorkflow(
+  workflow: MerkleProofWorkflow,
+  allPolicies: MerkleProofPolicy[],
+  template: string | undefined,
+  canonicalActions: WorkflowVerificationAction[]
+) {
+  if (template && workflow.template !== template) return false
+
+  return workflowMatchesActions(workflow, allPolicies, canonicalActions)
 }

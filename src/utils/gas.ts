@@ -27,7 +27,7 @@ export async function estimateBatchBridgeFee(params: {
     )
   )
 
-  const batches = new Map<string, bigint>()
+  const batches = new Map<string, { gasLimit: bigint; payload: HexString }>()
   gasLimits.forEach((gasLimit, index) => {
     const data = gasMessagePayloads[index]!
 
@@ -36,10 +36,12 @@ export async function estimateBatchBridgeFee(params: {
     const batchKey = data.slice(4, 4 + 16)
 
     if (!batches.has(batchKey)) {
-      batches.set(batchKey, 0n)
+      // Use a representative payload so MultiAdapter can pick the correct pool adapter set.
+      batches.set(batchKey, { gasLimit: 0n, payload: data })
     }
 
-    batches.set(batchKey, batches.get(batchKey)! + gasLimit)
+    const batch = batches.get(batchKey)!
+    batch.gasLimit += gasLimit
   })
 
   const [maxBatchGasLimit, ...estimates] = await Promise.all([
@@ -49,20 +51,20 @@ export async function estimateBatchBridgeFee(params: {
       functionName: 'maxBatchGasLimit',
       args: [toCentrifugeId],
     }),
-    ...Array.from(batches.values()).map((batchGasLimit) =>
+    ...Array.from(batches.values()).map(({ gasLimit, payload }) =>
       publicClient.readContract({
         address: multiAdapter,
         abi: ABI.MultiAdapter,
         functionName: 'estimate',
-        args: [toCentrifugeId, '0x0', batchGasLimit],
+        args: [toCentrifugeId, payload, gasLimit],
       })
     ),
   ])
 
   const estimate = estimates.reduce((acc, val) => acc + val, 0n)
 
-  Array.from(batches.values()).forEach((batchGasLimit) => {
-    _assertBatchGasWithinLimit(batchGasLimit, maxBatchGasLimit, toCentrifugeId)
+  Array.from(batches.values()).forEach(({ gasLimit }) => {
+    _assertBatchGasWithinLimit(gasLimit, maxBatchGasLimit, toCentrifugeId)
   })
 
   // Add 50% buffer to the estimate, as the actual gas used can be higher than the estimate due dynamic message content
