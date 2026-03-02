@@ -1173,6 +1173,14 @@ export class Centrifuge {
     }, centIds[0]!)
   }
 
+  /**
+   * Batch multiple transactions together into a single multicall transaction.
+   * All transactions must be on the same Centrifuge network and same contract.
+   */
+  batchTransactions(title: string, transactions: Transaction[]): Transaction {
+    return this._experimental_batch(title, transactions)
+  }
+
   /** @internal */
   _protocolAddresses(centrifugeId: CentrifugeId) {
     return this._query(['protocolAddresses', centrifugeId], () =>
