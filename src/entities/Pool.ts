@@ -233,6 +233,40 @@ export class Pool extends Entity {
   }
 
   /**
+   * Deploy share classes to multiple networks in a single hub transaction.
+   * @param deployments - A list of target networks with share classes to deploy
+   */
+  deployToNetworks(
+    deployments: {
+      centrifugeId: CentrifugeId
+      shareClasses: { id: ShareClassId; hook: HexString }[]
+    }[]
+  ) {
+    if (!deployments.length) {
+      throw new Error('No share classes to deploy')
+    }
+
+    const transactions = deployments
+      .filter((d) => d.shareClasses.length > 0)
+      .map((deployment) => {
+        return new PoolNetwork(this._root, this, deployment.centrifugeId).deploy(
+          deployment.shareClasses,
+          []
+        )
+      })
+
+    if (transactions.length === 0) {
+      throw new Error('No share classes to deploy')
+    }
+
+    if (transactions.length === 1) {
+      return transactions[0]
+    }
+
+    return this._root.batchTransactions('Deploy share classes and vaults', transactions)
+  }
+
+  /**
    * Get the networks where a pool is active. It doesn't mean that any vaults are deployed there necessarily.
    */
   activeNetworks() {
