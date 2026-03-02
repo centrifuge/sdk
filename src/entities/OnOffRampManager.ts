@@ -189,7 +189,7 @@ export class OnOffRampManager extends Entity {
           ],
         }),
         messages: {
-          [self.network.centrifugeId]: [MessageType.TrustedContractUpdate],
+          [self.network.centrifugeId]: [{ type: MessageType.TrustedContractUpdate, poolId: self.network.pool.id }],
         },
       })
     }, self.network.pool.centrifugeId)
@@ -220,7 +220,7 @@ export class OnOffRampManager extends Entity {
             ctx.signingAddress,
           ],
         }),
-        messages: { [self.network.centrifugeId]: [MessageType.TrustedContractUpdate] },
+        messages: { [self.network.centrifugeId]: [{ type: MessageType.TrustedContractUpdate, poolId: self.network.pool.id }] },
       })
     }, self.network.pool.centrifugeId)
   }
@@ -245,7 +245,7 @@ export class OnOffRampManager extends Entity {
             ctx.signingAddress,
           ],
         }),
-        messages: { [self.network.centrifugeId]: [MessageType.TrustedContractUpdate] },
+        messages: { [self.network.centrifugeId]: [{ type: MessageType.TrustedContractUpdate, poolId: self.network.pool.id }] },
       })
     }, self.network.pool.centrifugeId)
   }

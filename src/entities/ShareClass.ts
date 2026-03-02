@@ -16,7 +16,7 @@ import { ABI } from '../abi/index.js'
 import type { Centrifuge } from '../Centrifuge.js'
 import { AccountType } from '../types/holdings.js'
 import { HexString } from '../types/index.js'
-import { MessageType } from '../types/transaction.js'
+import { MessageType, MessageTypeWithSubType } from '../types/transaction.js'
 import { AddressMap } from '../utils/AddressMap.js'
 import { Balance, Price } from '../utils/BigInt.js'
 import { addressToBytes32, encode, randomUint } from '../utils/index.js'
@@ -649,8 +649,8 @@ export class ShareClass extends Entity {
         self.pool.activeNetworks(),
       ])
       const batch: HexString[] = []
-      const messages: Record<number, MessageType[]> = {}
-      function addMessage(centId: number, message: MessageType) {
+      const messages: Record<number, MessageTypeWithSubType[]> = {}
+      function addMessage(centId: number, message: MessageTypeWithSubType) {
         if (!messages[centId]) messages[centId] = []
         messages[centId].push(message)
       }
@@ -685,7 +685,7 @@ export class ShareClass extends Entity {
                 args: [self.pool.id.raw, self.id.raw, id, ctx.signingAddress],
               })
             )
-            addMessage(id, MessageType.NotifyPricePoolPerShare)
+            addMessage(id, { type: MessageType.NotifyPricePoolPerShare, poolId: self.pool.id })
           }
         })
       )
@@ -710,7 +710,7 @@ export class ShareClass extends Entity {
           args: [self.pool.id.raw, self.id.raw, assetId.raw, BigInt(maxPriceAge), ctx.signingAddress],
         }),
         messages: {
-          [assetId.centrifugeId]: [MessageType.SetMaxAssetPriceAge],
+          [assetId.centrifugeId]: [{ type: MessageType.SetMaxAssetPriceAge, poolId: self.pool.id }],
         },
       })
     }, this.pool.centrifugeId)
@@ -728,7 +728,7 @@ export class ShareClass extends Entity {
           args: [self.pool.id.raw, self.id.raw, centrifugeId, BigInt(maxPriceAge), ctx.signingAddress],
         }),
         messages: {
-          [centrifugeId]: [MessageType.SetMaxSharePriceAge],
+          [centrifugeId]: [{ type: MessageType.SetMaxSharePriceAge, poolId: self.pool.id }],
         },
       })
     }, this.pool.centrifugeId)
@@ -746,7 +746,7 @@ export class ShareClass extends Entity {
           args: [self.pool.id.raw, self.id.raw, assetId.raw, ctx.signingAddress],
         }),
         messages: {
-          [assetId.centrifugeId]: [MessageType.NotifyPricePoolPerAsset],
+          [assetId.centrifugeId]: [{ type: MessageType.NotifyPricePoolPerAsset, poolId: self.pool.id }],
         },
       })
     }, this.pool.centrifugeId)
@@ -764,7 +764,7 @@ export class ShareClass extends Entity {
           args: [self.pool.id.raw, self.id.raw, centrifugeId, ctx.signingAddress],
         }),
         messages: {
-          [centrifugeId]: [MessageType.NotifyPricePoolPerShare],
+          [centrifugeId]: [{ type: MessageType.NotifyPricePoolPerShare, poolId: self.pool.id }],
         },
       })
     }, this.pool.centrifugeId)
@@ -824,8 +824,8 @@ export class ShareClass extends Entity {
       }
 
       const batch: HexString[] = []
-      const messages: Record<number, MessageType[]> = {}
-      function addMessage(centId: number, message: MessageType) {
+      const messages: Record<number, MessageTypeWithSubType[]> = {}
+      function addMessage(centId: number, message: MessageTypeWithSubType) {
         if (!messages[centId]) messages[centId] = []
         messages[centId].push(message)
       }
@@ -863,7 +863,7 @@ export class ShareClass extends Entity {
               ],
             })
           )
-          addMessage(asset.assetId.centrifugeId, MessageType.RequestCallback)
+          addMessage(asset.assetId.centrifugeId, { type: MessageType.RequestCallback, poolId: self.pool.id })
           gasLeft -= gasPerMessage
           nowDepositEpoch++
         }
@@ -899,7 +899,7 @@ export class ShareClass extends Entity {
                 ],
               })
             )
-            addMessage(asset.assetId.centrifugeId, MessageType.RequestCallback)
+            addMessage(asset.assetId.centrifugeId, { type: MessageType.RequestCallback, poolId: self.pool.id })
             gasLeft -= gasPerMessage
           }
           // If we've issued shares, also notify a number of invest orders
@@ -922,7 +922,7 @@ export class ShareClass extends Entity {
                     ],
                   })
                 )
-                addMessage(asset.assetId.centrifugeId, MessageType.RequestCallback)
+                addMessage(asset.assetId.centrifugeId, { type: MessageType.RequestCallback, poolId: self.pool.id })
               }
             })
           }
@@ -1003,8 +1003,8 @@ export class ShareClass extends Entity {
       }
 
       const batch: HexString[] = []
-      const messages: Record<number, MessageType[]> = {}
-      function addMessage(centId: number, message: MessageType) {
+      const messages: Record<number, MessageTypeWithSubType[]> = {}
+      function addMessage(centId: number, message: MessageTypeWithSubType) {
         if (!messages[centId]) messages[centId] = []
         messages[centId].push(message)
       }
@@ -1074,7 +1074,7 @@ export class ShareClass extends Entity {
                 ],
               })
             )
-            addMessage(asset.assetId.centrifugeId, MessageType.RequestCallback)
+            addMessage(asset.assetId.centrifugeId, { type: MessageType.RequestCallback, poolId: self.pool.id })
             gasLeft -= gasPerMessage
           }
 
@@ -1098,7 +1098,7 @@ export class ShareClass extends Entity {
                     ],
                   })
                 )
-                addMessage(asset.assetId.centrifugeId, MessageType.RequestCallback)
+                addMessage(asset.assetId.centrifugeId, { type: MessageType.RequestCallback, poolId: self.pool.id })
               }
             })
           }
@@ -1148,7 +1148,7 @@ export class ShareClass extends Entity {
             ctx.signingAddress,
           ],
         }),
-        messages: { [assetId.centrifugeId]: [MessageType.RequestCallback] },
+        messages: { [assetId.centrifugeId]: [{ type: MessageType.RequestCallback, poolId: self.pool.id }] },
       })
     }, this.pool.centrifugeId)
   }
@@ -1178,7 +1178,7 @@ export class ShareClass extends Entity {
             ctx.signingAddress,
           ],
         }),
-        messages: { [assetId.centrifugeId]: [MessageType.RequestCallback] },
+        messages: { [assetId.centrifugeId]: [{ type: MessageType.RequestCallback, poolId: self.pool.id }] },
       })
     }, this.pool.centrifugeId)
   }
@@ -1207,8 +1207,8 @@ export class ShareClass extends Entity {
       const { hub } = await self._root._protocolAddresses(self.pool.centrifugeId)
 
       const batch: HexString[] = []
-      const messages: Record<number, MessageType[]> = {}
-      function addMessage(centId: number, message: MessageType) {
+      const messages: Record<number, MessageTypeWithSubType[]> = {}
+      function addMessage(centId: number, message: MessageTypeWithSubType) {
         if (!messages[centId]) messages[centId] = []
         messages[centId].push(message)
       }
@@ -1231,7 +1231,7 @@ export class ShareClass extends Entity {
             ],
           })
         )
-        addMessage(member.centrifugeId, MessageType.UpdateRestriction)
+        addMessage(member.centrifugeId, { type: MessageType.UpdateRestriction, poolId: self.pool.id })
       })
 
       if (batch.length === 0) {
@@ -1545,7 +1545,7 @@ export class ShareClass extends Entity {
           functionName: 'updateRestriction',
           args: [self.pool.id.raw, self.id.raw, centrifugeId, payload, 0n, ctx.signingAddress],
         }),
-        messages: { [centrifugeId]: [MessageType.UpdateRestriction] },
+        messages: { [centrifugeId]: [{ type: MessageType.UpdateRestriction, poolId: self.pool.id }] },
       })
     }, this.pool.centrifugeId)
   }
@@ -1572,7 +1572,7 @@ export class ShareClass extends Entity {
           functionName: 'updateRestriction',
           args: [self.pool.id.raw, self.id.raw, centrifugeId, payload, 0n, ctx.signingAddress],
         }),
-        messages: { [centrifugeId]: [MessageType.UpdateRestriction] },
+        messages: { [centrifugeId]: [{ type: MessageType.UpdateRestriction, poolId: self.pool.id }] },
       })
     }, this.pool.centrifugeId)
   }
@@ -2332,7 +2332,7 @@ export class ShareClass extends Entity {
             ctx.signingAddress,
           ],
         }),
-        messages: { [centrifugeId]: [MessageType.TrustedContractUpdate] },
+        messages: { [centrifugeId]: [{ type: MessageType.TrustedContractUpdate, poolId: self.pool.id }] },
       })
     }, this.pool.centrifugeId)
   }
@@ -2354,7 +2354,7 @@ export class ShareClass extends Entity {
           functionName: 'updateShareHook',
           args: [self.pool.id.raw, self.id.raw, centrifugeId, addressToBytes32(hook), ctx.signingAddress],
         }),
-        messages: { [centrifugeId]: [MessageType.UpdateShareHook] },
+        messages: { [centrifugeId]: [{ type: MessageType.UpdateShareHook, poolId: self.pool.id }] },
       })
     }, this.pool.centrifugeId)
   }
@@ -2378,7 +2378,7 @@ export class ShareClass extends Entity {
       ])
 
       const calls: HexString[] = []
-      const messages: MessageType[] = []
+      const messages: MessageTypeWithSubType[] = []
 
       if (hook) {
         calls.push(
@@ -2388,7 +2388,7 @@ export class ShareClass extends Entity {
             args: [self.pool.id.raw, self.id.raw, centrifugeId, addressToBytes32(hook), ctx.signingAddress],
           })
         )
-        messages.push(MessageType.UpdateShareHook)
+        messages.push({ type: MessageType.UpdateShareHook, poolId: self.pool.id })
       }
 
       if (valuation) {
@@ -2407,7 +2407,7 @@ export class ShareClass extends Entity {
             ],
           })
         )
-        messages.push(MessageType.TrustedContractUpdate)
+        messages.push({ type: MessageType.TrustedContractUpdate, poolId: self.pool.id })
       }
 
       const title = hook && valuation ? 'Update hook and valuation' : hook ? 'Update hook' : 'Update valuation'
@@ -3323,7 +3323,7 @@ export class ShareClass extends Entity {
             ctx.signingAddress,
           ],
         }),
-        messages: { [centrifugeId]: [MessageType.TrustedContractUpdate] },
+        messages: { [centrifugeId]: [{ type: MessageType.TrustedContractUpdate, poolId: self.pool.id }] },
       })
     }, this.pool.centrifugeId)
   }

@@ -57,9 +57,9 @@ import {
   type TransactionContext,
 } from './types/transaction.js'
 import { Balance } from './utils/BigInt.js'
+import { estimateBatchBridgeFee } from './utils/gas.js'
 import { generateShareClassSalt, randomUint } from './utils/index.js'
 import { createPinning, getUrlFromHash } from './utils/ipfs.js'
-import { estimateBatchBridgeFee } from './utils/gas.js'
 import { hashKey } from './utils/query.js'
 import { makeThenable, repeatOnEvents, shareReplayWithDelayedReset } from './utils/rx.js'
 import {
@@ -1202,10 +1202,8 @@ export class Centrifuge {
       combineLatest([this._protocolAddresses(fromCentrifugeId), this.getClient(fromCentrifugeId)]).pipe(
         switchMap(([{ multiAdapter, gasService }, publicClient]) => {
           const types = Array.isArray(messageType) ? messageType : [messageType]
-          const gasMessagePayloads = types.map((typeAndMaybeSubtype) => {
-            const type = typeof typeAndMaybeSubtype === 'number' ? typeAndMaybeSubtype : typeAndMaybeSubtype.type
-            const subtype = typeof typeAndMaybeSubtype === 'number' ? undefined : typeAndMaybeSubtype.subtype
-            return emptyMessage(type, subtype)
+          const gasMessagePayloads = types.map((type) => {
+            return emptyMessage(type)
           })
 
           return estimateBatchBridgeFee({
