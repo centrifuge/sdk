@@ -12,7 +12,13 @@ import { MerkleProofPolicy, MerkleProofPolicyInput, MerkleProofWorkflow } from '
 import { SimulationStatus } from '../types/transaction.js'
 import { makeThenable } from '../utils/rx.js'
 import { PoolId, ShareClassId } from '../utils/types.js'
-import { generateCombinations, getMerkleTree, isVerifiedWorkflow, MerkleProofManager } from './MerkleProofManager.js'
+import {
+  findWorkflowPolicyIndices,
+  generateCombinations,
+  getMerkleTree,
+  isVerifiedWorkflow,
+  MerkleProofManager,
+} from './MerkleProofManager.js'
 import { Pool } from './Pool.js'
 import { PoolNetwork } from './PoolNetwork.js'
 
@@ -645,6 +651,174 @@ describe('MerkleProofManager', () => {
     detailsStub.restore()
   })
 
+  it('addWorkflow reuses existing strategist policies and stores a verified workflow only', async () => {
+    let pinnedMetadata: any
+    const centrifugeWithPin = new Centrifuge({
+      environment: 'testnet',
+      pinJson: async (data) => {
+        pinnedMetadata = data
+        return 'abc'
+      },
+      rpcUrls: {
+        11155111: context.tenderlyFork.rpcUrl,
+      },
+    })
+    const mpm = new MerkleProofManager(centrifugeWithPin, merkleProofManager.network, mpmAddress)
+
+    context.tenderlyFork.impersonateAddress = fundManager
+    centrifugeWithPin.setSigner(context.tenderlyFork.signer)
+
+    const details = await mpm.pool.details()
+    const detailsStub = sinon.stub(mpm.pool, 'details')
+    detailsStub.resolves({
+      ...details,
+      metadata: {
+        ...details.metadata,
+        merkleProofManager: {
+          ...details.metadata?.merkleProofManager,
+          [chainId]: {
+            ...details.metadata?.merkleProofManager?.[chainId],
+            [strategist.toLowerCase()]: {
+              policies: [mockPolicies[0]!, mockPolicies[1]!],
+              workflows: [],
+            },
+          },
+        },
+      },
+    } as any)
+
+    const verificationActions = [
+      {
+        policy: {
+          decoder: mockPolicies[0]!.decoder,
+          target: mockPolicies[0]!.target,
+          targetName: mockPolicies[0]!.targetName,
+          name: mockPolicies[0]!.name,
+          selector: mockPolicies[0]!.selector,
+          valueNonZero: mockPolicies[0]!.valueNonZero,
+          inputs: mockPolicies[0]!.inputs,
+        },
+        defaultValues: [mockPolicies[0]!.inputs[0]!.input[0]!, null],
+      },
+      {
+        policy: {
+          decoder: mockPolicies[1]!.decoder,
+          target: mockPolicies[1]!.target,
+          targetName: mockPolicies[1]!.targetName,
+          name: mockPolicies[1]!.name,
+          selector: mockPolicies[1]!.selector,
+          valueNonZero: mockPolicies[1]!.valueNonZero,
+          inputs: mockPolicies[1]!.inputs,
+        },
+        defaultValues: [null, randomUser],
+      },
+    ]
+
+    await mpm.addWorkflow(strategist, {
+      id: 'marketplace-workflow',
+      name: 'Marketplace workflow',
+      template: 'erc7540_requestDeposit',
+      category: 'Allocation',
+      iconUrl: 'ipfs://icon',
+      verificationActions,
+    })
+
+    const stored = pinnedMetadata.merkleProofManager[chainId][strategist.toLowerCase()]
+    expect(stored.policies).to.deep.equal([mockPolicies[0]!, mockPolicies[1]!])
+    expect(stored.workflows).to.have.length(1)
+    expect(stored.workflows[0]!.actions).to.deep.equal([
+      { policyIndex: 0, defaultValues: [mockPolicies[0]!.inputs[0]!.input[0]!, null] },
+      { policyIndex: 1, defaultValues: [null, randomUser] },
+    ])
+    expect(stored.workflows[0]!.isVerified).to.equal(true)
+
+    detailsStub.restore()
+  })
+
+  it('addPolicy rejects duplicate marketplace workflows before persisting metadata', async () => {
+    let pinCallCount = 0
+    const centrifugeWithPin = new Centrifuge({
+      environment: 'testnet',
+      pinJson: async () => {
+        pinCallCount += 1
+        return 'abc'
+      },
+      rpcUrls: {
+        11155111: context.tenderlyFork.rpcUrl,
+      },
+    })
+    const mpm = new MerkleProofManager(centrifugeWithPin, merkleProofManager.network, mpmAddress)
+
+    context.tenderlyFork.impersonateAddress = fundManager
+    centrifugeWithPin.setSigner(context.tenderlyFork.signer)
+
+    const details = await mpm.pool.details()
+    const existingWorkflow: MerkleProofWorkflow = {
+      id: 'existing-workflow',
+      name: 'Existing workflow',
+      template: 'erc7540_requestDeposit',
+      createdAt: new Date().toISOString(),
+      actions: [
+        {
+          policyIndex: 0,
+          defaultValues: [mockPolicies[0]!.inputs[0]!.input[0]!, null],
+        },
+      ],
+      isVerified: true,
+    }
+
+    const detailsStub = sinon.stub(mpm.pool, 'details')
+    detailsStub.resolves({
+      ...details,
+      metadata: {
+        ...details.metadata,
+        merkleProofManager: {
+          ...details.metadata?.merkleProofManager,
+          [chainId]: {
+            ...details.metadata?.merkleProofManager?.[chainId],
+            [strategist.toLowerCase()]: {
+              policies: [mockPolicies[0]!],
+              workflows: [existingWorkflow],
+            },
+          },
+        },
+      },
+    } as any)
+
+    const duplicatePolicy: MerkleProofPolicyInput = {
+      decoder: mockPolicies[0]!.decoder,
+      target: mockPolicies[0]!.target,
+      targetName: mockPolicies[0]!.targetName,
+      name: mockPolicies[0]!.name,
+      selector: mockPolicies[0]!.selector,
+      valueNonZero: mockPolicies[0]!.valueNonZero,
+      inputs: mockPolicies[0]!.inputs,
+    }
+
+    try {
+      await mpm.addPolicy(strategist, [duplicatePolicy], {
+        id: 'duplicate-workflow',
+        name: 'Duplicate workflow',
+        template: 'erc7540_requestDeposit',
+        verificationActions: [
+          {
+            policy: duplicatePolicy,
+            defaultValues: [mockPolicies[0]!.inputs[0]!.input[0]!, null],
+          },
+        ],
+      })
+      expect.fail('Expected duplicate marketplace workflow to be rejected')
+    } catch (error) {
+      expect((error as Error).message).to.equal(
+        `Workflow "erc7540_requestDeposit" already exists for strategist "${strategist.toLowerCase()}"`
+      )
+    }
+
+    expect(pinCallCount).to.equal(0)
+
+    detailsStub.restore()
+  })
+
   describe('isVerifiedWorkflow', () => {
     it('returns true for exact policy and default-values match', () => {
       const policyInput: MerkleProofPolicyInput = {
@@ -823,6 +997,58 @@ describe('MerkleProofManager', () => {
           [{ policy: policyInput, defaultValues: [mockPolicies[0]!.inputs[0]!.input[0]!, null] }]
         )
       ).to.equal(false)
+    })
+  })
+
+  describe('findWorkflowPolicyIndices', () => {
+    it('returns matching policy indices for canonical actions', () => {
+      expect(
+        findWorkflowPolicyIndices([mockPolicies[0]!, mockPolicies[1]!], [
+          {
+            policy: {
+              decoder: mockPolicies[1]!.decoder,
+              target: mockPolicies[1]!.target,
+              targetName: mockPolicies[1]!.targetName,
+              name: mockPolicies[1]!.name,
+              selector: mockPolicies[1]!.selector,
+              valueNonZero: mockPolicies[1]!.valueNonZero,
+              inputs: mockPolicies[1]!.inputs,
+            },
+            defaultValues: [null, randomUser],
+          },
+          {
+            policy: {
+              decoder: mockPolicies[0]!.decoder,
+              target: mockPolicies[0]!.target,
+              targetName: mockPolicies[0]!.targetName,
+              name: mockPolicies[0]!.name,
+              selector: mockPolicies[0]!.selector,
+              valueNonZero: mockPolicies[0]!.valueNonZero,
+              inputs: mockPolicies[0]!.inputs,
+            },
+            defaultValues: [mockPolicies[0]!.inputs[0]!.input[0]!, null],
+          },
+        ])
+      ).to.deep.equal([1, 0])
+    })
+
+    it('returns null when one of the canonical actions is missing', () => {
+      expect(
+        findWorkflowPolicyIndices([mockPolicies[0]!], [
+          {
+            policy: {
+              decoder: mockPolicies[1]!.decoder,
+              target: mockPolicies[1]!.target,
+              targetName: mockPolicies[1]!.targetName,
+              name: mockPolicies[1]!.name,
+              selector: mockPolicies[1]!.selector,
+              valueNonZero: mockPolicies[1]!.valueNonZero,
+              inputs: mockPolicies[1]!.inputs,
+            },
+            defaultValues: [null, randomUser],
+          },
+        ])
+      ).to.equal(null)
     })
   })
 
