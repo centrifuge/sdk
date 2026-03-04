@@ -242,7 +242,11 @@ export class PoolNetwork extends Entity {
             throw new Error('OnOffRampManager not found')
           }
 
-          const bsManagerAddresses = new Set(balanceSheetManagers.map((m) => m.address.toLowerCase()))
+          const bsManagerAddresses = new Set(
+            balanceSheetManagers
+              .filter((m) => m.centrifugeId === this.centrifugeId)
+              .map((m) => m.address.toLowerCase())
+          )
           const verifiedManagers = deployedOnOffRampManagers.filter((deployed) =>
             bsManagerAddresses.has(deployed.address.toLowerCase())
           )
@@ -298,7 +302,9 @@ export class PoolNetwork extends Entity {
         switchMap(([deployedOnOffRampManager, balanceSheetManagers]) => {
           const bsManagers = new Map<string, { address: `0x${string}`; centrifugeId: number; type: string }>()
           balanceSheetManagers.forEach((manager) => {
-            bsManagers.set(manager.address.toLowerCase(), manager)
+            if (manager.centrifugeId === self.centrifugeId) {
+              bsManagers.set(manager.address.toLowerCase(), manager)
+            }
           })
 
           const onOffRampManagers = deployedOnOffRampManager
