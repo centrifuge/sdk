@@ -1,5 +1,5 @@
 import type { MonoTypeOperatorFunction, Observable, Subscriber, Subscription } from 'rxjs'
-import { filter, firstValueFrom, lastValueFrom, repeat, ReplaySubject, share, Subject, timer } from 'rxjs'
+import { filter, firstValueFrom, identity, lastValueFrom, repeat, ReplaySubject, share, Subject, timer } from 'rxjs'
 import type { Abi, Log } from 'viem'
 import type { Centrifuge } from '../Centrifuge.js'
 import { HexString } from '../types/index.js'
@@ -10,13 +10,14 @@ export function shareReplayWithDelayedReset<T>(config?: {
   bufferSize?: number
   windowTime?: number
   resetDelay?: number
+  resetOnComplete?: boolean
 }): MonoTypeOperatorFunction<T> {
-  const { bufferSize = Infinity, windowTime = Infinity, resetDelay = 1000 } = config ?? {}
+  const { bufferSize = Infinity, windowTime = Infinity, resetDelay = 1000, resetOnComplete = false } = config ?? {}
   const reset = resetDelay === 0 ? true : isFinite(resetDelay) ? () => timer(resetDelay) : false
   return share<T>({
     connector: () => (bufferSize === 0 ? new Subject() : new ExpiringReplaySubject(bufferSize, windowTime)),
     resetOnError: true,
-    resetOnComplete: false,
+    resetOnComplete,
     resetOnRefCountZero: reset,
   })
 }
@@ -30,6 +31,9 @@ export function repeatOnEvents<T>(
   },
   centrifugeId: CentrifugeId
 ): MonoTypeOperatorFunction<T> {
+  if (centrifuge.config.disableRepeatOnEvents) {
+    return identity
+  }
   return repeat({
     delay: () =>
       centrifuge._filteredEvents(opts.address, opts.eventName, centrifugeId).pipe(
