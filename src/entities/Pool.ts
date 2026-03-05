@@ -67,7 +67,9 @@ export class Pool extends Entity {
             })
           }).pipe(
             switchMap((hash) => {
-              return this._root._queryIPFS<PoolMetadata>(fromHex(hash, 'string'))
+              const ipfsUri = fromHex(hash, 'string').replace(/\0/g, '').trim()
+              if (!ipfsUri) return of(null)
+              return this._root._queryIPFS<PoolMetadata>(ipfsUri)
             }),
             catchError((error) => {
               console.error('Error fetching metadata', error)
