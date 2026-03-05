@@ -921,6 +921,15 @@ export class Centrifuge {
   }
 
   /**
+   * Clears the internal observable query cache.
+   * Call this after transactions to ensure subsequent queries fetch fresh data
+   * instead of returning stale cached values from shared observables.
+   */
+  clearQueryCache() {
+    this.#memoized.clear()
+  }
+
+  /**
    * Wraps an observable, memoizing the result based on the keys provided.
    * If keys are provided, the observable will be memoized, multicasted, and the last emitted value cached.
    * Additional options can be provided to control the caching behavior.
@@ -1002,12 +1011,16 @@ export class Centrifuge {
   _query<T>(keys: any[] | null, observableCallback: () => Observable<T>, options?: CentrifugeQueryOptions): Query<T> {
     const cache = options?.cache !== false && this.#config.cache !== false
     const obsCacheTime = options?.observableCacheTime ?? this.#config.pollingInterval ?? 4000
+    // When repeatOnEvents is disabled, sources complete after emitting.
+    // Reset on complete so the memoized observable fetches fresh data next time.
+    const resetOnComplete = !!this.#config.disableRepeatOnEvents
 
     function get() {
       const $shared = observableCallback().pipe(
         shareReplayWithDelayedReset({
           bufferSize: cache ? 1 : 0,
           resetDelay: cache ? obsCacheTime : 0,
+          resetOnComplete,
         })
       )
       return makeThenable($shared)

@@ -19,6 +19,13 @@ export type Config = {
    * Useful for Safe multisig wallets or integrations that don't support off-chain signing.
    */
   permitDisabled?: boolean
+  /**
+   * Whether to disable event-driven re-fetching of observable queries.
+   * When true, observables will emit once and not re-subscribe on blockchain events.
+   * Useful for apps that handle data freshness via external caching (e.g. React Query)
+   * instead of relying on SDK-level event watching.
+   */
+  disableRepeatOnEvents?: boolean
 }
 
 export type UserProvidedConfig = Partial<Config>
