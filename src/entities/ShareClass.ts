@@ -21,7 +21,7 @@ import { AddressMap } from '../utils/AddressMap.js'
 import { Balance, Price } from '../utils/BigInt.js'
 import { addressToBytes32, encode, randomUint } from '../utils/index.js'
 import { repeatOnEvents } from '../utils/rx.js'
-import { wrapTransaction } from '../utils/transaction.js'
+import { type PreparedTransaction, wrapTransaction } from '../utils/transaction.js'
 import { AssetId, CentrifugeId, ShareClassId } from '../utils/types.js'
 import { BalanceSheet } from './BalanceSheet.js'
 import { Entity } from './Entity.js'
@@ -641,60 +641,63 @@ export class ShareClass extends Entity {
     }, this.pool.centrifugeId)
   }
 
+  async prepareUpdateSharePrice(
+    pricePerShare: Price,
+    updatedAt = new Date(),
+    executionAddress: HexString
+  ): Promise<PreparedTransaction> {
+    const [{ hub }, activeNetworks] = await Promise.all([
+      this._root._protocolAddresses(this.pool.centrifugeId),
+      this.pool.activeNetworks(),
+    ])
+
+    const data: HexString[] = [
+      encodeFunctionData({
+        abi: ABI.Hub,
+        functionName: 'updateSharePrice',
+        args: [this.pool.id.raw, this.id.raw, pricePerShare.toBigInt(), BigInt(Math.floor(updatedAt.getTime() / 1000))],
+      }),
+    ]
+    const messages: Record<number, MessageTypeWithSubType[]> = {}
+
+    function addMessage(centId: number, message: MessageTypeWithSubType) {
+      if (!messages[centId]) messages[centId] = []
+      messages[centId].push(message)
+    }
+
+    await Promise.all(
+      activeNetworks.map(async (activeNetwork) => {
+        const networkDetails = await activeNetwork.details()
+        const id = activeNetwork.centrifugeId
+
+        const isShareClassInNetwork = networkDetails.activeShareClasses.find((shareClass) => shareClass.id.equals(this.id))
+
+        if (isShareClassInNetwork) {
+          data.push(
+            encodeFunctionData({
+              abi: ABI.Hub,
+              functionName: 'notifySharePrice',
+              args: [this.pool.id.raw, this.id.raw, id, executionAddress],
+            })
+          )
+          addMessage(id, { type: MessageType.NotifyPricePoolPerShare, poolId: this.pool.id })
+        }
+      })
+    )
+
+    return {
+      title: 'Update share price',
+      contract: hub,
+      data,
+      messages,
+    }
+  }
+
   updateSharePrice(pricePerShare: Price, updatedAt = new Date()) {
     const self = this
     return this._transact(async function* (ctx) {
-      const [{ hub }, activeNetworks] = await Promise.all([
-        self._root._protocolAddresses(self.pool.centrifugeId),
-        self.pool.activeNetworks(),
-      ])
-      const batch: HexString[] = []
-      const messages: Record<number, MessageTypeWithSubType[]> = {}
-      function addMessage(centId: number, message: MessageTypeWithSubType) {
-        if (!messages[centId]) messages[centId] = []
-        messages[centId].push(message)
-      }
-
-      batch.push(
-        encodeFunctionData({
-          abi: ABI.Hub,
-          functionName: 'updateSharePrice',
-          args: [
-            self.pool.id.raw,
-            self.id.raw,
-            pricePerShare.toBigInt(),
-            BigInt(Math.floor(updatedAt.getTime() / 1000)),
-          ],
-        })
-      )
-
-      await Promise.all(
-        activeNetworks.map(async (activeNetwork) => {
-          const networkDetails = await activeNetwork.details()
-          const id = activeNetwork.centrifugeId
-
-          const isShareClassInNetwork = networkDetails.activeShareClasses.find((shareClass) =>
-            shareClass.id.equals(self.id)
-          )
-
-          if (isShareClassInNetwork) {
-            batch.push(
-              encodeFunctionData({
-                abi: ABI.Hub,
-                functionName: 'notifySharePrice',
-                args: [self.pool.id.raw, self.id.raw, id, ctx.signingAddress],
-              })
-            )
-            addMessage(id, { type: MessageType.NotifyPricePoolPerShare, poolId: self.pool.id })
-          }
-        })
-      )
-
-      yield* wrapTransaction('Update share price', ctx, {
-        contract: hub,
-        data: batch,
-        messages,
-      })
+      const prepared = await self.prepareUpdateSharePrice(pricePerShare, updatedAt, ctx.executionAddress)
+      yield* wrapTransaction(prepared.title, ctx, prepared)
     }, this.pool.centrifugeId)
   }
 
