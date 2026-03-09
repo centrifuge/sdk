@@ -1111,6 +1111,7 @@ export class Centrifuge {
       const transaction = transactionCallback({
         isBatching,
         signingAddress: address as HexString,
+        executionAddress: address as HexString,
         chain,
         centrifugeId,
         publicClient,
