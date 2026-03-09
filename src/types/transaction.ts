@@ -64,6 +64,7 @@ export type OperationStatusType =
   | 'SignedMessage'
   | 'TransactionPending'
   | 'TransactionConfirmed'
+  | 'SafeTransactionProposed'
 
 export type OperationSigningStatus = {
   id: string
@@ -94,6 +95,15 @@ export type OperationConfirmedStatus = {
   hash: HexString
   receipt: TransactionReceipt
 }
+export type OperationSafeTransactionProposedStatus = {
+  id: string
+  type: 'SafeTransactionProposed'
+  title: string
+  safeAddress: HexString
+  safeTxHash: HexString
+  nonce: number
+  proposer: HexString
+}
 export type OperationSwitchChainStatus = {
   type: 'SwitchingChain'
   chainId: number
@@ -123,6 +133,7 @@ export type OperationStatus =
   | OperationSignedMessageStatus
   | OperationPendingStatus
   | OperationConfirmedStatus
+  | OperationSafeTransactionProposedStatus
   | OperationSwitchChainStatus
   | SimulationStatus
   | DeployedOnOfframpManagerStatus
@@ -134,9 +145,20 @@ export type Signer = EIP1193ProviderLike | LocalAccount
 
 export type Transaction = Query<OperationStatus> & { centrifugeId: number }
 
+export type RawTransactionPayload = {
+  title: string
+  to: HexString
+  data: HexString
+  value: bigint
+  chain: Chain
+  centrifugeId: number
+  executionAddress: HexString
+}
+
 export type TransactionContext = {
   isBatching?: boolean
   signingAddress: HexString
+  executionAddress: HexString
   chain: Chain
   centrifugeId: number
   publicClient: PublicClient
