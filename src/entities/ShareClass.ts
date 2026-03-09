@@ -2420,6 +2420,46 @@ export class ShareClass extends Entity {
     }, this.pool.centrifugeId)
   }
 
+  /**
+   * Transfer shares cross-chain. Burns shares on the source chain and mints them on the destination chain.
+   * @param sourceCentrifugeId - The chain where the shares currently exist
+   * @param destinationCentrifugeId - The chain to transfer shares to
+   * @param receiver - The address to receive shares on the destination chain
+   * @param amount - Amount of shares to transfer (as bigint, raw on-chain value)
+   */
+  crosschainTransferShares(
+    sourceCentrifugeId: CentrifugeId,
+    destinationCentrifugeId: CentrifugeId,
+    receiver: HexString,
+    amount: bigint
+  ) {
+    const self = this
+    return this._transact(async function* (ctx) {
+      const { spoke } = await self._root._protocolAddresses(sourceCentrifugeId)
+
+      yield* wrapTransaction('Cross chain transfer shares', ctx, {
+        contract: spoke,
+        data: encodeFunctionData({
+          abi: ABI.Spoke,
+          functionName: 'crosschainTransferShares',
+          args: [
+            destinationCentrifugeId,
+            self.pool.id.raw,
+            self.id.raw,
+            addressToBytes32(receiver),
+            amount,
+            0n,
+            0n,
+            ctx.signingAddress,
+          ],
+        }),
+        messages: {
+          [destinationCentrifugeId]: [{ type: MessageType.InitiateTransferShares, poolId: self.pool.id }],
+        },
+      })
+    }, sourceCentrifugeId)
+  }
+
   /** @internal */
   _balances() {
     return this._root._queryIndexer(
