@@ -159,44 +159,72 @@ export class PoolNetwork extends Entity {
 
   merkleProofManager() {
     return this._query(['merkleProofManager'], () =>
-      this._root._queryIndexer(
-        `query ($poolId: BigInt!, $centrifugeId: String!) {
-          merkleProofManagers(where: {poolId: $poolId, centrifugeId: $centrifugeId}) {
-            items {
-              address
-            }
-          }
-        }`,
-        { poolId: this.pool.id.toString(), centrifugeId: this.centrifugeId.toString() },
-        (data: {
-          merkleProofManagers: {
-            items: {
-              address: HexString
-            }[]
-          }
-        }) => {
-          const manager = data.merkleProofManagers.items[0]
-
-          if (!manager) {
+      this._deployedMerkleProofManagerAddress().pipe(
+        map((address) => {
+          if (!address) {
             throw new Error('MerkleProofManager not found')
           }
 
-          return new MerkleProofManager(this._root, this, manager.address)
-        }
+          return new MerkleProofManager(this._root, this, address)
+        })
       )
     )
   }
 
   /**
-   * Deploy a Merkle Proof Manager.
+   * Compute the deterministic address for a Merkle Proof Manager before deployment.
+   * @returns The predicted contract address
+   */
+  async computeMerkleProofManagerAddress(): Promise<HexString> {
+    const { merkleProofManagerFactory } = await this._root._protocolAddresses(this.centrifugeId)
+    const client = await this._root.getClient(this.centrifugeId)
+
+    try {
+      const { result } = await client.simulateContract({
+        address: merkleProofManagerFactory,
+        abi: ABI.MerkleProofManagerFactory,
+        functionName: 'newManager',
+        args: [this.pool.id.raw],
+      })
+
+      return result as HexString
+    } catch (error) {
+      throw new Error(
+        `Failed to compute MerkleProofManager address: ${error instanceof Error ? error.message : 'Unknown error'}`
+      )
+    }
+  }
+
+  /**
+   * Register a Merkle Proof Manager as a Balance Sheet Manager.
+   * @param managerAddress - The manager's contract address
+   */
+  registerMerkleProofManagerAsBSManager(managerAddress: HexString) {
+    return this.pool.updateBalanceSheetManagers([
+      {
+        centrifugeId: this.centrifugeId,
+        address: managerAddress,
+        canManage: true,
+      },
+    ])
+  }
+
+  /**
+   * Deploy a Merkle Proof Manager, or reuse an already deployed one, and register it as a Balance Sheet Manager.
    */
   deployMerkleProofManager() {
     const self = this
+    let managerAddress: HexString | null = null
 
-    return this._transact(async function* (ctx) {
+    const deployTransaction = this._transact(async function* (ctx) {
+      managerAddress = await self._findDeployedMerkleProofManagerAddress()
+      if (managerAddress) return
+
+      const isSafeWallet = (await ctx.publicClient.getCode({ address: ctx.signingAddress })) === SAFE_PROXY_BYTECODE
       const { merkleProofManagerFactory } = await self._root._protocolAddresses(self.centrifugeId)
+      const precomputedAddress = isSafeWallet ? await self.computeMerkleProofManagerAddress() : null
 
-      yield* doTransaction('AddMerkleProofManager', ctx, () =>
+      const result = yield* doTransaction('AddMerkleProofManager', ctx, () =>
         ctx.walletClient.writeContract({
           address: merkleProofManagerFactory,
           abi: ABI.MerkleProofManagerFactory,
@@ -204,7 +232,37 @@ export class PoolNetwork extends Entity {
           args: [self.pool.id.raw],
         })
       )
+
+      if (precomputedAddress) {
+        managerAddress = precomputedAddress
+        return
+      }
+
+      const events = parseEventLogs({
+        logs: result.receipt.logs,
+        eventName: 'DeployMerkleProofManager',
+        address: merkleProofManagerFactory,
+      })
+
+      const deployEvent = events[0]
+      const args = deployEvent?.args as { manager?: HexString } | undefined
+      if (!args?.manager) {
+        throw new Error('DeployMerkleProofManager event not found')
+      }
+
+      managerAddress = args.manager
     }, self.centrifugeId)
+
+    const registerTransaction = defer(() => {
+      if (!managerAddress) {
+        throw new Error('MerkleProofManager not found')
+      }
+
+      return self.registerMerkleProofManagerAsBSManager(managerAddress)
+    })
+
+    const transaction = makeThenable(concat(deployTransaction, registerTransaction), true)
+    return Object.assign(transaction, { centrifugeId: self.centrifugeId })
   }
 
   /**
@@ -215,26 +273,7 @@ export class PoolNetwork extends Entity {
   onOfframpManager(scId: ShareClassId) {
     return this._query(null, () =>
       combineLatest([
-        this._root._queryIndexer(
-          `query ($scId: String!, $centrifugeId: String!) {
-            onOffRampManagers(where: {tokenId: $scId, centrifugeId: $centrifugeId}) {
-              items {
-                address
-              }
-            }
-          }`,
-          {
-            scId: scId.toString(),
-            centrifugeId: this.centrifugeId.toString(),
-          },
-          (data: {
-            onOffRampManagers: {
-              items: {
-                address: HexString
-              }[]
-            }
-          }) => data.onOffRampManagers.items
-        ),
+        this._deployedOnOffRampManagers(scId),
         this.pool.balanceSheetManagers(),
       ]).pipe(
         map(([deployedOnOffRampManagers, balanceSheetManagers]) => {
@@ -277,26 +316,7 @@ export class PoolNetwork extends Entity {
     const self = this
     return this._transact(() => {
       return combineLatest([
-        this._root._queryIndexer(
-          `query ($scId: String!, $centrifugeId: String!) {
-            onOffRampManagers(where: {tokenId: $scId, centrifugeId: $centrifugeId}) {
-              items {
-                address
-              }
-            }
-          }`,
-          {
-            scId: scId.toString(),
-            centrifugeId: this.centrifugeId.toString(),
-          },
-          (data: {
-            onOffRampManagers: {
-              items: {
-                address: HexString
-              }[]
-            }
-          }) => data.onOffRampManagers.items
-        ),
+        this._deployedOnOffRampManagers(scId),
         this.pool.balanceSheetManagers(),
       ]).pipe(
         switchMap(([deployedOnOffRampManager, balanceSheetManagers]) => {
@@ -417,6 +437,9 @@ export class PoolNetwork extends Entity {
     let managerAddress: HexString | null = null
 
     const deployTransaction = this._transact(async function* (ctx) {
+      managerAddress = await self._findDeployedOnOffRampManagerAddress(scId)
+      if (managerAddress) return
+
       const code = await ctx.publicClient.getCode({ address: ctx.signingAddress })
       const isSafeWallet = code === SAFE_PROXY_BYTECODE
       const { onOfframpManagerFactory } = await self._root._protocolAddresses(self.centrifugeId)
@@ -466,6 +489,62 @@ export class PoolNetwork extends Entity {
 
     const transaction = makeThenable(concat(deployTransaction, registerTransaction), true)
     return Object.assign(transaction, { centrifugeId: self.centrifugeId })
+  }
+
+  private _deployedMerkleProofManagerAddress() {
+    return this._root._queryIndexer(
+      `query ($poolId: BigInt!, $centrifugeId: String!) {
+        merkleProofManagers(where: {poolId: $poolId, centrifugeId: $centrifugeId}) {
+          items {
+            address
+          }
+        }
+      }`,
+      { poolId: this.pool.id.toString(), centrifugeId: this.centrifugeId.toString() },
+      (data: {
+        merkleProofManagers: {
+          items: {
+            address: HexString
+          }[]
+        }
+      }) => (data.merkleProofManagers.items[0]?.address?.toLowerCase() as HexString | undefined) ?? null
+    )
+  }
+
+  private _findDeployedMerkleProofManagerAddress() {
+    return firstValueFrom(this._deployedMerkleProofManagerAddress())
+  }
+
+  private _deployedOnOffRampManagers(scId: ShareClassId) {
+    return this._root._queryIndexer(
+      `query ($scId: String!, $centrifugeId: String!) {
+        onOffRampManagers(where: {tokenId: $scId, centrifugeId: $centrifugeId}) {
+          items {
+            address
+          }
+        }
+      }`,
+      {
+        scId: scId.toString(),
+        centrifugeId: this.centrifugeId.toString(),
+      },
+      (data: {
+        onOffRampManagers: {
+          items: {
+            address: HexString
+          }[]
+        }
+      }) =>
+        data.onOffRampManagers.items.map((manager) => ({
+          ...manager,
+          address: manager.address.toLowerCase() as HexString,
+        }))
+    )
+  }
+
+  private async _findDeployedOnOffRampManagerAddress(scId: ShareClassId) {
+    const managers = await firstValueFrom(this._deployedOnOffRampManagers(scId))
+    return managers[managers.length - 1]?.address ?? null
   }
 
   /**
