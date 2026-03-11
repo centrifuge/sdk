@@ -32,6 +32,13 @@ import { Vault } from './Vault.js'
 const GAS_LIMIT = 30_000_000n
 
 /**
+ * Convert a centrifugeId to an EVM address, matching Solidity's `address(uint160(centrifugeId))`.
+ */
+function centrifugeIdToAddress(centrifugeId: CentrifugeId): HexString {
+  return `0x${centrifugeId.toString(16).padStart(40, '0')}` as HexString
+}
+
+/**
  * Query and interact with a share class, which allows querying total issuance, NAV per share,
  * and allows interactions related to asynchronous deposits and redemptions.
  */
@@ -2418,6 +2425,75 @@ export class ShareClass extends Entity {
         messages: { [centrifugeId]: messages },
       })
     }, this.pool.centrifugeId)
+  }
+
+  /**
+   * Check which destination networks are valid for a cross-chain share transfer from a given source chain.
+   *
+   * For each deployed destination network, validates:
+   * 1. The share token and hook (restriction manager) are deployed on both source and destination
+   * 2. On the source chain: `checkTransferRestriction(sender, address(uint160(destinationCentrifugeId)), 0)`
+   *    — verifies the destination chain's representative address is a valid receiver
+   * 3. On the destination chain: `checkTransferRestriction(address(uint160(sourceCentrifugeId)), receiver, 0)`
+   *    — verifies the receiver can receive tokens on the destination chain
+   *
+   * @param sourceCentrifugeId - The chain the shares would be transferred from
+   * @param receiver - The address that would receive shares on the destination chain
+   * @returns Observable of a map: destination centrifugeId → whether the transfer is allowed
+   */
+  allowedCrosschainTransferDestinations(sourceCentrifugeId: CentrifugeId, receiver: HexString) {
+    const addr = receiver.toLowerCase() as HexString
+    return this._query(['allowedCrosschainTransferDestinations', sourceCentrifugeId, addr], () =>
+      combineLatest([this.deploymentPerNetwork(), this._root.getClient(sourceCentrifugeId)]).pipe(
+        switchMap(([deployments, sourceClient]) => {
+          const sourceDeployment = deployments.find((d) => d.centrifugeId === sourceCentrifugeId)
+          if (!sourceDeployment) return of(new Map<number, boolean>())
+
+          const destinations = deployments.filter((d) => d.centrifugeId !== sourceCentrifugeId)
+          if (destinations.length === 0) return of(new Map<number, boolean>())
+
+          return combineLatest(
+            destinations.map((dest) =>
+              this._root.getClient(dest.centrifugeId).pipe(
+                switchMap((destClient) =>
+                  defer(async () => {
+                    try {
+                      const destRepAddress = centrifugeIdToAddress(dest.centrifugeId)
+                      const sourceAllows = await sourceClient.readContract({
+                        address: sourceDeployment.shareTokenAddress,
+                        abi: ABI.Currency,
+                        functionName: 'checkTransferRestriction',
+                        args: [addr, destRepAddress, 0n],
+                      })
+
+                      const sourceRepAddress = centrifugeIdToAddress(sourceCentrifugeId)
+                      const destAllows = await destClient.readContract({
+                        address: dest.shareTokenAddress,
+                        abi: ABI.Currency,
+                        functionName: 'checkTransferRestriction',
+                        args: [sourceRepAddress, addr, 0n],
+                      })
+
+                      return { centrifugeId: dest.centrifugeId, allowed: !!(sourceAllows && destAllows) }
+                    } catch {
+                      return { centrifugeId: dest.centrifugeId, allowed: false }
+                    }
+                  })
+                )
+              )
+            )
+          ).pipe(
+            map((results) => {
+              const allowed = new Map<number, boolean>()
+              for (const r of results) {
+                allowed.set(r.centrifugeId, r.allowed)
+              }
+              return allowed
+            })
+          )
+        })
+      )
+    )
   }
 
   /**
