@@ -17,6 +17,7 @@ import type { Centrifuge } from '../Centrifuge.js'
 import { AccountType } from '../types/holdings.js'
 import { HexString } from '../types/index.js'
 import { MessageType, MessageTypeWithSubType } from '../types/transaction.js'
+import { convertToEvmAddress } from '../utils/addresses.js'
 import { AddressMap } from '../utils/AddressMap.js'
 import { Balance, Price } from '../utils/BigInt.js'
 import { addressToBytes32, encode, randomUint } from '../utils/index.js'
@@ -30,13 +31,6 @@ import { PoolNetwork, VaultManagerTrustedCall } from './PoolNetwork.js'
 import { Vault } from './Vault.js'
 
 const GAS_LIMIT = 30_000_000n
-
-/**
- * Convert a centrifugeId to an EVM address, matching Solidity's `address(uint160(centrifugeId))`.
- */
-function centrifugeIdToAddress(centrifugeId: CentrifugeId): HexString {
-  return `0x${centrifugeId.toString(16).padStart(40, '0')}` as HexString
-}
 
 /**
  * Query and interact with a share class, which allows querying total issuance, NAV per share,
@@ -2458,7 +2452,7 @@ export class ShareClass extends Entity {
                 switchMap((destClient) =>
                   defer(async () => {
                     try {
-                      const destRepAddress = centrifugeIdToAddress(dest.centrifugeId)
+                      const destRepAddress = convertToEvmAddress(dest.centrifugeId)
                       const sourceAllows = await sourceClient.readContract({
                         address: sourceDeployment.shareTokenAddress,
                         abi: ABI.Currency,
@@ -2466,7 +2460,7 @@ export class ShareClass extends Entity {
                         args: [addr, destRepAddress, 0n],
                       })
 
-                      const sourceRepAddress = centrifugeIdToAddress(sourceCentrifugeId)
+                      const sourceRepAddress = convertToEvmAddress(sourceCentrifugeId)
                       const destAllows = await destClient.readContract({
                         address: dest.shareTokenAddress,
                         abi: ABI.Currency,
