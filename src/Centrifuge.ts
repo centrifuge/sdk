@@ -57,7 +57,7 @@ import {
   type TransactionContext,
 } from './types/transaction.js'
 import { Balance } from './utils/BigInt.js'
-import { estimateBatchBridgeFee } from './utils/gas.js'
+import { addEstimateBuffer, estimateBatchBridgeFee } from './utils/gas.js'
 import { generateShareClassSalt, randomUint } from './utils/index.js'
 import { createPinning, getUrlFromHash } from './utils/ipfs.js'
 import { hashKey } from './utils/query.js'
@@ -675,7 +675,7 @@ export class Centrifuge {
         self.getClient(fromCentrifugeId),
       ])
       const batchHash = keccak256(batch)
-      const [counter, gasLimit] = await client.readContract({
+      const [gasLimit, counter] = await client.readContract({
         address: addresses.gateway,
         abi: ABI.Gateway,
         functionName: 'underpaid',
@@ -690,6 +690,7 @@ export class Centrifuge {
         functionName: 'estimate',
         args: [toCentrifugeId, batch, gasLimit],
       })
+      const bufferedEstimate = addEstimateBuffer(estimate)
 
       yield* doTransaction('Repay', ctx, () =>
         ctx.walletClient.writeContract({
@@ -697,7 +698,7 @@ export class Centrifuge {
           abi: ABI.Gateway,
           functionName: 'repay',
           args: [toCentrifugeId, batch, ctx.signingAddress],
-          value: estimate + extraPayment,
+          value: bufferedEstimate + extraPayment,
         })
       )
     }, fromCentrifugeId)

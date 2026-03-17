@@ -7,6 +7,10 @@ function _assertBatchGasWithinLimit(batchGasLimit: bigint, maxBatchGasLimit: big
   }
 }
 
+export function addEstimateBuffer(estimate: bigint) {
+  return (estimate * 3n) / 2n
+}
+
 export async function estimateBatchBridgeFee(params: {
   publicClient: Client
   gasService: HexString
@@ -68,5 +72,5 @@ export async function estimateBatchBridgeFee(params: {
   })
 
   // Add 50% buffer to the estimate, as the actual gas used can be higher than the estimate due dynamic message content
-  return (estimate * 3n) / 2n
+  return addEstimateBuffer(estimate)
 }
