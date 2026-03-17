@@ -142,12 +142,17 @@ describe('Centrifuge', () => {
         } as any)
       )
 
-      const estimate = await centrifuge._estimate(1, 2, [{ type: MessageType.NotifyPool, poolId }, { type: MessageType.NotifyShareClass, poolId }])
+      const estimate = await centrifuge._estimate(1, 2, [
+        { type: MessageType.NotifyPool, poolId },
+        { type: MessageType.NotifyShareClass, poolId },
+      ])
       expect(estimate).to.equal(1165n)
       expect(
         readContract.calledWithMatch({
           functionName: 'estimate',
-          args: [2, '0x0', 240n],
+          args: sinon.match((args: unknown) => {
+            return Array.isArray(args) && args[0] === 2 && typeof args[1] === 'string' && args[2] === 240n
+          }),
         })
       ).to.equal(true)
     })
@@ -172,7 +177,10 @@ describe('Centrifuge', () => {
       )
 
       try {
-        await centrifuge._estimate(1, 2, [{ type: MessageType.NotifyPool, poolId }, { type: MessageType.NotifyShareClass, poolId }])
+        await centrifuge._estimate(1, 2, [
+          { type: MessageType.NotifyPool, poolId },
+          { type: MessageType.NotifyShareClass, poolId },
+        ])
         expect.fail('Expected _estimate to throw when maxBatchGasLimit is exceeded')
       } catch (error) {
         expect((error as Error).message).to.equal('Batch gas 400 exceeds limit 300 for chain 2')
@@ -554,6 +562,53 @@ describe('Centrifuge', () => {
   })
 
   describe('Transactions', () => {
+    it('should repay an underpaid batch using the returned gasLimit and buffered estimate', async () => {
+      const centrifuge = new Centrifuge({ environment: 'testnet' })
+      const gateway = randomAddress()
+      const multiAdapter = randomAddress()
+      const signingAddress = randomAddress()
+      const batch = '0x1234'
+      const readContract = sinon.stub()
+      const writeContract = sinon.stub().resolves('0x1')
+
+      readContract.withArgs(sinon.match({ functionName: 'underpaid' })).resolves([1200n, 2n])
+      readContract.withArgs(sinon.match({ functionName: 'estimate' })).resolves(100n)
+
+      sinon.stub(centrifuge as any, '_protocolAddresses').resolves({
+        gateway,
+        multiAdapter,
+      })
+      sinon.stub(centrifuge as any, 'getClient').resolves({
+        readContract,
+      })
+      sinon.stub(centrifuge as any, '_transact').callsFake((callback: any) =>
+        callback({
+          signingAddress,
+          walletClient: { writeContract },
+          publicClient: {
+            getCode: sinon.stub().resolves(undefined),
+            waitForTransactionReceipt: sinon.stub().resolves({ status: 'success' }),
+          },
+        })
+      )
+
+      expect(
+        readContract.calledWithMatch({
+          address: multiAdapter,
+          functionName: 'estimate',
+          args: [2, batch, 1200n],
+        })
+      ).to.equal(true)
+      expect(
+        writeContract.calledWithMatch({
+          address: gateway,
+          functionName: 'repay',
+          args: [2, batch, signingAddress],
+          value: 155n,
+        })
+      ).to.equal(true)
+    })
+
     it('should register an asset', async () => {
       const centrifuge = new Centrifuge({
         environment: 'testnet',
