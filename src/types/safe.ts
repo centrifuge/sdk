@@ -16,6 +16,7 @@ export type SafeAdminOwner = {
 
 export type SafeAdminInfo = {
   address: HexString
+  nonce: number
   threshold: number
   owners: SafeAdminOwner[]
 }
@@ -55,6 +56,8 @@ export type SafeAdminPendingTransaction = {
   txHash?: HexString | null
   isExecuted: boolean
 }
+
+export type SafeAdminTransaction = SafeAdminPendingTransaction
 
 export type SafeAdminResolutionInput = {
   action: SafeAdminAction
