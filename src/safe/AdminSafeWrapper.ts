@@ -45,6 +45,7 @@ const SAFE_EXECUTION_ABI = parseAbi([
 
 type SafeInfoResponse = {
   address: HexString
+  nonce?: number | string
   threshold: number
   owners: ({ value?: HexString; name?: string | null } | HexString)[]
 }
@@ -69,6 +70,7 @@ type SafeQueueTxInfo = {
   methodName?: string
   humanDescription?: string | null
   to?: SafeAddressRef
+  sender?: SafeAddressRef | null
 }
 
 type SafeQueueConfirmation = {
@@ -78,7 +80,12 @@ type SafeQueueConfirmation = {
 
 type SafeQueueTransactionSummary = {
   id?: string
+  timestamp?: number
+  submissionDate?: string | null
   txStatus?: string
+  safeTxHash?: HexString | null
+  proposer?: SafeAddressRef | null
+  sender?: SafeAddressRef | null
   txHash?: HexString | null
   txInfo?: SafeQueueTxInfo
   executionInfo?: SafeQueueExecutionInfo
@@ -91,6 +98,9 @@ type SafeQueueListItem = {
 }
 
 type SafeQueuePage = {
+  count?: number
+  next?: string | null
+  previous?: string | null
   results?: SafeQueueListItem[]
 }
 
@@ -119,6 +129,7 @@ export class SafeAdminWrapper {
 
     return {
       address: response.address,
+      nonce: Number(response.nonce ?? 0),
       threshold: Number(response.threshold),
       owners: (response.owners ?? [])
         .map((owner) =>
@@ -135,13 +146,38 @@ export class SafeAdminWrapper {
     }
   }
 
+  async getNextNonce(centrifugeId: CentrifugeId, safeAddress: HexString): Promise<bigint> {
+    const [safeInfo, pendingTransactions] = await Promise.all([
+      this.getSafeInfo(centrifugeId, safeAddress),
+      this.getPendingTransactions(centrifugeId, safeAddress),
+    ])
+
+    const highestPendingNonce = pendingTransactions.reduce<number>(
+      (maxNonce, tx) => Math.max(maxNonce, tx.nonce),
+      safeInfo.nonce - 1
+    )
+
+    return BigInt(Math.max(safeInfo.nonce, highestPendingNonce + 1))
+  }
+
   async getPendingTransactions(centrifugeId: CentrifugeId, safeAddress: HexString): Promise<SafeAdminPendingTransaction[]> {
     const chainId = await this.#resolveChainId(centrifugeId)
-    const response = await this.#fetchJson<SafeQueuePage>(
+    const results = await this.#fetchAllTransactionItems(
       `/v1/chains/${chainId}/safes/${safeAddress}/transactions/queued`
     )
 
-    return (response.results ?? [])
+    return results
+      .map((item) => this.#normalizePendingTransaction(item))
+      .filter((item): item is SafeAdminPendingTransaction => item !== null)
+  }
+
+  async getTransactionHistory(centrifugeId: CentrifugeId, safeAddress: HexString): Promise<SafeAdminPendingTransaction[]> {
+    const chainId = await this.#resolveChainId(centrifugeId)
+    const results = await this.#fetchAllTransactionItems(
+      `/v1/chains/${chainId}/safes/${safeAddress}/transactions/history`
+    )
+
+    return results
       .map((item) => this.#normalizePendingTransaction(item))
       .filter((item): item is SafeAdminPendingTransaction => item !== null)
   }
@@ -172,6 +208,7 @@ export class SafeAdminWrapper {
       safeAddress: resolution.safeAddress,
       sender: signerAddress,
       publicClient,
+      nonce: await this.getNextNonce(shareClass.pool.centrifugeId, resolution.safeAddress),
     })
   }
 
@@ -344,14 +381,28 @@ export class SafeAdminWrapper {
       .filter((address): address is HexString => !!address)
 
     return {
-      id: item.transaction.id ?? `${executionInfo.safeTxHash ?? executionInfo.nonce}`,
-      safeTxHash: executionInfo.safeTxHash ?? null,
+      id: item.transaction.id ?? `${this.#extractSafeTxHash(item.transaction.id) ?? executionInfo.nonce}`,
+      safeTxHash:
+        executionInfo.safeTxHash ??
+        item.transaction.safeTxHash ??
+        this.#extractSafeTxHash(item.transaction.id) ??
+        null,
       nonce: executionInfo.nonce,
       methodName: item.transaction.txInfo?.methodName ?? null,
       humanDescription: item.transaction.txInfo?.humanDescription ?? null,
-      submittedAt: executionInfo.submittedAt ?? null,
+      submittedAt:
+        executionInfo.submittedAt ??
+        item.transaction.timestamp ??
+        this.#toUnixTimestamp(item.transaction.submissionDate) ??
+        null,
       txStatus: item.transaction.txStatus,
-      proposer: executionInfo.proposer?.value ?? null,
+      proposer:
+        executionInfo.proposer?.value ??
+        item.transaction.proposer?.value ??
+        item.transaction.sender?.value ??
+        item.transaction.txInfo?.sender?.value ??
+        confirmedBy[0] ??
+        null,
       confirmationsRequired: executionInfo.confirmationsRequired ?? 0,
       confirmationsSubmitted: executionInfo.confirmationsSubmitted ?? 0,
       confirmedBy,
@@ -359,6 +410,41 @@ export class SafeAdminWrapper {
       txHash: item.transaction.txHash ?? null,
       isExecuted: item.transaction.txStatus === 'SUCCESS',
     }
+  }
+
+  #extractSafeTxHash(value?: string | null): HexString | null {
+    if (!value) return null
+    const match = value.match(/(0x[a-fA-F0-9]{64})/)
+    return (match?.[1] as HexString | undefined) ?? null
+  }
+
+  #toUnixTimestamp(value?: string | null): number | null {
+    if (!value) return null
+    const parsed = Date.parse(value)
+    if (Number.isNaN(parsed)) return null
+    return Math.floor(parsed / 1000)
+  }
+
+  async #fetchAllTransactionItems(path: string): Promise<SafeQueueListItem[]> {
+    const results: SafeQueueListItem[] = []
+    let nextPath: string | null = path
+
+    while (nextPath) {
+      const response = await this.#fetchJson<SafeQueuePage>(nextPath)
+      results.push(...(response.results ?? []))
+      nextPath = this.#toRelativePath(response.next)
+    }
+
+    return results
+  }
+
+  #toRelativePath(value?: string | null): string | null {
+    if (!value) return null
+    if (value.startsWith('http://') || value.startsWith('https://')) {
+      const url = new URL(value)
+      return `${url.pathname}${url.search}`
+    }
+    return value
   }
 
   async #fetchJson<T>(path: string, init?: RequestInit): Promise<T> {
