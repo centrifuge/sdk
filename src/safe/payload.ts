@@ -13,6 +13,7 @@ export type BuildSafeProposalPayloadInput = {
   safeAddress: HexString
   sender: HexString
   publicClient: PublicClient
+  nonce?: bigint
   operation?: 0 | 1
   safeTxGas?: bigint
   baseGas?: bigint
@@ -32,6 +33,7 @@ export async function buildSafeProposalPayload({
   safeAddress,
   sender,
   publicClient,
+  nonce: providedNonce,
   operation = 0,
   safeTxGas = 0n,
   baseGas = 0n,
@@ -55,11 +57,13 @@ export async function buildSafeProposalPayload({
     )
   }
 
-  const nonce = await publicClient.readContract({
-    address: safeAddress,
-    abi: SAFE_ABI,
-    functionName: 'nonce',
-  })
+  const nonce =
+    providedNonce ??
+    (await publicClient.readContract({
+      address: safeAddress,
+      abi: SAFE_ABI,
+      functionName: 'nonce',
+    }))
   const safeTxHash = await publicClient.readContract({
     address: safeAddress,
     abi: SAFE_ABI,
