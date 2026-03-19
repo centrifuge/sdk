@@ -1,4 +1,5 @@
 import { Centrifuge } from './Centrifuge.js'
+
 export { ABI } from './abi/index.js'
 export * from './entities/BalanceSheet.js'
 export * from './entities/Investor.js'
