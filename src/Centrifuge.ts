@@ -1168,9 +1168,9 @@ export class Centrifuge {
             (acc, b) => {
               if (b.messages) {
                 Object.entries(b.messages).forEach(([cid, types]) => {
-                  const chainId = Number(cid)
-                  if (!acc[chainId]) acc[chainId] = []
-                  acc[chainId].push(...types)
+                  const centId = Number(cid)
+                  if (!acc[centId]) acc[centId] = []
+                  acc[centId].push(...types)
                 })
               }
               return acc
