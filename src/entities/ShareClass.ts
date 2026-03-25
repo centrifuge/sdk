@@ -2422,6 +2422,58 @@ export class ShareClass extends Entity {
   }
 
   /**
+   * Check whether cross-chain transfers are enabled for this share class by verifying
+   * that chain representative addresses are whitelisted as members on each other's chains.
+   * Only checks chains that use the fullRestrictionsHook, since other hooks don't restrict
+   * cross-chain transfers.
+   *
+   * @returns Observable of boolean — true if all fullRestrictionsHook chain pairs have
+   *          each other's representative addresses whitelisted, or if there are fewer
+   *          than 2 such chains (nothing to restrict).
+   */
+  crossChainTransferStatus() {
+    return this._query(['crossChainTransferStatus'], () =>
+      combineLatest([this.deploymentPerNetwork(), this.pool.activeNetworks()]).pipe(
+        switchMap(([deployments, networks]) => {
+          if (deployments.length < 2) return of(true)
+
+          const centrifugeIds = networks.map((n) => n.centrifugeId)
+
+          return combineLatest(centrifugeIds.map((id) => this._root.restrictionHooks(id))).pipe(
+            switchMap((allHooks) => {
+              // Identify chains using fullRestrictionsHook
+              const fullRestrictionsCentrifugeIds = deployments
+                .filter((d) => {
+                  const index = centrifugeIds.indexOf(d.centrifugeId)
+                  if (index === -1) return false
+                  const hooks = allHooks[index]
+                  return hooks && d.restrictionManagerAddress.toLowerCase() === hooks.fullRestrictionsHook.toLowerCase()
+                })
+                .map((d) => d.centrifugeId)
+
+              if (fullRestrictionsCentrifugeIds.length < 2) return of(true)
+
+              const allDeployedCentrifugeIds = deployments.map((d) => d.centrifugeId)
+
+              // For each fullRestrictionsHook chain, check if all other chains' rep addresses are members
+              const checks = fullRestrictionsCentrifugeIds.flatMap((centrifugeId) =>
+                allDeployedCentrifugeIds
+                  .filter((otherId) => otherId !== centrifugeId)
+                  .map((otherId) => {
+                    const repAddress = convertToEvmAddress(otherId)
+                    return this.member(repAddress, centrifugeId).pipe(map((result) => result.isMember))
+                  })
+              )
+
+              return combineLatest(checks).pipe(map((results) => results.every((r) => r)))
+            })
+          )
+        })
+      )
+    )
+  }
+
+  /**
    * Check which destination networks are valid for a cross-chain share transfer from a given source chain.
    *
    * For each deployed destination network, validates:
