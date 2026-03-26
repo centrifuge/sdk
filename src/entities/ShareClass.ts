@@ -17,6 +17,7 @@ import type { Centrifuge } from '../Centrifuge.js'
 import { AccountType } from '../types/holdings.js'
 import { HexString } from '../types/index.js'
 import { MessageType, MessageTypeWithSubType } from '../types/transaction.js'
+import { convertToEvmAddress } from '../utils/addresses.js'
 import { AddressMap } from '../utils/AddressMap.js'
 import { Balance, Price } from '../utils/BigInt.js'
 import { addressToBytes32, encode, randomUint } from '../utils/index.js'
@@ -2418,6 +2419,167 @@ export class ShareClass extends Entity {
         messages: { [centrifugeId]: messages },
       })
     }, this.pool.centrifugeId)
+  }
+
+  /**
+   * Check whether cross-chain transfers are enabled for this share class by verifying
+   * that chain representative addresses are whitelisted as members on each other's chains.
+   * Only checks chains that use the fullRestrictionsHook, since other hooks don't restrict
+   * cross-chain transfers.
+   *
+   * @returns Observable of boolean — true if all fullRestrictionsHook chain pairs have
+   *          each other's representative addresses whitelisted, or if there are fewer
+   *          than 2 such chains (nothing to restrict).
+   */
+  crossChainTransferStatus() {
+    return this._query(['crossChainTransferStatus'], () =>
+      combineLatest([this.deploymentPerNetwork(), this.pool.activeNetworks()]).pipe(
+        switchMap(([deployments, networks]) => {
+          if (deployments.length < 2) return of(true)
+
+          const centrifugeIds = networks.map((n) => n.centrifugeId)
+
+          return combineLatest(centrifugeIds.map((id) => this._root.restrictionHooks(id))).pipe(
+            switchMap((allHooks) => {
+              // Identify chains using fullRestrictionsHook
+              const fullRestrictionsCentrifugeIds = deployments
+                .filter((d) => {
+                  const index = centrifugeIds.indexOf(d.centrifugeId)
+                  if (index === -1) return false
+                  const hooks = allHooks[index]
+                  return hooks && d.restrictionManagerAddress.toLowerCase() === hooks.fullRestrictionsHook.toLowerCase()
+                })
+                .map((d) => d.centrifugeId)
+
+              if (fullRestrictionsCentrifugeIds.length < 2) return of(true)
+
+              const allDeployedCentrifugeIds = deployments.map((d) => d.centrifugeId)
+
+              // For each fullRestrictionsHook chain, check if all other chains' rep addresses are members
+              const checks = fullRestrictionsCentrifugeIds.flatMap((centrifugeId) =>
+                allDeployedCentrifugeIds
+                  .filter((otherId) => otherId !== centrifugeId)
+                  .map((otherId) => {
+                    const repAddress = convertToEvmAddress(otherId)
+                    return this.member(repAddress, centrifugeId).pipe(map((result) => result.isMember))
+                  })
+              )
+
+              return combineLatest(checks).pipe(map((results) => results.every((r) => r)))
+            })
+          )
+        })
+      )
+    )
+  }
+
+  /**
+   * Check which destination networks are valid for a cross-chain share transfer from a given source chain.
+   *
+   * For each deployed destination network, validates:
+   * 1. The share token and hook (restriction manager) are deployed on both source and destination
+   * 2. On the source chain: `checkTransferRestriction(sender, address(uint160(destinationCentrifugeId)), 0)`
+   *    — verifies the destination chain's representative address is a valid receiver
+   * 3. On the destination chain: `checkTransferRestriction(address(uint160(sourceCentrifugeId)), receiver, 0)`
+   *    — verifies the receiver can receive tokens on the destination chain
+   *
+   * @param sourceCentrifugeId - The chain the shares would be transferred from
+   * @param receiver - The address that would receive shares on the destination chain
+   * @returns Observable of a map: destination centrifugeId → whether the transfer is allowed
+   */
+  allowedCrosschainTransferDestinations(sourceCentrifugeId: CentrifugeId, receiver: HexString) {
+    const addr = receiver.toLowerCase() as HexString
+    return this._query(['allowedCrosschainTransferDestinations', sourceCentrifugeId, addr], () =>
+      combineLatest([this.deploymentPerNetwork(), this._root.getClient(sourceCentrifugeId)]).pipe(
+        switchMap(([deployments, sourceClient]) => {
+          const sourceDeployment = deployments.find((d) => d.centrifugeId === sourceCentrifugeId)
+          if (!sourceDeployment) return of(new Map<number, boolean>())
+
+          const destinations = deployments.filter((d) => d.centrifugeId !== sourceCentrifugeId)
+          if (destinations.length === 0) return of(new Map<number, boolean>())
+
+          return combineLatest(
+            destinations.map((dest) =>
+              this._root.getClient(dest.centrifugeId).pipe(
+                switchMap((destClient) =>
+                  defer(async () => {
+                    try {
+                      const destRepAddress = convertToEvmAddress(dest.centrifugeId)
+                      const sourceAllows = await sourceClient.readContract({
+                        address: sourceDeployment.shareTokenAddress,
+                        abi: ABI.Currency,
+                        functionName: 'checkTransferRestriction',
+                        args: [addr, destRepAddress, 0n],
+                      })
+
+                      const sourceRepAddress = convertToEvmAddress(sourceCentrifugeId)
+                      const destAllows = await destClient.readContract({
+                        address: dest.shareTokenAddress,
+                        abi: ABI.Currency,
+                        functionName: 'checkTransferRestriction',
+                        args: [sourceRepAddress, addr, 0n],
+                      })
+
+                      return { centrifugeId: dest.centrifugeId, allowed: !!(sourceAllows && destAllows) }
+                    } catch {
+                      return { centrifugeId: dest.centrifugeId, allowed: false }
+                    }
+                  })
+                )
+              )
+            )
+          ).pipe(
+            map((results) => {
+              const allowed = new Map<number, boolean>()
+              for (const r of results) {
+                allowed.set(r.centrifugeId, r.allowed)
+              }
+              return allowed
+            })
+          )
+        })
+      )
+    )
+  }
+
+  /**
+   * Transfer shares cross-chain. Burns shares on the source chain and mints them on the destination chain.
+   * @param sourceCentrifugeId - The chain where the shares currently exist
+   * @param destinationCentrifugeId - The chain to transfer shares to
+   * @param receiver - The address to receive shares on the destination chain
+   * @param amount - Amount of shares to transfer (as bigint, raw on-chain value)
+   */
+  crosschainTransferShares(
+    sourceCentrifugeId: CentrifugeId,
+    destinationCentrifugeId: CentrifugeId,
+    receiver: HexString,
+    amount: bigint
+  ) {
+    const self = this
+    return this._transact(async function* (ctx) {
+      const { spoke } = await self._root._protocolAddresses(sourceCentrifugeId)
+
+      yield* wrapTransaction('Cross chain transfer shares', ctx, {
+        contract: spoke,
+        data: encodeFunctionData({
+          abi: ABI.Spoke,
+          functionName: 'crosschainTransferShares',
+          args: [
+            destinationCentrifugeId,
+            self.pool.id.raw,
+            self.id.raw,
+            addressToBytes32(receiver),
+            amount,
+            0n,
+            0n,
+            ctx.signingAddress,
+          ],
+        }),
+        messages: {
+          [destinationCentrifugeId]: [{ type: MessageType.InitiateTransferShares, poolId: self.pool.id }],
+        },
+      })
+    }, sourceCentrifugeId)
   }
 
   /** @internal */
