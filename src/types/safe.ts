@@ -53,6 +53,8 @@ export type SafeAdminPendingTransaction = {
   confirmationsSubmitted: number
   confirmedBy: HexString[]
   target?: HexString | null
+  data?: HexString | null
+  group?: 'hub' | 'spoke'
   txHash?: HexString | null
   isExecuted: boolean
 }

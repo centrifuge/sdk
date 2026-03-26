@@ -1,6 +1,6 @@
 import type { Centrifuge } from '../Centrifuge.js'
 import type { ShareClass } from '../entities/ShareClass.js'
-import type { HexString } from '../types/index.js'
+import type { HexString, ProtocolContracts } from '../types/index.js'
 import type {
   SafeAdminAction,
   SafeAdminInfo,
@@ -20,9 +20,60 @@ import { type CentrifugeId, PoolId } from '../utils/types.js'
 import type { Price } from '../utils/BigInt.js'
 import { buildSafeProposalPayload } from './payload.js'
 import { getSafeAdminPendingTransactionPermissions } from '../types/safe.js'
-import { concatHex, parseAbi, zeroAddress } from 'viem'
+import { concatHex, decodeFunctionData, parseAbi, zeroAddress } from 'viem'
+import { arbitrum, arbitrumSepolia, avalanche, base, baseSepolia, mainnet, sepolia } from 'viem/chains'
 
 const SAFE_CLIENT_BASE_URL = 'https://safe-client.safe.global'
+
+const HUB_DECODE_ABI = parseAbi([
+  'function multicall(bytes[] data) payable',
+  'function executeMulticall(bytes[] data) payable',
+  'function updateSharePrice(uint64 poolId, bytes16 scId, uint128 pricePoolPerShare, uint64 computedAt) payable',
+  'function notifySharePrice(uint64 poolId, bytes16 scId, uint16 centrifugeId, address refund) payable',
+  'function notifyShareClass(uint64 poolId, bytes16 scId, uint16 centrifugeId, bytes32 hook, address refund) payable',
+  'function notifyPool(uint64 poolId, uint16 centrifugeId, address refund) payable',
+  'function setRequestManager(uint64 poolId, uint16 centrifugeId, address hubManager, bytes32 spokeManager, address refund) payable',
+  'function updateHubManager(uint64 poolId, address who, bool canManage) payable',
+  'function updateBalanceSheetManager(uint64 poolId, uint16 centrifugeId, bytes32 who, bool canManage, address refund) payable',
+  'function updateGatewayManager(uint64 poolId, uint16 centrifugeId, bytes32 who, bool canManage, address refund) payable',
+])
+
+const HUB_FUNCTION_LABELS: Record<string, string> = {
+  updateSharePrice: 'Update share price',
+  notifySharePrice: 'Notify share price',
+  notifyShareClass: 'Notify share class',
+  notifyPool: 'Notify pool',
+  setRequestManager: 'Set request manager',
+  updateHubManager: 'Update hub manager',
+  updateBalanceSheetManager: 'Update balance sheet manager',
+  updateGatewayManager: 'Update gateway manager',
+}
+
+function decodeHubCalldata(data: string | null | undefined): string | null {
+  if (!data || data === '0x') return null
+  try {
+    const { functionName, args } = decodeFunctionData({ abi: HUB_DECODE_ABI, data: data as HexString })
+    if (functionName === 'multicall' || functionName === 'executeMulticall') {
+      const innerCalls = args[0] as HexString[]
+      // Collect unique action labels, preserving order — first occurrence wins
+      const seen = new Set<string>()
+      for (const innerData of innerCalls) {
+        try {
+          const { functionName: innerName } = decodeFunctionData({ abi: HUB_DECODE_ABI, data: innerData })
+          const label = HUB_FUNCTION_LABELS[innerName] ?? innerName
+          seen.add(label)
+        } catch {
+          // ignore undecoded inner calls
+        }
+      }
+      const labels = [...seen]
+      return labels.length > 0 ? labels[0]! : null
+    }
+    return HUB_FUNCTION_LABELS[functionName] ?? functionName
+  } catch {
+    return null
+  }
+}
 
 const SAFE_TX_TYPES = {
   SafeTx: [
@@ -71,6 +122,7 @@ type SafeQueueTxInfo = {
   humanDescription?: string | null
   to?: SafeAddressRef
   sender?: SafeAddressRef | null
+  hexData?: string | null
 }
 
 type SafeQueueConfirmation = {
@@ -161,14 +213,45 @@ export class SafeAdminWrapper {
   }
 
   async getPendingTransactions(centrifugeId: CentrifugeId, safeAddress: HexString): Promise<SafeAdminPendingTransaction[]> {
-    const chainId = await this.#resolveChainId(centrifugeId)
+    const [chainId, protocolAddresses] = await Promise.all([
+      this.#resolveChainId(centrifugeId),
+      this.#root._protocolAddresses(centrifugeId),
+    ])
+    const hubAddress = (protocolAddresses as ProtocolContracts).hub?.toLowerCase()
+
     const results = await this.#fetchAllTransactionItems(
       `/v1/chains/${chainId}/safes/${safeAddress}/transactions/queued`
     )
 
-    return results
+    const normalized = results
       .map((item) => this.#normalizePendingTransaction(item))
       .filter((item): item is SafeAdminPendingTransaction => item !== null)
+
+    // The queue endpoint only returns confirmation counts, not individual signers.
+    // Fetch full details from the Transaction Service in parallel to get accurate confirmedBy and data.
+    return Promise.all(
+      normalized.map(async (tx) => {
+        if (!tx.safeTxHash) return tx
+        try {
+          const details = await this.#getTransaction(centrifugeId, tx.safeTxHash)
+          const txData = (details.data ?? tx.data ?? null) as HexString | null
+          const decoded = decodeHubCalldata(txData)
+          return {
+            ...tx,
+            confirmedBy: (details.confirmations ?? []).map((c) => c.owner as HexString),
+            data: txData,
+            humanDescription: decoded ?? tx.humanDescription ?? null,
+            group: hubAddress
+              ? tx.target?.toLowerCase() === hubAddress
+                ? ('hub' as const)
+                : ('spoke' as const)
+              : undefined,
+          }
+        } catch {
+          return tx
+        }
+      })
+    )
   }
 
   async getTransactionHistory(centrifugeId: CentrifugeId, safeAddress: HexString): Promise<SafeAdminPendingTransaction[]> {
@@ -210,6 +293,82 @@ export class SafeAdminWrapper {
       publicClient,
       nonce: await this.getNextNonce(shareClass.pool.centrifugeId, resolution.safeAddress),
     })
+  }
+
+  confirmPendingTransaction(centrifugeId: CentrifugeId, safeAddress: HexString, safeTxHash: HexString): Transaction {
+    const self = this
+    return this.#root._transact(async function* (ctx) {
+      const [safeInfo, transaction] = await Promise.all([
+        self.getSafeInfo(centrifugeId, safeAddress),
+        self.#getTransaction(centrifugeId, safeTxHash),
+      ])
+
+      const permissions = getSafeAdminPendingTransactionPermissions(
+        ctx.signingAddress,
+        {
+          isExecuted: transaction.isExecuted,
+          confirmationsRequired: transaction.confirmationsRequired,
+          confirmationsSubmitted: transaction.confirmations?.length ?? 0,
+          confirmedBy: (transaction.confirmations ?? []).map((c) => c.owner as HexString),
+        },
+        safeInfo.owners
+      )
+
+      if (!permissions.isOwner) {
+        throw new Error(`Connected wallet "${ctx.signingAddress}" is not an owner of Safe "${safeAddress}"`)
+      }
+      if (transaction.isExecuted) {
+        throw new Error(`Safe transaction "${safeTxHash}" has already been executed`)
+      }
+      if (!permissions.canSign) {
+        throw new Error(
+          `Wallet "${ctx.signingAddress}" has already signed this transaction. Please connect a different Safe owner wallet to add another confirmation.`
+        )
+      }
+
+      const id = Math.random().toString(36).substring(2)
+      yield { id, type: 'SigningTransaction', title: 'Confirm Safe transaction' } as const
+
+      const signature = await ctx.walletClient.signTypedData({
+        account: ctx.walletClient.account ?? ctx.signingAddress,
+        domain: {
+          chainId: ctx.chain.id,
+          verifyingContract: safeAddress,
+        },
+        primaryType: 'SafeTx',
+        types: SAFE_TX_TYPES,
+        message: {
+          to: transaction.to as HexString,
+          value: BigInt(transaction.value),
+          data: (transaction.data ?? '0x') as HexString,
+          operation: transaction.operation,
+          safeTxGas: BigInt(transaction.safeTxGas),
+          baseGas: BigInt(transaction.baseGas),
+          gasPrice: BigInt(transaction.gasPrice),
+          gasToken: transaction.gasToken as HexString,
+          refundReceiver: (transaction.refundReceiver ?? zeroAddress) as HexString,
+          nonce: BigInt(transaction.nonce),
+        },
+      })
+
+      const chainId = await self.#resolveChainId(centrifugeId)
+      await self.#fetchJson(`/v1/chains/${chainId}/transactions/${safeTxHash}/confirmations`, {
+        method: 'POST',
+        body: JSON.stringify({ signature }),
+      })
+
+      const result = createSafeTransactionProposedStatus({
+        id,
+        title: 'Confirm Safe transaction',
+        safeAddress,
+        safeTxHash: safeTxHash as HexString,
+        nonce: Number(transaction.nonce),
+        proposer: ctx.signingAddress,
+      })
+
+      yield result
+      return result
+    }, centrifugeId)
   }
 
   executePendingTransaction(centrifugeId: CentrifugeId, safeAddress: HexString, safeTxHash: HexString): Transaction {
@@ -348,7 +507,28 @@ export class SafeAdminWrapper {
 
   async #getTransaction(centrifugeId: CentrifugeId, safeTxHash: HexString): Promise<SafeMultisigTransactionResponse> {
     const chainId = await this.#resolveChainId(centrifugeId)
-    return await this.#fetchJson<SafeMultisigTransactionResponse>(`/v1/chains/${chainId}/transactions/${safeTxHash}`)
+    const networkName = this.#safeApiNetworkName(chainId)
+    const url = `https://safe-transaction-${networkName}.safe.global/api/v1/multisig-transactions/${safeTxHash}/`
+    const response = await fetch(url, { headers: { 'Content-Type': 'application/json' } })
+    if (!response.ok) {
+      const errorText = await response.text()
+      throw new Error(`Safe Transaction Service request failed (${response.status}): ${errorText || response.statusText}`)
+    }
+    return (await response.json()) as SafeMultisigTransactionResponse
+  }
+
+  #safeApiNetworkName(chainId: number): string {
+    const name: Record<number, string> = {
+      [mainnet.id]: 'mainnet',
+      [base.id]: 'base',
+      [arbitrum.id]: 'arbitrum',
+      [sepolia.id]: 'sepolia',
+      [baseSepolia.id]: 'base-sepolia',
+      [arbitrumSepolia.id]: 'arbitrum-sepolia',
+      [avalanche.id]: 'avalanche',
+    }
+    if (name[chainId]) return name[chainId]
+    throw new Error(`Safe Transaction Service does not support chainId "${chainId}"`)
   }
 
   #buildExecutionSignatures(transaction: SafeMultisigTransactionResponse): HexString {
@@ -376,9 +556,23 @@ export class SafeAdminWrapper {
 
     const executionInfo = item.transaction.executionInfo
     if (!executionInfo || executionInfo.type !== 'MULTISIG' || executionInfo.nonce === undefined) return null
-    const confirmedBy = (item.transaction.confirmations ?? executionInfo.confirmations ?? [])
+    const confirmedByFromApi = (item.transaction.confirmations ?? executionInfo.confirmations ?? [])
       .map((confirmation) => confirmation.signer?.value ?? confirmation.owner?.value ?? null)
       .filter((address): address is HexString => !!address)
+
+    const proposerAddress =
+      executionInfo.proposer?.value ??
+      item.transaction.proposer?.value ??
+      item.transaction.sender?.value ??
+      item.transaction.txInfo?.sender?.value ??
+      null
+
+    // The proposer always signs when proposing, but the queue endpoint doesn't return
+    // individual signers — only counts. Ensure the proposer is always in confirmedBy.
+    const confirmedBy: HexString[] =
+      proposerAddress && !confirmedByFromApi.some((a) => a.toLowerCase() === proposerAddress.toLowerCase())
+        ? [proposerAddress as HexString, ...confirmedByFromApi]
+        : confirmedByFromApi
 
     return {
       id: item.transaction.id ?? `${this.#extractSafeTxHash(item.transaction.id) ?? executionInfo.nonce}`,
@@ -396,17 +590,12 @@ export class SafeAdminWrapper {
         this.#toUnixTimestamp(item.transaction.submissionDate) ??
         null,
       txStatus: item.transaction.txStatus,
-      proposer:
-        executionInfo.proposer?.value ??
-        item.transaction.proposer?.value ??
-        item.transaction.sender?.value ??
-        item.transaction.txInfo?.sender?.value ??
-        confirmedBy[0] ??
-        null,
+      proposer: proposerAddress ?? confirmedBy[0] ?? null,
       confirmationsRequired: executionInfo.confirmationsRequired ?? 0,
       confirmationsSubmitted: executionInfo.confirmationsSubmitted ?? 0,
       confirmedBy,
       target: item.transaction.txInfo?.to?.value ?? null,
+      data: (item.transaction.txInfo?.hexData ?? null) as HexString | null,
       txHash: item.transaction.txHash ?? null,
       isExecuted: item.transaction.txStatus === 'SUCCESS',
     }
