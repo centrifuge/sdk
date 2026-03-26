@@ -1,10 +1,13 @@
 import {
   AbiEvent,
   decodeEventLog,
+  encodeFunctionData,
+  hexToBytes,
   LocalAccount,
   Log,
   parseAbi,
   RpcLog,
+  toHex,
   toEventSelector,
   withRetry,
   type Abi,
@@ -17,6 +20,8 @@ import type { HexString } from '../types/index.js'
 import type {
   MessageTypeWithSubType,
   OperationStatus,
+  OperationSafeTransactionProposedStatus,
+  RawTransactionPayload,
   SafeMultisigTransactionResponse,
   Signer,
   TransactionContext,
@@ -37,60 +42,131 @@ export type BatchTransactionData = {
   messages?: Record<number, MessageTypeWithSubType[]>
 }
 
+export type PreparedTransaction = {
+  title: string
+  contract: HexString
+  data: HexString[]
+  value?: bigint
+  messages?: Record<number, MessageTypeWithSubType[]>
+}
+
+export async function estimateTransactionValue(
+  ctx: Pick<TransactionContext, 'root' | 'centrifugeId'>,
+  prepared: Pick<PreparedTransaction, 'messages' | 'value'>
+) {
+  const messagesEstimates = prepared.messages
+    ? await Promise.all(
+        Object.entries(prepared.messages).map(async ([centId, messageTypes]) =>
+          ctx.root._estimate(ctx.centrifugeId, Number(centId), messageTypes)
+        )
+      )
+    : []
+
+  return messagesEstimates.reduce((acc, val) => acc + val, prepared.value ?? 0n)
+}
+
+export function encodePreparedTransactionCall(prepared: Pick<PreparedTransaction, 'contract' | 'data'>) {
+  if (prepared.data.length === 1) {
+    return {
+      to: prepared.contract,
+      data: prepared.data[0]!,
+    }
+  }
+
+  return {
+    to: prepared.contract,
+    data: encodeFunctionData({
+      abi: parseAbi(['function multicall(bytes[] data) payable']),
+      functionName: 'multicall',
+      args: [prepared.data],
+    }),
+  }
+}
+
+export async function buildRawTransactionPayload(
+  ctx: Pick<TransactionContext, 'root' | 'centrifugeId' | 'executionAddress'>,
+  prepared: PreparedTransaction
+): Promise<RawTransactionPayload> {
+  const [value, chain] = await Promise.all([
+    estimateTransactionValue(ctx, prepared),
+    ctx.root.getChainConfig(ctx.centrifugeId),
+  ])
+  const call = encodePreparedTransactionCall(prepared)
+
+  return {
+    title: prepared.title,
+    to: call.to,
+    data: call.data,
+    value,
+    chain,
+    centrifugeId: ctx.centrifugeId,
+    executionAddress: ctx.executionAddress,
+  }
+}
+
+export function toSafeSignature(signature: HexString): HexString {
+  const bytes = hexToBytes(signature)
+  if (bytes.length !== 65) {
+    throw new Error(`Invalid signature length: expected 65 bytes, got ${bytes.length}`)
+  }
+
+  const recovery = bytes[64]!
+  bytes[64] = recovery >= 31 ? recovery : recovery + 4
+  return toHex(bytes)
+}
+
 export async function* wrapTransaction(
   title: string,
   ctx: TransactionContext,
-  {
-    contract,
-    data: data_,
-    value: value_,
-    messages,
-  }: {
-    contract: HexString
-    data: HexString | HexString[]
-    value?: bigint
-    // Messages to estimate gas for, that will be sent as a result of the transaction, separated by Centrifuge ID.
-    // Used to estimate the payment for the transaction.
-    // It is assumed that the messages belong to a single pool.
-    messages?: Record<CentrifugeId, MessageTypeWithSubType[]>
-  },
+  prepared:
+    | PreparedTransaction
+    | {
+        contract: HexString
+        data: HexString | HexString[]
+        value?: bigint
+        // Messages to estimate gas for, that will be sent as a result of the transaction, separated by Centrifuge ID.
+        // Used to estimate the payment for the transaction.
+        // It is assumed that the messages belong to a single pool.
+        messages?: Record<CentrifugeId, MessageTypeWithSubType[]>
+      },
   options: {
     simulate: boolean
   } = { simulate: false }
 ): AsyncGenerator<OperationStatus | BatchTransactionData> {
-  const data = Array.isArray(data_) ? data_ : [data_]
+  const normalized: PreparedTransaction =
+    'title' in prepared
+      ? prepared
+      : {
+          title,
+          contract: prepared.contract,
+          data: Array.isArray(prepared.data) ? prepared.data : [prepared.data],
+          value: prepared.value,
+          messages: prepared.messages,
+        }
   if (ctx.isBatching) {
     yield {
-      contract,
-      data,
-      value: value_,
-      messages,
+      contract: normalized.contract,
+      data: normalized.data,
+      value: normalized.value,
+      messages: normalized.messages,
     }
   } else {
-    const messagesEstimates = messages
-      ? await Promise.all(
-          Object.entries(messages).map(async ([centId, messageTypes]) =>
-            ctx.root._estimate(ctx.centrifugeId, Number(centId), messageTypes)
-          )
-        )
-      : []
-    const estimate = messagesEstimates.reduce((acc, val) => acc + val, 0n)
-    const value = (value_ ?? 0n) + estimate
+    const value = await estimateTransactionValue(ctx, normalized)
 
     if (!options.simulate) {
       const result = yield* doTransaction(title, ctx, async () => {
-        if (data.length === 1) {
+        if (normalized.data.length === 1) {
           return ctx.walletClient.sendTransaction({
-            to: contract,
-            data: data[0],
+            to: normalized.contract,
+            data: normalized.data[0],
             value,
           })
         }
         return ctx.walletClient.writeContract({
-          address: contract,
+          address: normalized.contract,
           abi: parseAbi(['function multicall(bytes[] data) payable']),
           functionName: 'multicall',
-          args: [data],
+          args: [normalized.data],
           value,
         })
       })
@@ -101,13 +177,13 @@ export async function* wrapTransaction(
     if (options.simulate) {
       let simulationResult
 
-      if (data.length === 1) {
+      if (normalized.data.length === 1) {
         const { results } = await ctx.publicClient.simulateCalls({
-          account: ctx.signingAddress,
+          account: ctx.executionAddress,
           calls: [
             {
-              to: contract,
-              data: data[0],
+              to: normalized.contract,
+              data: normalized.data[0],
               value,
             },
           ],
@@ -116,13 +192,13 @@ export async function* wrapTransaction(
         simulationResult = { results }
       } else {
         const { results } = await ctx.publicClient.simulateCalls({
-          account: ctx.signingAddress,
+          account: ctx.executionAddress,
           calls: [
             {
-              to: contract,
+              to: normalized.contract,
               abi: parseAbi(['function multicall(bytes[] data) payable']),
               functionName: 'multicall',
-              args: [data],
+              args: [normalized.data],
               value,
             },
           ],
@@ -210,6 +286,25 @@ export async function* doSignMessage<T = any>(
   const message = await transactionCallback()
   yield { id, type: 'SignedMessage', title, signed: message }
   return message
+}
+
+export function createSafeTransactionProposedStatus(args: {
+  id: string
+  title: string
+  safeAddress: HexString
+  safeTxHash: HexString
+  nonce: number
+  proposer: HexString
+}) {
+  return {
+    id: args.id,
+    type: 'SafeTransactionProposed',
+    title: args.title,
+    safeAddress: args.safeAddress,
+    safeTxHash: args.safeTxHash,
+    nonce: args.nonce,
+    proposer: args.proposer,
+  } satisfies OperationSafeTransactionProposedStatus
 }
 
 export function isLocalAccount(signer: Signer): signer is LocalAccount {
