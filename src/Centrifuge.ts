@@ -129,6 +129,14 @@ export class Centrifuge {
     return this.#signer
   }
 
+  #permitDisabled: boolean | null = null
+  setPermitDisabled(value: boolean) {
+    this.#permitDisabled = value
+  }
+  get permitDisabled() {
+    return this.#permitDisabled ?? !!this.#config.permitDisabled
+  }
+
   #isBatching = new WeakSet<Transaction>()
 
   constructor(config: UserProvidedConfig = {}) {
