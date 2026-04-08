@@ -590,8 +590,8 @@ export class PoolNetwork extends Entity {
         {
           hub,
           layerZeroAdapter: localLzAdapter,
-          axelarAdapter: localAxelarAdapter,
-          // wormholeAdapter: localWhAdapter
+          // axelarAdapter: localAxelarAdapter, // TODO: hotfix - always use LayerZero 1/1
+          // wormholeAdapter: localWhAdapter,
         },
         {
           spoke,
@@ -602,7 +602,7 @@ export class PoolNetwork extends Entity {
           asyncRequestManager,
           batchRequestManager,
           layerZeroAdapter: remoteLzAdapter,
-          axelarAdapter: remoteAxelarAdapter,
+          // axelarAdapter: remoteAxelarAdapter, // TODO: hotfix - always use LayerZero 1/1
           // wormholeAdapter: remoteWhAdapter,
         },
         details,
@@ -643,15 +643,10 @@ export class PoolNetwork extends Entity {
           localAdapters.push(localLzAdapter)
           remoteAdapters.push(remoteLzAdapter)
         }
-        if (localAxelarAdapter && remoteAxelarAdapter) {
-          localAdapters.push(localAxelarAdapter)
-          remoteAdapters.push(remoteAxelarAdapter)
-        }
-        // TODO: Temporarily disabled Wormhole adapter for testing - Wormhole costs much more than LayerZero
-        // and the SDK estimate uses GLOBAL_POOL which may only have LayerZero configured
-        // if (localWhAdapter && remoteWhAdapter) {
-        //   localAdapters.push(localWhAdapter)
-        //   remoteAdapters.push(remoteWhAdapter)
+        // TODO: hotfix - always use LayerZero 1/1; re-enable Axelar when multi-adapter support is restored
+        // if (localAxelarAdapter && remoteAxelarAdapter) {
+        //   localAdapters.push(localAxelarAdapter)
+        //   remoteAdapters.push(remoteAxelarAdapter)
         // }
         if (localAdapters.length > 0) {
           batch.push(
@@ -663,8 +658,8 @@ export class PoolNetwork extends Entity {
                 self.centrifugeId,
                 localAdapters,
                 remoteAdapters.map(addressToBytes32),
-                localAdapters.length, // threshold
-                localAdapters.length, // recovery index
+                1, // threshold: always 1/1 with LayerZero
+                1, // recovery index: always 1/1 with LayerZero
                 ctx.signingAddress,
               ],
             })
