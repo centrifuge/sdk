@@ -2,6 +2,34 @@ import type { Chain } from 'viem'
 import { PoolId } from '../utils/types.js'
 import type { HexString } from './index.js'
 
+export type PoolSafeRole =
+  | 'admin'
+  | 'token_valuation_manager'
+  | 'token_issuance_manager'
+  | 'token_deployment_manager'
+  | 'investor_manager'
+  | 'holdings_manager'
+  | `custom:${string}`
+
+export type PoolSafeSignerType = 'hot_wallet' | 'yubikey' | 'mpc' | 'kms'
+
+export type PoolSafeSigner = {
+  address: HexString
+  userId: string
+  signerType: PoolSafeSignerType
+}
+
+export type PoolSafe = {
+  type: 'pSAFE' | 'rSAFE'
+  role: PoolSafeRole
+  safeAddress: HexString
+  chain: number
+  signers: PoolSafeSigner[]
+  threshold: number
+}
+
+// ---------------------------------------------------------------------------
+
 export type SafeAdminAction = 'shareClass.updateSharePrice'
 
 export type SafeAdminResolution = {
@@ -163,4 +191,70 @@ export function getSafeAdminPendingTransactionPermissions(
     canSign: true,
     canExecute: false,
   }
+}
+
+// ---------------------------------------------------------------------------
+// Safe Transaction Service API response shapes (internal to the safe module)
+// ---------------------------------------------------------------------------
+
+export type SafeInfoResponse = {
+  address: HexString
+  nonce?: number | string
+  threshold: number
+  owners: ({ value?: HexString; name?: string | null } | HexString)[]
+}
+
+export type SafeAddressRef = {
+  value?: HexString
+  name?: string | null
+}
+
+export type SafeQueueConfirmation = {
+  signer?: SafeAddressRef | null
+  owner?: SafeAddressRef | null
+}
+
+export type SafeQueueExecutionInfo = {
+  type?: string
+  submittedAt?: number
+  nonce?: number
+  safeTxHash?: HexString
+  proposer?: SafeAddressRef | null
+  confirmationsRequired?: number
+  confirmationsSubmitted?: number
+  confirmations?: SafeQueueConfirmation[]
+}
+
+export type SafeQueueTxInfo = {
+  methodName?: string
+  humanDescription?: string | null
+  to?: SafeAddressRef
+  sender?: SafeAddressRef | null
+  hexData?: string | null
+}
+
+export type SafeQueueTransactionSummary = {
+  id?: string
+  timestamp?: number
+  submissionDate?: string | null
+  txStatus?: string
+  safeTxHash?: HexString | null
+  proposer?: SafeAddressRef | null
+  sender?: SafeAddressRef | null
+  txHash?: HexString | null
+  txInfo?: SafeQueueTxInfo
+  executionInfo?: SafeQueueExecutionInfo
+  confirmations?: SafeQueueConfirmation[]
+}
+
+export type SafeQueueListItem = {
+  type?: string
+  transaction?: SafeQueueTransactionSummary
+}
+
+export type SafeQueuePage = {
+  count?: number
+  next?: string | null
+  previous?: string | null
+  results?: SafeQueueListItem[]
 }

@@ -9,6 +9,12 @@ import type {
   SafeAdminProposalPayload,
   SafeAdminResolution,
   SafeAdminResolutionInput,
+  SafeInfoResponse,
+  SafeQueueConfirmation,
+  SafeQueueExecutionInfo,
+  SafeQueueListItem,
+  SafeQueuePage,
+  SafeQueueTransactionSummary,
 } from '../types/safe.js'
 import type { SafeMultisigTransactionResponse, Transaction } from '../types/transaction.js'
 import {
@@ -20,34 +26,15 @@ import { type CentrifugeId, PoolId } from '../utils/types.js'
 import type { Price } from '../utils/BigInt.js'
 import { buildSafeProposalPayload } from './payload.js'
 import { getSafeAdminPendingTransactionPermissions } from '../types/safe.js'
-import { concatHex, decodeFunctionData, parseAbi, zeroAddress } from 'viem'
+import { concatHex, decodeFunctionData, zeroAddress } from 'viem'
 import { arbitrum, arbitrumSepolia, avalanche, base, baseSepolia, mainnet, sepolia } from 'viem/chains'
-
-const SAFE_CLIENT_BASE_URL = 'https://safe-client.safe.global'
-
-const HUB_DECODE_ABI = parseAbi([
-  'function multicall(bytes[] data) payable',
-  'function executeMulticall(bytes[] data) payable',
-  'function updateSharePrice(uint64 poolId, bytes16 scId, uint128 pricePoolPerShare, uint64 computedAt) payable',
-  'function notifySharePrice(uint64 poolId, bytes16 scId, uint16 centrifugeId, address refund) payable',
-  'function notifyShareClass(uint64 poolId, bytes16 scId, uint16 centrifugeId, bytes32 hook, address refund) payable',
-  'function notifyPool(uint64 poolId, uint16 centrifugeId, address refund) payable',
-  'function setRequestManager(uint64 poolId, uint16 centrifugeId, address hubManager, bytes32 spokeManager, address refund) payable',
-  'function updateHubManager(uint64 poolId, address who, bool canManage) payable',
-  'function updateBalanceSheetManager(uint64 poolId, uint16 centrifugeId, bytes32 who, bool canManage, address refund) payable',
-  'function updateGatewayManager(uint64 poolId, uint16 centrifugeId, bytes32 who, bool canManage, address refund) payable',
-])
-
-const HUB_FUNCTION_LABELS: Record<string, string> = {
-  updateSharePrice: 'Update share price',
-  notifySharePrice: 'Notify share price',
-  notifyShareClass: 'Notify share class',
-  notifyPool: 'Notify pool',
-  setRequestManager: 'Set request manager',
-  updateHubManager: 'Update hub manager',
-  updateBalanceSheetManager: 'Update balance sheet manager',
-  updateGatewayManager: 'Update gateway manager',
-}
+import {
+  HUB_DECODE_ABI,
+  HUB_FUNCTION_LABELS,
+  SAFE_CLIENT_BASE_URL,
+  SAFE_EXEC_ABI,
+  SAFE_TX_TYPES,
+} from './config.js'
 
 function decodeHubCalldata(data: string | null | undefined): string | null {
   if (!data || data === '0x') return null
@@ -75,86 +62,6 @@ function decodeHubCalldata(data: string | null | undefined): string | null {
   }
 }
 
-const SAFE_TX_TYPES = {
-  SafeTx: [
-    { name: 'to', type: 'address' },
-    { name: 'value', type: 'uint256' },
-    { name: 'data', type: 'bytes' },
-    { name: 'operation', type: 'uint8' },
-    { name: 'safeTxGas', type: 'uint256' },
-    { name: 'baseGas', type: 'uint256' },
-    { name: 'gasPrice', type: 'uint256' },
-    { name: 'gasToken', type: 'address' },
-    { name: 'refundReceiver', type: 'address' },
-    { name: 'nonce', type: 'uint256' },
-  ],
-} as const
-
-const SAFE_EXECUTION_ABI = parseAbi([
-  'function execTransaction(address to,uint256 value,bytes data,uint8 operation,uint256 safeTxGas,uint256 baseGas,uint256 gasPrice,address gasToken,address refundReceiver,bytes signatures) payable returns (bool success)',
-])
-
-type SafeInfoResponse = {
-  address: HexString
-  nonce?: number | string
-  threshold: number
-  owners: ({ value?: HexString; name?: string | null } | HexString)[]
-}
-
-type SafeAddressRef = {
-  value?: HexString
-  name?: string | null
-}
-
-type SafeQueueExecutionInfo = {
-  type?: string
-  submittedAt?: number
-  nonce?: number
-  safeTxHash?: HexString
-  proposer?: SafeAddressRef | null
-  confirmationsRequired?: number
-  confirmationsSubmitted?: number
-  confirmations?: SafeQueueConfirmation[]
-}
-
-type SafeQueueTxInfo = {
-  methodName?: string
-  humanDescription?: string | null
-  to?: SafeAddressRef
-  sender?: SafeAddressRef | null
-  hexData?: string | null
-}
-
-type SafeQueueConfirmation = {
-  signer?: SafeAddressRef | null
-  owner?: SafeAddressRef | null
-}
-
-type SafeQueueTransactionSummary = {
-  id?: string
-  timestamp?: number
-  submissionDate?: string | null
-  txStatus?: string
-  safeTxHash?: HexString | null
-  proposer?: SafeAddressRef | null
-  sender?: SafeAddressRef | null
-  txHash?: HexString | null
-  txInfo?: SafeQueueTxInfo
-  executionInfo?: SafeQueueExecutionInfo
-  confirmations?: SafeQueueConfirmation[]
-}
-
-type SafeQueueListItem = {
-  type?: string
-  transaction?: SafeQueueTransactionSummary
-}
-
-type SafeQueuePage = {
-  count?: number
-  next?: string | null
-  previous?: string | null
-  results?: SafeQueueListItem[]
-}
 
 export type SafeAdminWrapperConfig = {
   resolveSafe: (args: SafeAdminResolutionInput) => SafeAdminResolution | null
@@ -407,7 +314,7 @@ export class SafeAdminWrapper {
       yield* doTransaction('Execute Safe transaction', ctx, () =>
         ctx.walletClient.writeContract({
           address: safeAddress,
-          abi: SAFE_EXECUTION_ABI,
+          abi: SAFE_EXEC_ABI,
           functionName: 'execTransaction',
           args: [
             transaction.to as HexString,
