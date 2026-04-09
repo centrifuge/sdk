@@ -32,6 +32,8 @@ import {
 } from 'viem'
 import { ABI } from './abi/index.js'
 import { chains } from './config/chains.js'
+import mainnetConnections from './config/connections/mainnet.json' with { type: 'json' }
+import testnetConnections from './config/connections/testnet.json' with { type: 'json' }
 import { PERMIT_TYPEHASH } from './constants.js'
 import { Investor } from './entities/Investor.js'
 import { Pool } from './entities/Pool.js'
@@ -57,6 +59,7 @@ import {
   type TransactionContext,
 } from './types/transaction.js'
 import { Balance } from './utils/BigInt.js'
+import { resolveAdapters } from './utils/connections.js'
 import { addEstimateBuffer, estimateBatchBridgeFee } from './utils/gas.js'
 import { generateShareClassSalt, randomUint } from './utils/index.js'
 import { createPinning, getUrlFromHash } from './utils/ipfs.js'
@@ -95,6 +98,11 @@ export class Centrifuge {
   #config: DerivedConfig
   get config() {
     return this.#config
+  }
+
+  readonly connectionConfig = {
+    mainnet: mainnetConnections,
+    testnet: testnetConnections,
   }
 
   #clients = new Map<number, Client>()
@@ -1275,10 +1283,23 @@ export class Centrifuge {
   }
 
   /** @internal */
+  _chainNetwork(centrifugeId: number) {
+    return this._query(['chainNetwork', centrifugeId], () =>
+      this._deployments().pipe(
+        map((data) => {
+          const item = data.blockchains.items.find((b) => Number(b.centrifugeId) === centrifugeId)
+          if (!item) throw new Error(`Chain with Centrifuge ID "${centrifugeId}" not found`)
+          return item.network
+        })
+      )
+    )
+  }
+
+  /** @internal */
   _deployments() {
     return this._query(['deployments'], () =>
       this._getIndexerObservable<{
-        blockchains: { items: { id: string; centrifugeId: string; name: string; icon: string }[] }
+        blockchains: { items: { id: string; centrifugeId: string; name: string; icon: string; network: string }[] }
         deployments: { items: (ProtocolContracts & { chainId?: string; centrifugeId?: string })[] }
       }>(
         `{
@@ -1286,6 +1307,7 @@ export class Centrifuge {
               items {
                 centrifugeId
                 id
+                network
               }
             }
             deployments {

@@ -5,6 +5,7 @@ import type { Centrifuge } from '../Centrifuge.js'
 import { NULL_ADDRESS, SAFE_PROXY_BYTECODE } from '../constants.js'
 import { HexString } from '../types/index.js'
 import { MessageType, MessageTypeWithSubType, VaultUpdateKind } from '../types/transaction.js'
+import { resolveAdapters } from '../utils/connections.js'
 import { addressToBytes32, encode } from '../utils/index.js'
 import { makeThenable, repeatOnEvents } from '../utils/rx.js'
 import { doTransaction, parseEventLogs, wrapTransaction } from '../utils/transaction.js'
@@ -590,8 +591,9 @@ export class PoolNetwork extends Entity {
         {
           hub,
           layerZeroAdapter: localLzAdapter,
-          // axelarAdapter: localAxelarAdapter, // TODO: hotfix - always use LayerZero 1/1
-          // wormholeAdapter: localWhAdapter,
+          axelarAdapter: localAxelarAdapter,
+          wormholeAdapter: localWhAdapter,
+          chainlinkAdapter: localChainlinkAdapter,
         },
         {
           spoke,
@@ -602,16 +604,21 @@ export class PoolNetwork extends Entity {
           asyncRequestManager,
           batchRequestManager,
           layerZeroAdapter: remoteLzAdapter,
-          // axelarAdapter: remoteAxelarAdapter, // TODO: hotfix - always use LayerZero 1/1
-          // wormholeAdapter: remoteWhAdapter,
+          axelarAdapter: remoteAxelarAdapter,
+          wormholeAdapter: remoteWhAdapter,
+          chainlinkAdapter: remoteChainlinkAdapter,
         },
         details,
         spokeClient,
+        hubChainNetwork,
+        spokeChainNetwork,
       ] = await Promise.all([
         self._root._protocolAddresses(self.pool.centrifugeId),
         self._root._protocolAddresses(self.centrifugeId),
         self.details(),
         self._root.getClient(self.centrifugeId),
+        firstValueFrom(self._root._chainNetwork(self.pool.centrifugeId)),
+        firstValueFrom(self._root._chainNetwork(self.centrifugeId)),
       ])
       const balanceSheetContract = getContract({
         client: spokeClient,
@@ -636,19 +643,31 @@ export class PoolNetwork extends Entity {
       // setAdapters must be called first, because all other messages are pool-dependent
       // and require the pool to have adapters set
       if (details.activeShareClasses.length === 0 && self.pool.centrifugeId !== self.centrifugeId) {
+        const adapterAddresses: Record<string, { local?: HexString; remote?: HexString }> = {
+          layerZero: { local: localLzAdapter, remote: remoteLzAdapter },
+          axelar: { local: localAxelarAdapter, remote: remoteAxelarAdapter },
+          wormhole: { local: localWhAdapter, remote: remoteWhAdapter },
+          chainlink: { local: localChainlinkAdapter, remote: remoteChainlinkAdapter },
+        }
+
+        const connectionConfig = self._root.config.environment === 'mainnet' ? self._root.connectionConfig.mainnet : self._root.connectionConfig.testnet
+        const resolved = connectionConfig ? resolveAdapters(hubChainNetwork, spokeChainNetwork, connectionConfig) : null
+
         const localAdapters: HexString[] = []
         const remoteAdapters: HexString[] = []
 
-        if (localLzAdapter && remoteLzAdapter) {
-          localAdapters.push(localLzAdapter)
-          remoteAdapters.push(remoteLzAdapter)
+        if (resolved) {
+          for (const adapterName of resolved.adapters) {
+            const addrs = adapterAddresses[adapterName]
+            if (addrs?.local && addrs?.remote) {
+              localAdapters.push(addrs.local)
+              remoteAdapters.push(addrs.remote)
+            }
+          }
         }
-        // TODO: hotfix - always use LayerZero 1/1; re-enable Axelar when multi-adapter support is restored
-        // if (localAxelarAdapter && remoteAxelarAdapter) {
-        //   localAdapters.push(localAxelarAdapter)
-        //   remoteAdapters.push(remoteAxelarAdapter)
-        // }
+
         if (localAdapters.length > 0) {
+          const threshold = resolved?.threshold ?? localAdapters.length
           batch.push(
             encodeFunctionData({
               abi: ABI.Hub,
@@ -658,8 +677,8 @@ export class PoolNetwork extends Entity {
                 self.centrifugeId,
                 localAdapters,
                 remoteAdapters.map(addressToBytes32),
-                1, // threshold: always 1/1 with LayerZero
-                1, // recovery index: always 1/1 with LayerZero
+                threshold,
+                threshold,
                 ctx.signingAddress,
               ],
             })
