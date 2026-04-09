@@ -1,4 +1,5 @@
 import { HexString } from './index.js'
+import { PoolSafe } from './safe.js'
 
 export type FileType = { uri: string; mime: string }
 
@@ -165,4 +166,10 @@ export type PoolMetadata = {
     data: Record<string, unknown>[]
   }
   addressLabels?: Record<string, string>
+  /**
+   * All Safes associated with this pool.
+   * One pSAFE per pool (hub chain), one rSAFE per role per chain.
+   * Populated by the backend when Safes are deployed.
+   */
+  safes?: PoolSafe[]
 }
