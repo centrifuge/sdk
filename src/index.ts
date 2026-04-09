@@ -41,6 +41,7 @@ export type {
   Signer,
   Transaction,
 } from './types/transaction.js'
+export type { PreparedTransaction } from './utils/transaction.js'
 export { Balance, Perquintill, Price, Rate } from './utils/BigInt.js'
 export type { GroupBy } from './utils/date.js'
 export * from './utils/types.js'

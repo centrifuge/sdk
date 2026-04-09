@@ -166,8 +166,6 @@ export type PoolMetadata = {
     data: Record<string, unknown>[]
   }
   addressLabels?: Record<string, string>
-  // @deprecated — use `safes` instead. Kept for pools created before the Safe epic.
-  adminSafeAddress?: string
   /**
    * All Safes associated with this pool.
    * One pSAFE per pool (hub chain), one rSAFE per role per chain.

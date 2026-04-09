@@ -1,29 +1,22 @@
 import type { Centrifuge } from '../Centrifuge.js'
-import type { ShareClass } from '../entities/ShareClass.js'
 import type { HexString, ProtocolContracts } from '../types/index.js'
 import type {
-  SafeAdminAction,
   SafeAdminInfo,
   SafeAdminOwner,
   SafeAdminPendingTransaction,
   SafeAdminProposalPayload,
-  SafeAdminResolution,
-  SafeAdminResolutionInput,
   SafeInfoResponse,
-  SafeQueueConfirmation,
-  SafeQueueExecutionInfo,
   SafeQueueListItem,
   SafeQueuePage,
-  SafeQueueTransactionSummary,
 } from '../types/safe.js'
 import type { SafeMultisigTransactionResponse, Transaction } from '../types/transaction.js'
+import type { PreparedTransaction } from '../utils/transaction.js'
 import {
   buildRawTransactionPayload,
   createSafeTransactionProposedStatus,
   doTransaction,
 } from '../utils/transaction.js'
-import { type CentrifugeId, PoolId } from '../utils/types.js'
-import type { Price } from '../utils/BigInt.js'
+import { type CentrifugeId } from '../utils/types.js'
 import { buildSafeProposalPayload } from './payload.js'
 import { getSafeAdminPendingTransactionPermissions } from '../types/safe.js'
 import { concatHex, decodeFunctionData, zeroAddress } from 'viem'
@@ -64,7 +57,6 @@ function decodeHubCalldata(data: string | null | undefined): string | null {
 
 
 export type SafeAdminWrapperConfig = {
-  resolveSafe: (args: SafeAdminResolutionInput) => SafeAdminResolution | null
   origin?: string
   serviceUrl?: string
 }
@@ -76,10 +68,6 @@ export class SafeAdminWrapper {
   constructor(root: Centrifuge, config: SafeAdminWrapperConfig) {
     this.#root = root
     this.#config = config
-  }
-
-  resolveSafe(action: SafeAdminAction, poolId: PoolId) {
-    return this.#config.resolveSafe({ action, poolId })
   }
 
   async getSafeInfo(centrifugeId: CentrifugeId, safeAddress: HexString): Promise<SafeAdminInfo> {
@@ -172,34 +160,100 @@ export class SafeAdminWrapper {
       .filter((item): item is SafeAdminPendingTransaction => item !== null)
   }
 
-  async prepareUpdateSharePriceProposal(
-    shareClass: ShareClass,
-    pricePerShare: Price,
-    updatedAt: Date,
-    signerAddress: HexString
-  ): Promise<SafeAdminProposalPayload> {
-    const resolution = this.resolveSafe('shareClass.updateSharePrice', shareClass.pool.id)
-    if (!resolution) {
-      throw new Error(`No admin Safe configured for pool "${shareClass.pool.id.toString()}"`)
-    }
+  /**
+   * Generic Safe proposal. Wraps any prepared SDK transaction as a Safe tx,
+   * signs it, and posts it to the Safe Transaction Service.
+   *
+   * Usage:
+   *   safeAdmin.propose(
+   *     poolId.centrifugeId,
+   *     safeAddress,
+   *     await shareClass.prepareUpdateSharePrice(price, date, safeAddress),
+   *     'Update share price'
+   *   )
+   */
+  propose(
+    centrifugeId: CentrifugeId,
+    safeAddress: HexString,
+    prepared: PreparedTransaction,
+    title: string
+  ): Transaction {
+    const self = this
+    return this.#root._transact(async function* (ctx) {
+      const safeInfo = await self.getSafeInfo(centrifugeId, safeAddress)
+      const isOwner = safeInfo.owners.some((o) => o.address.toLowerCase() === ctx.signingAddress.toLowerCase())
+      if (!isOwner) {
+        throw new Error(`Connected wallet "${ctx.signingAddress}" is not an owner of Safe "${safeAddress}"`)
+      }
 
-    const publicClient = await this.#root.getClient(shareClass.pool.centrifugeId)
-    const prepared = await shareClass.prepareUpdateSharePrice(pricePerShare, updatedAt, resolution.safeAddress)
-    const rawPayload = await buildRawTransactionPayload(
-      {
-        root: this.#root,
-        centrifugeId: shareClass.pool.centrifugeId,
-        executionAddress: resolution.safeAddress,
-      },
-      prepared
-    )
-    return buildSafeProposalPayload({
-      rawPayload,
-      safeAddress: resolution.safeAddress,
-      sender: signerAddress,
-      publicClient,
-      nonce: await this.getNextNonce(shareClass.pool.centrifugeId, resolution.safeAddress),
-    })
+      const publicClient = await self.#root.getClient(centrifugeId)
+      const rawPayload = await buildRawTransactionPayload(
+        { root: self.#root, centrifugeId, executionAddress: safeAddress },
+        prepared
+      )
+      const proposal = await buildSafeProposalPayload({
+        rawPayload,
+        safeAddress,
+        sender: ctx.signingAddress,
+        publicClient,
+        nonce: await self.getNextNonce(centrifugeId, safeAddress),
+      })
+
+      const id = Math.random().toString(36).substring(2)
+      yield { id, type: 'SigningTransaction', title } as const
+
+      const signature = await ctx.walletClient.signTypedData({
+        account: ctx.walletClient.account ?? ctx.signingAddress,
+        domain: { chainId: ctx.chain.id, verifyingContract: safeAddress },
+        primaryType: 'SafeTx',
+        types: SAFE_TX_TYPES,
+        message: {
+          to: proposal.to,
+          value: proposal.value,
+          data: proposal.data,
+          operation: proposal.operation,
+          safeTxGas: proposal.safeTxGas,
+          baseGas: proposal.baseGas,
+          gasPrice: proposal.gasPrice,
+          gasToken: proposal.gasToken,
+          refundReceiver: proposal.refundReceiver,
+          nonce: proposal.nonce,
+        },
+      })
+
+      const chainId = await self.#resolveChainId(centrifugeId)
+      await self.#fetchJson(`/v1/chains/${chainId}/transactions/${safeAddress}/propose`, {
+        method: 'POST',
+        body: JSON.stringify({
+          to: proposal.to,
+          value: proposal.value.toString(),
+          data: proposal.data,
+          operation: proposal.operation,
+          nonce: proposal.nonce.toString(),
+          safeTxGas: proposal.safeTxGas.toString(),
+          baseGas: proposal.baseGas.toString(),
+          gasPrice: proposal.gasPrice.toString(),
+          gasToken: proposal.gasToken,
+          refundReceiver: proposal.refundReceiver,
+          safeTxHash: proposal.safeTxHash,
+          sender: proposal.sender,
+          signature,
+          origin: self.#config.origin ?? 'centrifuge-apps-v3',
+        }),
+      })
+
+      const result = createSafeTransactionProposedStatus({
+        id,
+        title,
+        safeAddress,
+        safeTxHash: proposal.safeTxHash,
+        nonce: Number(proposal.nonce),
+        proposer: ctx.signingAddress,
+      })
+
+      yield result
+      return result
+    }, centrifugeId)
   }
 
   confirmPendingTransaction(centrifugeId: CentrifugeId, safeAddress: HexString, safeTxHash: HexString): Transaction {
@@ -331,81 +385,6 @@ export class SafeAdminWrapper {
         })
       )
     }, centrifugeId)
-  }
-
-  updateSharePrice(shareClass: ShareClass, pricePerShare: Price, updatedAt = new Date()): Transaction {
-    const self = this
-    return this.#root._transact(async function* (ctx) {
-      const resolution = self.resolveSafe('shareClass.updateSharePrice', shareClass.pool.id)
-      if (!resolution) {
-        throw new Error(`No admin Safe configured for pool "${shareClass.pool.id.toString()}"`)
-      }
-
-      const safeInfo = await self.getSafeInfo(shareClass.pool.centrifugeId, resolution.safeAddress)
-      const isOwner = safeInfo.owners.some((owner) => owner.address.toLowerCase() === ctx.signingAddress.toLowerCase())
-      if (!isOwner) {
-        throw new Error(`Connected wallet "${ctx.signingAddress}" is not an owner of Safe "${resolution.safeAddress}"`)
-      }
-
-      const proposal = await self.prepareUpdateSharePriceProposal(shareClass, pricePerShare, updatedAt, ctx.signingAddress)
-
-      const id = Math.random().toString(36).substring(2)
-      yield { id, type: 'SigningTransaction', title: proposal.title } as const
-
-      const signature = await ctx.walletClient.signTypedData({
-        account: ctx.walletClient.account ?? ctx.signingAddress,
-        domain: {
-          chainId: ctx.chain.id,
-          verifyingContract: proposal.safeAddress,
-        },
-        primaryType: 'SafeTx',
-        types: SAFE_TX_TYPES,
-        message: {
-          to: proposal.to,
-          value: proposal.value,
-          data: proposal.data,
-          operation: proposal.operation,
-          safeTxGas: proposal.safeTxGas,
-          baseGas: proposal.baseGas,
-          gasPrice: proposal.gasPrice,
-          gasToken: proposal.gasToken,
-          refundReceiver: proposal.refundReceiver,
-          nonce: proposal.nonce,
-        },
-      })
-
-      await self.#fetchJson(`/v1/chains/${ctx.chain.id}/transactions/${resolution.safeAddress}/propose`, {
-        method: 'POST',
-        body: JSON.stringify({
-          to: proposal.to,
-          value: proposal.value.toString(),
-          data: proposal.data,
-          operation: proposal.operation,
-          nonce: proposal.nonce.toString(),
-          safeTxGas: proposal.safeTxGas.toString(),
-          baseGas: proposal.baseGas.toString(),
-          gasPrice: proposal.gasPrice.toString(),
-          gasToken: proposal.gasToken,
-          refundReceiver: proposal.refundReceiver,
-          safeTxHash: proposal.safeTxHash,
-          sender: proposal.sender,
-          signature,
-          origin: self.#config.origin ?? 'centrifuge-apps-v3-admin-safe-poc',
-        }),
-      })
-
-      const result = createSafeTransactionProposedStatus({
-        id,
-        title: proposal.title,
-        safeAddress: proposal.safeAddress,
-        safeTxHash: proposal.safeTxHash,
-        nonce: Number(proposal.nonce),
-        proposer: ctx.signingAddress,
-      })
-
-      yield result
-      return result
-    }, shareClass.pool.centrifugeId)
   }
 
   async #resolveChainId(centrifugeId: CentrifugeId) {
