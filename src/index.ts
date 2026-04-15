@@ -38,3 +38,21 @@ export { Centrifuge }
 export default Centrifuge
 
 export { parseEventLogs } from './utils/transaction.js'
+export {
+  CALL,
+  STATICCALL,
+  VALUECALL,
+  FLAG_RAW,
+  UNUSED_SLOT,
+  encodeCommand,
+  buildScript,
+  computeScriptHash,
+} from './utils/weiroll.js'
+export type {
+  WeirollCallType,
+  WeirollAction,
+  WorkflowStateSlot,
+  WorkflowDefinition,
+  PoolContext,
+  ScriptResult,
+} from './utils/weiroll.js'
