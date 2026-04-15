@@ -3,6 +3,8 @@ export default [
   'event Transfer(address indexed from, address indexed to, uint256 value)',
   'function PERMIT_TYPEHASH() view returns (bytes32)',
   'function nonces(address) view returns (uint256)',
+  'function version() view returns (string)',
+  'function eip712Domain() view returns (bytes1 fields, string name, string version, uint256 chainId, address verifyingContract, bytes32 salt, uint256[] extensions)',
   'function approve(address, uint) external returns (bool)',
   'function transfer(address, uint) external returns (bool)',
   'function balanceOf(address) view returns (uint)',
