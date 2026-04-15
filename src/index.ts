@@ -58,3 +58,5 @@ export type {
 } from './utils/weiroll.js'
 export { computeScriptHash } from './utils/scriptHash.js'
 export type { Callback } from './utils/scriptHash.js'
+export { MAGIC_VARIABLE_KEYS, resolveMagicVariables, resolveVariableLabel } from './utils/variables.js'
+export type { MagicVariableContext, MagicVariableKey } from './utils/variables.js'
