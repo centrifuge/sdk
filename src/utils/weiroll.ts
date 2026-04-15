@@ -1,4 +1,3 @@
-import { encodeAbiParameters, keccak256 } from 'viem'
 import type { HexString } from '../types/index.js'
 
 // ---------------------------------------------------------------------------
@@ -213,41 +212,4 @@ export function buildScript(
   })
 
   return { commands, state, stateBitmap }
-}
-
-// ---------------------------------------------------------------------------
-// computeScriptHash
-// ---------------------------------------------------------------------------
-
-/**
- * Hashes the fully-resolved script into a stable `bytes32` identifier.
- *
- * The hash covers all inputs that define the script's behaviour:
- * commands, state, stateBitmap, and optional hooks.
- *
- * ```solidity
- * keccak256(abi.encode(commands, state, stateBitmap, hooks))
- * ```
- *
- * @param commands  - bytes32[] of packed command words
- * @param state     - bytes[] of ABI-encoded slot values
- * @param stateBitmap - uint128 pin bitmap
- * @param hooks     - bytes32[] of optional hook identifiers (pass [] if unused)
- */
-export function computeScriptHash(
-  commands: HexString[],
-  state: HexString[],
-  stateBitmap: bigint,
-  hooks: HexString[] = []
-): HexString {
-  const encoded = encodeAbiParameters(
-    [
-      { type: 'bytes32[]', name: 'commands' },
-      { type: 'bytes[]', name: 'state' },
-      { type: 'uint128', name: 'stateBitmap' },
-      { type: 'bytes32[]', name: 'hooks' },
-    ],
-    [commands, state, stateBitmap, hooks]
-  )
-  return keccak256(encoded) as HexString
 }

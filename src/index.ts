@@ -46,7 +46,6 @@ export {
   UNUSED_SLOT,
   encodeCommand,
   buildScript,
-  computeScriptHash,
 } from './utils/weiroll.js'
 export type {
   WeirollCallType,
@@ -56,3 +55,5 @@ export type {
   PoolContext,
   ScriptResult,
 } from './utils/weiroll.js'
+export { computeScriptHash } from './utils/scriptHash.js'
+export type { Callback } from './utils/scriptHash.js'

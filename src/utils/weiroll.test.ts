@@ -6,7 +6,6 @@ import {
   UNUSED_SLOT,
   VALUECALL,
   buildScript,
-  computeScriptHash,
   encodeCommand,
 } from './weiroll.js'
 import type { PoolContext, WorkflowDefinition } from './weiroll.js'
@@ -262,52 +261,4 @@ describe('utils/weiroll', () => {
     })
   })
 
-  describe('computeScriptHash', () => {
-    const COMMANDS = [
-      '0xaabbccdd01000102ffffff031234567890123456789012345678901234567890',
-    ] as const
-    const STATE = ['0x0000000000000000000000000000000000000000000000000000000000000001'] as const
-    const BITMAP = 1n
-
-    it('returns a 32-byte hex hash', () => {
-      const hash = computeScriptHash([...COMMANDS], [...STATE], BITMAP, [])
-      expect(hash).to.match(/^0x[0-9a-f]{64}$/)
-    })
-
-    it('is deterministic for the same inputs', () => {
-      const h1 = computeScriptHash([...COMMANDS], [...STATE], BITMAP, [])
-      const h2 = computeScriptHash([...COMMANDS], [...STATE], BITMAP, [])
-      expect(h1).to.equal(h2)
-    })
-
-    it('differs when commands change', () => {
-      const h1 = computeScriptHash([...COMMANDS], [...STATE], BITMAP, [])
-      const different = (COMMANDS[0].replace('aabb', 'ccdd')) as `0x${string}`
-      const h2 = computeScriptHash([different], [...STATE], BITMAP, [])
-      expect(h1).to.not.equal(h2)
-    })
-
-    it('differs when state changes', () => {
-      const h1 = computeScriptHash([...COMMANDS], [...STATE], BITMAP, [])
-      const h2 = computeScriptHash(
-        [...COMMANDS],
-        ['0x0000000000000000000000000000000000000000000000000000000000000002'],
-        BITMAP,
-        []
-      )
-      expect(h1).to.not.equal(h2)
-    })
-
-    it('differs when stateBitmap changes', () => {
-      const h1 = computeScriptHash([...COMMANDS], [...STATE], 1n, [])
-      const h2 = computeScriptHash([...COMMANDS], [...STATE], 0n, [])
-      expect(h1).to.not.equal(h2)
-    })
-
-    it('defaults hooks to empty array', () => {
-      const withDefault = computeScriptHash([...COMMANDS], [...STATE], BITMAP)
-      const withExplicit = computeScriptHash([...COMMANDS], [...STATE], BITMAP, [])
-      expect(withDefault).to.equal(withExplicit)
-    })
-  })
 })
