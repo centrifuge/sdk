@@ -172,30 +172,6 @@ export class PoolNetwork extends Entity {
   }
 
   /**
-   * Compute the deterministic address for a Merkle Proof Manager before deployment.
-   * @returns The predicted contract address
-   */
-  async computeMerkleProofManagerAddress(): Promise<HexString> {
-    const { merkleProofManagerFactory } = await this._root._protocolAddresses(this.centrifugeId)
-    const client = await this._root.getClient(this.centrifugeId)
-
-    try {
-      const { result } = await client.simulateContract({
-        address: merkleProofManagerFactory,
-        abi: ABI.MerkleProofManagerFactory,
-        functionName: 'newManager',
-        args: [this.pool.id.raw],
-      })
-
-      return result as HexString
-    } catch (error) {
-      throw new Error(
-        `Failed to compute MerkleProofManager address: ${error instanceof Error ? error.message : 'Unknown error'}`
-      )
-    }
-  }
-
-  /**
    * Register a Merkle Proof Manager as a Balance Sheet Manager.
    * @param managerAddress - The manager's contract address
    */
@@ -207,62 +183,6 @@ export class PoolNetwork extends Entity {
         canManage: true,
       },
     ])
-  }
-
-  /**
-   * Deploy a Merkle Proof Manager, or reuse an already deployed one, and register it as a Balance Sheet Manager.
-   */
-  deployMerkleProofManager() {
-    const self = this
-    let managerAddress: HexString | null = null
-
-    const deployTransaction = this._transact(async function* (ctx) {
-      managerAddress = await self._findDeployedMerkleProofManagerAddress()
-      if (managerAddress) return
-
-      const isSafeWallet = (await ctx.publicClient.getCode({ address: ctx.signingAddress })) === SAFE_PROXY_BYTECODE
-      const { merkleProofManagerFactory } = await self._root._protocolAddresses(self.centrifugeId)
-      const precomputedAddress = isSafeWallet ? await self.computeMerkleProofManagerAddress() : null
-
-      const result = yield* doTransaction('AddMerkleProofManager', ctx, () =>
-        ctx.walletClient.writeContract({
-          address: merkleProofManagerFactory,
-          abi: ABI.MerkleProofManagerFactory,
-          functionName: 'newManager',
-          args: [self.pool.id.raw],
-        })
-      )
-
-      if (precomputedAddress) {
-        managerAddress = precomputedAddress
-        return
-      }
-
-      const events = parseEventLogs({
-        logs: result.receipt.logs,
-        eventName: 'DeployMerkleProofManager',
-        address: merkleProofManagerFactory,
-      })
-
-      const deployEvent = events[0]
-      const args = deployEvent?.args as { manager?: HexString } | undefined
-      if (!args?.manager) {
-        throw new Error('DeployMerkleProofManager event not found')
-      }
-
-      managerAddress = args.manager
-    }, self.centrifugeId)
-
-    const registerTransaction = defer(() => {
-      if (!managerAddress) {
-        throw new Error('MerkleProofManager not found')
-      }
-
-      return self.registerMerkleProofManagerAsBSManager(managerAddress)
-    })
-
-    const transaction = makeThenable(concat(deployTransaction, registerTransaction), true)
-    return Object.assign(transaction, { centrifugeId: self.centrifugeId })
   }
 
   /**

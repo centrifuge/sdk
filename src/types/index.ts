@@ -80,12 +80,9 @@ export type ProtocolContracts = {
   vaultRegistry: HexString
   vaultRouter: HexString
   balanceSheet: HexString
-  merkleProofManagerFactory: HexString
   onOfframpManagerFactory: HexString
   tokenRecoverer: HexString
   contractUpdater: HexString
-  vaultDecoder: HexString
-  circleDecoder: HexString
   hubHandler: HexString
   protocolGuardian: HexString
   opsGuardian: HexString

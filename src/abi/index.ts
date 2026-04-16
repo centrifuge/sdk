@@ -12,7 +12,6 @@ import HoldingsAbi from './Holdings.abi.js'
 import HubAbi from './Hub.abi.js'
 import HubRegistryAbi from './HubRegistry.abi.js'
 import MerkleProofManagerAbi from './MerkleProofManager.abi.js'
-import MerkleProofManagerFactoryAbi from './MerkleProofManagerFactory.abi.js'
 import MessageDispatcherAbi from './MessageDispatcher.abi.js'
 import OnchainPMAbi from './OnchainPM.abi.js'
 import OnchainPMFactoryAbi from './OnchainPMFactory.abi.js'
@@ -57,7 +56,6 @@ export const ABI = {
   PoolEscrowFactory: parseAbi(PoolEscrowFactoryAbi),
   OnOffRampManager: parseAbi(OnOffRampManagerAbi),
   OnOffRampManagerFactory: parseAbi(OnOffRampManagerFactoryAbi),
-  MerkleProofManagerFactory: parseAbi(MerkleProofManagerFactoryAbi),
   OnchainPM: parseAbi(OnchainPMAbi),
   OnchainPMFactory: parseAbi(OnchainPMFactoryAbi),
   ScriptHelpers: parseAbi(ScriptHelpersAbi),

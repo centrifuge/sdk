@@ -1327,7 +1327,6 @@ export class Centrifuge {
                 vaultRouter
                 tokenFactory
                 onOfframpManagerFactory
-                merkleProofManagerFactory
               }
             }
           }`

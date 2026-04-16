@@ -21,12 +21,9 @@ const centId = 1
 const poolManager = '0x423420Ae467df6e90291fd0252c0A8a637C1e03f'
 const signingAddress = '0x1111111111111111111111111111111111111111'
 const onOffRampFactory = '0x2222222222222222222222222222222222222222'
-const merkleFactory = '0x3333333333333333333333333333333333333333'
-
 const onOffRampEventAbi = parseAbi([
   'event DeployOnOfframpManager(uint64 indexed poolId, bytes16 scId, address indexed manager)',
 ])
-const merkleEventAbi = parseAbi(['event DeployMerkleProofManager(uint64 indexed poolId, address indexed manager)'])
 
 describe.skip('PoolNetwork', () => {
   let poolNetwork: PoolNetwork
@@ -233,41 +230,6 @@ describe.skip('PoolNetwork', () => {
     expect(linkedVaultAddr).not.to.equal(NULL_ADDRESS)
   })
 
-  describe.skip('merkleProofManager', () => {
-    it('should return merkleProofManager', async () => {
-      const result = await poolNetwork.merkleProofManager()
-
-      expect(result).to.be.instanceOf(MerkleProofManager)
-    })
-
-    it('should deploy merkleProofManager', async () => {
-      context.tenderlyFork.impersonateAddress = poolManager
-      context.centrifuge.setSigner(context.tenderlyFork.signer)
-
-      await context.tenderlyFork.fundAccountEth(poolManager, 10n ** 18n)
-
-      const poolId = PoolId.from(1, 10)
-      const { centrifuge } = context
-      const pool = new Pool(centrifuge, poolId.raw)
-      const poolNetwork = new PoolNetwork(centrifuge, pool, centId)
-
-      const result = await poolNetwork.deployMerkleProofManager()
-
-      expect(result.type).to.equal('TransactionConfirmed')
-    })
-
-    it('should throw when it does not find merkleProofManager', async () => {
-      const poolId = PoolId.from(1, 10)
-      const { centrifuge } = context
-      const pool = new Pool(centrifuge, poolId.raw)
-      const poolNetwork = new PoolNetwork(centrifuge, pool, centId)
-      try {
-        await poolNetwork.merkleProofManager()
-      } catch (error: any) {
-        expect(error.message).to.equal('MerkleProofManager not found')
-      }
-    })
-  })
 
   describe.skip('onOfframpManager', () => {
     it.skip('returns onOfframpManager', async () => {
@@ -426,49 +388,13 @@ describe('PoolNetwork manager deployment flows', () => {
     ).to.equal(true)
   })
 
-  it('reuses an existing merkle proof manager and only updates balance sheet access', async () => {
-    const existingManager = '0x6666666666666666666666666666666666666666'
-    const { poolNetwork, walletClient, updateBalanceSheetManagers } = createManagerDeploymentTestSubject({
-      merkleProofManagers: [{ address: existingManager }],
-    })
-
-    const result = await lastValueFrom(poolNetwork.deployMerkleProofManager())
-
-    expect(result.type).to.equal('TransactionConfirmed')
-    expect(walletClient.writeContract.called).to.equal(false)
-    expect(
-      updateBalanceSheetManagers.calledOnceWithExactly([
-        { centrifugeId: centId, address: existingManager, canManage: true },
-      ])
-    ).to.equal(true)
-  })
-
-  it('deploys a new merkle proof manager and then updates balance sheet access', async () => {
-    const deployedManager = '0x7777777777777777777777777777777777777777'
-    const receipt = makeMerkleReceipt(deployedManager)
-    const { poolNetwork, walletClient, updateBalanceSheetManagers } = createManagerDeploymentTestSubject({
-      receipt,
-    })
-
-    const result = await lastValueFrom(poolNetwork.deployMerkleProofManager())
-
-    expect(result.type).to.equal('TransactionConfirmed')
-    expect(walletClient.writeContract.calledOnce).to.equal(true)
-    expect(
-      updateBalanceSheetManagers.calledOnceWithExactly([
-        { centrifugeId: centId, address: deployedManager, canManage: true },
-      ])
-    ).to.equal(true)
-  })
 })
 
 function createManagerDeploymentTestSubject({
   onOffRampManagers = [],
-  merkleProofManagers = [],
   receipt = { status: 'success', logs: [] } as any as TransactionReceipt,
 }: {
   onOffRampManagers?: { address: `0x${string}` }[]
-  merkleProofManagers?: { address: `0x${string}` }[]
   receipt?: TransactionReceipt
 }) {
   const publicClient = {
@@ -486,15 +412,10 @@ function createManagerDeploymentTestSubject({
         return of(transform({ onOffRampManagers: { items: onOffRampManagers } }))
       }
 
-      if (query.includes('merkleProofManagers')) {
-        return of(transform({ merkleProofManagers: { items: merkleProofManagers } }))
-      }
-
       throw new Error(`Unexpected indexer query: ${query}`)
     },
     _protocolAddresses: sinon.stub().resolves({
       onOfframpManagerFactory: onOffRampFactory,
-      merkleProofManagerFactory: merkleFactory,
     }),
     getClient: sinon.stub().resolves(publicClient),
     _transact: (callback: (ctx: any) => AsyncGenerator<unknown> | Observable<unknown>, centrifugeId: number) => {
@@ -567,21 +488,3 @@ function makeOnOffRampReceipt(manager: `0x${string}`) {
   } as any as TransactionReceipt
 }
 
-function makeMerkleReceipt(manager: `0x${string}`) {
-  const topics = encodeEventTopics({
-    abi: merkleEventAbi,
-    eventName: 'DeployMerkleProofManager',
-    args: { poolId: poolId.raw, manager },
-  })
-
-  return {
-    status: 'success',
-    logs: [
-      {
-        address: merkleFactory,
-        topics,
-        data: '0x',
-      },
-    ],
-  } as any as TransactionReceipt
-}
