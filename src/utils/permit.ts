@@ -34,11 +34,16 @@ async function resolvePermitDomain(
 ): Promise<Domain> {
   // Prefer EIP-5267 eip712Domain() — authoritative when the token implements it (e.g. Circle's FiatTokenV2).
   try {
-    const [, name, version, , verifyingContract] = await ctx.publicClient.readContract({
+    const result = await ctx.publicClient.readContract({
       address: currencyAddress,
       abi: ABI.Currency,
       functionName: 'eip712Domain',
     })
+
+    const name = result[1]
+    const version = result[2]
+    const verifyingContract = result[4]
+
     if (name && version) {
       return { name, version, chainId, verifyingContract: verifyingContract ?? currencyAddress }
     }
