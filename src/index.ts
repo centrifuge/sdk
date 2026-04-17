@@ -4,6 +4,8 @@ export { ABI } from './abi/index.js'
 export * from './entities/BalanceSheet.js'
 export * from './entities/Investor.js'
 export * from './entities/MerkleProofManager.js'
+export { buildPolicyUpdate } from './entities/OnchainPM.js'
+export type { PolicyUpdateRequest, PolicyUpdateResult } from './entities/OnchainPM.js'
 export * from './entities/OnOffRampManager.js'
 export * from './entities/Pool.js'
 export * from './entities/PoolNetwork.js'
@@ -13,6 +15,7 @@ export * from './entities/ShareClass.js'
 export * from './entities/Vault.js'
 export type { Client, Config, CurrencyDetails, HexString } from './types/index.js'
 export type { IssuerDetail, PoolMetadataInput, PoolReport, ShareClassInput } from './types/poolInput.js'
+export type { ActionDefinition, InputDefinition, WorkflowManifest } from './types/workflow.js'
 export * from './types/poolMetadata.js'
 export type { Query } from './types/query.js'
 export type {
@@ -46,7 +49,6 @@ export {
   UNUSED_SLOT,
   encodeCommand,
   buildScript,
-  computeScriptHash,
 } from './utils/weiroll.js'
 export type {
   WeirollCallType,
@@ -56,3 +58,7 @@ export type {
   PoolContext,
   ScriptResult,
 } from './utils/weiroll.js'
+export { computeScriptHash } from './utils/scriptHash.js'
+export type { Callback } from './utils/scriptHash.js'
+export { MAGIC_VARIABLE_KEYS, resolveMagicVariables, resolveVariableLabel } from './utils/variables.js'
+export type { MagicVariableContext, MagicVariableKey } from './utils/variables.js'
