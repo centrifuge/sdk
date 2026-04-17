@@ -19,23 +19,52 @@ export async function signPermit(
   spender: HexString,
   amount: bigint
 ) {
-  let domainOrCurrency: HexString | Domain = currencyAddress
-  const USDC = '0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48'
   const chainId = await ctx.root._idToChain(ctx.centrifugeId)
-  if (currencyAddress.toLowerCase() === USDC) {
-    // USDC has a custom version
-    domainOrCurrency = { name: 'USD Coin', version: '2', chainId, verifyingContract: currencyAddress }
-  } else {
-    const chainConfig = await ctx.root.getChainConfig(ctx.centrifugeId)
-    if (chainConfig.testnet) {
-      // Assume that the currencies used on testnets have our custom domain
-      domainOrCurrency = { name: 'Centrifuge', version: '1', chainId, verifyingContract: currencyAddress }
-    }
-  }
+  const domain = await resolvePermitDomain(ctx, currencyAddress, chainId)
 
   const deadline = Math.floor(Date.now() / 1000) + 3600 // 1 hour
-  const permit = await signERC2612Permit(ctx, chainId, domainOrCurrency, spender, amount, deadline)
+  const permit = await signERC2612Permit(ctx, chainId, domain, spender, amount, deadline)
   return permit
+}
+
+async function resolvePermitDomain(
+  ctx: TransactionContext,
+  currencyAddress: HexString,
+  chainId: number
+): Promise<Domain> {
+  // Prefer EIP-5267 eip712Domain() — authoritative when the token implements it (e.g. Circle's FiatTokenV2).
+  try {
+    const result = await ctx.publicClient.readContract({
+      address: currencyAddress,
+      abi: ABI.Currency,
+      functionName: 'eip712Domain',
+    })
+
+    const name = result[1]
+    const version = result[2]
+    const verifyingContract = result[4]
+
+    if (name && version) {
+      return { name, version, chainId, verifyingContract: verifyingContract ?? currencyAddress }
+    }
+  } catch {}
+
+  // Fallback for tokens that don't implement eip712Domain(). Centrifuge's own ERC20
+  // (used for testnet mock currencies) hardcodes the domain to name="Centrifuge", version="1"
+  // and doesn't expose version() or eip712Domain(), so we apply that domain on testnets.
+  const chainConfig = await ctx.root.getChainConfig(ctx.centrifugeId)
+  if (chainConfig.testnet) {
+    return { name: 'Centrifuge', version: '1', chainId, verifyingContract: currencyAddress }
+  }
+
+  // Mainnet fallback: read name() and version() individually; default version to '1'.
+  const [name, version] = await Promise.all([
+    getName(ctx.publicClient, currencyAddress),
+    ctx.publicClient
+      .readContract({ address: currencyAddress, abi: ABI.Currency, functionName: 'version' })
+      .catch(() => '1'),
+  ])
+  return { name, version, chainId, verifyingContract: currencyAddress }
 }
 
 export async function signERC2612Permit(
