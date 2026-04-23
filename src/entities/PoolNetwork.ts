@@ -172,6 +172,27 @@ export class PoolNetwork extends Entity {
   }
 
   /**
+   * Returns the OnchainPM contract address for this pool on this chain,
+   * or null if one has not been deployed yet.
+   */
+  onchainPM() {
+    return this._query(['onchainPM'], () =>
+      this._root._queryIndexer(
+        `query ($poolId: BigInt!, $centrifugeId: String!) {
+          onchainPMs(where: {poolId: $poolId, centrifugeId: $centrifugeId}) {
+            items {
+              address
+            }
+          }
+        }`,
+        { poolId: this.pool.id.toString(), centrifugeId: this.centrifugeId.toString() },
+        (data: { onchainPMs: { items: { address: HexString }[] } }) =>
+          (data.onchainPMs.items[0]?.address?.toLowerCase() as HexString | undefined) ?? null
+      )
+    )
+  }
+
+  /**
    * Compute the deterministic address for a Merkle Proof Manager before deployment.
    * @returns The predicted contract address
    */
