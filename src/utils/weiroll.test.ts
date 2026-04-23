@@ -7,6 +7,7 @@ import {
   VALUECALL,
   buildScript,
   encodeCommand,
+  fillRuntimeSlots,
 } from './weiroll.js'
 import type { PoolContext, WorkflowDefinition } from './weiroll.js'
 
@@ -258,6 +259,56 @@ describe('utils/weiroll', () => {
       expect(() =>
         buildScript(workflow, { poolContext: POOL_CTX, configurableValues: {} })
       ).to.throw('maximum is 128')
+    })
+  })
+
+  describe('fillRuntimeSlots', () => {
+    const PINNED = '0x0000000000000000000000000000000000000000000000000000000000000064' as const
+    const RUNTIME_VALUE = '0x00000000000000000000000000000000000000000000000000000000000000de' as const
+
+    const workflow: WorkflowDefinition = {
+      workflowRef: 'test',
+      actions: [],
+      state: [
+        { type: 'literal', value: PINNED },
+        { type: 'runtime', key: 'amount' },
+        { type: 'runtime', key: 'recipient' },
+      ],
+    }
+
+    it('fills runtime slots and leaves pinned slots unchanged', () => {
+      const state: `0x${string}`[] = [PINNED, '0x', '0x']
+      const recipient = '0x000000000000000000000000abcdefabcdefabcdefabcdefabcdefabcdefabcd' as const
+      const filled = fillRuntimeSlots(state, workflow, { amount: RUNTIME_VALUE, recipient })
+
+      expect(filled[0]).to.equal(PINNED)
+      expect(filled[1]).to.equal(RUNTIME_VALUE)
+      expect(filled[2]).to.equal(recipient)
+    })
+
+    it('returns a new array (does not mutate input)', () => {
+      const state: `0x${string}`[] = [PINNED, '0x', '0x']
+      const original = [...state]
+      fillRuntimeSlots(state, workflow, { amount: RUNTIME_VALUE, recipient: RUNTIME_VALUE })
+      expect(state).to.deep.equal(original)
+    })
+
+    it('throws when a runtime slot has no matching value', () => {
+      const state: `0x${string}`[] = [PINNED, '0x', '0x']
+      expect(() =>
+        fillRuntimeSlots(state, workflow, { amount: RUNTIME_VALUE }) // missing 'recipient'
+      ).to.throw('missing runtime value for slot "recipient"')
+    })
+
+    it('handles a workflow with no runtime slots (returns state unchanged)', () => {
+      const noRuntimeWorkflow: WorkflowDefinition = {
+        workflowRef: 'test',
+        actions: [],
+        state: [{ type: 'literal', value: PINNED }],
+      }
+      const state: `0x${string}`[] = [PINNED]
+      const filled = fillRuntimeSlots(state, noRuntimeWorkflow, {})
+      expect(filled).to.deep.equal([PINNED])
     })
   })
 

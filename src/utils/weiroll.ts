@@ -84,6 +84,42 @@ export interface ScriptResult {
   stateBitmap: bigint
 }
 
+/**
+ * Fills runtime state slots with execution-time values.
+ *
+ * `buildScript()` leaves runtime slots empty (`0x`). Before calling
+ * `OnchainPM.execute()`, the strategist must fill each runtime slot with the
+ * concrete value for this particular execution.
+ *
+ * Returns a copy of `state` with each runtime slot replaced by the
+ * corresponding value from `runtimeValues` (keyed by the slot's `key` field).
+ *
+ * @throws if any runtime slot in `workflow` has no entry in `runtimeValues`
+ *
+ * @example
+ * ```typescript
+ * const { commands, state, stateBitmap } = buildScript(workflow, { poolContext, configurableValues })
+ * const filledState = fillRuntimeSlots(state, workflow, { amount: '0x000...0de0b6b3a7640000' })
+ * // submit OnchainPM.execute(commands, filledState, stateBitmap, [], proof)
+ * ```
+ */
+export function fillRuntimeSlots(
+  state: HexString[],
+  workflow: WorkflowDefinition,
+  runtimeValues: Record<string, HexString>
+): HexString[] {
+  return state.map((slot, i) => {
+    const def = workflow.state[i]
+    if (!def || def.type !== 'runtime') return slot
+
+    const value = runtimeValues[def.key]
+    if (value === undefined) {
+      throw new Error(`fillRuntimeSlots: missing runtime value for slot "${def.key}"`)
+    }
+    return value
+  })
+}
+
 // ---------------------------------------------------------------------------
 // encodeCommand
 // ---------------------------------------------------------------------------

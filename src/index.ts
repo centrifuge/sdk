@@ -4,7 +4,7 @@ export { ABI } from './abi/index.js'
 export * from './entities/BalanceSheet.js'
 export * from './entities/Investor.js'
 export * from './entities/MerkleProofManager.js'
-export { buildPolicyUpdate } from './entities/OnchainPM.js'
+export { buildPolicyUpdate, generateExecuteProof } from './entities/OnchainPM.js'
 export type { PolicyUpdateRequest, PolicyUpdateResult } from './entities/OnchainPM.js'
 export * from './entities/OnOffRampManager.js'
 export * from './entities/Pool.js'
@@ -49,6 +49,7 @@ export {
   UNUSED_SLOT,
   encodeCommand,
   buildScript,
+  fillRuntimeSlots,
 } from './utils/weiroll.js'
 export type {
   WeirollCallType,

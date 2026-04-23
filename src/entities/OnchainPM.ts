@@ -4,10 +4,6 @@ import { ABI } from '../abi/index.js'
 import type { HexString } from '../types/index.js'
 import { addressToBytes32, encode } from '../utils/index.js'
 
-// ---------------------------------------------------------------------------
-// Types
-// ---------------------------------------------------------------------------
-
 export interface PolicyUpdateRequest {
   /** Hub contract address for the target chain. */
   hub: HexString
@@ -44,10 +40,6 @@ export interface PolicyUpdateResult {
    */
   calldata: HexString
 }
-
-// ---------------------------------------------------------------------------
-// buildPolicyUpdate
-// ---------------------------------------------------------------------------
 
 /**
  * Builds an unsigned `Hub.updateContract()` call to update an OnchainPM
@@ -102,9 +94,37 @@ export async function buildPolicyUpdate(req: PolicyUpdateRequest): Promise<Polic
   return { root, calldata }
 }
 
-// ---------------------------------------------------------------------------
-// Internal helpers
-// ---------------------------------------------------------------------------
+/**
+ * Generates the Merkle inclusion proof required by `OnchainPM.execute()`.
+ *
+ * Rebuilds the same `SimpleMerkleTree` that `buildPolicyUpdate()` committed
+ * on-chain and returns `tree.getProof(index)` for the given `scriptHash`.
+ * Pass the result as the `proof` argument:
+ *
+ * ```typescript
+ * const proof = await generateExecuteProof(scriptHash, allGroupScriptHashes)
+ * // submit: OnchainPM.execute(commands, filledState, stateBitmap, [], proof)
+ * ```
+ *
+ * For a group with a single workflow the proof is `[]` — the Merkle root is
+ * the script hash itself, so no siblings are needed.
+ *
+ * @throws if `allScriptHashes` is empty (strategist has no whitelisted workflows)
+ * @throws if `scriptHash` is not present in `allScriptHashes`
+ */
+export async function generateExecuteProof(scriptHash: HexString, allScriptHashes: HexString[]): Promise<HexString[]> {
+  if (allScriptHashes.length === 0) {
+    throw new Error('generateExecuteProof: allScriptHashes is empty — strategist has no whitelisted workflows')
+  }
+
+  const index = allScriptHashes.indexOf(scriptHash)
+  if (index === -1) {
+    throw new Error(`generateExecuteProof: scriptHash ${scriptHash} not found in allScriptHashes`)
+  }
+
+  const { SimpleMerkleTree } = await loadMerkleTree()
+  return SimpleMerkleTree.of(allScriptHashes).getProof(index) as HexString[]
+}
 
 // Dynamic import for CJS/ESM compatibility (same pattern as MerkleProofManager).
 async function loadMerkleTree(): Promise<{ SimpleMerkleTree: typeof SimpleMerkleTree }> {
