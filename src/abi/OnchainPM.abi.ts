@@ -1,7 +1,6 @@
 export default [
   'function computeScriptHash(bytes32[] commands, bytes32[] state, uint128 stateBitmap, (bytes32 hash, address caller)[] callbacks) pure returns (bytes32)',
-  'function policy() view returns (bytes32)',
-  'function activeStrategist() view returns (address)',
+  'function policy(address strategist) view returns (bytes32)',
 
   'function execute(bytes32[] commands, bytes32[] state, uint128 stateBitmap, (bytes32 hash, address caller)[] callbacks, bytes32[] proof)',
   'function executeCallback(bytes32[] commands, bytes32[] state, uint128 stateBitmap, (bytes32 hash, address caller)[] callbacks)',

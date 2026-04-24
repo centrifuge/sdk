@@ -24,9 +24,9 @@ export class OnchainPM extends Entity {
     this.address = address.toLowerCase() as HexString
   }
 
-  /** Current policy root for the active strategist. `bytes32(0)` means no policy is set. */
-  policy() {
-    return this._query(['policy'], () =>
+  /** Current policy root for the given strategist. `bytes32(0)` means no policy is set. */
+  policy(strategist: HexString) {
+    return this._query(['policy', strategist.toLowerCase()], () =>
       from(this._root.getClient(this.network.centrifugeId)).pipe(
         switchMap((client) =>
           from(
@@ -34,23 +34,7 @@ export class OnchainPM extends Entity {
               address: this.address,
               abi: ABI.OnchainPM,
               functionName: 'policy',
-            })
-          )
-        )
-      )
-    )
-  }
-
-  /** The strategist address currently authorised to call `execute()`. */
-  activeStrategist() {
-    return this._query(['activeStrategist'], () =>
-      from(this._root.getClient(this.network.centrifugeId)).pipe(
-        switchMap((client) =>
-          from(
-            client.readContract({
-              address: this.address,
-              abi: ABI.OnchainPM,
-              functionName: 'activeStrategist',
+              args: [strategist],
             })
           )
         )
