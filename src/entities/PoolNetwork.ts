@@ -12,6 +12,7 @@ import { AssetId, CentrifugeId, ShareClassId } from '../utils/types.js'
 import { BalanceSheet } from './BalanceSheet.js'
 import { Entity } from './Entity.js'
 import { MerkleProofManager } from './MerkleProofManager.js'
+import { OnchainPM } from './OnchainPM.js'
 import { OnOffRampManager } from './OnOffRampManager.js'
 import type { Pool } from './Pool.js'
 import { ShareClass } from './ShareClass.js'
@@ -168,6 +169,29 @@ export class PoolNetwork extends Entity {
           return new MerkleProofManager(this._root, this, address)
         })
       )
+    )
+  }
+
+  /**
+   * Returns the OnchainPM entity for this pool on this chain,
+   * or null if one has not been deployed yet.
+   */
+  onchainPM() {
+    return this._query(['onchainPM'], () =>
+      this._root
+        ._queryIndexer(
+          `query ($poolId: BigInt!, $centrifugeId: String!) {
+            onchainPMs(where: {poolId: $poolId, centrifugeId: $centrifugeId}) {
+              items {
+                address
+              }
+            }
+          }`,
+          { poolId: this.pool.id.toString(), centrifugeId: this.centrifugeId.toString() },
+          (data: { onchainPMs: { items: { address: HexString }[] } }) =>
+            (data.onchainPMs.items[0]?.address?.toLowerCase() as HexString | undefined) ?? null
+        )
+        .pipe(map((address) => (address ? new OnchainPM(this._root, this, address) : null)))
     )
   }
 

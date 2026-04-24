@@ -1,7 +1,7 @@
 import { expect } from 'chai'
 import { decodeFunctionData } from 'viem'
 import { ABI } from '../abi/index.js'
-import { buildPolicyUpdate } from './OnchainPM.js'
+import { buildPolicyUpdate, generateExecuteProof } from './OnchainPM.js'
 import type { PolicyUpdateRequest } from './OnchainPM.js'
 
 // ---------------------------------------------------------------------------
@@ -120,6 +120,60 @@ describe('entities/OnchainPM', () => {
     it('calldata is a hex string', async () => {
       const { calldata } = await buildPolicyUpdate(BASE)
       expect(calldata).to.match(/^0x[0-9a-f]+$/)
+    })
+  })
+
+  describe('generateExecuteProof', () => {
+    it('returns an empty proof for a single-workflow group (root IS the hash)', async () => {
+      const proof = await generateExecuteProof(HASH_A, [HASH_A])
+      expect(proof).to.deep.equal([])
+    })
+
+    it('returns a non-empty proof for a two-workflow group', async () => {
+      const proof = await generateExecuteProof(HASH_A, [HASH_A, HASH_B])
+      expect(proof).to.be.an('array').with.lengthOf.greaterThan(0)
+      for (const sibling of proof) {
+        expect(sibling).to.match(/^0x[0-9a-f]{64}$/)
+      }
+    })
+
+    it('returns different proofs for different leaves in the same tree', async () => {
+      const allHashes = [HASH_A, HASH_B, HASH_C]
+      const proofA = await generateExecuteProof(HASH_A, allHashes)
+      const proofB = await generateExecuteProof(HASH_B, allHashes)
+      expect(proofA).to.not.deep.equal(proofB)
+    })
+
+    it('proof is consistent with the root produced by buildPolicyUpdate', async () => {
+      const allHashes = [HASH_A, HASH_B, HASH_C]
+      const { root } = await buildPolicyUpdate({ ...BASE, scriptHashes: allHashes })
+      const proof = await generateExecuteProof(HASH_B, allHashes)
+      expect(root).to.match(/^0x[0-9a-f]{64}$/)
+      expect(proof).to.be.an('array')
+    })
+
+    it('is deterministic — same inputs produce same proof', async () => {
+      const p1 = await generateExecuteProof(HASH_A, [HASH_A, HASH_B])
+      const p2 = await generateExecuteProof(HASH_A, [HASH_A, HASH_B])
+      expect(p1).to.deep.equal(p2)
+    })
+
+    it('throws when allScriptHashes is empty', async () => {
+      try {
+        await generateExecuteProof(HASH_A, [])
+        expect.fail('expected an error')
+      } catch (err: unknown) {
+        expect((err as Error).message).to.include('allScriptHashes is empty')
+      }
+    })
+
+    it('throws when scriptHash is not in allScriptHashes', async () => {
+      try {
+        await generateExecuteProof(HASH_C, [HASH_A, HASH_B])
+        expect.fail('expected an error')
+      } catch (err: unknown) {
+        expect((err as Error).message).to.include('not found in allScriptHashes')
+      }
     })
   })
 })

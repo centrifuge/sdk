@@ -1328,6 +1328,7 @@ export class Centrifuge {
                 tokenFactory
                 onOfframpManagerFactory
                 merkleProofManagerFactory
+                onchainPMFactory
               }
             }
           }`

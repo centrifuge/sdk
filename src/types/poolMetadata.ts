@@ -65,6 +65,26 @@ export type MerkleProofPolicyInput = Omit<MerkleProofPolicy, 'inputCombinations'
   valueNonZero?: boolean
 }
 
+export interface WorkflowGroupEntry {
+  workflowRef: string
+  /** Per-slot hex values for configurable inputs; keyed by slot key. Empty when no configurable slots. */
+  configurableValues: Record<string, HexString>
+  addedAt: string
+}
+
+export interface WorkflowGroup {
+  /** Client-generated UUID; stable across metadata updates. */
+  id: string
+  name: string
+  description?: string
+  /** On-chain strategist address. EOA for now; Safe address when Safe integration lands. */
+  strategistAddress: HexString
+  canAddBlank: boolean
+  workflows: WorkflowGroupEntry[]
+  createdAt: string
+  updatedAt?: string
+}
+
 export type PoolMetadata = {
   version?: number
   pool: {
@@ -165,4 +185,5 @@ export type PoolMetadata = {
     data: Record<string, unknown>[]
   }
   addressLabels?: Record<string, string>
+  workflowGroups?: WorkflowGroup[]
 }
