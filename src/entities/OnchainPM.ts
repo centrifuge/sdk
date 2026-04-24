@@ -1,8 +1,93 @@
 import type { SimpleMerkleTree } from '@openzeppelin/merkle-tree'
+import { from, switchMap } from 'rxjs'
 import { encodeFunctionData, toHex } from 'viem'
 import { ABI } from '../abi/index.js'
+import type { Centrifuge } from '../Centrifuge.js'
 import type { HexString } from '../types/index.js'
 import { addressToBytes32, encode } from '../utils/index.js'
+import type { Callback } from '../utils/scriptHash.js'
+import { wrapTransaction } from '../utils/transaction.js'
+import { Entity } from './Entity.js'
+import type { PoolNetwork } from './PoolNetwork.js'
+
+export class OnchainPM extends Entity {
+  /** Deployed contract address on this chain. */
+  address: HexString
+
+  /** @internal */
+  constructor(
+    _root: Centrifuge,
+    public network: PoolNetwork,
+    address: HexString
+  ) {
+    super(_root, ['onchainPM', network.centrifugeId, network.pool.id.toString()])
+    this.address = address.toLowerCase() as HexString
+  }
+
+  /** Current policy root for the active strategist. `bytes32(0)` means no policy is set. */
+  policy() {
+    return this._query(['policy'], () =>
+      from(this._root.getClient(this.network.centrifugeId)).pipe(
+        switchMap((client) =>
+          from(
+            client.readContract({
+              address: this.address,
+              abi: ABI.OnchainPM,
+              functionName: 'policy',
+            })
+          )
+        )
+      )
+    )
+  }
+
+  /** The strategist address currently authorised to call `execute()`. */
+  activeStrategist() {
+    return this._query(['activeStrategist'], () =>
+      from(this._root.getClient(this.network.centrifugeId)).pipe(
+        switchMap((client) =>
+          from(
+            client.readContract({
+              address: this.address,
+              abi: ABI.OnchainPM,
+              functionName: 'activeStrategist',
+            })
+          )
+        )
+      )
+    )
+  }
+
+  /**
+   * Executes a whitelisted weiroll script on-chain.
+   *
+   * Build the arguments with:
+   * - `buildScript()` → `{ commands, state, stateBitmap }`
+   * - `fillRuntimeSlots()` → final `state` with runtime values filled in
+   * - `generateExecuteProof()` → `proof`
+   *
+   * @example
+   * ```typescript
+   * const { commands, state: rawState, stateBitmap } = buildScript(workflow, { poolContext, configurableValues })
+   * const state = fillRuntimeSlots(rawState, workflow, { amount: '0x...' })
+   * const proof = await generateExecuteProof(computeScriptHash(commands, rawState, stateBitmap, []), allGroupScriptHashes)
+   * await onchainPM.execute({ commands, state, stateBitmap, callbacks: [], proof })
+   * ```
+   */
+  execute(params: { commands: HexString[]; state: HexString[]; stateBitmap: bigint; callbacks: Callback[]; proof: HexString[] }) {
+    const self = this
+    return this._transact(async function* (ctx) {
+      yield* wrapTransaction('Execute workflow', ctx, {
+        contract: self.address,
+        data: encodeFunctionData({
+          abi: ABI.OnchainPM,
+          functionName: 'execute',
+          args: [params.commands, params.state, params.stateBitmap, params.callbacks, params.proof],
+        }),
+      })
+    }, this.network.centrifugeId)
+  }
+}
 
 export interface PolicyUpdateRequest {
   /** Hub contract address for the target chain. */
