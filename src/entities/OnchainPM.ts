@@ -87,6 +87,39 @@ export class OnchainPM extends Entity {
       })
     }, this.network.centrifugeId)
   }
+
+  /**
+   * Submits a Hub.updateContract() transaction to update this OnchainPM's
+   * policy root for a strategist. Called whenever workflows are added to or
+   * removed from a group.
+   *
+   * Rebuilds the Merkle root from `scriptHashes` and routes the update:
+   * Hub → Spoke contractUpdater → OnchainPM.trustedCall()
+   *
+   * Pass `scriptHashes: []` to set root to bytes32(0), which disables the strategist.
+   *
+   * The transaction is signed on the hub chain (pool.centrifugeId).
+   */
+  updatePolicy(params: { scId: HexString; strategist: HexString; scriptHashes: HexString[]; refund?: HexString }) {
+    const self = this
+    return this._transact(async function* (ctx) {
+      const { hub } = await self._root._protocolAddresses(self.network.pool.centrifugeId)
+      const { calldata } = await buildPolicyUpdate({
+        hub,
+        poolId: self.network.pool.id.raw,
+        scId: params.scId,
+        centrifugeId: self.network.centrifugeId,
+        onchainPM: self.address,
+        strategist: params.strategist,
+        scriptHashes: params.scriptHashes,
+        refund: params.refund,
+      })
+      yield* wrapTransaction('Update workflow policy', ctx, {
+        contract: hub,
+        data: calldata,
+      })
+    }, this.network.pool.centrifugeId)
+  }
 }
 
 export interface PolicyUpdateRequest {
