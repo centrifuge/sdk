@@ -30,6 +30,30 @@ class TransactionError extends Error {
   }
 }
 
+export class ChainMismatchError extends Error {
+  override name = 'ChainMismatchError'
+  constructor(public expected: number, public actual: number) {
+    super(
+      `Wallet is connected to chainId=${actual} but transaction targets chainId=${expected}. ` +
+        `Refusing to submit to avoid sending funds on the wrong network.`
+    )
+  }
+}
+
+/**
+ * Asserts that the wallet's currently-selected chain matches the chain the SDK
+ * intends to submit on. Defense-in-depth: even if `_idToChain` returned a wrong
+ * value (e.g. compromised indexer), the wallet itself is the source of truth
+ * for "where will this tx actually land."
+ */
+async function assertWalletChainMatches(ctx: TransactionContext): Promise<void> {
+  const expected = await ctx.root._idToChain(ctx.centrifugeId)
+  const actual = await ctx.walletClient.getChainId()
+  if (expected !== actual) {
+    throw new ChainMismatchError(expected, actual)
+  }
+}
+
 export type BatchTransactionData = {
   contract: HexString
   data: HexString[]
@@ -79,6 +103,7 @@ export async function* wrapTransaction(
 
     if (!options.simulate) {
       const result = yield* doTransaction(title, ctx, async () => {
+        await assertWalletChainMatches(ctx)
         if (data.length === 1) {
           return ctx.walletClient.sendTransaction({
             to: contract,
