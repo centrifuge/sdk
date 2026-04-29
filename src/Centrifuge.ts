@@ -32,6 +32,8 @@ import {
 } from 'viem'
 import { ABI } from './abi/index.js'
 import { chains } from './config/chains.js'
+import { KNOWN_DEPLOYMENTS } from './config/deployments.js'
+import { verifyDeployments } from './config/verifyDeployments.js'
 import { PERMIT_TYPEHASH } from './constants.js'
 import { Investor } from './entities/Investor.js'
 import { Pool } from './entities/Pool.js'
@@ -1295,42 +1297,63 @@ export class Centrifuge {
                 asyncVaultFactory
                 axelarAdapter
                 balanceSheet
+                batchRequestManager
                 centrifugeId
                 chainId
                 chainlinkAdapter
+                circleDecoder
+                contractUpdater
                 freelyTransferableHook
                 freezeOnlyHook
                 fullRestrictionsHook
                 gasService
                 gateway
                 globalEscrow
-                opsGuardian
-                protocolGuardian
                 holdings
                 hub
+                hubHandler
                 hubRegistry
                 identityValuation
+                layerZeroAdapter
+                merkleProofManagerFactory
                 messageDispatcher
                 messageProcessor
                 multiAdapter
+                navManager
+                onOfframpManagerFactory
+                opsGuardian
+                oracleValuation
                 poolEscrowFactory
+                protocolGuardian
+                queueManager
                 redemptionRestrictionsHook
+                refundEscrowFactory
                 root
                 shareClassManager
-                batchRequestManager
+                simplePriceManager
                 spoke
-                vaultRegistry
                 syncDepositVaultFactory
                 syncManager
-                wormholeAdapter
-                layerZeroAdapter
-                vaultRouter
                 tokenFactory
-                onOfframpManagerFactory
-                merkleProofManagerFactory
+                tokenRecoverer
+                vaultDecoder
+                vaultRegistry
+                vaultRouter
+                wormholeAdapter
               }
             }
           }`
+      ).pipe(
+        map((data) => {
+          // KNOWN_DEPLOYMENTS holds mainnet addresses only — mainnet and testnet
+          // reuse the same centrifugeIds for different chains, so a single allowlist
+          // can't cover both. Testnet pools don't hold real value, so the
+          // indexer-trust protection is scoped to mainnet for now.
+          if (this.#config.environment !== 'mainnet') return data
+          return verifyDeployments(data, KNOWN_DEPLOYMENTS, {
+            allowUnknownDeployments: this.#config.allowUnknownDeployments ?? false,
+          })
+        })
       )
     )
   }
