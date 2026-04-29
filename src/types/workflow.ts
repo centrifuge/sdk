@@ -63,6 +63,12 @@ export interface InputDefinition {
 export interface WorkflowManifest {
   /** Stable identifier for the workflow (matches the catalog ref). */
   workflowRef: string
+  /**
+   * Catalog file version — must match `SUPPORTED_CATALOG_VERSION` in the SDK.
+   * `manifestToDefinition()` throws if this does not match, preventing use of
+   * an unrecognised or potentially compromised catalog release.
+   */
+  catalogVersion: string
   /** Display name shown in the UI. */
   name: string
   /** Name of the contract template this workflow targets (e.g. `"onchain-pm"`). */

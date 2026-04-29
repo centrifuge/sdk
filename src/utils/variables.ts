@@ -62,6 +62,18 @@ export interface MagicVariableContext {
 // resolveMagicVariables
 // ---------------------------------------------------------------------------
 
+/** Matches exactly 32 bytes ABI-encoded as a 0x-prefixed hex string. */
+const BYTES32_RE = /^0x[0-9a-fA-F]{64}$/
+
+function assertBytes32(key: string, value: HexString): void {
+  if (!BYTES32_RE.test(value)) {
+    throw new Error(
+      `resolveMagicVariables: "${key}" must be a 32-byte ABI-encoded hex string (0x + 64 hex chars), got "${value}". ` +
+        `Addresses must be left-zero-padded; uint values must be right-aligned to 32 bytes.`
+    )
+  }
+}
+
 /**
  * Builds a `PoolContext` from a typed `MagicVariableContext` by mapping
  * each `$`-prefixed magic variable key to its resolved value.
@@ -72,8 +84,18 @@ export interface MagicVariableContext {
  * const poolContext = resolveMagicVariables(ctx)
  * const script = buildScript(workflow, { poolContext, configurableValues })
  * ```
+ *
+ * @throws if any value is not a valid 32-byte ABI-encoded hex string
  */
 export function resolveMagicVariables(context: MagicVariableContext): PoolContext {
+  assertBytes32('executor', context.executor)
+  assertBytes32('poolEscrow', context.poolEscrow)
+  assertBytes32('onOffRamp', context.onOffRamp)
+  assertBytes32('poolId', context.poolId)
+  assertBytes32('scId', context.scId)
+  assertBytes32('accountingTokenId', context.accountingTokenId)
+  assertBytes32('accountingTokenAssetId', context.accountingTokenAssetId)
+
   return {
     $executor: context.executor,
     $poolEscrow: context.poolEscrow,
