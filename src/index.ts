@@ -33,6 +33,10 @@ export { Balance, Perquintill, Price, Rate } from './utils/BigInt.js'
 export type { GroupBy } from './utils/date.js'
 export * from './utils/types.js'
 export { chains } from './config/chains.js'
+export { DeploymentMismatchError, UnknownDeploymentError } from './config/verifyDeployments.js'
+export type { IndexerDeployment, IndexerDeploymentResponse, VerifyOptions } from './config/verifyDeployments.js'
+export { KNOWN_DEPLOYMENTS } from './config/deployments.js'
+export type { KnownDeployment } from './config/deployments.js'
 
 export { Centrifuge }
 export default Centrifuge

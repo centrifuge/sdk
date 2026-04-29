@@ -1276,6 +1276,17 @@ export class Centrifuge {
     )
   }
 
+  /**
+   * Verified-deployments stream. On mainnet, every emission has been checked against
+   * the bundled `KNOWN_DEPLOYMENTS` allowlist; a mismatch surfaces as a
+   * `DeploymentMismatchError` on the observable. Apps can subscribe to this directly
+   * to render a maintenance/error UI when the indexer disagrees with the SDK's
+   * bundled addresses. Protects against indexer misconfiguration or compromise.
+   */
+  deployments() {
+    return this._deployments()
+  }
+
   /** @internal */
   _deployments() {
     return this._query(['deployments'], () =>
