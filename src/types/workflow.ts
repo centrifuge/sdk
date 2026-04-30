@@ -26,6 +26,11 @@ export interface ActionDefinition {
   output: number
   /** When true, sets FLAG_RAW — use for manually ABI-encoded calldata. */
   rawMode?: boolean
+  /**
+   * When true, pool managers may exclude this action when adding the workflow
+   * to a group. The action must have output = 0xFF (no downstream dependency).
+   */
+  optional?: boolean
 }
 
 /**
