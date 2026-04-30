@@ -1,6 +1,6 @@
 {
   "name": "@centrifuge/sdk",
-  "version": "1.7.5",
+  "version": "1.8.0",
   "description": "",
   "homepage": "https://github.com/centrifuge/sdk/tree/main#readme",
   "author": "",
@@ -37,6 +37,7 @@
     "test:coverage": "c8 pnpm test:ci",
     "fork:server": "node ./src/tests/forkServer.mjs",
     "gen:docs": "typedoc",
+    "gen:deployments": "node --loader=ts-node/esm scripts/gen-deployments.ts",
     "format": "prettier --write '**/*.{ts,js,mjs,json,md,yml}'"
   },
   "dependencies": {
