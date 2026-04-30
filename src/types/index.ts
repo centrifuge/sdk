@@ -82,6 +82,7 @@ export type ProtocolContracts = {
   balanceSheet: HexString
   merkleProofManagerFactory: HexString
   onOfframpManagerFactory: HexString
+  onchainPMFactory: HexString
   tokenRecoverer: HexString
   contractUpdater: HexString
   vaultDecoder: HexString
