@@ -151,6 +151,20 @@ export function encodeCommand(
   if (inputs.length > 6) {
     throw new Error(`encodeCommand: inputs length ${inputs.length} exceeds maximum of 6`)
   }
+  if (!/^0x[0-9a-fA-F]{8}$/.test(selector)) {
+    throw new Error(`encodeCommand: selector must be a 4-byte hex string (0x + 8 hex chars), got "${selector}"`)
+  }
+  if (!/^0x[0-9a-fA-F]{40}$/.test(target)) {
+    throw new Error(`encodeCommand: target must be a 20-byte address (0x + 40 hex chars), got "${target}"`)
+  }
+  for (const idx of inputs) {
+    if (idx !== UNUSED_SLOT && (idx < 0 || idx > 127)) {
+      throw new Error(`encodeCommand: input slot index ${idx} out of range — must be 0–127 or UNUSED_SLOT (0xFF)`)
+    }
+  }
+  if (output !== UNUSED_SLOT && (output < 0 || output > 127)) {
+    throw new Error(`encodeCommand: output slot index ${output} out of range — must be 0–127 or UNUSED_SLOT (0xFF)`)
+  }
 
   // Pad to exactly 6 input indices
   const paddedInputs = inputs.slice()

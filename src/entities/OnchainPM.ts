@@ -170,14 +170,18 @@ export interface PolicyUpdateResult {
 export async function buildPolicyUpdate(req: PolicyUpdateRequest): Promise<PolicyUpdateResult> {
   const { poolId, scId, centrifugeId, onchainPM, strategist, scriptHashes, refund } = req
 
+  // Normalise case before building the Merkle tree so the root is deterministic
+  // regardless of whether callers pass checksummed or lowercase hashes.
+  const normalizedHashes = scriptHashes.map((h) => h.toLowerCase() as HexString)
+
   // 1. Build Merkle root over script hashes.
   //    Empty set → bytes32(0) which disables the strategist entirely.
   let root: HexString
-  if (scriptHashes.length === 0) {
+  if (normalizedHashes.length === 0) {
     root = toHex(0, { size: 32 })
   } else {
     const { SimpleMerkleTree } = await loadMerkleTree()
-    root = SimpleMerkleTree.of(scriptHashes).root as HexString
+    root = SimpleMerkleTree.of(normalizedHashes).root as HexString
   }
 
   // 2. Payload: strategist address (right-padded, Centrifuge cross-chain encoding) + new root.
@@ -219,13 +223,18 @@ export async function generateExecuteProof(scriptHash: HexString, allScriptHashe
     throw new Error('generateExecuteProof: allScriptHashes is empty — strategist has no whitelisted workflows')
   }
 
-  const index = allScriptHashes.indexOf(scriptHash)
+  // Normalise case so proof generation is consistent with buildPolicyUpdate(),
+  // which also lowercases before building the tree.
+  const normalizedHash = scriptHash.toLowerCase() as HexString
+  const normalizedAll = allScriptHashes.map((h) => h.toLowerCase() as HexString)
+
+  const index = normalizedAll.indexOf(normalizedHash)
   if (index === -1) {
     throw new Error(`generateExecuteProof: scriptHash ${scriptHash} not found in allScriptHashes`)
   }
 
   const { SimpleMerkleTree } = await loadMerkleTree()
-  return SimpleMerkleTree.of(allScriptHashes).getProof(index) as HexString[]
+  return SimpleMerkleTree.of(normalizedAll).getProof(index) as HexString[]
 }
 
 // Dynamic import for CJS/ESM compatibility (same pattern as MerkleProofManager).
