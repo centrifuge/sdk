@@ -1,0 +1,4 @@
+{
+  "extends": ["config:recommended"],
+  "minimumReleaseAge": "8 days"
+}
