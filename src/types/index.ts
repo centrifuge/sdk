@@ -84,6 +84,7 @@ export type ProtocolContracts = {
   asyncVaultFactory: HexString
   wormholeAdapter?: HexString
   syncManager: HexString
+  subsidyManager: HexString
   axelarAdapter?: HexString
   syncDepositVaultFactory: HexString
   spoke: HexString
