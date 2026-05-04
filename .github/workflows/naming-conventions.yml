@@ -18,7 +18,7 @@ jobs:
           # https://www.conventionalcommits.org/en/v1.0.0/
           requireScope: false
 
-      - uses: docker://agilepathway/pull-request-label-checker@sha256:da7c8677e87239522e0c6869ecc4c86d6b7db8b6859ad332b8b1c2129b76177b # v1.6.56
+      - uses: agilepathway/label-checker@3b44ba4ecef1547fc7c0c8caafe0e1db7591244b # v1.6.56
         # https://github.com/agilepathway/label-checker
         id: check-pr-labels
         with:
