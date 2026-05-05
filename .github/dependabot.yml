@@ -7,12 +7,9 @@ updates:
       interval: 'monthly'
       timezone: 'Europe/Berlin'
 
-    open-pull-requests-limit: 1
+    open-pull-requests-limit: 5
 
     assignees:
-      - 'centrifuge/apps'
-
-    reviewers:
       - 'centrifuge/apps'
 
     groups:
@@ -22,24 +19,24 @@ updates:
         update-types:
           - 'minor'
           - 'patch'
-
-  - package-ecosystem: 'npm'
-    directory: '/'
-    schedule:
-      interval: 'quarterly'
-      timezone: 'Europe/Berlin'
-
-    open-pull-requests-limit: 1
-
-    assignees:
-      - 'centrifuge/apps'
-
-    reviewers:
-      - 'centrifuge/apps'
-
-    groups:
-      quarterly-major-updates:
+      major-updates:
         patterns:
           - '*'
         update-types:
           - 'major'
+
+  - package-ecosystem: 'github-actions'
+    directory: '/'
+    schedule:
+      interval: 'monthly'
+      timezone: 'Europe/Berlin'
+
+    open-pull-requests-limit: 5
+
+    assignees:
+      - 'centrifuge/apps'
+
+    groups:
+      github-actions-updates:
+        patterns:
+          - '*'
