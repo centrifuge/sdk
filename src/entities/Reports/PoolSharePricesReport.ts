@@ -10,6 +10,12 @@ import { PoolReports } from './PoolReports.js'
 import { DataReportFilter } from './types.js'
 import { applyGrouping } from './utils.js'
 
+type ShareClassAggregate = {
+  totalIssuance: bigint
+  priceSourceIssuance: bigint
+  price: bigint
+}
+
 export type SharePricesReport = {
   timestamp: string
   shareClasses: Record<
@@ -54,43 +60,38 @@ export class PoolSharePricesReport extends Entity {
   report(filter: SharePricesReportFilter = {}) {
     const { from, to, groupBy } = filter
     return this._query(['report', from?.toString(), to?.toString(), groupBy?.toString()], () =>
-      combineLatest([this.pool._shareClassIds(), this.pool.currency(), this.pool.activeNetworks()]).pipe(
-        switchMap(([shareClassIds, poolCurrency, activeNetworks]) =>
-          this._root._idToChain(activeNetworks[0]?.centrifugeId ?? this.pool.centrifugeId).pipe(
-            switchMap((chainId) =>
-              this._root
-                ._queryIndexer<SharePriceData>(
-                  `query ($filter: TokenInstanceSnapshotFilter) {
-								tokenInstanceSnapshots(
-									where: $filter
-									orderBy: "timestamp"
-									orderDirection: "asc"
-									limit: 1000
-								) {
-									items {
-										tokenId
-										timestamp
-										totalIssuance
-										tokenPrice
+      combineLatest([this.pool._shareClassIds(), this.pool.decimals()]).pipe(
+        switchMap(([shareClassIds, poolDecimals]) =>
+          this._root
+            ._queryIndexer<SharePriceData>(
+              `query ($filter: TokenInstanceSnapshotFilter) {
+									tokenInstanceSnapshots(
+										where: $filter
+										orderBy: "timestamp"
+										orderDirection: "asc"
+										limit: 1000
+									) {
+										items {
+											tokenId
+											timestamp
+											totalIssuance
+											tokenPrice
+										}
 									}
-								}
-							}`,
-                  {
-                    filter: {
-                      tokenId_in: shareClassIds
-                        .filter((id) => !filter.shareClassId || filter.shareClassId.equals(id))
-                        .map((id) => id.toString()),
-                      trigger_ends_with: 'NewPeriod',
-                      triggerChainId: String(chainId),
-                      // TODO from/to
-                    } satisfies TokenInstanceSnapshotFilter,
-                  },
-                  undefined,
-                  60 * 60 * 1000
-                )
-                .pipe(map((data) => this._process(data, filter, poolCurrency)))
+								}`,
+              {
+                filter: {
+                  tokenId_in: shareClassIds
+                    .filter((id) => !filter.shareClassId || filter.shareClassId.equals(id))
+                    .map((id) => id.toString()),
+                  trigger_ends_with: 'NewPeriod',
+                  // TODO from/to
+                } satisfies TokenInstanceSnapshotFilter,
+              },
+              undefined,
+              60 * 60 * 1000
             )
-          )
+            .pipe(map((data) => this._process(data, filter, poolDecimals)))
         )
       )
     )
@@ -100,25 +101,49 @@ export class PoolSharePricesReport extends Entity {
   _process(
     data: SharePriceData,
     filter: Pick<SharePricesReportFilter, 'groupBy'>,
-    poolCurrency: { decimals: number }
+    poolDecimals: number
   ): SharePricesReport {
-    const sharePricesByDate: Record<string, SharePricesReport[number]['shareClasses']> = {}
+    // Snapshots are emitted per (tokenId, triggerChainId). For multi-network share
+    // classes there are several rows per (date, tokenId) — sum issuance across them.
+    const aggregates: Record<string, Record<HexString, ShareClassAggregate>> = {}
 
     data.tokenInstanceSnapshots.items.forEach((item) => {
       const date = new Date(Number(item.timestamp)).toISOString().slice(0, 10)
-      if (!sharePricesByDate[date]) {
-        sharePricesByDate[date] = {}
+      if (!aggregates[date]) {
+        aggregates[date] = {}
       }
 
-      sharePricesByDate[date][item.tokenId] = {
-        price: new Price(item.tokenPrice),
-        totalIssuance: new Balance(item.totalIssuance, poolCurrency.decimals),
+      const issuance = BigInt(item.totalIssuance)
+      const price = BigInt(item.tokenPrice)
+      const existing = aggregates[date][item.tokenId]
+
+      if (!existing) {
+        aggregates[date][item.tokenId] = {
+          totalIssuance: issuance,
+          priceSourceIssuance: issuance,
+          price,
+        }
+      } else {
+        existing.totalIssuance += issuance
+        // Prefer the price from the snapshot with the largest issuance — stale
+        // chains may report 0 issuance with an outdated price.
+        if (issuance > existing.priceSourceIssuance) {
+          existing.priceSourceIssuance = issuance
+          existing.price = price
+        }
       }
     })
-    const items = Object.entries(sharePricesByDate).map(([timestamp, shareClasses]) => {
-      const date = new Date(timestamp)
+
+    const items = Object.entries(aggregates).map(([timestamp, byTokenId]) => {
+      const shareClasses: SharePricesReport[number]['shareClasses'] = {}
+      Object.entries(byTokenId).forEach(([tokenId, agg]) => {
+        shareClasses[tokenId as HexString] = {
+          price: new Price(agg.price),
+          totalIssuance: new Balance(agg.totalIssuance, poolDecimals),
+        }
+      })
       return {
-        timestamp: date.toISOString(),
+        timestamp: new Date(timestamp).toISOString(),
         shareClasses,
       }
     })
