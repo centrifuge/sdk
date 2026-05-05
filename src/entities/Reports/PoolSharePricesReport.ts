@@ -10,12 +10,6 @@ import { PoolReports } from './PoolReports.js'
 import { DataReportFilter } from './types.js'
 import { applyGrouping } from './utils.js'
 
-type ShareClassAggregate = {
-  totalIssuance: bigint
-  priceSourceIssuance: bigint
-  price: bigint
-}
-
 export type SharePricesReport = {
   timestamp: string
   shareClasses: Record<
@@ -38,6 +32,7 @@ type SharePriceData = {
       timestamp: string
       totalIssuance: string
       tokenPrice: string
+      triggerChainId: string
     }[]
   }
 }
@@ -76,6 +71,7 @@ export class PoolSharePricesReport extends Entity {
 											timestamp
 											totalIssuance
 											tokenPrice
+											triggerChainId
 										}
 									}
 								}`,
@@ -103,47 +99,53 @@ export class PoolSharePricesReport extends Entity {
     filter: Pick<SharePricesReportFilter, 'groupBy'>,
     poolDecimals: number
   ): SharePricesReport {
-    // Snapshots are emitted per (tokenId, triggerChainId). For multi-network share
-    // classes there are several rows per (date, tokenId) — sum issuance across them.
-    const aggregates: Record<string, Record<HexString, ShareClassAggregate>> = {}
+    // Snapshots are emitted per (tokenId, triggerChainId, period). The indexer
+    // sometimes returns multiple rows for the same (date, tokenId, chain) — e.g.
+    // when the same period boundary triggers on more than one block. Dedupe to
+    // one row per (date, tokenId, chain) by keeping the largest issuance, then
+    // sum across chains for the (date, tokenId) total.
+    const perChain: Record<string, Record<HexString, Record<string, { issuance: bigint; price: bigint }>>> = {}
 
     data.tokenInstanceSnapshots.items.forEach((item) => {
       const date = new Date(Number(item.timestamp)).toISOString().slice(0, 10)
-      if (!aggregates[date]) {
-        aggregates[date] = {}
-      }
-
       const issuance = BigInt(item.totalIssuance)
       const price = BigInt(item.tokenPrice)
-      const existing = aggregates[date][item.tokenId]
 
-      if (!existing) {
-        aggregates[date][item.tokenId] = {
-          totalIssuance: issuance,
-          priceSourceIssuance: issuance,
-          price,
-        }
-      } else {
-        existing.totalIssuance += issuance
-        // Prefer the price from the snapshot with the largest issuance — stale
-        // chains may report 0 issuance with an outdated price.
-        if (issuance > existing.priceSourceIssuance) {
-          existing.priceSourceIssuance = issuance
-          existing.price = price
-        }
+      const byTokenId = (perChain[date] ??= {})
+      const byChain = (byTokenId[item.tokenId] ??= {})
+      const existing = byChain[item.triggerChainId]
+
+      if (!existing || issuance > existing.issuance) {
+        byChain[item.triggerChainId] = { issuance, price }
       }
     })
 
-    const items = Object.entries(aggregates).map(([timestamp, byTokenId]) => {
+    const items = Object.entries(perChain).map(([date, byTokenId]) => {
       const shareClasses: SharePricesReport[number]['shareClasses'] = {}
-      Object.entries(byTokenId).forEach(([tokenId, agg]) => {
+
+      Object.entries(byTokenId).forEach(([tokenId, byChain]) => {
+        let totalIssuance = 0n
+        let priceSourceIssuance = -1n
+        let price = 0n
+
+        Object.values(byChain).forEach((row) => {
+          totalIssuance += row.issuance
+          // Prefer the price from the chain with the largest issuance — stale
+          // chains may report 0 issuance with an outdated price.
+          if (row.issuance > priceSourceIssuance) {
+            priceSourceIssuance = row.issuance
+            price = row.price
+          }
+        })
+
         shareClasses[tokenId as HexString] = {
-          price: new Price(agg.price),
-          totalIssuance: new Balance(agg.totalIssuance, poolDecimals),
+          price: new Price(price),
+          totalIssuance: new Balance(totalIssuance, poolDecimals),
         }
       })
+
       return {
-        timestamp: new Date(timestamp).toISOString(),
+        timestamp: new Date(date).toISOString(),
         shareClasses,
       }
     })
