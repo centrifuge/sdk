@@ -68,7 +68,7 @@ export class PoolSharePricesReport extends Entity {
 									tokenInstanceSnapshots(
 										where: $filter
 										orderBy: "timestamp"
-										orderDirection: "asc"
+										orderDirection: "desc"
 										limit: 1000
 									) {
 										items {
@@ -148,6 +148,8 @@ export class PoolSharePricesReport extends Entity {
       }
     })
 
-    return applyGrouping(items, filter.groupBy ?? 'day', 'latest')
+    return applyGrouping(items, filter.groupBy ?? 'day', 'latest').sort(
+      (a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()
+    )
   }
 }
