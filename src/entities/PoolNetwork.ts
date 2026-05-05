@@ -175,23 +175,30 @@ export class PoolNetwork extends Entity {
   /**
    * Returns the OnchainPM entity for this pool on this chain,
    * or null if one has not been deployed yet.
+   *
+   * Resolves the address via OnchainPMFactory.getAddress(poolId) — a deterministic
+   * CREATE2 lookup that returns the zero address when no PM has been deployed.
    */
   onchainPM() {
     return this._query(['onchainPM'], () =>
-      this._root
-        ._queryIndexer(
-          `query ($poolId: BigInt!, $centrifugeId: String!) {
-            onchainPMs(where: {poolId: $poolId, centrifugeId: $centrifugeId}) {
-              items {
-                address
-              }
-            }
-          }`,
-          { poolId: this.pool.id.toString(), centrifugeId: this.centrifugeId.toString() },
-          (data: { onchainPMs: { items: { address: HexString }[] } }) =>
-            (data.onchainPMs.items[0]?.address?.toLowerCase() as HexString | undefined) ?? null
+      combineLatest([this._root._protocolAddresses(this.centrifugeId), this._root.getClient(this.centrifugeId)]).pipe(
+        switchMap(([{ onchainPMFactory }, client]) =>
+          defer(() =>
+            client.readContract({
+              address: onchainPMFactory,
+              abi: ABI.OnchainPMFactory,
+              functionName: 'getAddress',
+              args: [this.pool.id.raw],
+            })
+          ).pipe(
+            map((address) =>
+              address && address !== '0x0000000000000000000000000000000000000000'
+                ? new OnchainPM(this._root, this, address)
+                : null
+            )
+          )
         )
-        .pipe(map((address) => (address ? new OnchainPM(this._root, this, address) : null)))
+      )
     )
   }
 
@@ -296,19 +303,14 @@ export class PoolNetwork extends Entity {
    */
   onOfframpManager(scId: ShareClassId) {
     return this._query(null, () =>
-      combineLatest([
-        this._deployedOnOffRampManagers(scId),
-        this.pool.balanceSheetManagers(),
-      ]).pipe(
+      combineLatest([this._deployedOnOffRampManagers(scId), this.pool.balanceSheetManagers()]).pipe(
         map(([deployedOnOffRampManagers, balanceSheetManagers]) => {
           if (!deployedOnOffRampManagers.length) {
             throw new Error('OnOffRampManager not found')
           }
 
           const bsManagerAddresses = new Set(
-            balanceSheetManagers
-              .filter((m) => m.centrifugeId === this.centrifugeId)
-              .map((m) => m.address.toLowerCase())
+            balanceSheetManagers.filter((m) => m.centrifugeId === this.centrifugeId).map((m) => m.address.toLowerCase())
           )
           const verifiedManagers = deployedOnOffRampManagers.filter((deployed) =>
             bsManagerAddresses.has(deployed.address.toLowerCase())
@@ -339,10 +341,7 @@ export class PoolNetwork extends Entity {
   assignOnOffRampManagerPermissions(scId: ShareClassId) {
     const self = this
     return this._transact(() => {
-      return combineLatest([
-        this._deployedOnOffRampManagers(scId),
-        this.pool.balanceSheetManagers(),
-      ]).pipe(
+      return combineLatest([this._deployedOnOffRampManagers(scId), this.pool.balanceSheetManagers()]).pipe(
         switchMap(([deployedOnOffRampManager, balanceSheetManagers]) => {
           const bsManagers = new Map<string, { address: `0x${string}`; centrifugeId: number; type: string }>()
           balanceSheetManagers.forEach((manager) => {

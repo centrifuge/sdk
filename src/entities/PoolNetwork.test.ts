@@ -10,6 +10,7 @@ import { context } from '../tests/setup.js'
 import { doTransaction } from '../utils/transaction.js'
 import { AssetId, PoolId, ShareClassId } from '../utils/types.js'
 import { MerkleProofManager } from './MerkleProofManager.js'
+import { OnchainPM } from './OnchainPM.js'
 import { Pool } from './Pool.js'
 import { PoolNetwork } from './PoolNetwork.js'
 import { Vault } from './Vault.js'
@@ -545,6 +546,43 @@ function createManagerDeploymentTestSubject({
     updateBalanceSheetManagers,
   }
 }
+
+describe('PoolNetwork.onchainPM', () => {
+  const onchainPMFactory = '0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'
+  const deployedPMAddress = '0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb'
+
+  afterEach(() => {
+    sinon.restore()
+  })
+
+  function createOnchainPMTestSubject(returnedAddress: string) {
+    const publicClient = {
+      readContract: sinon.stub().resolves(returnedAddress),
+    }
+    const root = {
+      _query: (_keys: unknown, callback: () => unknown) => callback(),
+      _protocolAddresses: sinon.stub().resolves({ onchainPMFactory }),
+      getClient: sinon.stub().resolves(publicClient),
+      _transact: sinon.stub(),
+    }
+    const pool = new Pool(root as any, poolId.raw)
+    const pn = new PoolNetwork(root as any, pool, centId)
+    return { pn, publicClient }
+  }
+
+  it('returns an OnchainPM entity when the factory resolves a deployed address', async () => {
+    const { pn } = createOnchainPMTestSubject(deployedPMAddress)
+    const result = await lastValueFrom(pn.onchainPM() as unknown as Observable<OnchainPM | null>)
+    expect(result).to.be.instanceOf(OnchainPM)
+    expect((result as OnchainPM).address).to.equal(deployedPMAddress)
+  })
+
+  it('returns null when the factory resolves the zero address (not yet deployed)', async () => {
+    const { pn } = createOnchainPMTestSubject(NULL_ADDRESS)
+    const result = await lastValueFrom(pn.onchainPM() as unknown as Observable<OnchainPM | null>)
+    expect(result).to.equal(null)
+  })
+})
 
 function makeOnOffRampReceipt(manager: `0x${string}`) {
   const topics = encodeEventTopics({
