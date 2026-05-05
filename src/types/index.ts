@@ -26,6 +26,16 @@ export type Config = {
    * instead of relying on SDK-level event watching.
    */
   disableRepeatOnEvents?: boolean
+  /**
+   * If true, accept indexer-reported deployments for centrifugeIds that are not in
+   * the bundled allowlist (KNOWN_DEPLOYMENTS). Mismatches against known deployments
+   * still throw. Default: false (strict).
+   *
+   * Strict mode is the secure default — an attacker adding a fake centrifugeId via a
+   * compromised indexer cannot slip past it. Enable only if you knowingly run an SDK
+   * version that predates a legitimate new chain deployment.
+   */
+  allowUnknownDeployments?: boolean
 }
 
 export type UserProvidedConfig = Partial<Config>
@@ -74,6 +84,7 @@ export type ProtocolContracts = {
   asyncVaultFactory: HexString
   wormholeAdapter?: HexString
   syncManager: HexString
+  subsidyManager: HexString
   axelarAdapter?: HexString
   syncDepositVaultFactory: HexString
   spoke: HexString
