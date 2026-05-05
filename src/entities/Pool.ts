@@ -1,5 +1,5 @@
 import { catchError, combineLatest, defer, map, of, switchMap, timeout } from 'rxjs'
-import { encodeFunctionData, fromHex, toHex } from 'viem'
+import { encodeFunctionData, fromHex, parseAbi, toHex } from 'viem'
 import { ABI } from '../abi/index.js'
 import type { Centrifuge } from '../Centrifuge.js'
 import { HexString } from '../types/index.js'
@@ -357,6 +357,28 @@ export class Pool extends Entity {
         })
       )
     })
+  }
+
+  /**
+   * Get the decimals of the pool, which is the precision of the share class tokens
+   * and pool-denominated balances. May differ from the pool currency decimals.
+   */
+  decimals() {
+    return this._query(['decimals', this.id.toString()], () =>
+      combineLatest([this._root._protocolAddresses(this.centrifugeId), this._root.getClient(this.centrifugeId)]).pipe(
+        switchMap(([{ hubRegistry }, client]) =>
+          defer(() =>
+            client.readContract({
+              address: hubRegistry,
+              // Use inline ABI because of function overload
+              abi: parseAbi(['function decimals(uint64) view returns (uint8)']),
+              functionName: 'decimals',
+              args: [this.id.raw],
+            })
+          )
+        )
+      )
+    )
   }
 
   /**

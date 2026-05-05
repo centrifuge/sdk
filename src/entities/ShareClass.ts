@@ -60,13 +60,13 @@ export class ShareClass extends Entity {
         this._metrics(),
         this._metadata(),
         this.navPerNetwork(),
-        this.pool.currency(),
+        this.pool.decimals(),
         this.pool.metadata(),
       ]).pipe(
-        map(([metrics, metadata, navPerNetwork, poolCurrency, poolMeta]) => {
+        map(([metrics, metadata, navPerNetwork, poolDecimals, poolMeta]) => {
           const totalIssuance = navPerNetwork.reduce(
             (acc, item) => acc.add(item.totalIssuance),
-            new Balance(0n, poolCurrency.decimals)
+            new Balance(0n, poolDecimals)
           )
 
           const meta = poolMeta?.shareClasses?.[this.id.raw]
@@ -145,8 +145,8 @@ export class ShareClass extends Entity {
 
   navPerNetwork() {
     return this._query(['navPerNetwork'], () =>
-      this.pool.currency().pipe(
-        switchMap((poolCurrency) =>
+      this.pool.decimals().pipe(
+        switchMap((poolDecimals) =>
           this._root._queryIndexer(
             `query ($scId: String!) {
               tokenInstances(where: { tokenId: $scId }) {
@@ -173,9 +173,9 @@ export class ShareClass extends Entity {
             }) =>
               data.tokenInstances.items.map((item) => ({
                 centrifugeId: Number(item.blockchain.centrifugeId),
-                totalIssuance: new Balance(item.totalIssuance, poolCurrency.decimals),
+                totalIssuance: new Balance(item.totalIssuance, poolDecimals),
                 pricePerShare: new Price(item.tokenPrice),
-                nav: new Balance(item.totalIssuance, poolCurrency.decimals).mul(new Price(item.tokenPrice)),
+                nav: new Balance(item.totalIssuance, poolDecimals).mul(new Price(item.tokenPrice)),
                 address: item.address,
               }))
           )
