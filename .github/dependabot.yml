@@ -13,17 +13,9 @@ updates:
       - 'centrifuge/apps'
 
     groups:
-      monthly-minor-patch-updates:
+      monthly-updates:
         patterns:
           - '*'
-        update-types:
-          - 'minor'
-          - 'patch'
-      major-updates:
-        patterns:
-          - '*'
-        update-types:
-          - 'major'
 
   - package-ecosystem: 'github-actions'
     directory: '/'
