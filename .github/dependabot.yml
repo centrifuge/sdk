@@ -13,7 +13,7 @@ updates:
 
     groups:
       monthly-updates:
-        patterns:
+        update-types:
           - 'minor'
           - 'patch'
 
