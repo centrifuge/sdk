@@ -12,21 +12,15 @@ updates:
     assignees:
       - 'centrifuge/apps'
 
-    reviewers:
-      - 'centrifuge/apps'
-
     groups:
-      monthly-minor-patch-updates:
+      monthly-updates:
         patterns:
           - '*'
-        update-types:
-          - 'minor'
-          - 'patch'
 
-  - package-ecosystem: 'npm'
+  - package-ecosystem: 'github-actions'
     directory: '/'
     schedule:
-      interval: 'quarterly'
+      interval: 'monthly'
       timezone: 'Europe/Berlin'
 
     open-pull-requests-limit: 1
@@ -34,12 +28,7 @@ updates:
     assignees:
       - 'centrifuge/apps'
 
-    reviewers:
-      - 'centrifuge/apps'
-
     groups:
-      quarterly-major-updates:
+      github-actions-updates:
         patterns:
           - '*'
-        update-types:
-          - 'major'
