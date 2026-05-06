@@ -11,14 +11,14 @@ jobs:
     steps:
       - name: Check PR Title follows conventional commit naming
         id: check-pr-naming
-        uses: amannn/action-semantic-pull-request@e32d7e603df1aa1ba07e981f2a23455dee596825 # v5
+        uses: amannn/action-semantic-pull-request@48f256284bd46cdaab1048c3721360e808335d50 # v6.1.1
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           # https://www.conventionalcommits.org/en/v1.0.0/
           requireScope: false
 
-      - uses: agilepathway/label-checker@3b44ba4ecef1547fc7c0c8caafe0e1db7591244b # v1.6.56
+      - uses: agilepathway/label-checker@c3d16ad512e7cea5961df85ff2486bb774caf3c5 # v1.6.65
         # https://github.com/agilepathway/label-checker
         id: check-pr-labels
         with:
@@ -26,7 +26,7 @@ jobs:
           repo_token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Find existing PR title error comment
-        uses: peter-evans/find-comment@a54c31d7fa095754bfef525c0c8e5e5674c4b4b1 # v2.4.0
+        uses: peter-evans/find-comment@b30e6a3c0ed37e7c023ccd3f1db5c6c0b0c23aad # v4.0.0
         id: find-title-comment
         with:
           issue-number: ${{ github.event.pull_request.number }}
@@ -34,7 +34,7 @@ jobs:
           body-includes: We require pull request titles to follow
 
       - name: Find existing PR label error comment
-        uses: peter-evans/find-comment@a54c31d7fa095754bfef525c0c8e5e5674c4b4b1 # v2.4.0
+        uses: peter-evans/find-comment@b30e6a3c0ed37e7c023ccd3f1db5c6c0b0c23aad # v4.0.0
         id: find-label-comment
         with:
           issue-number: ${{ github.event.pull_request.number }}
@@ -43,7 +43,7 @@ jobs:
 
       - name: Add PR naming error comment
         id: pr-title-error
-        uses: peter-evans/create-or-update-comment@67dcc547d311b736a8e6c5c236542148a47adc3d # v2.1.1
+        uses: peter-evans/create-or-update-comment@e8674b075228eee787fea43ef493e45ece1004c9 # v5.0.0
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
           repository: ${{ github.repository }}
@@ -74,7 +74,7 @@ jobs:
 
       - name: Add PR label error comment
         id: pr-label-error
-        uses: peter-evans/create-or-update-comment@67dcc547d311b736a8e6c5c236542148a47adc3d # v2.1.1
+        uses: peter-evans/create-or-update-comment@e8674b075228eee787fea43ef493e45ece1004c9 # v5.0.0
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
           repository: ${{ github.repository }}
