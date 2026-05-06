@@ -14,7 +14,8 @@ updates:
     groups:
       monthly-updates:
         patterns:
-          - '*'
+          - 'minor'
+          - 'patch'
 
   - package-ecosystem: 'github-actions'
     directory: '/'
