@@ -9,8 +9,7 @@ updates:
 
     open-pull-requests-limit: 1
 
-    assignees:
-      - 'centrifuge/apps'
+    labels: []
 
     groups:
       monthly-updates:
@@ -25,8 +24,7 @@ updates:
 
     open-pull-requests-limit: 1
 
-    assignees:
-      - 'centrifuge/apps'
+    labels: []
 
     groups:
       github-actions-updates:
