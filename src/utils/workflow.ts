@@ -27,5 +27,6 @@ export function manifestToDefinition(manifest: WorkflowManifest): WorkflowDefini
     workflowRef: manifest.workflowRef,
     actions: manifest.actions as WeirollAction[],
     state,
+    ...(manifest.runtimeVariables ? { runtimeVariables: manifest.runtimeVariables } : {}),
   }
 }

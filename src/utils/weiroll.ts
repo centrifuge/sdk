@@ -64,6 +64,12 @@ export interface WorkflowDefinition {
   workflowRef: string
   actions: WeirollAction[]
   state: WorkflowStateSlot[]
+  /**
+   * Named runtime variables required at execution time. Copied from
+   * WorkflowManifest. One input per entry; the value is written into every
+   * state slot whose key matches, enforcing a single value across multiple uses.
+   */
+  runtimeVariables?: string[]
 }
 
 /**
@@ -108,6 +114,15 @@ export function fillRuntimeSlots(
   workflow: WorkflowDefinition,
   runtimeValues: Record<string, HexString>
 ): HexString[] {
+  if (workflow.runtimeVariables) {
+    const missing = workflow.runtimeVariables.filter((key) => runtimeValues[key] === undefined)
+    if (missing.length > 0) {
+      throw new Error(
+        `fillRuntimeSlots: missing runtime values for: ${missing.map((k) => `"${k}"`).join(', ')}`
+      )
+    }
+  }
+
   return state.map((slot, i) => {
     const def = workflow.state[i]
     if (!def || def.type !== 'runtime') return slot
