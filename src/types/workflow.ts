@@ -1,10 +1,10 @@
 import type { HexString } from './index.js'
 
 // ---------------------------------------------------------------------------
-// Manifest types
+// Marketplace types
 //
-// These types describe the workflow format stored in the DB (imported from
-// the centrifuge/workflows repo). SDK utilities such as buildScript() accept these types.
+// These types describe the workflow format published in the centrifuge/workflows
+// marketplace catalog (IPFS). SDK utilities such as buildScript() accept these types.
 // ---------------------------------------------------------------------------
 
 /**
@@ -56,14 +56,14 @@ export interface InputDefinition {
 }
 
 /**
- * A workflow manifest — the top-level document stored in the DB and
- * returned by the backend's workflow catalog endpoints.
+ * A single workflow entry from the centrifuge/workflows marketplace catalog.
+ * The catalog is published to IPFS on each release and fetched via
+ * `centrifuge.workflowMarketplace()`.
  *
  * `useTemplate` is present on callback workflows (nested scripts committed
- * alongside the parent). The backend filters these out before returning
- * results to the frontend.
+ * alongside the parent). These are filtered out automatically by the SDK.
  */
-export interface WorkflowManifest {
+export interface MarketplaceWorkflow {
   /** Stable identifier for the workflow (matches the catalog ref). */
   workflowRef: string
   /** Display name shown in the UI. */
