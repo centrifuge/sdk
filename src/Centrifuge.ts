@@ -49,6 +49,7 @@ import type {
 import { PoolMetadataInput } from './types/poolInput.js'
 import { PoolMetadata } from './types/poolMetadata.js'
 import type { CentrifugeQueryOptions, Query } from './types/query.js'
+import type { WorkflowManifest } from './types/workflow.js'
 import {
   emptyMessage,
   MessageType,
@@ -74,6 +75,13 @@ import {
 import { AssetId, CentrifugeId, PoolId, ShareClassId } from './utils/types.js'
 
 const PINNING_API_DEMO = 'https://europe-central2-peak-vista-185616.cloudfunctions.net/pinning-api-demo'
+
+// Update when centrifuge/workflows cuts a new release.
+// CIDs are in the GitHub release notes: https://github.com/centrifuge/workflows/releases
+const WORKFLOW_MANIFEST_CID: Record<string, string> = {
+  mainnet: 'QmcLZJdxS8bYoRAFbVn3SzuFJJr3QNDom2izdJWGkXYyBK',
+  testnet: 'QmZkZxr3CQUiTgeLJ8iLkQAE1yhfrdyDzVkMnpkhZ2Y78K',
+}
 
 const envConfig = {
   mainnet: {
@@ -916,6 +924,36 @@ export class Centrifuge {
         }
         const data = (await res.json()) as Result
         return data
+      })
+    )
+  }
+
+  /**
+   * Fetches the centrifuge/workflows manifest from IPFS and returns all
+   * non-callback workflows for the current environment.
+   *
+   * Uses the SDK's configured `ipfsUrl` gateway. Falls back to a hardcoded
+   * default CID per environment when none is provided — pass an explicit `cid`
+   * to pin to a specific release without bumping the SDK (e.g. from an env var).
+   *
+   * Callback workflows (`useTemplate` present) are filtered out automatically.
+   */
+  workflowManifest(cid?: string): Query<WorkflowManifest[]> {
+    const resolvedCid = cid ?? WORKFLOW_MANIFEST_CID[this.#config.environment] ?? ''
+    if (!resolvedCid) {
+      throw new Error(
+        `workflowManifest: no CID configured for environment "${this.#config.environment}". ` +
+          `Pass a CID explicitly or update WORKFLOW_MANIFEST_CID in Centrifuge.ts.`
+      )
+    }
+    return this._query(['workflowManifest', resolvedCid], () =>
+      defer(async () => {
+        const url = getUrlFromHash(resolvedCid, this.#config.ipfsUrl)
+        if (!url) throw new Error(`workflowManifest: invalid CID "${resolvedCid}"`)
+        const res = await fetch(url)
+        if (!res.ok) throw new Error(`workflowManifest: IPFS fetch failed — ${res.status} ${res.statusText}`)
+        const data = (await res.json()) as WorkflowManifest[]
+        return data.filter((w) => !w.useTemplate)
       })
     )
   }
