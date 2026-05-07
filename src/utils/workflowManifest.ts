@@ -3,8 +3,8 @@ import type { WorkflowManifest } from '../types/workflow.js'
 // Update both entries when centrifuge/workflows cuts a new release.
 // CIDs are in the GitHub release notes: https://github.com/centrifuge/workflows/releases
 const DEFAULT_CID: Record<'mainnet' | 'testnet', string> = {
-  mainnet: '',
-  testnet: '',
+  mainnet: 'QmcLZJdxS8bYoRAFbVn3SzuFJJr3QNDom2izdJWGkXYyBK',
+  testnet: 'QmZkZxr3CQUiTgeLJ8iLkQAE1yhfrdyDzVkMnpkhZ2Y78K',
 }
 
 const DEFAULT_GATEWAY = 'https://ipfs.centrifuge.io/'
