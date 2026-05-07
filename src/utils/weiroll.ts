@@ -66,7 +66,7 @@ export interface WorkflowDefinition {
   state: WorkflowStateSlot[]
   /**
    * Named runtime variables required at execution time. Copied from
-   * WorkflowManifest. One input per entry; the value is written into every
+   * MarketplaceWorkflow. One input per entry; the value is written into every
    * state slot whose key matches, enforcing a single value across multiple uses.
    */
   runtimeVariables?: string[]
