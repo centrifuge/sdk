@@ -79,8 +79,17 @@ export interface WorkflowManifest {
   /** Ordered list of state slots matching the weiroll state array. */
   inputs: InputDefinition[]
   /**
+   * Named runtime variables for this workflow. Each entry is a slot key that
+   * must be provided at execution time. A single value fills every state slot
+   * with a matching key, enforcing that e.g. a "shares" amount is identical
+   * across the deposit action and a circuit-breaker guard.
+   *
+   * When absent the workflow has no runtime inputs.
+   */
+  runtimeVariables?: string[]
+  /**
    * When present, this workflow is a callback script to be used alongside
-   * the workflow identified by this ref. 
+   * the workflow identified by this ref.
    */
   useTemplate?: string
 }
