@@ -21,7 +21,7 @@ const DEFAULT_GATEWAY = 'https://ipfs.centrifuge.io/'
  * @throws if the IPFS gateway returns a non-OK response
  */
 export async function fetchWorkflowManifest(
-  environment: 'mainnet' | 'testnet' = 'mainnet',
+  environment: 'mainnet' | 'testnet' = 'testnet',
   cid?: string,
   gateway = DEFAULT_GATEWAY
 ): Promise<WorkflowManifest[]> {
