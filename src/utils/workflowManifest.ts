@@ -23,7 +23,6 @@ const DEFAULT_GATEWAY = 'https://ipfs.centrifuge.io/'
 export async function fetchWorkflowManifest(
   environment: 'mainnet' | 'testnet' = 'testnet',
   cid?: string,
-  gateway = DEFAULT_GATEWAY
 ): Promise<WorkflowManifest[]> {
   const resolvedCid = cid ?? DEFAULT_CID[environment]
   if (!resolvedCid) {
@@ -33,7 +32,7 @@ export async function fetchWorkflowManifest(
     )
   }
 
-  const url = `${gateway}${resolvedCid}`
+  const url = `${DEFAULT_GATEWAY}${resolvedCid}`
   const res = await fetch(url)
   if (!res.ok) {
     throw new Error(`fetchWorkflowManifest: IPFS fetch failed — ${res.status} ${res.statusText} (${url})`)
