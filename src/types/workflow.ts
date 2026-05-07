@@ -1,12 +1,10 @@
 import type { HexString } from './index.js'
 
 // ---------------------------------------------------------------------------
-// Manifest types — shared between SDK utilities and the backend
+// Manifest types
 //
 // These types describe the workflow format stored in the DB (imported from
-// the centrifuge/workflows repo). The backend returns them to the frontend
-// via GET /workflows. SDK utilities such as buildScript() accept these types
-// so that the backend can call them without a serialization mismatch.
+// the centrifuge/workflows repo). SDK utilities such as buildScript() accept these types.
 // ---------------------------------------------------------------------------
 
 /**
@@ -82,8 +80,7 @@ export interface WorkflowManifest {
   inputs: InputDefinition[]
   /**
    * When present, this workflow is a callback script to be used alongside
-   * the workflow identified by this ref. The backend excludes these from
-   * the catalog returned to the frontend.
+   * the workflow identified by this ref. 
    */
   useTemplate?: string
 }
