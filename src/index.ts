@@ -19,6 +19,7 @@ export type { ActionDefinition, InputDefinition, MarketplaceWorkflow } from './t
 export * from './types/poolMetadata.js'
 export type { Query } from './types/query.js'
 export type {
+  DeployedOnchainPMStatus,
   EIP1193ProviderLike,
   OperationConfirmedStatus,
   OperationPendingStatus,
