@@ -203,6 +203,56 @@ export class PoolNetwork extends Entity {
   }
 
   /**
+   * Deploy an OnchainPM for this pool on this chain via OnchainPMFactory.
+   *
+   * Permissionless — anyone can call this. Idempotent: if one is already deployed
+   * the transaction is skipped and the existing address is yielded immediately.
+   *
+   * Emits `{ type: 'DeployedOnchainPM', address }` on completion.
+   */
+  deployOnchainPM() {
+    const self = this
+    return this._transact(async function* (ctx) {
+      const { onchainPMFactory } = await self._root._protocolAddresses(self.centrifugeId)
+
+      const existingAddress = (await ctx.publicClient.readContract({
+        address: onchainPMFactory,
+        abi: ABI.OnchainPMFactory,
+        functionName: 'getAddress',
+        args: [self.pool.id.raw],
+      })) as HexString
+
+      if (existingAddress && existingAddress !== NULL_ADDRESS) {
+        yield { type: 'DeployedOnchainPM', address: existingAddress } as const
+        return
+      }
+
+      const result = yield* doTransaction('DeployOnchainPM', ctx, () =>
+        ctx.walletClient.writeContract({
+          address: onchainPMFactory,
+          abi: ABI.OnchainPMFactory,
+          functionName: 'newOnchainPM',
+          args: [self.pool.id.raw],
+        })
+      )
+
+      const events = parseEventLogs({
+        logs: result.receipt.logs,
+        eventName: 'DeployOnchainPM',
+        address: onchainPMFactory,
+      })
+
+      const deployEvent = events[0]
+      const args = deployEvent?.args as { manager?: HexString } | undefined
+      if (!args?.manager) {
+        throw new Error('DeployOnchainPM event not found in transaction receipt')
+      }
+
+      yield { type: 'DeployedOnchainPM', address: args.manager } as const
+    }, self.centrifugeId)
+  }
+
+  /**
    * Compute the deterministic address for a Merkle Proof Manager before deployment.
    * @returns The predicted contract address
    */
