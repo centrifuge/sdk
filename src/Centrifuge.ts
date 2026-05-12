@@ -82,7 +82,7 @@ const envConfig = {
     ...createPinning(PINNING_API_DEMO),
   },
   testnet: {
-    indexerUrl: 'https://api-v3-hitz.marble.live/graphql',
+    indexerUrl: 'https://api-v3-test.cfg.embrio.tech/graphql',
     ipfsUrl: 'https://ipfs.centrifuge.io',
     ...createPinning(PINNING_API_DEMO),
   },
