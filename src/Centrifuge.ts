@@ -967,7 +967,7 @@ export class Centrifuge {
               chainId: w.chainId,
               iconUrl: w.icon ?? w.iconUrl,
               variables: w.variables ?? {},
-              workflowId: w.workflowId ?? '',
+              workflowId: w.workflowId ? (w.workflowId.startsWith('0x') ? w.workflowId : `0x${w.workflowId}`) : '',
               version: w.version,
               workspace: w.workspace,
               useTemplate: w.useTemplate,
