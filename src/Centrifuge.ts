@@ -49,7 +49,7 @@ import type {
 import { PoolMetadataInput } from './types/poolInput.js'
 import { PoolMetadata } from './types/poolMetadata.js'
 import type { CentrifugeQueryOptions, Query } from './types/query.js'
-import type { MarketplaceWorkflow } from './types/workflow.js'
+import type { CatalogAction, MarketplaceWorkflow } from './types/workflow.js'
 import {
   emptyMessage,
   MessageType,
@@ -952,8 +952,28 @@ export class Centrifuge {
         if (!url) throw new Error(`workflowMarketplace: invalid CID "${resolvedCid}"`)
         const res = await fetch(url)
         if (!res.ok) throw new Error(`workflowMarketplace: IPFS fetch failed — ${res.status} ${res.statusText}`)
-        const data = (await res.json()) as MarketplaceWorkflow[]
-        return data.filter((w) => !w.useTemplate)
+        const catalog = await res.json()
+        const templates: Record<string, { actions: CatalogAction[] }> = catalog.templates ?? {}
+        const rawWorkflows: unknown[] = Array.isArray(catalog) ? catalog : (catalog.workflows ?? [])
+        return rawWorkflows
+          .filter((w: any) => !w.useTemplate)
+          .map(
+            (w: any): MarketplaceWorkflow => ({
+              workflowRef: w.id ?? w.workflowRef,
+              name: w.name,
+              template: w.template,
+              category: w.category,
+              group: w.group,
+              chainId: w.chainId,
+              iconUrl: w.icon ?? w.iconUrl,
+              variables: w.variables ?? {},
+              workflowId: w.workflowId ?? '',
+              version: w.version,
+              workspace: w.workspace,
+              useTemplate: w.useTemplate,
+              actions: templates[w.template]?.actions ?? [],
+            })
+          )
       })
     )
   }

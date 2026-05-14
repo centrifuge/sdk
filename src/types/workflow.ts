@@ -55,41 +55,56 @@ export interface InputDefinition {
   configurable?: boolean
 }
 
+/** A single input descriptor on a catalog action (human-readable form). */
+export interface CatalogActionInput {
+  parameter: string
+  label?: string
+  input: string[]
+}
+
+/** A contract call step as represented in the IPFS catalog (human-readable form). */
+export interface CatalogAction {
+  target: string
+  targetName?: string
+  name?: string
+  selector: string
+  valueNonZero?: boolean
+  inputs: CatalogActionInput[]
+  returns?: string
+}
+
 /**
- * A single workflow entry from the centrifuge/workflows marketplace catalog.
- * The catalog is published to IPFS on each release and fetched via
- * `centrifuge.workflowMarketplace()`.
+ * A workflow entry returned by `centrifuge.workflowMarketplace()`.
+ * Parsed from the IPFS catalog envelope `{ templates, workflows, ... }`.
+ * Template actions are resolved and attached under `actions`.
  *
- * `useTemplate` is present on callback workflows (nested scripts committed
- * alongside the parent). These are filtered out automatically by the SDK.
+ * `useTemplate` entries (callback scripts) are filtered out automatically.
  */
 export interface MarketplaceWorkflow {
-  /** Stable identifier for the workflow (matches the catalog ref). */
+  /** Stable identifier for the workflow (catalog `id` field). */
   workflowRef: string
   /** Display name shown in the UI. */
   name: string
-  /** Name of the contract template this workflow targets (e.g. `"onchain-pm"`). */
+  /** Name of the template this workflow uses (e.g. `"erc7540_account"`). */
   template: string
-  /** Semver version string (e.g. `"1.0.0"`). */
-  version: string
+  /** UI grouping category (e.g. `"Centrifuge"`). */
+  category?: string
+  /** Logical group within the template (e.g. `"account"`). */
+  group?: string
   /** EVM chain ID this workflow is deployed on. */
   chainId: number
-  /** Ordered list of contract calls. */
-  actions: ActionDefinition[]
-  /** Ordered list of state slots matching the weiroll state array. */
-  inputs: InputDefinition[]
-  /**
-   * Named runtime variables for this workflow. Each entry is a slot key that
-   * must be provided at execution time. A single value fills every state slot
-   * with a matching key, enforcing that e.g. a "shares" amount is identical
-   * across the deposit action and a circuit-breaker guard.
-   *
-   * When absent the workflow has no runtime inputs.
-   */
-  runtimeVariables?: string[]
-  /**
-   * When present, this workflow is a callback script to be used alongside
-   * the workflow identified by this ref.
-   */
+  /** URL of the workflow icon image. */
+  iconUrl?: string
+  /** Pre-set contract address variables for this workflow instance. */
+  variables: Record<string, string>
+  /** Pre-computed keccak256 script hash for this workflow configuration. */
+  workflowId: string
+  /** Catalog version number. */
+  version: number
+  /** Deployment environment (e.g. `"testnet"`). */
+  workspace?: string
+  /** When present, this is a callback script — filtered out by the SDK. */
   useTemplate?: string
+  /** Human-readable contract call steps resolved from the template. */
+  actions: CatalogAction[]
 }
