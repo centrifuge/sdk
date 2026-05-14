@@ -79,6 +79,8 @@ export interface WorkflowGroup {
   description?: string
   /** On-chain strategist address. EOA for now; Safe address when Safe integration lands. */
   strategistAddress: HexString
+  /** Raw share class ID (bytes16) this group manages on OnchainPM. */
+  scId: HexString
   canAddBlank: boolean
   workflows: WorkflowGroupEntry[]
   createdAt: string
