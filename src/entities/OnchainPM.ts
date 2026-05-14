@@ -7,6 +7,7 @@ import type { HexString } from '../types/index.js'
 import { addressToBytes32, encode } from '../utils/index.js'
 import type { Callback } from '../utils/scriptHash.js'
 import { wrapTransaction } from '../utils/transaction.js'
+import { MessageType } from '../types/transaction.js'
 import { Entity } from './Entity.js'
 import type { PoolNetwork } from './PoolNetwork.js'
 
@@ -101,6 +102,7 @@ export class OnchainPM extends Entity {
       yield* wrapTransaction('Update workflow policy', ctx, {
         contract: hub,
         data: calldata,
+        messages: { [self.network.centrifugeId]: [{ type: MessageType.TrustedContractUpdate, poolId: self.network.pool.id }] },
       })
     }, this.network.pool.centrifugeId)
   }
