@@ -89,6 +89,7 @@ export class OnchainPM extends Entity {
     const self = this
     return this._transact(async function* (ctx) {
       const { hub } = await self._root._protocolAddresses(self.network.pool.centrifugeId)
+
       const { calldata } = await buildPolicyUpdate({
         hub,
         poolId: self.network.pool.id.raw,

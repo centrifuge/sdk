@@ -176,27 +176,27 @@ export class PoolNetwork extends Entity {
    * Returns the OnchainPM entity for this pool on this chain,
    * or null if one has not been deployed yet.
    *
-   * Resolves the address via OnchainPMFactory.getAddress(poolId) — a deterministic
-   * CREATE2 lookup that returns the zero address when no PM has been deployed.
+   * `OnchainPMFactory.getAddress(poolId)` is a pure CREATE2 calculation that
+   * always returns the predicted address regardless of deployment. We must
+   * additionally check that there's actually bytecode at that address before
+   * returning an entity — otherwise downstream calls revert with empty data.
    */
   onchainPM() {
     return this._query(['onchainPM'], () =>
       combineLatest([this._root._protocolAddresses(this.centrifugeId), this._root.getClient(this.centrifugeId)]).pipe(
         switchMap(([{ onchainPMFactory }, client]) =>
-          defer(() =>
-            client.readContract({
+          defer(async () => {
+            const address = await client.readContract({
               address: onchainPMFactory,
               abi: ABI.OnchainPMFactory,
               functionName: 'getAddress',
               args: [this.pool.id.raw],
             })
-          ).pipe(
-            map((address) =>
-              address && address !== '0x0000000000000000000000000000000000000000'
-                ? new OnchainPM(this._root, this, address)
-                : null
-            )
-          )
+            if (!address || address === NULL_ADDRESS) return null
+            const code = await client.getCode({ address })
+            if (!code || code === '0x') return null
+            return new OnchainPM(this._root, this, address)
+          })
         )
       )
     )
@@ -215,16 +215,22 @@ export class PoolNetwork extends Entity {
     return this._transact(async function* (ctx) {
       const { onchainPMFactory } = await self._root._protocolAddresses(self.centrifugeId)
 
-      const existingAddress = (await ctx.publicClient.readContract({
+      // factory.getAddress() is a pure CREATE2 calculation — it returns the predicted
+      // address whether or not the contract was actually deployed. We must also check
+      // there's code at that address before treating it as already-deployed.
+      const predictedAddress = (await ctx.publicClient.readContract({
         address: onchainPMFactory,
         abi: ABI.OnchainPMFactory,
         functionName: 'getAddress',
         args: [self.pool.id.raw],
       })) as HexString
 
-      if (existingAddress && existingAddress !== NULL_ADDRESS) {
-        yield { type: 'DeployedOnchainPM', address: existingAddress } as const
-        return
+      if (predictedAddress && predictedAddress !== NULL_ADDRESS) {
+        const code = await ctx.publicClient.getCode({ address: predictedAddress })
+        if (code && code !== '0x') {
+          yield { type: 'DeployedOnchainPM', address: predictedAddress } as const
+          return
+        }
       }
 
       const result = yield* doTransaction('DeployOnchainPM', ctx, () =>
