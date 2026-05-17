@@ -69,6 +69,8 @@ export interface WorkflowGroupEntry {
   workflowRef: string
   /** Per-slot hex values for configurable inputs; keyed by slot key. Empty when no configurable slots. */
   configurableValues: Record<string, HexString>
+  /** 0-based indices of catalog actions excluded from the final script. */
+  excludedActions?: number[]
   addedAt: string
 }
 

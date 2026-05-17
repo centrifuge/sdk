@@ -250,6 +250,34 @@ describe('utils/weiroll', () => {
       ).to.throw('configurable value "missingConfig" not provided')
     })
 
+    it('resolves magic command targets from pool context', () => {
+      const workflow: WorkflowDefinition = {
+        workflowRef: 'test',
+        actions: [
+          {
+            target: { type: 'magic', key: '$onOffRamp' },
+            selector: SELECTOR,
+            callType: CALL,
+            inputs: [],
+            output: UNUSED_SLOT,
+          },
+        ],
+        state: [],
+      }
+
+      const { commands } = buildScript(workflow, {
+        poolContext: {
+          ...POOL_CTX,
+          $onOffRamp: '0x000000000000000000000000aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+        },
+        configurableValues: {},
+      })
+
+      expect(commands[0]).to.equal(
+        '0xaabbccdd01ffffffffffffffaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'
+      )
+    })
+
     it('throws when state exceeds 128 slots', () => {
       const workflow: WorkflowDefinition = {
         workflowRef: 'test',
@@ -274,6 +302,7 @@ describe('utils/weiroll', () => {
         { type: 'runtime', key: 'amount' },
         { type: 'runtime', key: 'recipient' },
       ],
+      runtimeVariables: ['amount', 'recipient'],
     }
 
     it('fills runtime slots and leaves pinned slots unchanged', () => {
@@ -293,11 +322,29 @@ describe('utils/weiroll', () => {
       expect(state).to.deep.equal(original)
     })
 
-    it('throws when a runtime slot has no matching value', () => {
+    it('throws when a required runtime variable has no matching value', () => {
       const state: `0x${string}`[] = [PINNED, '0x', '0x']
       expect(() =>
         fillRuntimeSlots(state, workflow, { amount: RUNTIME_VALUE }) // missing 'recipient'
-      ).to.throw('missing runtime value for slot "recipient"')
+      ).to.throw('"recipient"')
+    })
+
+    it('leaves computed runtime slots as 0x when absent from runtimeValues', () => {
+      const computedWorkflow: WorkflowDefinition = {
+        workflowRef: 'test',
+        actions: [],
+        state: [
+          { type: 'literal', value: PINNED },
+          { type: 'runtime', key: 'amount' },
+          { type: 'runtime', key: 'computed' }, // computed by weiroll VM, not user-filled
+        ],
+        runtimeVariables: ['amount'], // "computed" not listed — it's weiroll-computed
+      }
+      const state: `0x${string}`[] = [PINNED, '0x', '0x']
+      const filled = fillRuntimeSlots(state, computedWorkflow, { amount: RUNTIME_VALUE })
+      expect(filled[0]).to.equal(PINNED)
+      expect(filled[1]).to.equal(RUNTIME_VALUE)
+      expect(filled[2]).to.equal('0x') // left empty for VM to fill
     })
 
     it('handles a workflow with no runtime slots (returns state unchanged)', () => {

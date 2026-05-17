@@ -25,11 +25,12 @@ const MAX_STATE_SLOTS = 128
 // ---------------------------------------------------------------------------
 
 export type WeirollCallType = typeof CALL | typeof STATICCALL | typeof VALUECALL
+export type WeirollTarget = HexString | { type: 'magic'; key: string }
 
 /** A single step in a weiroll script. */
 export interface WeirollAction {
   /** 20-byte target contract address. */
-  target: HexString
+  target: WeirollTarget
   /** 4-byte function selector (e.g. `0x12345678`). */
   selector: HexString
   callType: WeirollCallType
@@ -55,8 +56,8 @@ export interface WeirollAction {
 export type WorkflowStateSlot =
   | { type: 'literal'; value: HexString }
   | { type: 'magic'; key: string }
-  | { type: 'configurable'; key: string }
-  | { type: 'runtime'; key: string }
+  | { type: 'configurable'; key: string; label?: string; parameter?: string }
+  | { type: 'runtime'; key: string; label?: string; parameter?: string }
 
 /** The full description of a workflow: its actions and initial state layout. */
 export interface WorkflowDefinition {
@@ -100,7 +101,8 @@ export interface ScriptResult {
  * Returns a copy of `state` with each runtime slot replaced by the
  * corresponding value from `runtimeValues` (keyed by the slot's `key` field).
  *
- * @throws if any runtime slot in `workflow` has no entry in `runtimeValues`
+ * @throws if any required runtime variable in `workflow.runtimeVariables` has no
+ * corresponding entry in `runtimeValues`
  *
  * @example
  * ```typescript
@@ -128,11 +130,30 @@ export function fillRuntimeSlots(
     if (!def || def.type !== 'runtime') return slot
 
     const value = runtimeValues[def.key]
-    if (value === undefined) {
-      throw new Error(`fillRuntimeSlots: missing runtime value for slot "${def.key}"`)
-    }
-    return value
+    // Slots absent from runtimeValues are computed by the weiroll VM during
+    // execution (produced by a previous action's output). Leave them as '0x'.
+    return value ?? slot
   })
+}
+
+function decodeAddressTarget(value: HexString, key: string): HexString {
+  if (/^0x[0-9a-fA-F]{40}$/.test(value)) {
+    return value.toLowerCase() as HexString
+  }
+
+  if (!/^0x[0-9a-fA-F]{64}$/.test(value)) {
+    throw new Error(
+      `buildScript: magic target "${key}" must resolve to an address or left-padded bytes32 address, got "${value}"`
+    )
+  }
+
+  const body = value.slice(2)
+  const prefix = body.slice(0, 24)
+  if (!/^0{24}$/i.test(prefix)) {
+    throw new Error(`buildScript: magic target "${key}" is not a left-padded address: "${value}"`)
+  }
+
+  return `0x${body.slice(24).toLowerCase()}` as HexString
 }
 
 // ---------------------------------------------------------------------------
@@ -272,8 +293,18 @@ export function buildScript(
   }
 
   const commands = workflow.actions.map((action) => {
+    const target =
+      typeof action.target === 'string'
+        ? action.target
+        : (() => {
+            const value = poolContext[action.target.key]
+            if (value === undefined) {
+              throw new Error(`buildScript: magic target "${action.target.key}" not found in pool context`)
+            }
+            return decodeAddressTarget(value, action.target.key)
+          })()
     const flags = action.callType | (action.rawMode ? FLAG_RAW : 0)
-    return encodeCommand(action.selector, flags, action.inputs, action.output, action.target)
+    return encodeCommand(action.selector, flags, action.inputs, action.output, target)
   })
 
   return { commands, state, stateBitmap }
