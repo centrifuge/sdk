@@ -15,6 +15,7 @@ import type { PoolContext, WorkflowDefinition } from './weiroll.js'
 const TARGET_A = '0x1234567890123456789012345678901234567890' as const
 const TARGET_B = '0xabcdefabcdefabcdefabcdefabcdefabcdefabcd' as const
 const SELECTOR = '0xaabbccdd' as const
+const ZERO = `0x${'0'.repeat(64)}` as const
 
 describe('utils/weiroll', () => {
   describe('encodeCommand', () => {
@@ -170,7 +171,7 @@ describe('utils/weiroll', () => {
       expect(stateBitmap).to.equal(1n)
     })
 
-    it('leaves runtime slots empty and does not set their bitmap bits', () => {
+    it('initializes runtime slots to zero-bytes32 and does not set their bitmap bits', () => {
       const workflow: WorkflowDefinition = {
         workflowRef: 'test',
         actions: [],
@@ -178,7 +179,7 @@ describe('utils/weiroll', () => {
       }
       const { state, stateBitmap } = buildScript(workflow, { poolContext: POOL_CTX, configurableValues: {} })
 
-      expect(state[0]).to.equal('0x')
+      expect(state[0]).to.equal(ZERO)
       expect(stateBitmap).to.equal(0n) // bit 0 stays 0
     })
 
@@ -224,7 +225,7 @@ describe('utils/weiroll', () => {
       expect(commands).to.have.length(2)
       expect(state).to.have.length(2)
       expect(state[0]).to.equal(literalValue)
-      expect(state[1]).to.equal('0x')
+      expect(state[1]).to.equal(ZERO)
       expect(stateBitmap).to.equal(1n) // only slot 0 pinned
     })
 
@@ -306,7 +307,7 @@ describe('utils/weiroll', () => {
     }
 
     it('fills runtime slots and leaves pinned slots unchanged', () => {
-      const state: `0x${string}`[] = [PINNED, '0x', '0x']
+      const state: `0x${string}`[] = [PINNED, ZERO, ZERO]
       const recipient = '0x000000000000000000000000abcdefabcdefabcdefabcdefabcdefabcdefabcd' as const
       const filled = fillRuntimeSlots(state, workflow, { amount: RUNTIME_VALUE, recipient })
 
@@ -316,20 +317,20 @@ describe('utils/weiroll', () => {
     })
 
     it('returns a new array (does not mutate input)', () => {
-      const state: `0x${string}`[] = [PINNED, '0x', '0x']
+      const state: `0x${string}`[] = [PINNED, ZERO, ZERO]
       const original = [...state]
       fillRuntimeSlots(state, workflow, { amount: RUNTIME_VALUE, recipient: RUNTIME_VALUE })
       expect(state).to.deep.equal(original)
     })
 
     it('throws when a required runtime variable has no matching value', () => {
-      const state: `0x${string}`[] = [PINNED, '0x', '0x']
+      const state: `0x${string}`[] = [PINNED, ZERO, ZERO]
       expect(() =>
         fillRuntimeSlots(state, workflow, { amount: RUNTIME_VALUE }) // missing 'recipient'
       ).to.throw('"recipient"')
     })
 
-    it('leaves computed runtime slots as 0x when absent from runtimeValues', () => {
+    it('leaves computed runtime slots as zero-bytes32 when absent from runtimeValues', () => {
       const computedWorkflow: WorkflowDefinition = {
         workflowRef: 'test',
         actions: [],
@@ -340,11 +341,11 @@ describe('utils/weiroll', () => {
         ],
         runtimeVariables: ['amount'], // "computed" not listed — it's weiroll-computed
       }
-      const state: `0x${string}`[] = [PINNED, '0x', '0x']
+      const state: `0x${string}`[] = [PINNED, ZERO, ZERO]
       const filled = fillRuntimeSlots(state, computedWorkflow, { amount: RUNTIME_VALUE })
       expect(filled[0]).to.equal(PINNED)
       expect(filled[1]).to.equal(RUNTIME_VALUE)
-      expect(filled[2]).to.equal('0x') // left empty for VM to fill
+      expect(filled[2]).to.equal(ZERO) // left empty for VM to fill
     })
 
     it('handles a workflow with no runtime slots (returns state unchanged)', () => {

@@ -19,6 +19,7 @@ export const UNUSED_SLOT = 0xff as const
 
 /** Maximum number of state slots (stateBitmap is uint128). */
 const MAX_STATE_SLOTS = 128
+const ZERO_BYTES32 = `0x${'0'.repeat(64)}` as HexString
 
 // ---------------------------------------------------------------------------
 // Types
@@ -82,7 +83,7 @@ export type PoolContext = Record<string, HexString>
 export interface ScriptResult {
   /** ABI-encoded bytes32 command words, one per action. */
   commands: HexString[]
-  /** ABI-encoded slot values. Runtime slots are empty (`0x`). */
+  /** ABI-encoded slot values. Runtime slots are initialized to zero-bytes32. */
   state: HexString[]
   /**
    * uint128 where bit i = 1 means state[i] is pinned (known at whitelist time).
@@ -94,7 +95,7 @@ export interface ScriptResult {
 /**
  * Fills runtime state slots with execution-time values.
  *
- * `buildScript()` leaves runtime slots empty (`0x`). Before calling
+ * `buildScript()` initializes runtime slots to zero-bytes32. Before calling
  * `OnchainPM.execute()`, the strategist must fill each runtime slot with the
  * concrete value for this particular execution.
  *
@@ -131,7 +132,7 @@ export function fillRuntimeSlots(
 
     const value = runtimeValues[def.key]
     // Slots absent from runtimeValues are computed by the weiroll VM during
-    // execution (produced by a previous action's output). Leave them as '0x'.
+    // execution (produced by a previous action's output). Leave the zero-bytes32 placeholder in place.
     return value ?? slot
   })
 }
@@ -241,8 +242,8 @@ export function encodeCommand(
  *
  * State slots classified as `literal`, `magic`, or `configurable` are pinned:
  * their bit in `stateBitmap` is set to 1 and the resolved value is placed in
- * `state[i]`. Slots classified as `runtime` are left empty (`0x`) with their
- * bit set to 0 — the executor fills them at call time.
+ * `state[i]`. Slots classified as `runtime` are initialized to zero-bytes32
+ * with their bit set to 0 — the executor fills them at call time.
  *
  * @throws if a magic variable key is absent from `poolContext`
  * @throws if a configurable key is absent from `configurableValues`
@@ -288,7 +289,7 @@ export function buildScript(
       stateBitmap |= 1n << BigInt(i)
     } else {
       // runtime — placeholder, bit stays 0
-      state.push('0x' as HexString)
+      state.push(ZERO_BYTES32)
     }
   }
 
