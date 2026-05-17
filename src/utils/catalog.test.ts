@@ -15,6 +15,7 @@ describe('utils/catalog', () => {
       variables: { router: ADDRESS_A },
       workflowId: '0x01',
       version: 1,
+      runtimeVariables: ['amount'],
       actions: [
         {
           target: '$router',
@@ -48,7 +49,33 @@ describe('utils/catalog', () => {
     ])
   })
 
-  it('rejects non-configurable inputs with empty input arrays', () => {
+  it('maps empty non-configurable inputs from declared runtimeVariables', () => {
+    const workflow: MarketplaceWorkflow = {
+      workflowRef: 'request-deposit',
+      name: 'Request deposit',
+      template: 'request-deposit',
+      chainId: 1,
+      variables: { router: ADDRESS_A },
+      workflowId: '0x01',
+      version: 1,
+      runtimeVariables: ['amount'],
+      actions: [
+        {
+          target: '$router',
+          selector: 'function deposit(uint256)',
+          inputs: [{ parameter: 'uint256', label: 'Amount', input: [] }],
+        },
+      ],
+    }
+
+    const definition = buildWorkflowDefinitionFromCatalog(workflow)
+    expect(definition.runtimeVariables).to.deep.equal(['amount'])
+    expect(definition.state).to.deep.equal([
+      { type: 'runtime', key: 'amount', label: 'Amount', parameter: 'uint256' },
+    ])
+  })
+
+  it('rejects empty non-configurable inputs without runtimeVariables metadata', () => {
     const workflow: MarketplaceWorkflow = {
       workflowRef: 'bad-empty',
       name: 'Bad',
@@ -66,7 +93,36 @@ describe('utils/catalog', () => {
       ],
     }
 
-    expect(() => buildWorkflowDefinitionFromCatalog(workflow)).to.throw('has no value and is not configurable')
+    expect(() => buildWorkflowDefinitionFromCatalog(workflow)).to.throw(
+      'has 1 empty non-configurable inputs but declares no runtimeVariables'
+    )
+  })
+
+  it('rejects ambiguous empty non-configurable input mappings', () => {
+    const workflow: MarketplaceWorkflow = {
+      workflowRef: 'bad-empty-count',
+      name: 'Bad',
+      template: 'bad',
+      chainId: 1,
+      variables: { router: ADDRESS_A },
+      workflowId: '0x01',
+      version: 1,
+      runtimeVariables: ['amount'],
+      actions: [
+        {
+          target: '$router',
+          selector: 'function deposit(uint256,uint256)',
+          inputs: [
+            { parameter: 'uint256', label: 'Amount', input: [] },
+            { parameter: 'uint256', label: 'Amount 2', input: [] },
+          ],
+        },
+      ],
+    }
+
+    expect(() => buildWorkflowDefinitionFromCatalog(workflow)).to.throw(
+      'declares 1 runtimeVariables for 2 empty non-configurable inputs'
+    )
   })
 
   it('rejects multi-value inputs', () => {

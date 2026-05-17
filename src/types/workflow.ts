@@ -110,4 +110,6 @@ export interface MarketplaceWorkflow {
   useTemplate?: string
   /** Human-readable contract call steps resolved from the template. */
   actions: CatalogAction[]
+  /** Runtime inputs supplied by the executor when the workflow runs. */
+  runtimeVariables?: string[]
 }

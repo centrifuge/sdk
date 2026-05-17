@@ -56,6 +56,9 @@ function configurableKey(actionIndex: number, inputIndex: number): string {
  *   - appears as action.returns        → runtime  (computed by weiroll during execution)
  *   - anything else                    → runtime  (filled by user before execution)
  *
+ * Bare `input: []` values are also treated as runtime inputs when the catalog
+ * declares an unambiguous `runtimeVariables` mapping for them.
+ *
  * Only the last category is included in runtimeVariables — the UI shows an
  * input field for each of those. Computed slots start as '0x' and are written
  * by the weiroll VM when the producing action runs.
@@ -92,6 +95,52 @@ export function buildWorkflowDefinitionFromCatalog(workflow: MarketplaceWorkflow
     computedVarSet.add(action.returns)
   }
   const computedRuntimeKeys = new Set([...computedVarSet].map(stripVariablePrefix))
+
+  const declaredRuntimeKeys = (workflow.runtimeVariables ?? []).map(stripVariablePrefix)
+  const bareRuntimeInputs = workflow.actions.flatMap((action, actionIndex) =>
+    action.inputs.flatMap((inp, inputIndex) =>
+      !inp.configurable && (inp.input ?? []).length === 0 ? [{ actionIndex, inputIndex }] : []
+    )
+  )
+  const bareRuntimeKeyByInput = new Map<string, string>()
+
+  if (bareRuntimeInputs.length > 0) {
+    if (declaredRuntimeKeys.length === 0) {
+      throw new Error(
+        `buildWorkflowDefinitionFromCatalog: workflow "${workflow.workflowRef}" has ${bareRuntimeInputs.length} empty non-configurable inputs but declares no runtimeVariables`
+      )
+    }
+    if (declaredRuntimeKeys.length !== bareRuntimeInputs.length) {
+      throw new Error(
+        `buildWorkflowDefinitionFromCatalog: workflow "${workflow.workflowRef}" declares ${declaredRuntimeKeys.length} runtimeVariables for ${bareRuntimeInputs.length} empty non-configurable inputs`
+      )
+    }
+
+    bareRuntimeInputs.forEach(({ actionIndex, inputIndex }, idx) => {
+      const key = declaredRuntimeKeys[idx]
+      if (!key) {
+        throw new Error(
+          `buildWorkflowDefinitionFromCatalog: workflow "${workflow.workflowRef}" is missing a runtime variable mapping for action ${actionIndex} input ${inputIndex}`
+        )
+      }
+      if (MAGIC_KEY_SET.has(`$${key}`)) {
+        throw new Error(
+          `buildWorkflowDefinitionFromCatalog: workflow "${workflow.workflowRef}" runtime variable "${key}" collides with a magic variable`
+        )
+      }
+      if (workflow.variables[key] !== undefined) {
+        throw new Error(
+          `buildWorkflowDefinitionFromCatalog: workflow "${workflow.workflowRef}" runtime variable "${key}" collides with a workflow variable`
+        )
+      }
+      if (computedRuntimeKeys.has(key)) {
+        throw new Error(
+          `buildWorkflowDefinitionFromCatalog: workflow "${workflow.workflowRef}" runtime variable "${key}" collides with an action return`
+        )
+      }
+      bareRuntimeKeyByInput.set(`${actionIndex}:${inputIndex}`, key)
+    })
+  }
 
   const slotMap = new Map<string, number>()
   const stateSlots: WorkflowStateSlot[] = []
@@ -180,9 +229,18 @@ export function buildWorkflowDefinitionFromCatalog(workflow: MarketplaceWorkflow
       }
 
       if (values.length === 0) {
-        throw new Error(
-          `buildWorkflowDefinitionFromCatalog: workflow "${workflow.workflowRef}" action ${actionIndex} input ${inputIndex} has no value and is not configurable`
-        )
+        const runtimeKey = bareRuntimeKeyByInput.get(`${actionIndex}:${inputIndex}`)
+        if (!runtimeKey) {
+          throw new Error(
+            `buildWorkflowDefinitionFromCatalog: workflow "${workflow.workflowRef}" action ${actionIndex} input ${inputIndex} has no value and is not configurable`
+          )
+        }
+        return getOrAddSlot(`runtime:${runtimeKey}`, {
+          type: 'runtime',
+          key: runtimeKey,
+          label: fallbackLabel(inp.label, runtimeKey, inp.parameter),
+          parameter: inp.parameter,
+        })
       }
 
       if (values.length > 1) {
