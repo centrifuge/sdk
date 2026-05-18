@@ -1,4 +1,5 @@
 import { expect } from 'chai'
+import { toFunctionSelector } from 'viem'
 import type { MarketplaceWorkflow } from '../types/workflow.js'
 import { buildWorkflowDefinitionFromCatalog } from './catalog.js'
 
@@ -158,6 +159,96 @@ describe('utils/catalog', () => {
     expect(() => buildWorkflowDefinitionFromCatalog(workflow)).to.throw(
       'declares 1 runtimeVariables for 2 empty non-configurable inputs'
     )
+  })
+
+  it('compiles dynamic-input actions into raw calldata commands', () => {
+    const workflow: MarketplaceWorkflow = {
+      workflowRef: 'slippage-open',
+      name: 'Slippage open',
+      template: 'slippage-open',
+      chainId: 1,
+      variables: { guard: ADDRESS_A },
+      workflowId: '0x01',
+      version: 1,
+      actions: [
+        {
+          target: '$guard',
+          selector: 'function open(uint64,bytes16,(address,uint256)[])',
+          inputs: [
+            { parameter: 'uint64', label: 'Pool ID', input: ['$poolId'] },
+            { parameter: 'bytes16', label: 'SC ID', input: ['$scId'] },
+            { parameter: '(address,uint256)[]', label: 'Assets', input: [], configurable: true },
+          ],
+        },
+      ],
+    }
+
+    const definition = buildWorkflowDefinitionFromCatalog(workflow)
+
+    const selector = toFunctionSelector('function open(uint64,bytes16,(address,uint256)[])')
+    expect(definition.actions[0]).to.deep.include({
+      target: ADDRESS_A,
+      selector,
+      rawMode: true,
+    })
+    expect(definition.actions[0]!.inputs).to.deep.equal([3])
+    expect(definition.state[2]).to.deep.equal({
+      type: 'configurable',
+      key: 'configurable:0:2',
+      label: 'Assets',
+      parameter: '(address,uint256)[]',
+      actionName: 'function open(uint64,bytes16,(address,uint256)[])',
+      actionIndex: 0,
+      inputIndex: 2,
+    })
+    expect(definition.state[3]).to.deep.equal({
+      type: 'rawcalldata',
+      selector,
+      parameterTypes: ['uint64', 'bytes16', '(address,uint256)[]'],
+      sourceSlots: [0, 1, 2],
+      actionName: 'function open(uint64,bytes16,(address,uint256)[])',
+      actionIndex: 0,
+    })
+  })
+
+  it('compiles over-6-input actions into raw calldata commands', () => {
+    const workflow: MarketplaceWorkflow = {
+      workflowRef: 'many-inputs',
+      name: 'Many inputs',
+      template: 'many-inputs',
+      chainId: 1,
+      variables: { router: ADDRESS_A },
+      workflowId: '0x01',
+      version: 1,
+      actions: [
+        {
+          target: '$router',
+          selector: 'function execute(uint256,uint256,uint256,uint256,uint256,uint256,uint256)',
+          inputs: [
+            { parameter: 'uint256', label: 'A', input: ['1'] },
+            { parameter: 'uint256', label: 'B', input: ['2'] },
+            { parameter: 'uint256', label: 'C', input: ['3'] },
+            { parameter: 'uint256', label: 'D', input: ['4'] },
+            { parameter: 'uint256', label: 'E', input: ['5'] },
+            { parameter: 'uint256', label: 'F', input: ['6'] },
+            { parameter: 'uint256', label: 'G', input: ['7'] },
+          ],
+        },
+      ],
+    }
+
+    const definition = buildWorkflowDefinitionFromCatalog(workflow)
+    const selector = toFunctionSelector('function execute(uint256,uint256,uint256,uint256,uint256,uint256,uint256)')
+    expect(definition.actions[0]!.rawMode).to.equal(true)
+    expect(definition.actions[0]!.inputs).to.deep.equal([7])
+    expect(definition.state[7]).to.deep.equal({
+      type: 'rawcalldata',
+      selector,
+      parameterTypes: ['uint256', 'uint256', 'uint256', 'uint256', 'uint256', 'uint256', 'uint256'],
+      sourceSlots: [0, 1, 2, 3, 4, 5, 6],
+      actionName: 'function execute(uint256,uint256,uint256,uint256,uint256,uint256,uint256)',
+      actionIndex: 0,
+    })
   })
 
   it('rejects multi-value inputs', () => {

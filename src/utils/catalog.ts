@@ -50,6 +50,14 @@ function anonymousRuntimeKey(actionIndex: number, inputIndex: number): string {
   return `runtime:${actionIndex}:${inputIndex}`
 }
 
+function isDynamicAbiParameter(parameter: string): boolean {
+  return parameter === 'bytes' || parameter === 'string' || parameter.endsWith('[]')
+}
+
+function shouldAssembleRawCalldata(action: MarketplaceWorkflow['actions'][number]): boolean {
+  return action.rawMode === true || action.inputs.length > 6 || action.inputs.some((input) => isDynamicAbiParameter(input.parameter))
+}
+
 /**
  * Converts a MarketplaceWorkflow (from the IPFS catalog) into a WorkflowDefinition
  * that can be passed to buildScript().
@@ -66,7 +74,7 @@ function anonymousRuntimeKey(actionIndex: number, inputIndex: number): string {
  *     for the missing values explicitly
  *
  * Only the last category is included in runtimeVariables — the UI shows an
- * input field for each of those. Computed slots start as zero-bytes32 and are written
+ * input field for each of those. Computed slots start as empty bytes and are written
  * by the weiroll VM when the producing action runs.
  *
  * Action outputs are set to the corresponding slot index when action.returns is
@@ -211,18 +219,29 @@ export function buildWorkflowDefinitionFromCatalog(workflow: MarketplaceWorkflow
   }
 
   const actions: WeirollAction[] = workflow.actions.map((action, actionIndex) => {
-    if ((action.inputs?.length ?? 0) > 6) {
-      throw new Error(
-        `buildWorkflowDefinitionFromCatalog: workflow "${workflow.workflowRef}" action ${actionIndex} has ${action.inputs.length} inputs — maximum is 6`
-      )
-    }
     if (action.optional && action.returns != null) {
       throw new Error(
         `buildWorkflowDefinitionFromCatalog: workflow "${workflow.workflowRef}" action ${actionIndex} is optional but also returns "${action.returns}"`
       )
     }
 
-    const inputs = action.inputs.map((inp, inputIndex) => {
+    const selector = /^0x[0-9a-fA-F]{8}$/.test(action.selector)
+      ? (action.selector as HexString)
+      : (toFunctionSelector(action.selector) as HexString)
+    const rawCalldataAction = shouldAssembleRawCalldata(action)
+
+    if (rawCalldataAction && action.returns != null) {
+      throw new Error(
+        `buildWorkflowDefinitionFromCatalog: workflow "${workflow.workflowRef}" action ${actionIndex} uses raw calldata assembly and cannot return a value`
+      )
+    }
+    if (!rawCalldataAction && (action.inputs?.length ?? 0) > 6) {
+      throw new Error(
+        `buildWorkflowDefinitionFromCatalog: workflow "${workflow.workflowRef}" action ${actionIndex} has ${action.inputs.length} inputs — maximum is 6`
+      )
+    }
+
+    const inputSlots = action.inputs.map((inp, inputIndex) => {
       const values = inp.input ?? []
       const slotMetadata = {
         actionName: action.name ?? action.selector,
@@ -276,10 +295,6 @@ export function buildWorkflowDefinitionFromCatalog(workflow: MarketplaceWorkflow
     // find the same slot index when they call getOrAddSlot.
     const output = action.returns != null ? getOrAddVariableSlot(action.returns) : UNUSED_SLOT
 
-    const selector = /^0x[0-9a-fA-F]{8}$/.test(action.selector)
-      ? (action.selector as HexString)
-      : (toFunctionSelector(action.selector) as HexString)
-
     const rawTarget = action.target
     const target = rawTarget.startsWith('$')
       ? MAGIC_KEY_SET.has(rawTarget)
@@ -295,13 +310,26 @@ export function buildWorkflowDefinitionFromCatalog(workflow: MarketplaceWorkflow
           })())
       : (rawTarget as HexString)
 
+    const inputs = rawCalldataAction
+      ? [
+          getOrAddSlot(`rawcalldata:${actionIndex}`, {
+            type: 'rawcalldata',
+            selector,
+            parameterTypes: action.inputs.map((input) => input.parameter),
+            sourceSlots: inputSlots,
+            actionName: action.name ?? action.selector,
+            actionIndex,
+          }),
+        ]
+      : inputSlots
+
     return {
       target,
       selector,
       callType: action.valueNonZero ? VALUECALL : CALL,
       inputs,
-      output,
-      rawMode: action.rawMode,
+      output: rawCalldataAction ? UNUSED_SLOT : output,
+      rawMode: rawCalldataAction || action.rawMode,
     }
   })
 

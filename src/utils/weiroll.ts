@@ -1,3 +1,5 @@
+import { concat, decodeAbiParameters, encodeAbiParameters } from 'viem'
+import type { AbiParameter } from 'viem'
 import type { HexString } from '../types/index.js'
 
 // ---------------------------------------------------------------------------
@@ -19,7 +21,7 @@ export const UNUSED_SLOT = 0xff as const
 
 /** Maximum number of state slots (stateBitmap is uint128). */
 const MAX_STATE_SLOTS = 128
-const ZERO_BYTES32 = `0x${'0'.repeat(64)}` as HexString
+const EMPTY_BYTES = '0x' as HexString
 
 // ---------------------------------------------------------------------------
 // Types
@@ -68,6 +70,14 @@ export type WorkflowStateSlot =
       anonymous?: boolean
     }
   | {
+      type: 'rawcalldata'
+      selector: HexString
+      parameterTypes: string[]
+      sourceSlots: number[]
+      actionName?: string
+      actionIndex?: number
+    }
+  | {
       type: 'runtime'
       key: string
       label?: string
@@ -101,7 +111,7 @@ export type PoolContext = Record<string, HexString>
 export interface ScriptResult {
   /** ABI-encoded bytes32 command words, one per action. */
   commands: HexString[]
-  /** ABI-encoded slot values. Runtime slots are initialized to zero-bytes32. */
+  /** ABI-encoded state slot values. Runtime slots are initialized to empty bytes. */
   state: HexString[]
   /**
    * uint128 where bit i = 1 means state[i] is pinned (known at whitelist time).
@@ -113,7 +123,7 @@ export interface ScriptResult {
 /**
  * Fills runtime state slots with execution-time values.
  *
- * `buildScript()` initializes runtime slots to zero-bytes32. Before calling
+ * `buildScript()` initializes runtime slots to empty bytes. Before calling
  * `OnchainPM.execute()`, the strategist must fill each runtime slot with the
  * concrete value for this particular execution.
  *
@@ -144,15 +154,122 @@ export function fillRuntimeSlots(
     }
   }
 
-  return state.map((slot, i) => {
+  const nextState = state.map((slot, i) => {
     const def = workflow.state[i]
     if (!def || def.type !== 'runtime') return slot
 
     const value = runtimeValues[def.key]
-    // Slots absent from runtimeValues are computed by the weiroll VM during
-    // execution (produced by a previous action's output). Leave the zero-bytes32 placeholder in place.
     return value ?? slot
   })
+
+  for (let i = 0; i < workflow.state.length; i++) {
+    const def = workflow.state[i]
+    if (!def || def.type !== 'rawcalldata') continue
+    nextState[i] = assembleRawCalldataSlot(nextState, workflow, def)
+  }
+
+  return nextState
+}
+
+function getWorkflowAbiParameter(parameter: string): AbiParameter {
+  if (parameter === '(address,uint256)[]') {
+    return {
+      type: 'tuple[]',
+      components: [
+        { type: 'address' },
+        { type: 'uint256' },
+      ],
+    }
+  }
+
+  if (parameter === '(address,address)[]') {
+    return {
+      type: 'tuple[]',
+      components: [
+        { type: 'address' },
+        { type: 'address' },
+      ],
+    }
+  }
+
+  return { type: parameter }
+}
+
+function decodeWorkflowValue(parameter: string, encodedValue: HexString): unknown {
+  const [decoded] = decodeAbiParameters([getWorkflowAbiParameter(parameter)], encodedValue)
+  return decoded
+}
+
+function canAssembleRawCalldataAtBuildTime(workflow: WorkflowDefinition, sourceSlots: number[]): boolean {
+  return sourceSlots.every((sourceIndex) => {
+    const sourceSlot = workflow.state[sourceIndex]
+    if (!sourceSlot) {
+      throw new Error(`buildScript: raw calldata source slot ${sourceIndex} is out of range`)
+    }
+    return sourceSlot.type !== 'runtime' && sourceSlot.type !== 'rawcalldata'
+  })
+}
+
+function assertRawCalldataSlotIsSupported(
+  workflow: WorkflowDefinition,
+  slot: Extract<WorkflowStateSlot, { type: 'rawcalldata' }>
+) {
+  for (const sourceIndex of slot.sourceSlots) {
+    const sourceSlot = workflow.state[sourceIndex]
+    if (!sourceSlot) {
+      throw new Error(
+        `buildScript: workflow "${workflow.workflowRef}" raw calldata source slot ${sourceIndex} is out of range`
+      )
+    }
+
+    if (sourceSlot.type === 'rawcalldata') {
+      throw new Error(
+        `buildScript: workflow "${workflow.workflowRef}" raw calldata action ${slot.actionIndex ?? '?'} cannot depend on another raw calldata slot`
+      )
+    }
+
+    if (sourceSlot.type === 'runtime' && !(workflow.runtimeVariables ?? []).includes(sourceSlot.key)) {
+      throw new Error(
+        `buildScript: workflow "${workflow.workflowRef}" raw calldata action ${slot.actionIndex ?? '?'} depends on computed runtime slot "${sourceSlot.key}", which cannot be assembled off-chain`
+      )
+    }
+  }
+}
+
+function assembleRawCalldataSlot(
+  state: HexString[],
+  workflow: WorkflowDefinition,
+  slot: Extract<WorkflowStateSlot, { type: 'rawcalldata' }>
+): HexString {
+  assertRawCalldataSlotIsSupported(workflow, slot)
+
+  if (slot.sourceSlots.length !== slot.parameterTypes.length) {
+    throw new Error(
+      `buildScript: workflow "${workflow.workflowRef}" raw calldata action ${slot.actionIndex ?? '?'} has ${slot.sourceSlots.length} source slots for ${slot.parameterTypes.length} parameters`
+    )
+  }
+
+  const decodedValues = slot.sourceSlots.map((sourceIndex, parameterIndex) => {
+    const encodedValue = state[sourceIndex]
+    if (encodedValue == null) {
+      throw new Error(
+        `buildScript: workflow "${workflow.workflowRef}" raw calldata source slot ${sourceIndex} is missing`
+      )
+    }
+
+    if (encodedValue === EMPTY_BYTES) {
+      const sourceSlot = workflow.state[sourceIndex]
+      const runtimeKey = sourceSlot && sourceSlot.type === 'runtime' ? sourceSlot.key : `slot ${sourceIndex}`
+      throw new Error(
+        `buildScript: workflow "${workflow.workflowRef}" raw calldata action ${slot.actionIndex ?? '?'} is missing value for "${runtimeKey}"`
+      )
+    }
+
+    return decodeWorkflowValue(slot.parameterTypes[parameterIndex]!, encodedValue)
+  })
+
+  const encodedArgs = encodeAbiParameters(slot.parameterTypes.map(getWorkflowAbiParameter), decodedValues)
+  return concat([slot.selector, encodedArgs]) as HexString
 }
 
 function decodeAddressTarget(value: HexString, key: string): HexString {
@@ -260,7 +377,7 @@ export function encodeCommand(
  *
  * State slots classified as `literal`, `magic`, or `configurable` are pinned:
  * their bit in `stateBitmap` is set to 1 and the resolved value is placed in
- * `state[i]`. Slots classified as `runtime` are initialized to zero-bytes32
+ * `state[i]`. Slots classified as `runtime` are initialized to empty bytes
  * with their bit set to 0 — the executor fills them at call time.
  *
  * @throws if a magic variable key is absent from `poolContext`
@@ -305,9 +422,16 @@ export function buildScript(
       }
       state.push(value)
       stateBitmap |= 1n << BigInt(i)
+    } else if (slot.type === 'rawcalldata') {
+      if (canAssembleRawCalldataAtBuildTime(workflow, slot.sourceSlots)) {
+        state.push(assembleRawCalldataSlot(state, workflow, slot))
+        stateBitmap |= 1n << BigInt(i)
+      } else {
+        state.push(EMPTY_BYTES)
+      }
     } else {
       // runtime — placeholder, bit stays 0
-      state.push(ZERO_BYTES32)
+      state.push(EMPTY_BYTES)
     }
   }
 
