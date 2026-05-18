@@ -42,8 +42,24 @@ describe('utils/catalog', () => {
     expect(definition.runtimeVariables).to.deep.equal(['amount'])
     expect(definition.actions[1]!.target).to.deep.equal({ type: 'magic', key: '$onOffRamp' })
     expect(definition.state).to.deep.equal([
-      { type: 'runtime', key: 'amount', label: 'Amount', parameter: 'uint256' },
-      { type: 'configurable', key: 'configurable:0:1', label: 'Max fee', parameter: 'uint256' },
+      {
+        type: 'runtime',
+        key: 'amount',
+        label: 'Amount',
+        parameter: 'uint256',
+        actionName: 'function deposit(uint256,uint256)',
+        actionIndex: 0,
+        inputIndex: 0,
+      },
+      {
+        type: 'configurable',
+        key: 'configurable:0:1',
+        label: 'Max fee',
+        parameter: 'uint256',
+        actionName: 'function deposit(uint256,uint256)',
+        actionIndex: 0,
+        inputIndex: 1,
+      },
       { type: 'runtime', key: 'sharesReceived', label: 'sharesReceived', parameter: '' },
       { type: 'magic', key: '$executor' },
     ])
@@ -71,11 +87,19 @@ describe('utils/catalog', () => {
     const definition = buildWorkflowDefinitionFromCatalog(workflow)
     expect(definition.runtimeVariables).to.deep.equal(['amount'])
     expect(definition.state).to.deep.equal([
-      { type: 'runtime', key: 'amount', label: 'Amount', parameter: 'uint256' },
+      {
+        type: 'runtime',
+        key: 'amount',
+        label: 'Amount',
+        parameter: 'uint256',
+        actionName: 'function deposit(uint256)',
+        actionIndex: 0,
+        inputIndex: 0,
+      },
     ])
   })
 
-  it('rejects empty non-configurable inputs without runtimeVariables metadata', () => {
+  it('synthesizes runtime inputs when empty non-configurable inputs have no runtimeVariables metadata', () => {
     const workflow: MarketplaceWorkflow = {
       workflowRef: 'bad-empty',
       name: 'Bad',
@@ -93,9 +117,20 @@ describe('utils/catalog', () => {
       ],
     }
 
-    expect(() => buildWorkflowDefinitionFromCatalog(workflow)).to.throw(
-      'has 1 empty non-configurable inputs but declares no runtimeVariables'
-    )
+    const definition = buildWorkflowDefinitionFromCatalog(workflow)
+    expect(definition.runtimeVariables).to.deep.equal(['runtime:0:0'])
+    expect(definition.state).to.deep.equal([
+      {
+        type: 'runtime',
+        key: 'runtime:0:0',
+        label: 'Amount',
+        parameter: 'uint256',
+        actionName: 'function deposit(uint256)',
+        actionIndex: 0,
+        inputIndex: 0,
+        anonymous: true,
+      },
+    ])
   })
 
   it('rejects ambiguous empty non-configurable input mappings', () => {

@@ -57,8 +57,26 @@ export interface WeirollAction {
 export type WorkflowStateSlot =
   | { type: 'literal'; value: HexString }
   | { type: 'magic'; key: string }
-  | { type: 'configurable'; key: string; label?: string; parameter?: string }
-  | { type: 'runtime'; key: string; label?: string; parameter?: string }
+  | {
+      type: 'configurable'
+      key: string
+      label?: string
+      parameter?: string
+      actionName?: string
+      actionIndex?: number
+      inputIndex?: number
+      anonymous?: boolean
+    }
+  | {
+      type: 'runtime'
+      key: string
+      label?: string
+      parameter?: string
+      actionName?: string
+      actionIndex?: number
+      inputIndex?: number
+      anonymous?: boolean
+    }
 
 /** The full description of a workflow: its actions and initial state layout. */
 export interface WorkflowDefinition {

@@ -46,6 +46,10 @@ function configurableKey(actionIndex: number, inputIndex: number): string {
   return `configurable:${actionIndex}:${inputIndex}`
 }
 
+function anonymousRuntimeKey(actionIndex: number, inputIndex: number): string {
+  return `runtime:${actionIndex}:${inputIndex}`
+}
+
 /**
  * Converts a MarketplaceWorkflow (from the IPFS catalog) into a WorkflowDefinition
  * that can be passed to buildScript().
@@ -56,11 +60,13 @@ function configurableKey(actionIndex: number, inputIndex: number): string {
  *   - appears as action.returns        → runtime  (computed by weiroll during execution)
  *   - anything else                    → runtime  (filled by user before execution)
  *
- * Bare `input: []` values are also treated as runtime inputs when the catalog
- * declares an unambiguous `runtimeVariables` mapping for them.
+ * Bare `input: []` values are treated as runtime inputs too:
+ *   - use catalog `runtimeVariables` when the mapping is unambiguous
+ *   - otherwise synthesize a per-input runtime key so the FE can ask the user
+ *     for the missing values explicitly
  *
  * Only the last category is included in runtimeVariables — the UI shows an
- * input field for each of those. Computed slots start as '0x' and are written
+ * input field for each of those. Computed slots start as zero-bytes32 and are written
  * by the weiroll VM when the producing action runs.
  *
  * Action outputs are set to the corresponding slot index when action.returns is
@@ -105,24 +111,14 @@ export function buildWorkflowDefinitionFromCatalog(workflow: MarketplaceWorkflow
   const bareRuntimeKeyByInput = new Map<string, string>()
 
   if (bareRuntimeInputs.length > 0) {
-    if (declaredRuntimeKeys.length === 0) {
-      throw new Error(
-        `buildWorkflowDefinitionFromCatalog: workflow "${workflow.workflowRef}" has ${bareRuntimeInputs.length} empty non-configurable inputs but declares no runtimeVariables`
-      )
-    }
-    if (declaredRuntimeKeys.length !== bareRuntimeInputs.length) {
+    if (declaredRuntimeKeys.length > 0 && declaredRuntimeKeys.length !== bareRuntimeInputs.length) {
       throw new Error(
         `buildWorkflowDefinitionFromCatalog: workflow "${workflow.workflowRef}" declares ${declaredRuntimeKeys.length} runtimeVariables for ${bareRuntimeInputs.length} empty non-configurable inputs`
       )
     }
 
     bareRuntimeInputs.forEach(({ actionIndex, inputIndex }, idx) => {
-      const key = declaredRuntimeKeys[idx]
-      if (!key) {
-        throw new Error(
-          `buildWorkflowDefinitionFromCatalog: workflow "${workflow.workflowRef}" is missing a runtime variable mapping for action ${actionIndex} input ${inputIndex}`
-        )
-      }
+      const key = declaredRuntimeKeys[idx] ?? anonymousRuntimeKey(actionIndex, inputIndex)
       if (MAGIC_KEY_SET.has(`$${key}`)) {
         throw new Error(
           `buildWorkflowDefinitionFromCatalog: workflow "${workflow.workflowRef}" runtime variable "${key}" collides with a magic variable`
@@ -167,7 +163,17 @@ export function buildWorkflowDefinitionFromCatalog(workflow: MarketplaceWorkflow
     return idx
   }
 
-  function getOrAddVariableSlot(raw: string, label?: string, parameter = ''): number {
+  function getOrAddVariableSlot(
+    raw: string,
+    label?: string,
+    parameter = '',
+    metadata?: {
+      actionName?: string
+      actionIndex?: number
+      inputIndex?: number
+      anonymous?: boolean
+    }
+  ): number {
     let canonical: string
     let slot: WorkflowStateSlot
 
@@ -186,7 +192,13 @@ export function buildWorkflowDefinitionFromCatalog(workflow: MarketplaceWorkflow
           // the distinction lives in runtimeVariables, not in the slot type
           const key = stripVariablePrefix(raw)
           canonical = `runtime:${key}`
-          slot = { type: 'runtime', key, label: fallbackLabel(label, key, parameter), parameter }
+          slot = {
+            type: 'runtime',
+            key,
+            label: fallbackLabel(label, key, parameter),
+            parameter,
+            ...metadata,
+          }
         }
       }
     } else {
@@ -212,6 +224,11 @@ export function buildWorkflowDefinitionFromCatalog(workflow: MarketplaceWorkflow
 
     const inputs = action.inputs.map((inp, inputIndex) => {
       const values = inp.input ?? []
+      const slotMetadata = {
+        actionName: action.name ?? action.selector,
+        actionIndex,
+        inputIndex,
+      }
       if (inp.configurable) {
         if (values.length !== 0) {
           throw new Error(
@@ -225,6 +242,7 @@ export function buildWorkflowDefinitionFromCatalog(workflow: MarketplaceWorkflow
           key,
           label: fallbackLabel(inp.label, key, inp.parameter),
           parameter: inp.parameter,
+          ...slotMetadata,
         })
       }
 
@@ -240,6 +258,8 @@ export function buildWorkflowDefinitionFromCatalog(workflow: MarketplaceWorkflow
           key: runtimeKey,
           label: fallbackLabel(inp.label, runtimeKey, inp.parameter),
           parameter: inp.parameter,
+          ...slotMetadata,
+          ...(declaredRuntimeKeys.length === 0 ? { anonymous: true } : {}),
         })
       }
 
@@ -249,7 +269,7 @@ export function buildWorkflowDefinitionFromCatalog(workflow: MarketplaceWorkflow
         )
       }
 
-      return getOrAddVariableSlot(values[0]!, inp.label, inp.parameter)
+      return getOrAddVariableSlot(values[0]!, inp.label, inp.parameter, slotMetadata)
     })
 
     // Claim the output slot now so downstream actions referencing action.returns
