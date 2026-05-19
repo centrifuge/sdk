@@ -50,12 +50,8 @@ function anonymousRuntimeKey(actionIndex: number, inputIndex: number): string {
   return `runtime:${actionIndex}:${inputIndex}`
 }
 
-function isDynamicAbiParameter(parameter: string): boolean {
-  return parameter === 'bytes' || parameter === 'string' || parameter.endsWith('[]')
-}
-
 function shouldAssembleRawCalldata(action: MarketplaceWorkflow['actions'][number]): boolean {
-  return action.rawMode === true || action.inputs.length > 6 || action.inputs.some((input) => isDynamicAbiParameter(input.parameter))
+  return action.rawMode === true || action.inputs.length > 6
 }
 
 /**

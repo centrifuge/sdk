@@ -161,7 +161,7 @@ describe('utils/catalog', () => {
     )
   })
 
-  it('compiles dynamic-input actions into raw calldata commands', () => {
+  it('keeps dynamic-input actions as standard workflow actions when they fit the weiroll command shape', () => {
     const workflow: MarketplaceWorkflow = {
       workflowRef: 'slippage-open',
       name: 'Slippage open',
@@ -189,9 +189,9 @@ describe('utils/catalog', () => {
     expect(definition.actions[0]).to.deep.include({
       target: ADDRESS_A,
       selector,
-      rawMode: true,
     })
-    expect(definition.actions[0]!.inputs).to.deep.equal([3])
+    expect(definition.actions[0]!.rawMode).to.equal(undefined)
+    expect(definition.actions[0]!.inputs).to.deep.equal([0, 1, 2])
     expect(definition.state[2]).to.deep.equal({
       type: 'configurable',
       key: 'configurable:0:2',
@@ -201,13 +201,45 @@ describe('utils/catalog', () => {
       actionIndex: 0,
       inputIndex: 2,
     })
-    expect(definition.state[3]).to.deep.equal({
-      type: 'rawcalldata',
-      selector,
-      parameterTypes: ['uint64', 'bytes16', '(address,uint256)[]'],
-      sourceSlots: [0, 1, 2],
-      actionName: 'function open(uint64,bytes16,(address,uint256)[])',
-      actionIndex: 0,
+  })
+
+  it('allows bytes-valued helper actions to return values for downstream use', () => {
+    const workflow: MarketplaceWorkflow = {
+      workflowRef: 'bytes-helper',
+      name: 'Bytes helper',
+      template: 'bytes-helper',
+      chainId: 1,
+      variables: { helper: ADDRESS_A, target: ADDRESS_B },
+      workflowId: '0x01',
+      version: 1,
+      actions: [
+        {
+          target: '$helper',
+          selector: 'function bytesConcat(bytes,bytes)',
+          inputs: [
+            { parameter: 'bytes', label: 'A', input: ['0x01'] },
+            { parameter: 'bytes', label: 'B', input: ['0x02'] },
+          ],
+          returns: '$payload',
+        },
+        {
+          target: '$target',
+          selector: 'function usePayload(bytes)',
+          inputs: [{ parameter: 'bytes', label: 'Payload', input: ['$payload'] }],
+        },
+      ],
+    }
+
+    const definition = buildWorkflowDefinitionFromCatalog(workflow)
+    expect(definition.actions[0]!.rawMode).to.equal(undefined)
+    expect(definition.actions[0]!.inputs).to.deep.equal([0, 1])
+    expect(definition.actions[0]!.output).to.equal(2)
+    expect(definition.actions[1]!.inputs).to.deep.equal([2])
+    expect(definition.state[2]).to.deep.equal({
+      type: 'runtime',
+      key: 'payload',
+      label: 'payload',
+      parameter: '',
     })
   })
 
