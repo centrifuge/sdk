@@ -230,6 +230,56 @@ describe('utils/weiroll', () => {
       expect(stateBitmap).to.equal(1n) // only slot 0 pinned
     })
 
+    it('emits an extended command word when an action needs more than 6 input specifiers', () => {
+      const workflow: WorkflowDefinition = {
+        workflowRef: 'extended',
+        actions: [
+          {
+            target: TARGET_A,
+            selector: SELECTOR,
+            callType: CALL,
+            inputs: [0, 1, 2, 3, 4, 5, 6],
+            output: UNUSED_SLOT,
+          },
+        ],
+        state: Array.from({ length: 7 }, (_, index) => ({
+          type: 'literal' as const,
+          value: `0x${(index + 1).toString(16).padStart(64, '0')}` as const,
+        })),
+      }
+
+      const { commands } = buildScript(workflow, { poolContext: POOL_CTX, configurableValues: {} })
+
+      expect(commands).to.have.length(2)
+      expect(commands[0]).to.equal('0xaabbccdd41ffffffffffffff' + TARGET_A.slice(2))
+      expect(commands[1]).to.match(/^0x00010203040506ff/)
+    })
+
+    it('emits an extended VALUECALL command when the ETH value plus args exceed 6 specifiers', () => {
+      const workflow: WorkflowDefinition = {
+        workflowRef: 'payable-extended',
+        actions: [
+          {
+            target: TARGET_A,
+            selector: SELECTOR,
+            callType: VALUECALL,
+            inputs: [0, 1, 2, 3, 4, 5, 6],
+            output: UNUSED_SLOT,
+          },
+        ],
+        state: Array.from({ length: 7 }, (_, index) => ({
+          type: 'literal' as const,
+          value: `0x${(index + 1).toString(16).padStart(64, '0')}` as const,
+        })),
+      }
+
+      const { commands } = buildScript(workflow, { poolContext: POOL_CTX, configurableValues: {} })
+
+      expect(commands).to.have.length(2)
+      expect(commands[0]).to.equal('0xaabbccdd43ffffffffffffff' + TARGET_A.slice(2))
+      expect(commands[1]).to.match(/^0x00010203040506ff/)
+    })
+
     it('assembles pinned raw calldata slots for dynamic inputs', () => {
       const assets = [[TARGET_B, 100n]] as const
       const encodedAssets = encodeAbiParameters(

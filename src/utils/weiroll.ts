@@ -10,17 +10,21 @@ import type { HexString } from '../types/index.js'
 export const CALL = 0x01 as const
 /** Read-only call. */
 export const STATICCALL = 0x02 as const
-/** ETH-value call — ETH amount is taken from state[0]. */
+/** ETH-value call — ETH amount is taken from the first input specifier's state slot. */
 export const VALUECALL = 0x03 as const
 
 /** Raw calldata mode — set in the flags byte to bypass ABI encoding. */
 export const FLAG_RAW = 0x20 as const
+/** Extended command mode — the next command word contains up to 32 input specifiers. */
+export const FLAG_EXTENDED_COMMAND = 0x40 as const
 
 /** Sentinel value for unused input slots or a discarded return value. */
 export const UNUSED_SLOT = 0xff as const
+const IDX_VALUE_MASK = 0x7f as const
 
 /** Maximum number of state slots (stateBitmap is uint128). */
 const MAX_STATE_SLOTS = 128
+const MAX_COMMAND_INPUT_SPECIFIERS = 32
 const EMPTY_BYTES = '0x' as HexString
 
 // ---------------------------------------------------------------------------
@@ -38,11 +42,13 @@ export interface WeirollAction {
   selector: HexString
   callType: WeirollCallType
   /**
-   * Up to 6 state-slot indices for the call's inputs.
-   * Automatically padded with UNUSED_SLOT (0xFF) to length 6.
+   * Weiroll input specifiers for the call's inputs.
+   * Fixed-length arguments use the state slot index directly.
+   * Variable-length arguments set the high bit and store the state slot index in
+   * the low 7 bits.
    */
   inputs: number[]
-  /** State slot to write the return value into, or UNUSED_SLOT to discard. */
+  /** Weiroll output specifier, or UNUSED_SLOT to discard. */
   output: number
   /** When true, sets FLAG_RAW — use for manually ABI-encoded calldata. */
   rawMode?: boolean
@@ -68,6 +74,7 @@ export type WorkflowStateSlot =
       actionIndex?: number
       inputIndex?: number
       anonymous?: boolean
+      system?: 'payableValue'
     }
   | {
       type: 'rawcalldata'
@@ -86,6 +93,7 @@ export type WorkflowStateSlot =
       actionIndex?: number
       inputIndex?: number
       anonymous?: boolean
+      system?: 'payableValue'
     }
 
 /** The full description of a workflow: its actions and initial state layout. */
@@ -292,6 +300,43 @@ function decodeAddressTarget(value: HexString, key: string): HexString {
   return `0x${body.slice(24).toLowerCase()}` as HexString
 }
 
+function encodeIndicesWord(inputs: number[]): HexString {
+  if (inputs.length > MAX_COMMAND_INPUT_SPECIFIERS) {
+    throw new Error(
+      `encodeCommandWords: inputs length ${inputs.length} exceeds maximum of ${MAX_COMMAND_INPUT_SPECIFIERS}`
+    )
+  }
+
+  const paddedInputs = inputs.slice()
+  while (paddedInputs.length < MAX_COMMAND_INPUT_SPECIFIERS) {
+    paddedInputs.push(UNUSED_SLOT)
+  }
+
+  let word = 0n
+  for (const idx of paddedInputs) {
+    word = (word << 8n) | BigInt(idx & 0xff)
+  }
+
+  return `0x${word.toString(16).padStart(64, '0')}` as HexString
+}
+
+function encodeCommandWords(
+  selector: HexString,
+  flags: number,
+  inputs: number[],
+  output: number,
+  target: HexString
+): HexString[] {
+  if (inputs.length <= 6) {
+    return [encodeCommand(selector, flags, inputs, output, target)]
+  }
+
+  return [
+    encodeCommand(selector, flags | FLAG_EXTENDED_COMMAND, [], output, target),
+    encodeIndicesWord(inputs),
+  ]
+}
+
 // ---------------------------------------------------------------------------
 // encodeCommand
 // ---------------------------------------------------------------------------
@@ -303,8 +348,8 @@ function decodeAddressTarget(value: HexString, key: string): HexString {
  * ```
  * bits [255:224]  selector  (bytes4)  — function selector
  * bits [223:216]  flags     (uint8)   — callType | FLAG_RAW
- * bits [215:168]  inputs    (bytes6)  — 6 × 1-byte slot indices, MSB first
- * bits [167:160]  output    (uint8)   — slot index or UNUSED_SLOT
+ * bits [215:168]  inputs    (bytes6)  — 6 × 1-byte input specifiers, MSB first
+ * bits [167:160]  output    (uint8)   — output specifier or UNUSED_SLOT
  * bits [159:0]    target    (address) — 20-byte contract address
  * ```
  *
@@ -316,8 +361,8 @@ function decodeAddressTarget(value: HexString, key: string): HexString {
 export function encodeCommand(
   selector: HexString, // 4 bytes
   flags: number, // 1 byte: callType | optional FLAG_RAW
-  inputs: number[], // up to 6 slot indices (padded to 6 with UNUSED_SLOT)
-  output: number, // slot index or UNUSED_SLOT
+  inputs: number[], // up to 6 weiroll input specifiers (padded to 6 with UNUSED_SLOT)
+  output: number, // output specifier or UNUSED_SLOT
   target: HexString // 20-byte address
 ): HexString {
   if (inputs.length > 6) {
@@ -330,15 +375,15 @@ export function encodeCommand(
     throw new Error(`encodeCommand: target must be a 20-byte address (0x + 40 hex chars), got "${target}"`)
   }
   for (const idx of inputs) {
-    if (idx !== UNUSED_SLOT && (idx < 0 || idx > 127)) {
-      throw new Error(`encodeCommand: input slot index ${idx} out of range — must be 0–127 or UNUSED_SLOT (0xFF)`)
+    if (idx < 0 || idx > 0xff) {
+      throw new Error(`encodeCommand: input specifier ${idx} out of range — must be 0–255`)
     }
   }
-  if (output !== UNUSED_SLOT && (output < 0 || output > 127)) {
-    throw new Error(`encodeCommand: output slot index ${output} out of range — must be 0–127 or UNUSED_SLOT (0xFF)`)
+  if (output < 0 || output > 0xff) {
+    throw new Error(`encodeCommand: output specifier ${output} out of range — must be 0–255`)
   }
 
-  // Pad to exactly 6 input indices
+  // Pad to exactly 6 input specifiers
   const paddedInputs = inputs.slice()
   while (paddedInputs.length < 6) {
     paddedInputs.push(UNUSED_SLOT)
@@ -350,7 +395,7 @@ export function encodeCommand(
   // flags as uint8
   const f = BigInt(flags & 0xff)
 
-  // Pack 6 input indices into a uint48, MSB = inputs[0]
+  // Pack 6 input specifiers into a uint48, MSB = inputs[0]
   let indicesBig = 0n
   for (const idx of paddedInputs) {
     indicesBig = (indicesBig << 8n) | BigInt((idx ?? UNUSED_SLOT) & 0xff)
@@ -435,7 +480,7 @@ export function buildScript(
     }
   }
 
-  const commands = workflow.actions.map((action) => {
+  const commands = workflow.actions.flatMap((action) => {
     const target =
       typeof action.target === 'string'
         ? action.target
@@ -447,7 +492,7 @@ export function buildScript(
             return decodeAddressTarget(value, action.target.key)
           })()
     const flags = action.callType | (action.rawMode ? FLAG_RAW : 0)
-    return encodeCommand(action.selector, flags, action.inputs, action.output, target)
+    return encodeCommandWords(action.selector, flags, action.inputs, action.output, target)
   })
 
   return { commands, state, stateBitmap }

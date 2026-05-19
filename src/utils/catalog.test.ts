@@ -190,8 +190,16 @@ describe('utils/catalog', () => {
       target: ADDRESS_A,
       selector,
     })
-    expect(definition.actions[0]!.rawMode).to.equal(undefined)
-    expect(definition.actions[0]!.inputs).to.deep.equal([0, 1, 2])
+    expect(definition.actions[0]!.rawMode).to.equal(true)
+    expect(definition.actions[0]!.inputs).to.deep.equal([3])
+    expect(definition.state[3]).to.deep.equal({
+      type: 'rawcalldata',
+      selector,
+      parameterTypes: ['uint64', 'bytes16', '(address,uint256)[]'],
+      sourceSlots: [0, 1, 2],
+      actionName: 'function open(uint64,bytes16,(address,uint256)[])',
+      actionIndex: 0,
+    })
     expect(definition.state[2]).to.deep.equal({
       type: 'configurable',
       key: 'configurable:0:2',
@@ -232,9 +240,9 @@ describe('utils/catalog', () => {
 
     const definition = buildWorkflowDefinitionFromCatalog(workflow)
     expect(definition.actions[0]!.rawMode).to.equal(undefined)
-    expect(definition.actions[0]!.inputs).to.deep.equal([0, 1])
-    expect(definition.actions[0]!.output).to.equal(2)
-    expect(definition.actions[1]!.inputs).to.deep.equal([2])
+    expect(definition.actions[0]!.inputs).to.deep.equal([0x80, 0x81])
+    expect(definition.actions[0]!.output).to.equal(0x82)
+    expect(definition.actions[1]!.inputs).to.deep.equal([0x82])
     expect(definition.state[2]).to.deep.equal({
       type: 'runtime',
       key: 'payload',
@@ -243,7 +251,7 @@ describe('utils/catalog', () => {
     })
   })
 
-  it('compiles over-6-input actions into raw calldata commands', () => {
+  it('keeps over-6-input static actions as standard commands for extended weiroll encoding', () => {
     const workflow: MarketplaceWorkflow = {
       workflowRef: 'many-inputs',
       name: 'Many inputs',
@@ -270,16 +278,52 @@ describe('utils/catalog', () => {
     }
 
     const definition = buildWorkflowDefinitionFromCatalog(workflow)
-    const selector = toFunctionSelector('function execute(uint256,uint256,uint256,uint256,uint256,uint256,uint256)')
-    expect(definition.actions[0]!.rawMode).to.equal(true)
-    expect(definition.actions[0]!.inputs).to.deep.equal([7])
-    expect(definition.state[7]).to.deep.equal({
-      type: 'rawcalldata',
-      selector,
-      parameterTypes: ['uint256', 'uint256', 'uint256', 'uint256', 'uint256', 'uint256', 'uint256'],
-      sourceSlots: [0, 1, 2, 3, 4, 5, 6],
-      actionName: 'function execute(uint256,uint256,uint256,uint256,uint256,uint256,uint256)',
+    expect(definition.actions[0]!.rawMode).to.equal(undefined)
+    expect(definition.actions[0]!.inputs).to.deep.equal([0, 1, 2, 3, 4, 5, 6])
+  })
+
+  it('adds internal runtime slots for payable actions without exposing them to the user', () => {
+    const workflow: MarketplaceWorkflow = {
+      workflowRef: 'payable-update',
+      name: 'Payable update',
+      template: 'payable-update',
+      chainId: 1,
+      variables: { spoke: ADDRESS_A },
+      workflowId: '0x01',
+      version: 1,
+      actions: [
+        {
+          target: '$spoke',
+          selector: 'function submitQueuedAssets(uint64,bytes16,uint128,uint128,address)',
+          valueNonZero: true,
+          inputs: [
+            { parameter: 'uint64', label: 'Pool', input: ['1'] },
+            { parameter: 'bytes16', label: 'SC', input: ['0x01'] },
+            { parameter: 'uint128', label: 'Asset', input: ['2'] },
+            { parameter: 'uint128', label: 'Gas', input: ['0'] },
+            { parameter: 'address', label: 'Refund', input: [ADDRESS_B] },
+          ],
+        },
+      ],
+    }
+
+    const definition = buildWorkflowDefinitionFromCatalog(workflow)
+    expect(definition.runtimeVariables).to.deep.equal([])
+    expect(definition.actions[0]!.callType).to.equal(3)
+    const payableSlotIndex = definition.state.findIndex(
+      (slot) => slot.type === 'runtime' && slot.system === 'payableValue'
+    )
+    expect(payableSlotIndex).to.equal(4)
+    expect(definition.actions[0]!.inputs[0]).to.equal(payableSlotIndex)
+    expect(definition.actions[0]!.inputs).to.have.length(6)
+    expect(definition.state[4]).to.deep.equal({
+      type: 'runtime',
+      key: '__sdk_payable_value:0',
+      parameter: 'uint256',
+      actionName: 'function submitQueuedAssets(uint64,bytes16,uint128,uint128,address)',
       actionIndex: 0,
+      inputIndex: -1,
+      system: 'payableValue',
     })
   })
 

@@ -61,7 +61,7 @@ export class OnchainPM extends Entity {
    */
   execute(
     params: { commands: HexString[]; state: HexString[]; stateBitmap: bigint; callbacks: Callback[]; proof: HexString[] },
-    options: { simulate?: boolean } = {}
+    options: { simulate?: boolean; value?: bigint } = {}
   ) {
     const self = this
     return this._transact(async function* (ctx) {
@@ -75,6 +75,7 @@ export class OnchainPM extends Entity {
             functionName: 'execute',
             args: [params.commands, params.state, params.stateBitmap, params.callbacks, params.proof],
           }),
+          value: options.value,
         },
         { simulate: options.simulate ?? false }
       )

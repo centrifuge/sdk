@@ -50,8 +50,69 @@ function anonymousRuntimeKey(actionIndex: number, inputIndex: number): string {
   return `runtime:${actionIndex}:${inputIndex}`
 }
 
-function shouldAssembleRawCalldata(action: MarketplaceWorkflow['actions'][number]): boolean {
-  return action.rawMode === true || action.inputs.length > 6
+const RAW_CALLDATA_PARAMETER_SET = new Set<string>(['(address,uint256)[]', '(address,address)[]'])
+const VARIABLE_LENGTH_PARAMETER_SET = new Set<string>(['bytes'])
+const PAYABLE_VALUE_RUNTIME_KEY_PREFIX = '__sdk_payable_value:'
+
+function buildPayableValueRuntimeKey(actionIndex: number): string {
+  return `${PAYABLE_VALUE_RUNTIME_KEY_PREFIX}${actionIndex}`
+}
+
+function isVariableLengthParameter(parameter: string): boolean {
+  return VARIABLE_LENGTH_PARAMETER_SET.has(parameter)
+}
+
+function requiresRawCalldataParameter(parameter: string): boolean {
+  return RAW_CALLDATA_PARAMETER_SET.has(parameter)
+}
+
+function encodeInputSpecifier(parameter: string, slotIndex: number): number {
+  if (slotIndex < 0 || slotIndex > 0x7f) {
+    throw new Error(`buildWorkflowDefinitionFromCatalog: slot index ${slotIndex} exceeds weiroll limit 127`)
+  }
+
+  return isVariableLengthParameter(parameter) ? 0x80 | slotIndex : slotIndex
+}
+
+function inferReturnValueModes(workflow: MarketplaceWorkflow): Map<string, 'static' | 'dynamic'> {
+  const returnModes = new Map<string, 'static' | 'dynamic'>()
+
+  for (const action of workflow.actions) {
+    if (!action.returns) continue
+
+    const observedModes = new Set<'static' | 'dynamic'>()
+
+    for (const downstreamAction of workflow.actions) {
+      if (downstreamAction.target === action.returns) {
+        observedModes.add('static')
+      }
+
+      for (const input of downstreamAction.inputs) {
+        if ((input.input ?? []).includes(action.returns)) {
+          observedModes.add(isVariableLengthParameter(input.parameter) ? 'dynamic' : 'static')
+        }
+      }
+    }
+
+    if (observedModes.size === 0) {
+      const selector = action.selector.trim()
+      if (selector.startsWith('function encode') || selector === 'function bytesConcat(bytes,bytes)') {
+        observedModes.add('dynamic')
+      } else {
+        observedModes.add('static')
+      }
+    }
+
+    if (observedModes.size > 1) {
+      throw new Error(
+        `buildWorkflowDefinitionFromCatalog: workflow "${workflow.workflowRef}" return "${action.returns}" is used as both a static and dynamic value`
+      )
+    }
+
+    returnModes.set(action.returns, [...observedModes][0]!)
+  }
+
+  return returnModes
 }
 
 /**
@@ -80,6 +141,7 @@ export function buildWorkflowDefinitionFromCatalog(workflow: MarketplaceWorkflow
   // Pre-scan: variables that are return values of some action are computed by
   // the weiroll VM — they must NOT appear as user-filled inputs.
   const computedVarSet = new Set<string>()
+  const returnValueModes = inferReturnValueModes(workflow)
   for (const [index, action] of workflow.actions.entries()) {
     if (action.returns == null) continue
     if (!action.returns.startsWith('$')) {
@@ -224,16 +286,12 @@ export function buildWorkflowDefinitionFromCatalog(workflow: MarketplaceWorkflow
     const selector = /^0x[0-9a-fA-F]{8}$/.test(action.selector)
       ? (action.selector as HexString)
       : (toFunctionSelector(action.selector) as HexString)
-    const rawCalldataAction = shouldAssembleRawCalldata(action)
+    const rawCalldataAction =
+      action.rawMode === true || action.inputs.some((input) => requiresRawCalldataParameter(input.parameter))
 
     if (rawCalldataAction && action.returns != null) {
       throw new Error(
         `buildWorkflowDefinitionFromCatalog: workflow "${workflow.workflowRef}" action ${actionIndex} uses raw calldata assembly and cannot return a value`
-      )
-    }
-    if (!rawCalldataAction && (action.inputs?.length ?? 0) > 6) {
-      throw new Error(
-        `buildWorkflowDefinitionFromCatalog: workflow "${workflow.workflowRef}" action ${actionIndex} has ${action.inputs.length} inputs — maximum is 6`
       )
     }
 
@@ -289,7 +347,13 @@ export function buildWorkflowDefinitionFromCatalog(workflow: MarketplaceWorkflow
 
     // Claim the output slot now so downstream actions referencing action.returns
     // find the same slot index when they call getOrAddSlot.
-    const output = action.returns != null ? getOrAddVariableSlot(action.returns) : UNUSED_SLOT
+    const output =
+      action.returns != null
+        ? (() => {
+            const outputSlot = getOrAddVariableSlot(action.returns)
+            return returnValueModes.get(action.returns) === 'dynamic' ? 0x80 | outputSlot : outputSlot
+          })()
+        : UNUSED_SLOT
 
     const rawTarget = action.target
     const target = rawTarget.startsWith('$')
@@ -306,8 +370,22 @@ export function buildWorkflowDefinitionFromCatalog(workflow: MarketplaceWorkflow
           })())
       : (rawTarget as HexString)
 
+    const payableValueSlot =
+      action.valueNonZero === true
+        ? getOrAddSlot(`runtime:${buildPayableValueRuntimeKey(actionIndex)}`, {
+            type: 'runtime',
+            key: buildPayableValueRuntimeKey(actionIndex),
+            parameter: 'uint256',
+            actionName: action.name ?? action.selector,
+            actionIndex,
+            inputIndex: -1,
+            system: 'payableValue',
+          })
+        : null
+
     const inputs = rawCalldataAction
       ? [
+          ...(payableValueSlot != null ? [payableValueSlot] : []),
           getOrAddSlot(`rawcalldata:${actionIndex}`, {
             type: 'rawcalldata',
             selector,
@@ -317,7 +395,10 @@ export function buildWorkflowDefinitionFromCatalog(workflow: MarketplaceWorkflow
             actionIndex,
           }),
         ]
-      : inputSlots
+      : [
+          ...(payableValueSlot != null ? [payableValueSlot] : []),
+          ...action.inputs.map((input, index) => encodeInputSpecifier(input.parameter, inputSlots[index]!)),
+        ]
 
     return {
       target,
@@ -334,7 +415,7 @@ export function buildWorkflowDefinitionFromCatalog(workflow: MarketplaceWorkflow
   const runtimeVariables = stateSlots
     .filter(
       (s): s is Extract<WorkflowStateSlot, { type: 'runtime' }> =>
-        s.type === 'runtime' && !computedRuntimeKeys.has(s.key)
+        s.type === 'runtime' && !computedRuntimeKeys.has(s.key) && s.system !== 'payableValue'
     )
     .map((s) => s.key)
 
