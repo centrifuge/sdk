@@ -811,6 +811,30 @@ export class Pool extends Entity {
   }
 
   /**
+   * Update an OracleValuation feeder on the hub chain for this pool.
+   */
+  updateOracleValuationFeeder(
+    oracleValuation: HexString,
+    centrifugeId: CentrifugeId,
+    feeder: HexString,
+    canFeed: boolean
+  ) {
+    const self = this
+    return this._transact(async function* (ctx) {
+      const data = encodeFunctionData({
+        abi: ABI.OracleValuation,
+        functionName: 'updateFeeder',
+        args: [self.id.raw, centrifugeId, addressToBytes32(feeder), canFeed],
+      })
+
+      yield* wrapTransaction('Update oracle valuation feeder', ctx, {
+        contract: oracleValuation,
+        data,
+      })
+    }, this.centrifugeId)
+  }
+
+  /**
    * Set adapters for multiple networks at once.
    */
   setAdapters(

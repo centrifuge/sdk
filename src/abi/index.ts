@@ -16,6 +16,7 @@ import MerkleProofManagerFactoryAbi from './MerkleProofManagerFactory.abi.js'
 import MessageDispatcherAbi from './MessageDispatcher.abi.js'
 import OnchainPMAbi from './OnchainPM.abi.js'
 import OnchainPMFactoryAbi from './OnchainPMFactory.abi.js'
+import OracleValuationAbi from './OracleValuation.abi.js'
 import MultiAdapterAbi from './MultiAdapter.abi.js'
 import OnOffRampManagerAbi from './OnOffRampManager.abi.js'
 import OnOffRampManagerFactoryAbi from './OnOffRampManagerFactory.abi.js'
@@ -60,5 +61,6 @@ export const ABI = {
   MerkleProofManagerFactory: parseAbi(MerkleProofManagerFactoryAbi),
   OnchainPM: parseAbi(OnchainPMAbi),
   OnchainPMFactory: parseAbi(OnchainPMFactoryAbi),
+  OracleValuation: parseAbi(OracleValuationAbi),
   ScriptHelpers: parseAbi(ScriptHelpersAbi),
 }
