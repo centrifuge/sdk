@@ -645,6 +645,7 @@ export class Vault extends Entity {
             ctx.signingAddress,
           ],
         }),
+        messages: { [self.centrifugeId]: [{ type: MessageType.TrustedContractUpdate, poolId: self.pool.id }] },
       })
     }, this.pool.centrifugeId)
   }
