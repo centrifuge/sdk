@@ -53,6 +53,10 @@ function anonymousRuntimeKey(actionIndex: number, inputIndex: number): string {
 const RAW_CALLDATA_PARAMETER_SET = new Set<string>(['(address,uint256)[]', '(address,address)[]'])
 const VARIABLE_LENGTH_PARAMETER_SET = new Set<string>(['bytes'])
 const PAYABLE_VALUE_RUNTIME_KEY_PREFIX = '__sdk_payable_value:'
+const LEGACY_ACCOUNTING_TOKEN_MINT_SELECTOR = 'function mint(address,uint256,uint256)'
+const ACCOUNTING_TOKEN_MINT_SELECTOR = 'function mint(address,uint256,uint256,bytes16)'
+const LEGACY_ACCOUNTING_TOKEN_BURN_SELECTOR = 'function burn(address,uint256,uint256)'
+const ACCOUNTING_TOKEN_BURN_SELECTOR = 'function burn(address,uint256,uint256,bytes16)'
 
 function buildPayableValueRuntimeKey(actionIndex: number): string {
   return `${PAYABLE_VALUE_RUNTIME_KEY_PREFIX}${actionIndex}`
@@ -72,6 +76,53 @@ function encodeInputSpecifier(parameter: string, slotIndex: number): number {
   }
 
   return isVariableLengthParameter(parameter) ? 0x80 | slotIndex : slotIndex
+}
+
+function normalizeCatalogActionCompatibility(action: MarketplaceWorkflow['actions'][number]) {
+  if (action.target !== '$accountingToken') return action
+
+  if (action.selector === LEGACY_ACCOUNTING_TOKEN_MINT_SELECTOR) {
+    return {
+      ...action,
+      selector: ACCOUNTING_TOKEN_MINT_SELECTOR,
+      inputs: [
+        ...action.inputs,
+        {
+          parameter: 'bytes16',
+          label: 'SC ID',
+          input: ['$scId'],
+        },
+      ],
+    }
+  }
+
+  if (action.selector === LEGACY_ACCOUNTING_TOKEN_BURN_SELECTOR) {
+    return {
+      ...action,
+      selector: ACCOUNTING_TOKEN_BURN_SELECTOR,
+      inputs: [
+        ...action.inputs,
+        {
+          parameter: 'bytes16',
+          label: 'SC ID',
+          input: ['$scId'],
+        },
+      ],
+    }
+  }
+
+  return action
+}
+
+function normalizeCatalogWorkflowCompatibility(workflow: MarketplaceWorkflow): MarketplaceWorkflow {
+  let changed = false
+  const actions = workflow.actions.map((action) => {
+    const normalized = normalizeCatalogActionCompatibility(action)
+    if (normalized !== action) changed = true
+    return normalized
+  })
+
+  return changed ? { ...workflow, actions } : workflow
 }
 
 function inferReturnValueModes(workflow: MarketplaceWorkflow): Map<string, 'static' | 'dynamic'> {
@@ -138,6 +189,8 @@ function inferReturnValueModes(workflow: MarketplaceWorkflow): Map<string, 'stat
  * present, and UNUSED_SLOT otherwise.
  */
 export function buildWorkflowDefinitionFromCatalog(workflow: MarketplaceWorkflow): WorkflowDefinition {
+  workflow = normalizeCatalogWorkflowCompatibility(workflow)
+
   // Pre-scan: variables that are return values of some action are computed by
   // the weiroll VM — they must NOT appear as user-filled inputs.
   const computedVarSet = new Set<string>()
