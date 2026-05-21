@@ -558,6 +558,7 @@ describe('PoolNetwork.onchainPM', () => {
   function createOnchainPMTestSubject(returnedAddress: string) {
     const publicClient = {
       readContract: sinon.stub().resolves(returnedAddress),
+      getCode: sinon.stub().resolves(returnedAddress === NULL_ADDRESS ? '0x' : '0x1234'),
     }
     const root = {
       _query: (_keys: unknown, callback: () => unknown) => callback(),
@@ -581,6 +582,97 @@ describe('PoolNetwork.onchainPM', () => {
     const { pn } = createOnchainPMTestSubject(NULL_ADDRESS)
     const result = await lastValueFrom(pn.onchainPM() as unknown as Observable<OnchainPM | null>)
     expect(result).to.equal(null)
+  })
+})
+
+describe('PoolNetwork.deployOnchainPM', () => {
+  const onchainPMFactory = '0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'
+  const deployedPMAddress = '0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb'
+
+  afterEach(() => {
+    sinon.restore()
+  })
+
+  it('deploys or reuses the spoke OnchainPM without updating balance sheet managers', async () => {
+    const publicClient = {
+      readContract: sinon.stub().resolves(deployedPMAddress),
+      getCode: sinon.stub().resolves('0x1234'),
+    }
+
+    const root = {
+      _protocolAddresses: sinon.stub().resolves({ onchainPMFactory }),
+      _transact: (callback: (ctx: any) => AsyncGenerator<unknown> | Observable<unknown>, centrifugeId: number) => {
+        const tx = new Observable<unknown>((subscriber) => {
+          ;(async () => {
+            try {
+              const result = callback({
+                publicClient,
+                walletClient: { writeContract: sinon.stub() },
+                signingAddress,
+                chain: {} as any,
+                centrifugeId,
+                signer: {} as any,
+                root,
+              })
+
+              if (Symbol.asyncIterator in result) {
+                for await (const item of result) {
+                  subscriber.next(item)
+                }
+              } else {
+                result.subscribe(subscriber)
+                return
+              }
+
+              subscriber.complete()
+            } catch (error) {
+              subscriber.error(error)
+            }
+          })()
+        })
+
+        return Object.assign(tx, { centrifugeId })
+      },
+    }
+
+    const pool = new Pool(root as any, poolId.raw)
+    const updateBalanceSheetManagers = sinon.stub(pool, 'updateBalanceSheetManagers')
+    const pn = new PoolNetwork(root as any, pool, centId)
+
+    const result = await lastValueFrom(pn.deployOnchainPM() as unknown as Observable<any>)
+    expect(result).to.deep.equal({ type: 'DeployedOnchainPM', address: deployedPMAddress })
+    expect(updateBalanceSheetManagers.called).to.be.false
+  })
+})
+
+describe('PoolNetwork.registerOnchainPMAsBSManager', () => {
+  afterEach(() => {
+    sinon.restore()
+  })
+
+  it('registers the OnchainPM as a balance sheet manager for the current network', async () => {
+    const root = {
+      _transact: sinon.stub(),
+    }
+    const pool = new Pool(root as any, poolId.raw)
+    const updateBalanceSheetManagers = sinon
+      .stub(pool, 'updateBalanceSheetManagers')
+      .returns(of({ type: 'TransactionConfirmed' } as any) as any)
+
+    const pn = new PoolNetwork(root as any, pool, centId)
+    const managerAddress = '0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb' as const
+
+    await lastValueFrom(pn.registerOnchainPMAsBSManager(managerAddress) as unknown as Observable<any>)
+
+    expect(
+      updateBalanceSheetManagers.calledOnceWith([
+        {
+          centrifugeId: centId,
+          address: managerAddress,
+          canManage: true,
+        },
+      ])
+    ).to.be.true
   })
 })
 

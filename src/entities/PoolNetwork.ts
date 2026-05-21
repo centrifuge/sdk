@@ -212,9 +212,8 @@ export class PoolNetwork extends Entity {
    */
   deployOnchainPM() {
     const self = this
-    let onchainPMAddress: HexString | null = null
 
-    const deployTransaction = this._transact(async function* (ctx) {
+    return this._transact(async function* (ctx) {
       const { onchainPMFactory } = await self._root._protocolAddresses(self.centrifugeId)
 
       // factory.getAddress() is a pure CREATE2 calculation — it returns the predicted
@@ -230,7 +229,6 @@ export class PoolNetwork extends Entity {
       if (predictedAddress && predictedAddress !== NULL_ADDRESS) {
         const code = await ctx.publicClient.getCode({ address: predictedAddress })
         if (code && code !== '0x') {
-          onchainPMAddress = predictedAddress
           yield { type: 'DeployedOnchainPM', address: predictedAddress } as const
           return
         }
@@ -257,26 +255,23 @@ export class PoolNetwork extends Entity {
         throw new Error('DeployOnchainPM event not found in transaction receipt')
       }
 
-      onchainPMAddress = args.manager
       yield { type: 'DeployedOnchainPM', address: args.manager } as const
     }, self.centrifugeId)
+  }
 
-    const registerTransaction = defer(() => {
-      if (!onchainPMAddress) {
-        throw new Error('OnchainPM address not found after deployment')
-      }
-
-      return self.pool.updateBalanceSheetManagers([
-        {
-          centrifugeId: self.centrifugeId,
-          address: onchainPMAddress,
-          canManage: true,
-        },
-      ])
-    })
-
-    const transaction = makeThenable(concat(deployTransaction, registerTransaction), true)
-    return Object.assign(transaction, { centrifugeId: self.centrifugeId })
+  /**
+   * Register a deployed OnchainPM as a Balance Sheet Manager on the hub chain.
+   * Use this with the address obtained from deployOnchainPM().
+   * @param managerAddress - The deployed OnchainPM contract address
+   */
+  registerOnchainPMAsBSManager(managerAddress: HexString) {
+    return this.pool.updateBalanceSheetManagers([
+      {
+        centrifugeId: this.centrifugeId,
+        address: managerAddress,
+        canManage: true,
+      },
+    ])
   }
 
   /**
