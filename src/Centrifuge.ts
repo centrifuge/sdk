@@ -79,8 +79,8 @@ const PINNING_API_DEMO = 'https://europe-central2-peak-vista-185616.cloudfunctio
 // Update when centrifuge/workflows cuts a new release.
 // CIDs are in the GitHub release notes: https://github.com/centrifuge/workflows/releases
 const WORKFLOW_MARKETPLACE_CID: Record<string, string> = {
-  mainnet: 'QmanVE7HMTB1EaMugBeJgc1ykWuFnbsNHL7SHvK1LcZuey',
-  testnet: 'QmWNJZi97LdxoxqUkQRPgmGBvDsdg3DYvoEq7hQo5FCJZu',
+  mainnet: 'QmTJX4E3CNPZMDjWtK7yrk4wi5qksHc2s7RuEAn7BWihXf',
+  testnet: 'QmUUhJk3bES4pG3azBf276fvFR3RrYm4uUUmXQq67rsiWP',
 }
 
 const envConfig = {
