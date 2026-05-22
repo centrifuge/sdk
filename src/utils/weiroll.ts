@@ -1,3 +1,5 @@
+import { concat, decodeAbiParameters, encodeAbiParameters } from 'viem'
+import type { AbiParameter } from 'viem'
 import type { HexString } from '../types/index.js'
 
 // ---------------------------------------------------------------------------
@@ -8,37 +10,45 @@ import type { HexString } from '../types/index.js'
 export const CALL = 0x01 as const
 /** Read-only call. */
 export const STATICCALL = 0x02 as const
-/** ETH-value call — ETH amount is taken from state[0]. */
+/** ETH-value call — ETH amount is taken from the first input specifier's state slot. */
 export const VALUECALL = 0x03 as const
 
 /** Raw calldata mode — set in the flags byte to bypass ABI encoding. */
 export const FLAG_RAW = 0x20 as const
+/** Extended command mode — the next command word contains up to 32 input specifiers. */
+export const FLAG_EXTENDED_COMMAND = 0x40 as const
 
 /** Sentinel value for unused input slots or a discarded return value. */
 export const UNUSED_SLOT = 0xff as const
+const IDX_VALUE_MASK = 0x7f as const
 
 /** Maximum number of state slots (stateBitmap is uint128). */
 const MAX_STATE_SLOTS = 128
+const MAX_COMMAND_INPUT_SPECIFIERS = 32
+const EMPTY_BYTES = '0x' as HexString
 
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
 
 export type WeirollCallType = typeof CALL | typeof STATICCALL | typeof VALUECALL
+export type WeirollTarget = HexString | { type: 'magic'; key: string }
 
 /** A single step in a weiroll script. */
 export interface WeirollAction {
   /** 20-byte target contract address. */
-  target: HexString
+  target: WeirollTarget
   /** 4-byte function selector (e.g. `0x12345678`). */
   selector: HexString
   callType: WeirollCallType
   /**
-   * Up to 6 state-slot indices for the call's inputs.
-   * Automatically padded with UNUSED_SLOT (0xFF) to length 6.
+   * Weiroll input specifiers for the call's inputs.
+   * Fixed-length arguments use the state slot index directly.
+   * Variable-length arguments set the high bit and store the state slot index in
+   * the low 7 bits.
    */
   inputs: number[]
-  /** State slot to write the return value into, or UNUSED_SLOT to discard. */
+  /** Weiroll output specifier, or UNUSED_SLOT to discard. */
   output: number
   /** When true, sets FLAG_RAW — use for manually ABI-encoded calldata. */
   rawMode?: boolean
@@ -55,8 +65,36 @@ export interface WeirollAction {
 export type WorkflowStateSlot =
   | { type: 'literal'; value: HexString }
   | { type: 'magic'; key: string }
-  | { type: 'configurable'; key: string }
-  | { type: 'runtime'; key: string }
+  | {
+      type: 'configurable'
+      key: string
+      label?: string
+      parameter?: string
+      actionName?: string
+      actionIndex?: number
+      inputIndex?: number
+      anonymous?: boolean
+      system?: 'payableValue'
+    }
+  | {
+      type: 'rawcalldata'
+      selector: HexString
+      parameterTypes: string[]
+      sourceSlots: number[]
+      actionName?: string
+      actionIndex?: number
+    }
+  | {
+      type: 'runtime'
+      key: string
+      label?: string
+      parameter?: string
+      actionName?: string
+      actionIndex?: number
+      inputIndex?: number
+      anonymous?: boolean
+      system?: 'payableValue'
+    }
 
 /** The full description of a workflow: its actions and initial state layout. */
 export interface WorkflowDefinition {
@@ -81,7 +119,7 @@ export type PoolContext = Record<string, HexString>
 export interface ScriptResult {
   /** ABI-encoded bytes32 command words, one per action. */
   commands: HexString[]
-  /** ABI-encoded slot values. Runtime slots are empty (`0x`). */
+  /** ABI-encoded state slot values. Runtime slots are initialized to empty bytes. */
   state: HexString[]
   /**
    * uint128 where bit i = 1 means state[i] is pinned (known at whitelist time).
@@ -93,14 +131,15 @@ export interface ScriptResult {
 /**
  * Fills runtime state slots with execution-time values.
  *
- * `buildScript()` leaves runtime slots empty (`0x`). Before calling
+ * `buildScript()` initializes runtime slots to empty bytes. Before calling
  * `OnchainPM.execute()`, the strategist must fill each runtime slot with the
  * concrete value for this particular execution.
  *
  * Returns a copy of `state` with each runtime slot replaced by the
  * corresponding value from `runtimeValues` (keyed by the slot's `key` field).
  *
- * @throws if any runtime slot in `workflow` has no entry in `runtimeValues`
+ * @throws if any required runtime variable in `workflow.runtimeVariables` has no
+ * corresponding entry in `runtimeValues`
  *
  * @example
  * ```typescript
@@ -123,16 +162,179 @@ export function fillRuntimeSlots(
     }
   }
 
-  return state.map((slot, i) => {
+  const nextState = state.map((slot, i) => {
     const def = workflow.state[i]
     if (!def || def.type !== 'runtime') return slot
 
     const value = runtimeValues[def.key]
-    if (value === undefined) {
-      throw new Error(`fillRuntimeSlots: missing runtime value for slot "${def.key}"`)
-    }
-    return value
+    return value ?? slot
   })
+
+  for (let i = 0; i < workflow.state.length; i++) {
+    const def = workflow.state[i]
+    if (!def || def.type !== 'rawcalldata') continue
+    nextState[i] = assembleRawCalldataSlot(nextState, workflow, def)
+  }
+
+  return nextState
+}
+
+function getWorkflowAbiParameter(parameter: string): AbiParameter {
+  if (parameter === '(address,uint256)[]') {
+    return {
+      type: 'tuple[]',
+      components: [
+        { type: 'address' },
+        { type: 'uint256' },
+      ],
+    }
+  }
+
+  if (parameter === '(address,address)[]') {
+    return {
+      type: 'tuple[]',
+      components: [
+        { type: 'address' },
+        { type: 'address' },
+      ],
+    }
+  }
+
+  return { type: parameter }
+}
+
+function decodeWorkflowValue(parameter: string, encodedValue: HexString): unknown {
+  const [decoded] = decodeAbiParameters([getWorkflowAbiParameter(parameter)], encodedValue)
+  return decoded
+}
+
+function canAssembleRawCalldataAtBuildTime(workflow: WorkflowDefinition, sourceSlots: number[]): boolean {
+  return sourceSlots.every((sourceIndex) => {
+    const sourceSlot = workflow.state[sourceIndex]
+    if (!sourceSlot) {
+      throw new Error(`buildScript: raw calldata source slot ${sourceIndex} is out of range`)
+    }
+    return sourceSlot.type !== 'runtime' && sourceSlot.type !== 'rawcalldata'
+  })
+}
+
+function assertRawCalldataSlotIsSupported(
+  workflow: WorkflowDefinition,
+  slot: Extract<WorkflowStateSlot, { type: 'rawcalldata' }>
+) {
+  for (const sourceIndex of slot.sourceSlots) {
+    const sourceSlot = workflow.state[sourceIndex]
+    if (!sourceSlot) {
+      throw new Error(
+        `buildScript: workflow "${workflow.workflowRef}" raw calldata source slot ${sourceIndex} is out of range`
+      )
+    }
+
+    if (sourceSlot.type === 'rawcalldata') {
+      throw new Error(
+        `buildScript: workflow "${workflow.workflowRef}" raw calldata action ${slot.actionIndex ?? '?'} cannot depend on another raw calldata slot`
+      )
+    }
+
+    if (sourceSlot.type === 'runtime' && !(workflow.runtimeVariables ?? []).includes(sourceSlot.key)) {
+      throw new Error(
+        `buildScript: workflow "${workflow.workflowRef}" raw calldata action ${slot.actionIndex ?? '?'} depends on computed runtime slot "${sourceSlot.key}", which cannot be assembled off-chain`
+      )
+    }
+  }
+}
+
+function assembleRawCalldataSlot(
+  state: HexString[],
+  workflow: WorkflowDefinition,
+  slot: Extract<WorkflowStateSlot, { type: 'rawcalldata' }>
+): HexString {
+  assertRawCalldataSlotIsSupported(workflow, slot)
+
+  if (slot.sourceSlots.length !== slot.parameterTypes.length) {
+    throw new Error(
+      `buildScript: workflow "${workflow.workflowRef}" raw calldata action ${slot.actionIndex ?? '?'} has ${slot.sourceSlots.length} source slots for ${slot.parameterTypes.length} parameters`
+    )
+  }
+
+  const decodedValues = slot.sourceSlots.map((sourceIndex, parameterIndex) => {
+    const encodedValue = state[sourceIndex]
+    if (encodedValue == null) {
+      throw new Error(
+        `buildScript: workflow "${workflow.workflowRef}" raw calldata source slot ${sourceIndex} is missing`
+      )
+    }
+
+    if (encodedValue === EMPTY_BYTES) {
+      const sourceSlot = workflow.state[sourceIndex]
+      const runtimeKey = sourceSlot && sourceSlot.type === 'runtime' ? sourceSlot.key : `slot ${sourceIndex}`
+      throw new Error(
+        `buildScript: workflow "${workflow.workflowRef}" raw calldata action ${slot.actionIndex ?? '?'} is missing value for "${runtimeKey}"`
+      )
+    }
+
+    return decodeWorkflowValue(slot.parameterTypes[parameterIndex]!, encodedValue)
+  })
+
+  const encodedArgs = encodeAbiParameters(slot.parameterTypes.map(getWorkflowAbiParameter), decodedValues)
+  return concat([slot.selector, encodedArgs]) as HexString
+}
+
+function decodeAddressTarget(value: HexString, key: string): HexString {
+  if (/^0x[0-9a-fA-F]{40}$/.test(value)) {
+    return value.toLowerCase() as HexString
+  }
+
+  if (!/^0x[0-9a-fA-F]{64}$/.test(value)) {
+    throw new Error(
+      `buildScript: magic target "${key}" must resolve to an address or left-padded bytes32 address, got "${value}"`
+    )
+  }
+
+  const body = value.slice(2)
+  const prefix = body.slice(0, 24)
+  if (!/^0{24}$/i.test(prefix)) {
+    throw new Error(`buildScript: magic target "${key}" is not a left-padded address: "${value}"`)
+  }
+
+  return `0x${body.slice(24).toLowerCase()}` as HexString
+}
+
+function encodeIndicesWord(inputs: number[]): HexString {
+  if (inputs.length > MAX_COMMAND_INPUT_SPECIFIERS) {
+    throw new Error(
+      `encodeCommandWords: inputs length ${inputs.length} exceeds maximum of ${MAX_COMMAND_INPUT_SPECIFIERS}`
+    )
+  }
+
+  const paddedInputs = inputs.slice()
+  while (paddedInputs.length < MAX_COMMAND_INPUT_SPECIFIERS) {
+    paddedInputs.push(UNUSED_SLOT)
+  }
+
+  let word = 0n
+  for (const idx of paddedInputs) {
+    word = (word << 8n) | BigInt(idx & 0xff)
+  }
+
+  return `0x${word.toString(16).padStart(64, '0')}` as HexString
+}
+
+function encodeCommandWords(
+  selector: HexString,
+  flags: number,
+  inputs: number[],
+  output: number,
+  target: HexString
+): HexString[] {
+  if (inputs.length <= 6) {
+    return [encodeCommand(selector, flags, inputs, output, target)]
+  }
+
+  return [
+    encodeCommand(selector, flags | FLAG_EXTENDED_COMMAND, [], output, target),
+    encodeIndicesWord(inputs),
+  ]
 }
 
 // ---------------------------------------------------------------------------
@@ -146,8 +348,8 @@ export function fillRuntimeSlots(
  * ```
  * bits [255:224]  selector  (bytes4)  — function selector
  * bits [223:216]  flags     (uint8)   — callType | FLAG_RAW
- * bits [215:168]  inputs    (bytes6)  — 6 × 1-byte slot indices, MSB first
- * bits [167:160]  output    (uint8)   — slot index or UNUSED_SLOT
+ * bits [215:168]  inputs    (bytes6)  — 6 × 1-byte input specifiers, MSB first
+ * bits [167:160]  output    (uint8)   — output specifier or UNUSED_SLOT
  * bits [159:0]    target    (address) — 20-byte contract address
  * ```
  *
@@ -159,8 +361,8 @@ export function fillRuntimeSlots(
 export function encodeCommand(
   selector: HexString, // 4 bytes
   flags: number, // 1 byte: callType | optional FLAG_RAW
-  inputs: number[], // up to 6 slot indices (padded to 6 with UNUSED_SLOT)
-  output: number, // slot index or UNUSED_SLOT
+  inputs: number[], // up to 6 weiroll input specifiers (padded to 6 with UNUSED_SLOT)
+  output: number, // output specifier or UNUSED_SLOT
   target: HexString // 20-byte address
 ): HexString {
   if (inputs.length > 6) {
@@ -173,15 +375,15 @@ export function encodeCommand(
     throw new Error(`encodeCommand: target must be a 20-byte address (0x + 40 hex chars), got "${target}"`)
   }
   for (const idx of inputs) {
-    if (idx !== UNUSED_SLOT && (idx < 0 || idx > 127)) {
-      throw new Error(`encodeCommand: input slot index ${idx} out of range — must be 0–127 or UNUSED_SLOT (0xFF)`)
+    if (idx < 0 || idx > 0xff) {
+      throw new Error(`encodeCommand: input specifier ${idx} out of range — must be 0–255`)
     }
   }
-  if (output !== UNUSED_SLOT && (output < 0 || output > 127)) {
-    throw new Error(`encodeCommand: output slot index ${output} out of range — must be 0–127 or UNUSED_SLOT (0xFF)`)
+  if (output < 0 || output > 0xff) {
+    throw new Error(`encodeCommand: output specifier ${output} out of range — must be 0–255`)
   }
 
-  // Pad to exactly 6 input indices
+  // Pad to exactly 6 input specifiers
   const paddedInputs = inputs.slice()
   while (paddedInputs.length < 6) {
     paddedInputs.push(UNUSED_SLOT)
@@ -193,7 +395,7 @@ export function encodeCommand(
   // flags as uint8
   const f = BigInt(flags & 0xff)
 
-  // Pack 6 input indices into a uint48, MSB = inputs[0]
+  // Pack 6 input specifiers into a uint48, MSB = inputs[0]
   let indicesBig = 0n
   for (const idx of paddedInputs) {
     indicesBig = (indicesBig << 8n) | BigInt((idx ?? UNUSED_SLOT) & 0xff)
@@ -220,8 +422,8 @@ export function encodeCommand(
  *
  * State slots classified as `literal`, `magic`, or `configurable` are pinned:
  * their bit in `stateBitmap` is set to 1 and the resolved value is placed in
- * `state[i]`. Slots classified as `runtime` are left empty (`0x`) with their
- * bit set to 0 — the executor fills them at call time.
+ * `state[i]`. Slots classified as `runtime` are initialized to empty bytes
+ * with their bit set to 0 — the executor fills them at call time.
  *
  * @throws if a magic variable key is absent from `poolContext`
  * @throws if a configurable key is absent from `configurableValues`
@@ -265,15 +467,32 @@ export function buildScript(
       }
       state.push(value)
       stateBitmap |= 1n << BigInt(i)
+    } else if (slot.type === 'rawcalldata') {
+      if (canAssembleRawCalldataAtBuildTime(workflow, slot.sourceSlots)) {
+        state.push(assembleRawCalldataSlot(state, workflow, slot))
+        stateBitmap |= 1n << BigInt(i)
+      } else {
+        state.push(EMPTY_BYTES)
+      }
     } else {
       // runtime — placeholder, bit stays 0
-      state.push('0x' as HexString)
+      state.push(EMPTY_BYTES)
     }
   }
 
-  const commands = workflow.actions.map((action) => {
+  const commands = workflow.actions.flatMap((action) => {
+    const target =
+      typeof action.target === 'string'
+        ? action.target
+        : (() => {
+            const value = poolContext[action.target.key]
+            if (value === undefined) {
+              throw new Error(`buildScript: magic target "${action.target.key}" not found in pool context`)
+            }
+            return decodeAddressTarget(value, action.target.key)
+          })()
     const flags = action.callType | (action.rawMode ? FLAG_RAW : 0)
-    return encodeCommand(action.selector, flags, action.inputs, action.output, action.target)
+    return encodeCommandWords(action.selector, flags, action.inputs, action.output, target)
   })
 
   return { commands, state, stateBitmap }

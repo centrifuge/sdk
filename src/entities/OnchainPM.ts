@@ -59,17 +59,26 @@ export class OnchainPM extends Entity {
    * await onchainPM.execute({ commands, state, stateBitmap, callbacks: [], proof })
    * ```
    */
-  execute(params: { commands: HexString[]; state: HexString[]; stateBitmap: bigint; callbacks: Callback[]; proof: HexString[] }) {
+  execute(
+    params: { commands: HexString[]; state: HexString[]; stateBitmap: bigint; callbacks: Callback[]; proof: HexString[] },
+    options: { simulate?: boolean; value?: bigint } = {}
+  ) {
     const self = this
     return this._transact(async function* (ctx) {
-      yield* wrapTransaction('Execute workflow', ctx, {
-        contract: self.address,
-        data: encodeFunctionData({
-          abi: ABI.OnchainPM,
-          functionName: 'execute',
-          args: [params.commands, params.state, params.stateBitmap, params.callbacks, params.proof],
-        }),
-      })
+      yield* wrapTransaction(
+        'Execute workflow',
+        ctx,
+        {
+          contract: self.address,
+          data: encodeFunctionData({
+            abi: ABI.OnchainPM,
+            functionName: 'execute',
+            args: [params.commands, params.state, params.stateBitmap, params.callbacks, params.proof],
+          }),
+          value: options.value,
+        },
+        { simulate: options.simulate ?? false }
+      )
     }, this.network.centrifugeId)
   }
 

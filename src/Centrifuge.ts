@@ -79,8 +79,8 @@ const PINNING_API_DEMO = 'https://europe-central2-peak-vista-185616.cloudfunctio
 // Update when centrifuge/workflows cuts a new release.
 // CIDs are in the GitHub release notes: https://github.com/centrifuge/workflows/releases
 const WORKFLOW_MARKETPLACE_CID: Record<string, string> = {
-  mainnet: 'QmYMk4kuU7UghPRj85BgB8s14SfjgdEy5tJZhdk18f6i3P',
-  testnet: 'QmbztvRXGZhUnZG2dDUy8CYgoUbK6nXK3ujLoH8fngDYMV',
+  mainnet: 'QmTJX4E3CNPZMDjWtK7yrk4wi5qksHc2s7RuEAn7BWihXf',
+  testnet: 'QmUUhJk3bES4pG3azBf276fvFR3RrYm4uUUmXQq67rsiWP',
 }
 
 const envConfig = {
@@ -953,7 +953,8 @@ export class Centrifuge {
         const res = await fetch(url)
         if (!res.ok) throw new Error(`workflowMarketplace: IPFS fetch failed — ${res.status} ${res.statusText}`)
         const catalog = await res.json()
-        const templates: Record<string, { actions: CatalogAction[] }> = catalog.templates ?? {}
+        const templates: Record<string, { actions: CatalogAction[]; runtimeVariables?: string[] }> =
+          catalog.templates ?? {}
         const rawWorkflows: unknown[] = Array.isArray(catalog) ? catalog : (catalog.workflows ?? [])
         return rawWorkflows
           .filter((w: any) => !w.useTemplate)
@@ -972,6 +973,10 @@ export class Centrifuge {
               workspace: w.workspace,
               useTemplate: w.useTemplate,
               actions: templates[w.template]?.actions ?? [],
+              runtimeVariables:
+                (Array.isArray(w.runtimeVariables) ? w.runtimeVariables : undefined) ??
+                templates[w.template]?.runtimeVariables ??
+                [],
             })
           )
       })

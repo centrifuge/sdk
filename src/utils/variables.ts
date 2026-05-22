@@ -42,7 +42,7 @@ export type MagicVariableKey = (typeof MAGIC_VARIABLE_KEYS)[number]
  * - `$accountingTokenId`, `$accountingTokenAssetId`: uint256 (32 bytes)
  */
 export interface MagicVariableContext {
-  /** Address of the strategist / executor for this pool. */
+  /** Address of the workflow executor for this pool, typically the OnchainPM. */
   executor: HexString
   /** Address of the pool escrow contract. */
   poolEscrow: HexString

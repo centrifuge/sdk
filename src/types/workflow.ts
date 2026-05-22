@@ -60,6 +60,7 @@ export interface CatalogActionInput {
   parameter: string
   label?: string
   input: string[]
+  configurable?: boolean
 }
 
 /** A contract call step as represented in the IPFS catalog (human-readable form). */
@@ -69,6 +70,8 @@ export interface CatalogAction {
   name?: string
   selector: string
   valueNonZero?: boolean
+  rawMode?: boolean
+  optional?: boolean
   inputs: CatalogActionInput[]
   returns?: string
 }
@@ -107,4 +110,6 @@ export interface MarketplaceWorkflow {
   useTemplate?: string
   /** Human-readable contract call steps resolved from the template. */
   actions: CatalogAction[]
+  /** Runtime inputs supplied by the executor when the workflow runs. */
+  runtimeVariables?: string[]
 }

@@ -212,6 +212,7 @@ export class PoolNetwork extends Entity {
    */
   deployOnchainPM() {
     const self = this
+
     return this._transact(async function* (ctx) {
       const { onchainPMFactory } = await self._root._protocolAddresses(self.centrifugeId)
 
@@ -256,6 +257,21 @@ export class PoolNetwork extends Entity {
 
       yield { type: 'DeployedOnchainPM', address: args.manager } as const
     }, self.centrifugeId)
+  }
+
+  /**
+   * Register a deployed OnchainPM as a Balance Sheet Manager on the hub chain.
+   * Use this with the address obtained from deployOnchainPM().
+   * @param managerAddress - The deployed OnchainPM contract address
+   */
+  registerOnchainPMAsBSManager(managerAddress: HexString) {
+    return this.pool.updateBalanceSheetManagers([
+      {
+        centrifugeId: this.centrifugeId,
+        address: managerAddress,
+        canManage: true,
+      },
+    ])
   }
 
   /**

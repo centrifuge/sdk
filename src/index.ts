@@ -33,6 +33,7 @@ export type {
   Signer,
   Transaction,
 } from './types/transaction.js'
+export { MessageType, VaultUpdateKind } from './types/transaction.js'
 export { Balance, Perquintill, Price, Rate } from './utils/BigInt.js'
 export type { GroupBy } from './utils/date.js'
 export * from './utils/types.js'
@@ -68,3 +69,4 @@ export { computeScriptHash } from './utils/scriptHash.js'
 export type { Callback } from './utils/scriptHash.js'
 export { MAGIC_VARIABLE_KEYS, resolveMagicVariables, resolveVariableLabel } from './utils/variables.js'
 export type { MagicVariableContext, MagicVariableKey } from './utils/variables.js'
+export { buildWorkflowDefinitionFromCatalog } from './utils/catalog.js'

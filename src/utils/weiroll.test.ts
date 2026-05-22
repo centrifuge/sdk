@@ -1,4 +1,5 @@
 import { expect } from 'chai'
+import { concat, encodeAbiParameters } from 'viem'
 import {
   CALL,
   FLAG_RAW,
@@ -15,6 +16,7 @@ import type { PoolContext, WorkflowDefinition } from './weiroll.js'
 const TARGET_A = '0x1234567890123456789012345678901234567890' as const
 const TARGET_B = '0xabcdefabcdefabcdefabcdefabcdefabcdefabcd' as const
 const SELECTOR = '0xaabbccdd' as const
+const EMPTY = '0x' as const
 
 describe('utils/weiroll', () => {
   describe('encodeCommand', () => {
@@ -170,7 +172,7 @@ describe('utils/weiroll', () => {
       expect(stateBitmap).to.equal(1n)
     })
 
-    it('leaves runtime slots empty and does not set their bitmap bits', () => {
+    it('initializes runtime slots to empty bytes and does not set their bitmap bits', () => {
       const workflow: WorkflowDefinition = {
         workflowRef: 'test',
         actions: [],
@@ -178,7 +180,7 @@ describe('utils/weiroll', () => {
       }
       const { state, stateBitmap } = buildScript(workflow, { poolContext: POOL_CTX, configurableValues: {} })
 
-      expect(state[0]).to.equal('0x')
+      expect(state[0]).to.equal(EMPTY)
       expect(stateBitmap).to.equal(0n) // bit 0 stays 0
     })
 
@@ -224,8 +226,119 @@ describe('utils/weiroll', () => {
       expect(commands).to.have.length(2)
       expect(state).to.have.length(2)
       expect(state[0]).to.equal(literalValue)
-      expect(state[1]).to.equal('0x')
+      expect(state[1]).to.equal(EMPTY)
       expect(stateBitmap).to.equal(1n) // only slot 0 pinned
+    })
+
+    it('emits an extended command word when an action needs more than 6 input specifiers', () => {
+      const workflow: WorkflowDefinition = {
+        workflowRef: 'extended',
+        actions: [
+          {
+            target: TARGET_A,
+            selector: SELECTOR,
+            callType: CALL,
+            inputs: [0, 1, 2, 3, 4, 5, 6],
+            output: UNUSED_SLOT,
+          },
+        ],
+        state: Array.from({ length: 7 }, (_, index) => ({
+          type: 'literal' as const,
+          value: `0x${(index + 1).toString(16).padStart(64, '0')}` as const,
+        })),
+      }
+
+      const { commands } = buildScript(workflow, { poolContext: POOL_CTX, configurableValues: {} })
+
+      expect(commands).to.have.length(2)
+      expect(commands[0]).to.equal('0xaabbccdd41ffffffffffffff' + TARGET_A.slice(2))
+      expect(commands[1]).to.match(/^0x00010203040506ff/)
+    })
+
+    it('emits an extended VALUECALL command when the ETH value plus args exceed 6 specifiers', () => {
+      const workflow: WorkflowDefinition = {
+        workflowRef: 'payable-extended',
+        actions: [
+          {
+            target: TARGET_A,
+            selector: SELECTOR,
+            callType: VALUECALL,
+            inputs: [0, 1, 2, 3, 4, 5, 6],
+            output: UNUSED_SLOT,
+          },
+        ],
+        state: Array.from({ length: 7 }, (_, index) => ({
+          type: 'literal' as const,
+          value: `0x${(index + 1).toString(16).padStart(64, '0')}` as const,
+        })),
+      }
+
+      const { commands } = buildScript(workflow, { poolContext: POOL_CTX, configurableValues: {} })
+
+      expect(commands).to.have.length(2)
+      expect(commands[0]).to.equal('0xaabbccdd43ffffffffffffff' + TARGET_A.slice(2))
+      expect(commands[1]).to.match(/^0x00010203040506ff/)
+    })
+
+    it('assembles pinned raw calldata slots for dynamic inputs', () => {
+      const assets = [[TARGET_B, 100n]] as const
+      const encodedAssets = encodeAbiParameters(
+        [
+          {
+            type: 'tuple[]',
+            components: [
+              { type: 'address' },
+              { type: 'uint256' },
+            ],
+          },
+        ],
+        [assets]
+      ) as `0x${string}`
+      const workflow: WorkflowDefinition = {
+        workflowRef: 'raw-dynamic',
+        actions: [
+          {
+            target: TARGET_A,
+            selector: SELECTOR,
+            callType: CALL,
+            inputs: [2],
+            output: UNUSED_SLOT,
+            rawMode: true,
+          },
+        ],
+        state: [
+          { type: 'magic', key: 'poolId' },
+          { type: 'configurable', key: 'assets' },
+          {
+            type: 'rawcalldata',
+            selector: SELECTOR,
+            parameterTypes: ['uint64', '(address,uint256)[]'],
+            sourceSlots: [0, 1],
+            actionIndex: 0,
+          },
+        ],
+      }
+
+      const { commands, state, stateBitmap } = buildScript(workflow, {
+        poolContext: POOL_CTX,
+        configurableValues: { assets: encodedAssets },
+      })
+
+      expect(commands[0]).to.equal(
+        '0xaabbccdd2102ffffffffff' + UNUSED_SLOT.toString(16).padStart(2, '0') + TARGET_A.slice(2)
+      )
+      expect(state[0]).to.equal(POOL_CTX['poolId'])
+      expect(state[1]).to.equal(encodedAssets)
+      expect(state[2]).to.equal(
+        concat([
+          SELECTOR,
+          encodeAbiParameters(
+            [{ type: 'uint64' }, { type: 'tuple[]', components: [{ type: 'address' }, { type: 'uint256' }] }],
+            [1n, assets]
+          ),
+        ])
+      )
+      expect(stateBitmap).to.equal(0b111n)
     })
 
     it('throws when a magic key is missing from pool context', () => {
@@ -248,6 +361,34 @@ describe('utils/weiroll', () => {
       expect(() =>
         buildScript(workflow, { poolContext: POOL_CTX, configurableValues: {} })
       ).to.throw('configurable value "missingConfig" not provided')
+    })
+
+    it('resolves magic command targets from pool context', () => {
+      const workflow: WorkflowDefinition = {
+        workflowRef: 'test',
+        actions: [
+          {
+            target: { type: 'magic', key: '$onOffRamp' },
+            selector: SELECTOR,
+            callType: CALL,
+            inputs: [],
+            output: UNUSED_SLOT,
+          },
+        ],
+        state: [],
+      }
+
+      const { commands } = buildScript(workflow, {
+        poolContext: {
+          ...POOL_CTX,
+          $onOffRamp: '0x000000000000000000000000aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+        },
+        configurableValues: {},
+      })
+
+      expect(commands[0]).to.equal(
+        '0xaabbccdd01ffffffffffffffaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'
+      )
     })
 
     it('throws when state exceeds 128 slots', () => {
@@ -274,10 +415,11 @@ describe('utils/weiroll', () => {
         { type: 'runtime', key: 'amount' },
         { type: 'runtime', key: 'recipient' },
       ],
+      runtimeVariables: ['amount', 'recipient'],
     }
 
     it('fills runtime slots and leaves pinned slots unchanged', () => {
-      const state: `0x${string}`[] = [PINNED, '0x', '0x']
+      const state: `0x${string}`[] = [PINNED, EMPTY, EMPTY]
       const recipient = '0x000000000000000000000000abcdefabcdefabcdefabcdefabcdefabcdefabcd' as const
       const filled = fillRuntimeSlots(state, workflow, { amount: RUNTIME_VALUE, recipient })
 
@@ -287,17 +429,35 @@ describe('utils/weiroll', () => {
     })
 
     it('returns a new array (does not mutate input)', () => {
-      const state: `0x${string}`[] = [PINNED, '0x', '0x']
+      const state: `0x${string}`[] = [PINNED, EMPTY, EMPTY]
       const original = [...state]
       fillRuntimeSlots(state, workflow, { amount: RUNTIME_VALUE, recipient: RUNTIME_VALUE })
       expect(state).to.deep.equal(original)
     })
 
-    it('throws when a runtime slot has no matching value', () => {
-      const state: `0x${string}`[] = [PINNED, '0x', '0x']
+    it('throws when a required runtime variable has no matching value', () => {
+      const state: `0x${string}`[] = [PINNED, EMPTY, EMPTY]
       expect(() =>
         fillRuntimeSlots(state, workflow, { amount: RUNTIME_VALUE }) // missing 'recipient'
-      ).to.throw('missing runtime value for slot "recipient"')
+      ).to.throw('"recipient"')
+    })
+
+    it('leaves computed runtime slots empty when absent from runtimeValues', () => {
+      const computedWorkflow: WorkflowDefinition = {
+        workflowRef: 'test',
+        actions: [],
+        state: [
+          { type: 'literal', value: PINNED },
+          { type: 'runtime', key: 'amount' },
+          { type: 'runtime', key: 'computed' }, // computed by weiroll VM, not user-filled
+        ],
+        runtimeVariables: ['amount'], // "computed" not listed — it's weiroll-computed
+      }
+      const state: `0x${string}`[] = [PINNED, EMPTY, EMPTY]
+      const filled = fillRuntimeSlots(state, computedWorkflow, { amount: RUNTIME_VALUE })
+      expect(filled[0]).to.equal(PINNED)
+      expect(filled[1]).to.equal(RUNTIME_VALUE)
+      expect(filled[2]).to.equal(EMPTY) // left empty for VM to fill
     })
 
     it('handles a workflow with no runtime slots (returns state unchanged)', () => {
@@ -309,6 +469,30 @@ describe('utils/weiroll', () => {
       const state: `0x${string}`[] = [PINNED]
       const filled = fillRuntimeSlots(state, noRuntimeWorkflow, {})
       expect(filled).to.deep.equal([PINNED])
+    })
+
+    it('assembles raw calldata slots after runtime values are filled', () => {
+      const rawWorkflow: WorkflowDefinition = {
+        workflowRef: 'raw-runtime',
+        actions: [],
+        state: [
+          { type: 'runtime', key: 'amount', parameter: 'uint256' },
+          {
+            type: 'rawcalldata',
+            selector: SELECTOR,
+            parameterTypes: ['uint256'],
+            sourceSlots: [0],
+            actionIndex: 0,
+          },
+        ],
+        runtimeVariables: ['amount'],
+      }
+
+      const state: `0x${string}`[] = [EMPTY, EMPTY]
+      const filled = fillRuntimeSlots(state, rawWorkflow, { amount: RUNTIME_VALUE })
+
+      expect(filled[0]).to.equal(RUNTIME_VALUE)
+      expect(filled[1]).to.equal(concat([SELECTOR, RUNTIME_VALUE]))
     })
   })
 
