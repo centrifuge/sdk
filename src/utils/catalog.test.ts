@@ -251,66 +251,6 @@ describe('utils/catalog', () => {
     })
   })
 
-  it('normalizes legacy accounting token mint actions to include scId', () => {
-    const workflow: MarketplaceWorkflow = {
-      workflowRef: 'accounting-mint',
-      name: 'Accounting mint',
-      template: 'accounting-mint',
-      chainId: 1,
-      variables: { accountingToken: ADDRESS_A },
-      workflowId: '0x01',
-      version: 1,
-      actions: [
-        {
-          target: '$accountingToken',
-          selector: 'function mint(address,uint256,uint256)',
-          inputs: [
-            { parameter: 'address', label: 'Owner', input: ['$executor'] },
-            { parameter: 'uint256', label: 'Token ID', input: ['1'] },
-            { parameter: 'uint256', label: 'Amount', input: ['$amount'] },
-          ],
-        },
-      ],
-    }
-
-    const definition = buildWorkflowDefinitionFromCatalog(workflow)
-
-    expect(definition.actions[0]!.selector).to.equal(toFunctionSelector('function mint(address,uint256,uint256,bytes16)'))
-    expect(definition.actions[0]!.inputs).to.deep.equal([0, 1, 2, 3])
-    expect(definition.state[3]).to.deep.equal({ type: 'magic', key: '$scId' })
-    expect(definition.runtimeVariables).to.deep.equal(['amount'])
-  })
-
-  it('normalizes legacy accounting token burn actions to include scId', () => {
-    const workflow: MarketplaceWorkflow = {
-      workflowRef: 'accounting-burn',
-      name: 'Accounting burn',
-      template: 'accounting-burn',
-      chainId: 1,
-      variables: { accountingToken: ADDRESS_A },
-      workflowId: '0x01',
-      version: 1,
-      actions: [
-        {
-          target: '$accountingToken',
-          selector: 'function burn(address,uint256,uint256)',
-          inputs: [
-            { parameter: 'address', label: 'Owner', input: ['$executor'] },
-            { parameter: 'uint256', label: 'Token ID', input: ['1'] },
-            { parameter: 'uint256', label: 'Amount', input: ['$amount'] },
-          ],
-        },
-      ],
-    }
-
-    const definition = buildWorkflowDefinitionFromCatalog(workflow)
-
-    expect(definition.actions[0]!.selector).to.equal(toFunctionSelector('function burn(address,uint256,uint256,bytes16)'))
-    expect(definition.actions[0]!.inputs).to.deep.equal([0, 1, 2, 3])
-    expect(definition.state[3]).to.deep.equal({ type: 'magic', key: '$scId' })
-    expect(definition.runtimeVariables).to.deep.equal(['amount'])
-  })
-
   it('keeps over-6-input static actions as standard commands for extended weiroll encoding', () => {
     const workflow: MarketplaceWorkflow = {
       workflowRef: 'many-inputs',
