@@ -15,6 +15,7 @@ import type { PoolContext } from './weiroll.js'
  */
 export const MAGIC_VARIABLE_KEYS = [
   '$executor',
+  '$onchainPM',
   '$poolEscrow',
   '$onOffRamp',
   '$poolId',
@@ -98,6 +99,9 @@ export function resolveMagicVariables(context: MagicVariableContext): PoolContex
 
   return {
     $executor: context.executor,
+    // $onchainPM is an alias for $executor — the current "executor" used by
+    // workflows is always an OnchainPM instance. Templates may use either key.
+    $onchainPM: context.executor,
     $poolEscrow: context.poolEscrow,
     $onOffRamp: context.onOffRamp,
     $poolId: context.poolId,
