@@ -25,15 +25,16 @@ const POOL_META = {
 
 describe('utils/variables', () => {
   describe('MAGIC_VARIABLE_KEYS', () => {
-    it('contains exactly the seven expected keys', () => {
+    it('contains exactly the eight expected keys', () => {
       expect(MAGIC_VARIABLE_KEYS).to.include('$executor')
+      expect(MAGIC_VARIABLE_KEYS).to.include('$onchainPM')
       expect(MAGIC_VARIABLE_KEYS).to.include('$poolEscrow')
       expect(MAGIC_VARIABLE_KEYS).to.include('$onOffRamp')
       expect(MAGIC_VARIABLE_KEYS).to.include('$poolId')
       expect(MAGIC_VARIABLE_KEYS).to.include('$scId')
       expect(MAGIC_VARIABLE_KEYS).to.include('$accountingTokenId')
       expect(MAGIC_VARIABLE_KEYS).to.include('$accountingTokenAssetId')
-      expect(MAGIC_VARIABLE_KEYS).to.have.length(7)
+      expect(MAGIC_VARIABLE_KEYS).to.have.length(8)
     })
 
     it('every key starts with $', () => {
@@ -44,9 +45,10 @@ describe('utils/variables', () => {
   })
 
   describe('resolveMagicVariables', () => {
-    it('maps all seven keys into a PoolContext', () => {
+    it('maps all eight keys into a PoolContext', () => {
       const ctx = resolveMagicVariables(CTX)
       expect(ctx['$executor']).to.equal(CTX.executor)
+      expect(ctx['$onchainPM']).to.equal(CTX.executor)
       expect(ctx['$poolEscrow']).to.equal(CTX.poolEscrow)
       expect(ctx['$onOffRamp']).to.equal(CTX.onOffRamp)
       expect(ctx['$poolId']).to.equal(CTX.poolId)
@@ -55,9 +57,9 @@ describe('utils/variables', () => {
       expect(ctx['$accountingTokenAssetId']).to.equal(CTX.accountingTokenAssetId)
     })
 
-    it('produces exactly seven entries — no extras', () => {
+    it('produces exactly eight entries — no extras', () => {
       const ctx = resolveMagicVariables(CTX)
-      expect(Object.keys(ctx)).to.have.length(7)
+      expect(Object.keys(ctx)).to.have.length(8)
     })
 
     it('result keys match MAGIC_VARIABLE_KEYS', () => {
