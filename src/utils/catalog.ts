@@ -8,18 +8,25 @@ import type { WeirollAction, WorkflowDefinition, WorkflowStateSlot } from './wei
 const MAGIC_KEY_SET = new Set<string>(MAGIC_VARIABLE_KEYS)
 
 /**
- * Encodes a catalog literal value as a 32-byte ABI-encoded hex string.
+ * Encodes a catalog literal value for weiroll state.
  *
  * The catalog stores values in human-readable form:
  * - Decimal integers: "0", "100", "5192296858534827628530496329220097"
  * - Booleans: "true", "false"
  * - Hex addresses (20 bytes): "0x5ba3f068..."
  * - Hex values (any length ≤ 32 bytes): "0x00010000..."
+ * - Dynamic bytes: "0x63637470..."
  *
- * All are normalised to 0x-prefixed 32-byte (64 hex char) values by left-padding with zeros,
- * matching Solidity ABI encoding for uint and address types.
+ * Static values are normalised to 0x-prefixed 32-byte values by left-padding with zeros,
+ * matching Solidity ABI encoding for uint and address types. Dynamic bytes are preserved as
+ * raw bytes because weiroll stores state as `bytes[]`.
  */
-function encodeLiteralValue(raw: string): HexString {
+function encodeLiteralValue(raw: string, parameter = ''): HexString {
+  if (parameter === 'bytes') {
+    if (/^0x(?:[0-9a-fA-F]{2})*$/.test(raw)) return raw as HexString
+    throw new Error(`buildWorkflowDefinitionFromCatalog: unsupported bytes literal "${raw}"`)
+  }
+
   if (raw === 'true') return `0x${'0'.repeat(63)}1` as HexString
   if (raw === 'false') return `0x${'0'.repeat(64)}` as HexString
   if (/^\d+$/.test(raw)) return `0x${BigInt(raw).toString(16).padStart(64, '0')}` as HexString
@@ -62,8 +69,21 @@ function isVariableLengthParameter(parameter: string): boolean {
   return VARIABLE_LENGTH_PARAMETER_SET.has(parameter)
 }
 
+function isDynamicArrayParameter(parameter: string): boolean {
+  return /\[\]/.test(parameter)
+}
+
+function isDynamicAbiParameter(parameter: string): boolean {
+  return (
+    parameter === 'bytes' ||
+    parameter === 'string' ||
+    isDynamicArrayParameter(parameter) ||
+    RAW_CALLDATA_PARAMETER_SET.has(parameter)
+  )
+}
+
 function requiresRawCalldataParameter(parameter: string): boolean {
-  return RAW_CALLDATA_PARAMETER_SET.has(parameter)
+  return isDynamicAbiParameter(parameter) && !isVariableLengthParameter(parameter)
 }
 
 function encodeInputSpecifier(parameter: string, slotIndex: number): number {
@@ -211,13 +231,7 @@ export function buildWorkflowDefinitionFromCatalog(workflow: MarketplaceWorkflow
     const existing = slotMap.get(canonical)
     if (existing !== undefined) {
       const current = stateSlots[existing]
-      if (
-        current &&
-        'label' in current &&
-        current.label == null &&
-        'label' in slot &&
-        slot.label != null
-      ) {
+      if (current && 'label' in current && current.label == null && 'label' in slot && slot.label != null) {
         stateSlots[existing] = { ...current, label: slot.label } as WorkflowStateSlot
       }
       return existing
@@ -250,7 +264,7 @@ export function buildWorkflowDefinitionFromCatalog(workflow: MarketplaceWorkflow
       } else {
         const resolved = workflow.variables[raw.slice(1)]
         if (resolved !== undefined) {
-          const encoded = encodeLiteralValue(resolved)
+          const encoded = encodeLiteralValue(resolved, parameter)
           canonical = `literal:${encoded}`
           slot = { type: 'literal', value: encoded }
         } else {
@@ -268,7 +282,7 @@ export function buildWorkflowDefinitionFromCatalog(workflow: MarketplaceWorkflow
         }
       }
     } else {
-      const encoded = encodeLiteralValue(raw)
+      const encoded = encodeLiteralValue(raw, parameter)
       canonical = `literal:${encoded}`
       slot = { type: 'literal', value: encoded }
     }
@@ -286,12 +300,31 @@ export function buildWorkflowDefinitionFromCatalog(workflow: MarketplaceWorkflow
     const selector = /^0x[0-9a-fA-F]{8}$/.test(action.selector)
       ? (action.selector as HexString)
       : (toFunctionSelector(action.selector) as HexString)
+    const hasDynamicInput = action.inputs.some((input) => isDynamicAbiParameter(input.parameter))
+    const hasComputedDynamicInput = action.inputs.some(
+      (input) =>
+        isDynamicAbiParameter(input.parameter) &&
+        (input.input ?? []).some((value) => computedVarSet.has(value))
+    )
+    const hasRawCalldataOnlyInput = action.inputs.some((input) => requiresRawCalldataParameter(input.parameter))
     const rawCalldataAction =
-      action.rawMode === true || action.inputs.some((input) => requiresRawCalldataParameter(input.parameter))
+      action.rawMode === true || (action.returns == null && hasDynamicInput && !hasComputedDynamicInput)
 
     if (rawCalldataAction && action.returns != null) {
       throw new Error(
         `buildWorkflowDefinitionFromCatalog: workflow "${workflow.workflowRef}" action ${actionIndex} uses raw calldata assembly and cannot return a value`
+      )
+    }
+
+    if (action.returns != null && hasRawCalldataOnlyInput) {
+      throw new Error(
+        `buildWorkflowDefinitionFromCatalog: workflow "${workflow.workflowRef}" action ${actionIndex} uses dynamic calldata input that cannot return a value`
+      )
+    }
+
+    if (hasRawCalldataOnlyInput && hasComputedDynamicInput) {
+      throw new Error(
+        `buildWorkflowDefinitionFromCatalog: workflow "${workflow.workflowRef}" action ${actionIndex} uses dynamic calldata input from a computed value, which cannot be assembled off-chain`
       )
     }
 
@@ -359,7 +392,7 @@ export function buildWorkflowDefinitionFromCatalog(workflow: MarketplaceWorkflow
     const target = rawTarget.startsWith('$')
       ? MAGIC_KEY_SET.has(rawTarget)
         ? { type: 'magic' as const, key: rawTarget }
-        : ((() => {
+        : (() => {
             const resolved = workflow.variables[rawTarget.slice(1)]
             if (resolved === undefined) {
               throw new Error(
@@ -367,7 +400,7 @@ export function buildWorkflowDefinitionFromCatalog(workflow: MarketplaceWorkflow
               )
             }
             return resolved as HexString
-          })())
+          })()
       : (rawTarget as HexString)
 
     const payableValueSlot =

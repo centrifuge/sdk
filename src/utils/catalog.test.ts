@@ -211,6 +211,60 @@ describe('utils/catalog', () => {
     })
   })
 
+  it('assembles non-returning bytes inputs through raw calldata', () => {
+    const hookData = '0x636374702d686f6f6b2d646174612d30303030303030303030303030303031' as const
+    const workflow: MarketplaceWorkflow = {
+      workflowRef: 'cctp-send-auto',
+      name: 'CCTP send auto',
+      template: 'cctp_send_auto',
+      chainId: 1,
+      variables: { messenger: ADDRESS_A, hookData },
+      workflowId: '0x01',
+      version: 1,
+      actions: [
+        {
+          target: '$messenger',
+          selector: 'function depositForBurnWithHook(uint256,uint32,bytes32,address,bytes32,uint256,uint32,bytes)',
+          inputs: [
+            { parameter: 'uint256', label: 'Amount', input: ['100'] },
+            { parameter: 'uint32', label: 'Destination domain', input: ['0'] },
+            {
+              parameter: 'bytes32',
+              label: 'Mint recipient',
+              input: ['0x0000000000000000000000002222222222222222222222222222222222222222'],
+            },
+            { parameter: 'address', label: 'Burn token', input: [ADDRESS_B] },
+            {
+              parameter: 'bytes32',
+              label: 'Destination caller',
+              input: ['0x0000000000000000000000001111111111111111111111111111111111111111'],
+            },
+            { parameter: 'uint256', label: 'Max fee', input: ['0'] },
+            { parameter: 'uint32', label: 'Min finality threshold', input: ['1000'] },
+            { parameter: 'bytes', label: 'Hook data', input: ['$hookData'] },
+          ],
+        },
+      ],
+    }
+
+    const definition = buildWorkflowDefinitionFromCatalog(workflow)
+    const selector = toFunctionSelector(
+      'function depositForBurnWithHook(uint256,uint32,bytes32,address,bytes32,uint256,uint32,bytes)'
+    )
+
+    expect(definition.actions[0]!.rawMode).to.equal(true)
+    expect(definition.actions[0]!.inputs).to.deep.equal([6])
+    expect(definition.state[5]).to.deep.equal({ type: 'literal', value: hookData })
+    expect(definition.state[6]).to.deep.equal({
+      type: 'rawcalldata',
+      selector,
+      parameterTypes: ['uint256', 'uint32', 'bytes32', 'address', 'bytes32', 'uint256', 'uint32', 'bytes'],
+      sourceSlots: [0, 1, 2, 2, 3, 1, 4, 5],
+      actionName: 'function depositForBurnWithHook(uint256,uint32,bytes32,address,bytes32,uint256,uint32,bytes)',
+      actionIndex: 0,
+    })
+  })
+
   it('allows bytes-valued helper actions to return values for downstream use', () => {
     const workflow: MarketplaceWorkflow = {
       workflowRef: 'bytes-helper',

@@ -156,9 +156,7 @@ export function fillRuntimeSlots(
   if (workflow.runtimeVariables) {
     const missing = workflow.runtimeVariables.filter((key) => runtimeValues[key] === undefined)
     if (missing.length > 0) {
-      throw new Error(
-        `fillRuntimeSlots: missing runtime values for: ${missing.map((k) => `"${k}"`).join(', ')}`
-      )
+      throw new Error(`fillRuntimeSlots: missing runtime values for: ${missing.map((k) => `"${k}"`).join(', ')}`)
     }
   }
 
@@ -183,27 +181,34 @@ function getWorkflowAbiParameter(parameter: string): AbiParameter {
   if (parameter === '(address,uint256)[]') {
     return {
       type: 'tuple[]',
-      components: [
-        { type: 'address' },
-        { type: 'uint256' },
-      ],
+      components: [{ type: 'address' }, { type: 'uint256' }],
     }
   }
 
   if (parameter === '(address,address)[]') {
     return {
       type: 'tuple[]',
-      components: [
-        { type: 'address' },
-        { type: 'address' },
-      ],
+      components: [{ type: 'address' }, { type: 'address' }],
     }
   }
 
   return { type: parameter }
 }
 
-function decodeWorkflowValue(parameter: string, encodedValue: HexString): unknown {
+function decodeWorkflowValue(parameter: string, encodedValue: HexString, sourceSlot?: WorkflowStateSlot): unknown {
+  if (parameter === 'bytes' && sourceSlot?.type === 'literal') {
+    return encodedValue
+  }
+
+  if (parameter === 'bytes') {
+    try {
+      const [decoded] = decodeAbiParameters([getWorkflowAbiParameter(parameter)], encodedValue)
+      return decoded
+    } catch {
+      return encodedValue
+    }
+  }
+
   const [decoded] = decodeAbiParameters([getWorkflowAbiParameter(parameter)], encodedValue)
   return decoded
 }
@@ -265,15 +270,18 @@ function assembleRawCalldataSlot(
       )
     }
 
-    if (encodedValue === EMPTY_BYTES) {
-      const sourceSlot = workflow.state[sourceIndex]
+    const parameter = slot.parameterTypes[parameterIndex]!
+    const sourceSlot = workflow.state[sourceIndex]
+    const emptyBytesLiteral = parameter === 'bytes' && sourceSlot?.type === 'literal'
+
+    if (encodedValue === EMPTY_BYTES && !emptyBytesLiteral) {
       const runtimeKey = sourceSlot && sourceSlot.type === 'runtime' ? sourceSlot.key : `slot ${sourceIndex}`
       throw new Error(
         `buildScript: workflow "${workflow.workflowRef}" raw calldata action ${slot.actionIndex ?? '?'} is missing value for "${runtimeKey}"`
       )
     }
 
-    return decodeWorkflowValue(slot.parameterTypes[parameterIndex]!, encodedValue)
+    return decodeWorkflowValue(parameter, encodedValue, sourceSlot)
   })
 
   const encodedArgs = encodeAbiParameters(slot.parameterTypes.map(getWorkflowAbiParameter), decodedValues)
@@ -331,10 +339,7 @@ function encodeCommandWords(
     return [encodeCommand(selector, flags, inputs, output, target)]
   }
 
-  return [
-    encodeCommand(selector, flags | FLAG_EXTENDED_COMMAND, [], output, target),
-    encodeIndicesWord(inputs),
-  ]
+  return [encodeCommand(selector, flags | FLAG_EXTENDED_COMMAND, [], output, target), encodeIndicesWord(inputs)]
 }
 
 // ---------------------------------------------------------------------------
