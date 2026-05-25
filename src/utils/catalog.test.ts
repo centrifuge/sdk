@@ -211,7 +211,11 @@ describe('utils/catalog', () => {
     })
   })
 
-  it('assembles non-returning bytes inputs through raw calldata', () => {
+  it('encodes bytes parameters with literal workflow-variable values as individual slots without FLAG_RAW', () => {
+    // $hookData is a declared workflow variable (literal, bit-1).  With the
+    // fix, hasDynamicInput returns false for this bytes input because its value
+    // is known at build time — FLAG_RAW must NOT fire and the parameter should
+    // get its own literal slot encoded with the 0x80 dynamic specifier.
     const hookData = '0x636374702d686f6f6b2d646174612d30303030303030303030303030303031' as const
     const workflow: MarketplaceWorkflow = {
       workflowRef: 'cctp-send-auto',
@@ -248,21 +252,83 @@ describe('utils/catalog', () => {
     }
 
     const definition = buildWorkflowDefinitionFromCatalog(workflow)
-    const selector = toFunctionSelector(
-      'function depositForBurnWithHook(uint256,uint32,bytes32,address,bytes32,uint256,uint32,bytes)'
-    )
+
+    // No FLAG_RAW — each parameter has its own slot.
+    expect(definition.actions[0]!.rawMode).to.equal(undefined)
+    // Slots: 0=amount(100), 1=domain/maxFee(0), 2=mintRecipient/burnToken, 3=destCaller, 4=minFinality(1000), 5=hookData
+    expect(definition.state[5]).to.deep.equal({ type: 'literal', value: hookData })
+    // The 8 inputs reference slots [0,1,2,2,3,1,4,5]; bytes gets 0x80|5 = 133.
+    expect(definition.actions[0]!.inputs).to.deep.equal([0, 1, 2, 2, 3, 1, 4, 133])
+    // No rawcalldata slot.
+    expect(definition.state.every((s) => s.type !== 'rawcalldata')).to.equal(true)
+  })
+
+  it('encodes configurable bytes parameters as individual slots without FLAG_RAW', () => {
+    // configurable: true on a bytes input means the hub manager pins the value
+    // at leaf-creation time.  FLAG_RAW must NOT fire — the parameter should get
+    // its own configurable slot (bit-1) with the 0x80 dynamic specifier.
+    const workflow: MarketplaceWorkflow = {
+      workflowRef: 'cctp-send-auto-configurable',
+      name: 'CCTP send auto (configurable hook)',
+      template: 'cctp_send_auto',
+      chainId: 1,
+      variables: { messenger: ADDRESS_A },
+      workflowId: '0x01',
+      version: 1,
+      runtimeVariables: ['amount'],
+      actions: [
+        {
+          target: '$messenger',
+          selector: 'function depositForBurnWithHook(uint256,bytes)',
+          inputs: [
+            { parameter: 'uint256', label: 'Amount', input: [] },
+            { parameter: 'bytes', label: 'Hook data', input: [], configurable: true },
+          ],
+        },
+      ],
+    }
+
+    const definition = buildWorkflowDefinitionFromCatalog(workflow)
+
+    expect(definition.actions[0]!.rawMode).to.equal(undefined)
+    // slot 0 = runtime amount (bit-0), slot 1 = configurable hookData (bit-1)
+    expect(definition.state[1]).to.deep.include({ type: 'configurable', parameter: 'bytes' })
+    // bytes slot uses 0x80 dynamic specifier; amount slot uses plain index 0
+    expect(definition.actions[0]!.inputs).to.deep.equal([0, 0x80 | 1])
+    expect(definition.state.every((s) => s.type !== 'rawcalldata')).to.equal(true)
+  })
+
+  it('still uses FLAG_RAW for runtime bytes parameters', () => {
+    // A bytes input with input: [] (runtime, non-configurable) must still
+    // produce a rawcalldata blob — FLAG_RAW behaviour is preserved for the
+    // case where the bytes value is not known at build time.
+    const workflow: MarketplaceWorkflow = {
+      workflowRef: 'runtime-bytes',
+      name: 'Runtime bytes',
+      template: 'runtime-bytes',
+      chainId: 1,
+      variables: { target: ADDRESS_A },
+      workflowId: '0x01',
+      version: 1,
+      runtimeVariables: ['amount', 'payload'],
+      actions: [
+        {
+          target: '$target',
+          selector: 'function call(uint256,bytes)',
+          inputs: [
+            { parameter: 'uint256', label: 'Amount', input: [] },
+            { parameter: 'bytes', label: 'Payload', input: [] },
+          ],
+        },
+      ],
+    }
+
+    const definition = buildWorkflowDefinitionFromCatalog(workflow)
 
     expect(definition.actions[0]!.rawMode).to.equal(true)
-    expect(definition.actions[0]!.inputs).to.deep.equal([6])
-    expect(definition.state[5]).to.deep.equal({ type: 'literal', value: hookData })
-    expect(definition.state[6]).to.deep.equal({
-      type: 'rawcalldata',
-      selector,
-      parameterTypes: ['uint256', 'uint32', 'bytes32', 'address', 'bytes32', 'uint256', 'uint32', 'bytes'],
-      sourceSlots: [0, 1, 2, 2, 3, 1, 4, 5],
-      actionName: 'function depositForBurnWithHook(uint256,uint32,bytes32,address,bytes32,uint256,uint32,bytes)',
-      actionIndex: 0,
-    })
+    // The action's single input points at the rawcalldata blob slot.
+    const blobSlotIndex = definition.actions[0]!.inputs[0]
+    expect(definition.state[blobSlotIndex!]).to.deep.include({ type: 'rawcalldata' })
   })
 
   it('allows bytes-valued helper actions to return values for downstream use', () => {
