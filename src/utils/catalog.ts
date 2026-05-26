@@ -300,7 +300,24 @@ export function buildWorkflowDefinitionFromCatalog(workflow: MarketplaceWorkflow
     const selector = /^0x[0-9a-fA-F]{8}$/.test(action.selector)
       ? (action.selector as HexString)
       : (toFunctionSelector(action.selector) as HexString)
-    const hasDynamicInput = action.inputs.some((input) => isDynamicAbiParameter(input.parameter))
+    // An input needs raw calldata assembly if it is dynamic AND its value is not
+    // already pinned in its own state slot at build time.  For `bytes`/`string`
+    // parameters, the weiroll VM's 0x80 input-specifier handles dynamic length
+    // correctly without FLAG_RAW, so we only require raw calldata when the value
+    // is NOT known at build time (i.e. not a declared variable or configurable).
+    const hasDynamicInput = action.inputs.some((input) => {
+      if (!isDynamicAbiParameter(input.parameter)) return false
+      // Tuple arrays and similar non-variable-length dynamic types always need
+      // raw calldata assembly regardless of how their value is supplied.
+      if (!isVariableLengthParameter(input.parameter)) return true
+      // bytes/string: skip FLAG_RAW when the value is pinned at build time.
+      if (input.configurable) return false // configurable: locked in its own bit-1 slot
+      const values = input.input ?? []
+      // Declared variable or inline literal: value is a literal slot (bit-1).
+      if (values.length > 0 && values.every((v) => !computedVarSet.has(v))) return false
+      // Runtime (empty, non-configurable) or computed return: FLAG_RAW still applies.
+      return true
+    })
     const hasComputedDynamicInput = action.inputs.some(
       (input) =>
         isDynamicAbiParameter(input.parameter) &&
