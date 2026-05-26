@@ -297,10 +297,23 @@ function assembleRawCalldataSlot(
 }
 
 function encodeCallbackScript(script: ScriptResult): HexString {
-  return encodeAbiParameters(
+  // weiroll's CommandBuilder copies state[idx] verbatim into the parent's
+  // calldata at the bytes-input offset, without writing a length-prefix word.
+  // For the receiver's `bytes calldata` parameter to decode correctly, the
+  // state slot must already begin with the 32-byte length word — i.e. it must
+  // be the abi-encoded bytes representation, not just the inner payload.
+  //
+  // Wrap the abi-encoded callback tuple with a length prefix so that
+  //   bytes-input encoding produced by CommandBuilder = [length][tuple bytes]
+  // and the receiver (FlashLoanHelper.executeOperation, or any other
+  // callback dispatcher) can `abi.decode(params, ...)` directly.
+  const tuple = encodeAbiParameters(
     [{ type: 'bytes32[]' }, { type: 'bytes[]' }, { type: 'uint128' }],
     [script.commands, script.state, script.stateBitmap]
-  ) as HexString
+  )
+  const tupleBytes = (tuple.length - 2) / 2
+  const lengthWord = tupleBytes.toString(16).padStart(64, '0')
+  return `0x${lengthWord}${tuple.slice(2)}` as HexString
 }
 
 function buildTemplateSlot(

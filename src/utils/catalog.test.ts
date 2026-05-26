@@ -1,5 +1,6 @@
 import { expect } from 'chai'
 import { decodeAbiParameters, toFunctionSelector } from 'viem'
+import type { HexString } from '../types/index.js'
 import type { MarketplaceWorkflow } from '../types/workflow.js'
 import { buildWorkflowDefinitionFromCatalog } from './catalog.js'
 import { buildScript } from './weiroll.js'
@@ -421,7 +422,13 @@ describe('utils/catalog', () => {
       throw new Error('Expected callback slot to be a template slot')
     }
     expect(templateSlot.workflow.actions[2]!.rawMode).to.equal(undefined)
-    expect(templateSlot.workflow.state.some((slot) => slot.type === 'literal' && slot.value === '0x')).to.equal(true)
+    // The callback's `bytes data = 0x` literal must materialize as a 32-byte
+    // zero word (abi-encoded `bytes("")`), not raw `'0x'` (0 bytes). The latter
+    // trips weiroll's CommandBuilder check that dynamic state variables be a
+    // non-zero multiple of 32 bytes when the callback's supplyCollateral runs.
+    expect(
+      templateSlot.workflow.state.some((slot) => slot.type === 'literal' && slot.value === `0x${'00'.repeat(32)}`)
+    ).to.equal(true)
     expect(definition.runtimeVariables).to.deep.equal(['amount'])
 
     const { state, stateBitmap } = buildScript(definition, {
@@ -430,13 +437,31 @@ describe('utils/catalog', () => {
     })
     expect((stateBitmap & (1n << BigInt(callbackSlot))) !== 0n).to.equal(true)
 
+    // weiroll's CommandBuilder copies state[idx] verbatim into the parent's
+    // calldata at the bytes-input offset, without writing a length-prefix word.
+    // The first 32 bytes of state[callbackSlot] must therefore BE the length,
+    // and the remainder must abi-decode to (bytes32[], bytes[], uint128).
+    const callbackSlotData = state[callbackSlot]!
+    const callbackBytes = `0x${callbackSlotData.slice(2 + 64)}` as HexString
+    const declaredLength = Number(BigInt(`0x${callbackSlotData.slice(2, 2 + 64)}`))
+    expect(declaredLength).to.equal((callbackBytes.length - 2) / 2)
     const [commands, callbackState, callbackStateBitmap] = decodeAbiParameters(
       [{ type: 'bytes32[]' }, { type: 'bytes[]' }, { type: 'uint128' }],
-      state[callbackSlot]!
+      callbackBytes
     )
     expect(commands).to.have.length(3)
     expect(callbackState).to.include(ONCHAIN_PM_BYTES32)
     expect(typeof callbackStateBitmap).to.equal('bigint')
+    // Every PINNED state slot must be a non-zero multiple of 32 bytes —
+    // weiroll's CommandBuilder.setupDynamicVariable enforces this at execute
+    // time, so violations here would only surface as opaque on-chain reverts.
+    // Runtime slots (bit = 0) are filled later via fillRuntimeSlots.
+    for (const [i, slot] of state.entries()) {
+      if (((stateBitmap >> BigInt(i)) & 1n) === 0n) continue
+      const byteLen = (slot.length - 2) / 2
+      expect(byteLen, `state[${i}] = ${slot} must be non-zero`).to.be.greaterThan(0)
+      expect(byteLen % 32, `state[${i}] length ${byteLen} must be a multiple of 32`).to.equal(0)
+    }
   })
 
   it('keeps empty bytes literals with computed returns on the standard dynamic path', () => {

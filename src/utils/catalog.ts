@@ -104,8 +104,12 @@ function applyUseTemplateMap(actions: CatalogAction[], variableMap: Record<strin
       // Callback templates are compiled into one pinned bytes slot. Empty configurable
       // bytes inputs cannot be configured separately by the outer workflow, and the
       // current callback use case is Morpho's no-op `bytes data = 0x`.
+      // An empty bytes literal must be encoded as a 32-byte zero word — the
+      // abi-encoded form of `bytes("")`. The raw `'0x'` literal lands as a
+      // 0-byte state slot and trips weiroll's CommandBuilder check that
+      // dynamic state variables be a non-zero multiple of 32 bytes.
       ...(input.configurable && input.parameter === 'bytes' && (input.input ?? []).length === 0
-        ? { configurable: false, input: ['0x'] }
+        ? { configurable: false, input: [`0x${'00'.repeat(32)}`] }
         : { input: (input.input ?? []).map((value) => mapTemplateReference(value, variableMap)) }),
     })),
   }))
