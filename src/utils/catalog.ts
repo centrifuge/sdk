@@ -23,7 +23,14 @@ const MAGIC_KEY_SET = new Set<string>(MAGIC_VARIABLE_KEYS)
  */
 function encodeLiteralValue(raw: string, parameter = ''): HexString {
   if (parameter === 'bytes') {
-    if (/^0x(?:[0-9a-fA-F]{2})*$/.test(raw)) return raw as HexString
+    if (/^0x(?:[0-9a-fA-F]{2})*$/.test(raw)) {
+      // weiroll's CommandBuilder.setupDynamicVariable requires dynamic state
+      // variables to be a non-zero multiple of 32 bytes. The natural empty-bytes
+      // literal `0x` is 0 bytes long and trips that check at execute time.
+      // Encode it as a 32-byte zero word — the abi-encoded form of `bytes("")`.
+      if (raw.length === 2) return `0x${'00'.repeat(32)}` as HexString
+      return raw as HexString
+    }
     throw new Error(`buildWorkflowDefinitionFromCatalog: unsupported bytes literal "${raw}"`)
   }
 

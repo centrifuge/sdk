@@ -500,8 +500,25 @@ describe('utils/catalog', () => {
 
     expect(definition.actions[1]!.rawMode).to.equal(undefined)
     expect(bytesInput).to.equal(0x80 | bytesSlot)
-    expect(definition.state[bytesSlot]).to.deep.equal({ type: 'literal', value: '0x' })
+    // The natural empty-bytes literal `0x` must materialize as a 32-byte zero
+    // word so weiroll's CommandBuilder.setupDynamicVariable accepts it. A raw
+    // 0-byte state slot reverts at execute time with "Dynamic state variables
+    // must be a multiple of 32 bytes".
+    expect(definition.state[bytesSlot]).to.deep.equal({ type: 'literal', value: `0x${'00'.repeat(32)}` })
     expect(definition.state.every((s) => s.type !== 'rawcalldata')).to.equal(true)
+
+    // Build the script and confirm every pinned state slot is a non-zero
+    // multiple of 32 bytes — the invariant weiroll enforces on-chain.
+    const { state, stateBitmap } = buildScript(definition, {
+      poolContext: { $onchainPM: ONCHAIN_PM_BYTES32 },
+      configurableValues: {},
+    })
+    for (const [i, slot] of state.entries()) {
+      if (((stateBitmap >> BigInt(i)) & 1n) === 0n) continue
+      const byteLen = (slot.length - 2) / 2
+      expect(byteLen, `state[${i}] = ${slot} must be non-zero`).to.be.greaterThan(0)
+      expect(byteLen % 32, `state[${i}] length ${byteLen} must be a multiple of 32`).to.equal(0)
+    }
   })
 
   it('allows bytes-valued helper actions to return values for downstream use', () => {
