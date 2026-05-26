@@ -408,17 +408,11 @@ export function buildWorkflowDefinitionFromCatalog(
         }
 
         const templateWorkflow: MarketplaceWorkflow = {
+          ...workflow,
           workflowRef: `${workflow.workflowRef}:${templateName}:${actionIndex}:${inputIndex}`,
           name: `${workflow.name} callback`,
           template: templateName,
-          category: workflow.category,
-          group: workflow.group,
-          chainId: workflow.chainId,
-          iconUrl: workflow.iconUrl,
-          variables: workflow.variables,
           workflowId: '',
-          version: workflow.version,
-          workspace: workflow.workspace,
           templates,
           actions: applyUseTemplateMap(template.actions, inp.useTemplate.map ?? {}),
           runtimeVariables: template.runtimeVariables ?? [],
