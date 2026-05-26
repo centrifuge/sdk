@@ -1,10 +1,14 @@
 import { expect } from 'chai'
-import { toFunctionSelector } from 'viem'
+import { decodeAbiParameters, toFunctionSelector } from 'viem'
 import type { MarketplaceWorkflow } from '../types/workflow.js'
 import { buildWorkflowDefinitionFromCatalog } from './catalog.js'
+import { buildScript } from './weiroll.js'
 
 const ADDRESS_A = '0x1111111111111111111111111111111111111111' as const
 const ADDRESS_B = '0x2222222222222222222222222222222222222222' as const
+const ADDRESS_C = '0x3333333333333333333333333333333333333333' as const
+const ADDRESS_D = '0x4444444444444444444444444444444444444444' as const
+const ONCHAIN_PM_BYTES32 = '0x000000000000000000000000aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa' as const
 
 describe('utils/catalog', () => {
   it('normalizes runtime keys and configurable slots from catalog actions', () => {
@@ -329,6 +333,150 @@ describe('utils/catalog', () => {
     // The action's single input points at the rawcalldata blob slot.
     const blobSlotIndex = definition.actions[0]!.inputs[0]
     expect(definition.state[blobSlotIndex!]).to.deep.include({ type: 'rawcalldata' })
+  })
+
+  it('injects useTemplate bytes inputs as pinned callback script data', () => {
+    const workflow: MarketplaceWorkflow = {
+      workflowRef: 'morpho-loop',
+      name: 'Morpho loop',
+      template: 'morpho_loop_deposit',
+      chainId: 1,
+      variables: {
+        flashLoanHelper: ADDRESS_A,
+        pool: ADDRESS_B,
+        asset: ADDRESS_C,
+        vault: ADDRESS_D,
+      },
+      workflowId: '0x01',
+      version: 1,
+      runtimeVariables: ['amount'],
+      templates: {
+        morpho_loop_deposit_callback: {
+          actions: [
+            {
+              target: '$asset',
+              selector: 'function balanceOf(address)',
+              inputs: [{ parameter: 'address', label: 'Account', input: ['$onchainPM'] }],
+              returns: '$totalAmount',
+            },
+            {
+              target: '$vault',
+              selector: 'function deposit(uint256,address)',
+              inputs: [
+                { parameter: 'uint256', label: 'Assets', input: ['$totalAmount'] },
+                { parameter: 'address', label: 'Receiver', input: ['$onchainPM'] },
+              ],
+            },
+            {
+              target: '$vault',
+              selector: 'function supplyCollateral(uint256,bytes)',
+              inputs: [
+                { parameter: 'uint256', label: 'Shares', input: ['$totalAmount'] },
+                { parameter: 'bytes', label: 'Data', input: [], configurable: true },
+              ],
+            },
+          ],
+        },
+      },
+      actions: [
+        {
+          target: '$flashLoanHelper',
+          selector: 'function requestFlashLoan(address,address,uint256,address,bytes)',
+          inputs: [
+            { parameter: 'address', label: 'Aave Pool', input: ['$pool'] },
+            { parameter: 'address', label: 'Token', input: ['$asset'] },
+            { parameter: 'uint256', label: 'Amount', input: [] },
+            { parameter: 'address', label: 'OnchainPM', input: ['$onchainPM'] },
+            {
+              parameter: 'bytes',
+              label: 'Callback data',
+              input: [],
+              useTemplate: {
+                template: 'morpho_loop_deposit_callback',
+                map: {
+                  asset: '$asset',
+                  vault: '$vault',
+                },
+              },
+            },
+          ],
+        },
+      ],
+    }
+
+    const definition = buildWorkflowDefinitionFromCatalog(workflow)
+    const callbackInput = definition.actions[0]!.inputs[4]!
+    const callbackSlot = callbackInput & 0x7f
+
+    expect(definition.actions[0]!.rawMode).to.equal(undefined)
+    expect(callbackInput).to.equal(0x80 | callbackSlot)
+    expect(definition.state[callbackSlot]).to.deep.include({
+      type: 'template',
+      label: 'Callback data',
+      actionIndex: 0,
+      inputIndex: 4,
+    })
+    const templateSlot = definition.state[callbackSlot]
+    if (!templateSlot || templateSlot.type !== 'template') {
+      throw new Error('Expected callback slot to be a template slot')
+    }
+    expect(templateSlot.workflow.actions[2]!.rawMode).to.equal(undefined)
+    expect(templateSlot.workflow.state.some((slot) => slot.type === 'literal' && slot.value === '0x')).to.equal(true)
+    expect(definition.runtimeVariables).to.deep.equal(['amount'])
+
+    const { state, stateBitmap } = buildScript(definition, {
+      poolContext: { $onchainPM: ONCHAIN_PM_BYTES32 },
+      configurableValues: {},
+    })
+    expect((stateBitmap & (1n << BigInt(callbackSlot))) !== 0n).to.equal(true)
+
+    const [commands, callbackState, callbackStateBitmap] = decodeAbiParameters(
+      [{ type: 'bytes32[]' }, { type: 'bytes[]' }, { type: 'uint128' }],
+      state[callbackSlot]!
+    )
+    expect(commands).to.have.length(3)
+    expect(callbackState).to.include(ONCHAIN_PM_BYTES32)
+    expect(typeof callbackStateBitmap).to.equal('bigint')
+  })
+
+  it('keeps empty bytes literals with computed returns on the standard dynamic path', () => {
+    const workflow: MarketplaceWorkflow = {
+      workflowRef: 'empty-bytes-computed',
+      name: 'Empty bytes with computed return',
+      template: 'empty-bytes-computed',
+      chainId: 1,
+      variables: { vault: ADDRESS_A, morpho: ADDRESS_B },
+      workflowId: '0x01',
+      version: 1,
+      actions: [
+        {
+          target: '$vault',
+          selector: 'function deposit(uint256,address)',
+          inputs: [
+            { parameter: 'uint256', label: 'Amount', input: ['100'] },
+            { parameter: 'address', label: 'Receiver', input: ['$onchainPM'] },
+          ],
+          returns: '$shares',
+        },
+        {
+          target: '$morpho',
+          selector: 'function supplyCollateral(uint256,bytes)',
+          inputs: [
+            { parameter: 'uint256', label: 'Shares', input: ['$shares'] },
+            { parameter: 'bytes', label: 'Data', input: ['0x'] },
+          ],
+        },
+      ],
+    }
+
+    const definition = buildWorkflowDefinitionFromCatalog(workflow)
+    const bytesInput = definition.actions[1]!.inputs[1]!
+    const bytesSlot = bytesInput & 0x7f
+
+    expect(definition.actions[1]!.rawMode).to.equal(undefined)
+    expect(bytesInput).to.equal(0x80 | bytesSlot)
+    expect(definition.state[bytesSlot]).to.deep.equal({ type: 'literal', value: '0x' })
+    expect(definition.state.every((s) => s.type !== 'rawcalldata')).to.equal(true)
   })
 
   it('allows bytes-valued helper actions to return values for downstream use', () => {

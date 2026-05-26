@@ -85,6 +85,14 @@ export type WorkflowStateSlot =
       actionIndex?: number
     }
   | {
+      type: 'template'
+      workflow: WorkflowDefinition
+      label?: string
+      actionName?: string
+      actionIndex?: number
+      inputIndex?: number
+    }
+  | {
       type: 'runtime'
       key: string
       label?: string
@@ -288,6 +296,30 @@ function assembleRawCalldataSlot(
   return concat([slot.selector, encodedArgs]) as HexString
 }
 
+function encodeCallbackScript(script: ScriptResult): HexString {
+  return encodeAbiParameters(
+    [{ type: 'bytes32[]' }, { type: 'bytes[]' }, { type: 'uint128' }],
+    [script.commands, script.state, script.stateBitmap]
+  ) as HexString
+}
+
+function buildTemplateSlot(
+  workflow: WorkflowDefinition,
+  slot: Extract<WorkflowStateSlot, { type: 'template' }>,
+  context: {
+    poolContext: PoolContext
+    configurableValues: Record<string, HexString>
+  }
+): HexString {
+  if ((slot.workflow.runtimeVariables ?? []).length > 0) {
+    throw new Error(
+      `buildScript: workflow "${workflow.workflowRef}" template callback "${slot.workflow.workflowRef}" has runtime variables and cannot be pinned`
+    )
+  }
+
+  return encodeCallbackScript(buildScript(slot.workflow, context))
+}
+
 function decodeAddressTarget(value: HexString, key: string): HexString {
   if (/^0x[0-9a-fA-F]{40}$/.test(value)) {
     return value.toLowerCase() as HexString
@@ -479,6 +511,9 @@ export function buildScript(
       } else {
         state.push(EMPTY_BYTES)
       }
+    } else if (slot.type === 'template') {
+      state.push(buildTemplateSlot(workflow, slot, context))
+      stateBitmap |= 1n << BigInt(i)
     } else {
       // runtime — placeholder, bit stays 0
       state.push(EMPTY_BYTES)

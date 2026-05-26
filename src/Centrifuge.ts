@@ -79,8 +79,8 @@ const PINNING_API_DEMO = 'https://europe-central2-peak-vista-185616.cloudfunctio
 // Update when centrifuge/workflows cuts a new release.
 // CIDs are in the GitHub release notes: https://github.com/centrifuge/workflows/releases
 const WORKFLOW_MARKETPLACE_CID: Record<string, string> = {
-  mainnet: 'QmVCuwMyVJ6xqWpAunCLhvs9h48ACcmb8FduMuYz5kFAiG',
-  testnet: 'QmUBof6FgW3CMYRvicxmPKHrQ4hwe3Pnp3YEHeALfePaUN',
+  mainnet: 'QmQp1KEDPGpKQ7tVzqq92sAJ61tjfSi58FHCTjCEnvePQ7',
+  testnet: 'QmR2xdN56iJPNPVnBgZiy8WyVqKPvHtfg7JbXyHYqJs6Gx',
 }
 
 const envConfig = {
@@ -972,6 +972,7 @@ export class Centrifuge {
               version: w.version,
               workspace: w.workspace,
               useTemplate: w.useTemplate,
+              templates,
               actions: templates[w.template]?.actions ?? [],
               runtimeVariables:
                 (Array.isArray(w.runtimeVariables) ? w.runtimeVariables : undefined) ??

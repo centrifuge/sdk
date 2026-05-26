@@ -61,6 +61,10 @@ export interface CatalogActionInput {
   label?: string
   input: string[]
   configurable?: boolean
+  useTemplate?: {
+    template: string
+    map?: Record<string, string>
+  }
 }
 
 /** A contract call step as represented in the IPFS catalog (human-readable form). */
@@ -74,6 +78,13 @@ export interface CatalogAction {
   optional?: boolean
   inputs: CatalogActionInput[]
   returns?: string
+}
+
+/** A reusable action template from the marketplace catalog. */
+export interface CatalogTemplate {
+  actions: CatalogAction[]
+  runtimeVariables?: string[]
+  id?: string
 }
 
 /**
@@ -108,6 +119,8 @@ export interface MarketplaceWorkflow {
   workspace?: string
   /** When present, this is a callback script — filtered out by the SDK. */
   useTemplate?: string
+  /** Template registry from the source catalog, used for nested callback compilation. */
+  templates?: Record<string, CatalogTemplate>
   /** Human-readable contract call steps resolved from the template. */
   actions: CatalogAction[]
   /** Runtime inputs supplied by the executor when the workflow runs. */

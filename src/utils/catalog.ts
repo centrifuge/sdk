@@ -1,6 +1,6 @@
 import { toFunctionSelector } from 'viem'
 import type { HexString } from '../types/index.js'
-import type { MarketplaceWorkflow } from '../types/workflow.js'
+import type { CatalogAction, CatalogActionInput, CatalogTemplate, MarketplaceWorkflow } from '../types/workflow.js'
 import { MAGIC_VARIABLE_KEYS } from './variables.js'
 import { CALL, UNUSED_SLOT, VALUECALL } from './weiroll.js'
 import type { WeirollAction, WorkflowDefinition, WorkflowStateSlot } from './weiroll.js'
@@ -61,6 +61,10 @@ const RAW_CALLDATA_PARAMETER_SET = new Set<string>(['(address,uint256)[]', '(add
 const VARIABLE_LENGTH_PARAMETER_SET = new Set<string>(['bytes'])
 const PAYABLE_VALUE_RUNTIME_KEY_PREFIX = '__sdk_payable_value:'
 
+export interface BuildWorkflowDefinitionFromCatalogOptions {
+  templates?: Record<string, CatalogTemplate>
+}
+
 function buildPayableValueRuntimeKey(actionIndex: number): string {
   return `${PAYABLE_VALUE_RUNTIME_KEY_PREFIX}${actionIndex}`
 }
@@ -84,6 +88,27 @@ function isDynamicAbiParameter(parameter: string): boolean {
 
 function requiresRawCalldataParameter(parameter: string): boolean {
   return isDynamicAbiParameter(parameter) && !isVariableLengthParameter(parameter)
+}
+
+function mapTemplateReference(value: string, variableMap: Record<string, string>): string {
+  if (!value.startsWith('$')) return value
+  return variableMap[value.slice(1)] ?? value
+}
+
+function applyUseTemplateMap(actions: CatalogAction[], variableMap: Record<string, string>): CatalogAction[] {
+  return actions.map((action) => ({
+    ...action,
+    target: mapTemplateReference(action.target, variableMap),
+    inputs: action.inputs.map((input) => ({
+      ...input,
+      // Callback templates are compiled into one pinned bytes slot. Empty configurable
+      // bytes inputs cannot be configured separately by the outer workflow, and the
+      // current callback use case is Morpho's no-op `bytes data = 0x`.
+      ...(input.configurable && input.parameter === 'bytes' && (input.input ?? []).length === 0
+        ? { configurable: false, input: ['0x'] }
+        : { input: (input.input ?? []).map((value) => mapTemplateReference(value, variableMap)) }),
+    })),
+  }))
 }
 
 function encodeInputSpecifier(parameter: string, slotIndex: number): number {
@@ -157,7 +182,12 @@ function inferReturnValueModes(workflow: MarketplaceWorkflow): Map<string, 'stat
  * Action outputs are set to the corresponding slot index when action.returns is
  * present, and UNUSED_SLOT otherwise.
  */
-export function buildWorkflowDefinitionFromCatalog(workflow: MarketplaceWorkflow): WorkflowDefinition {
+export function buildWorkflowDefinitionFromCatalog(
+  workflow: MarketplaceWorkflow,
+  options: BuildWorkflowDefinitionFromCatalogOptions = {}
+): WorkflowDefinition {
+  const templates = options.templates ?? workflow.templates ?? {}
+
   // Pre-scan: variables that are return values of some action are computed by
   // the weiroll VM — they must NOT appear as user-filled inputs.
   const computedVarSet = new Set<string>()
@@ -191,7 +221,7 @@ export function buildWorkflowDefinitionFromCatalog(workflow: MarketplaceWorkflow
   const declaredRuntimeKeys = (workflow.runtimeVariables ?? []).map(stripVariablePrefix)
   const bareRuntimeInputs = workflow.actions.flatMap((action, actionIndex) =>
     action.inputs.flatMap((inp, inputIndex) =>
-      !inp.configurable && (inp.input ?? []).length === 0 ? [{ actionIndex, inputIndex }] : []
+      !inp.configurable && !inp.useTemplate && (inp.input ?? []).length === 0 ? [{ actionIndex, inputIndex }] : []
     )
   )
   const bareRuntimeKeyByInput = new Map<string, string>()
@@ -307,6 +337,7 @@ export function buildWorkflowDefinitionFromCatalog(workflow: MarketplaceWorkflow
     // is NOT known at build time (i.e. not a declared variable or configurable).
     const hasDynamicInput = action.inputs.some((input) => {
       if (!isDynamicAbiParameter(input.parameter)) return false
+      if (input.useTemplate) return false
       // Tuple arrays and similar non-variable-length dynamic types always need
       // raw calldata assembly regardless of how their value is supplied.
       if (!isVariableLengthParameter(input.parameter)) return true
@@ -320,8 +351,7 @@ export function buildWorkflowDefinitionFromCatalog(workflow: MarketplaceWorkflow
     })
     const hasComputedDynamicInput = action.inputs.some(
       (input) =>
-        isDynamicAbiParameter(input.parameter) &&
-        (input.input ?? []).some((value) => computedVarSet.has(value))
+        isDynamicAbiParameter(input.parameter) && (input.input ?? []).some((value) => computedVarSet.has(value))
     )
     const hasRawCalldataOnlyInput = action.inputs.some((input) => requiresRawCalldataParameter(input.parameter))
     const rawCalldataAction =
@@ -351,6 +381,49 @@ export function buildWorkflowDefinitionFromCatalog(workflow: MarketplaceWorkflow
         actionName: action.name ?? action.selector,
         actionIndex,
         inputIndex,
+      }
+      if (inp.useTemplate) {
+        if (inp.parameter !== 'bytes') {
+          throw new Error(
+            `buildWorkflowDefinitionFromCatalog: workflow "${workflow.workflowRef}" action ${actionIndex} input ${inputIndex} uses useTemplate on non-bytes parameter "${inp.parameter}"`
+          )
+        }
+        if (inp.configurable) {
+          throw new Error(
+            `buildWorkflowDefinitionFromCatalog: workflow "${workflow.workflowRef}" action ${actionIndex} input ${inputIndex} cannot be both useTemplate and configurable`
+          )
+        }
+        if (values.length !== 0) {
+          throw new Error(
+            `buildWorkflowDefinitionFromCatalog: workflow "${workflow.workflowRef}" action ${actionIndex} input ${inputIndex} uses useTemplate and must use an empty input array`
+          )
+        }
+
+        const templateName = inp.useTemplate.template
+        const template = templates[templateName]
+        if (!template) {
+          throw new Error(
+            `buildWorkflowDefinitionFromCatalog: workflow "${workflow.workflowRef}" action ${actionIndex} input ${inputIndex} references missing template "${templateName}"`
+          )
+        }
+
+        const templateWorkflow: MarketplaceWorkflow = {
+          ...workflow,
+          workflowRef: `${workflow.workflowRef}:${templateName}:${actionIndex}:${inputIndex}`,
+          name: `${workflow.name} callback`,
+          template: templateName,
+          workflowId: '',
+          templates,
+          actions: applyUseTemplateMap(template.actions, inp.useTemplate.map ?? {}),
+          runtimeVariables: template.runtimeVariables ?? [],
+        }
+        const templateDefinition = buildWorkflowDefinitionFromCatalog(templateWorkflow, { templates })
+        return getOrAddSlot(`template:${actionIndex}:${inputIndex}:${templateName}`, {
+          type: 'template',
+          workflow: templateDefinition,
+          label: fallbackLabel(inp.label, templateName, inp.parameter),
+          ...slotMetadata,
+        })
       }
       if (inp.configurable) {
         if (values.length !== 0) {
