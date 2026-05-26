@@ -972,6 +972,7 @@ export class Centrifuge {
               version: w.version,
               workspace: w.workspace,
               useTemplate: w.useTemplate,
+              templates,
               actions: templates[w.template]?.actions ?? [],
               runtimeVariables:
                 (Array.isArray(w.runtimeVariables) ? w.runtimeVariables : undefined) ??
