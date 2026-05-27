@@ -23,7 +23,14 @@ const MAGIC_KEY_SET = new Set<string>(MAGIC_VARIABLE_KEYS)
  */
 function encodeLiteralValue(raw: string, parameter = ''): HexString {
   if (parameter === 'bytes') {
-    if (/^0x(?:[0-9a-fA-F]{2})*$/.test(raw)) return raw as HexString
+    if (/^0x(?:[0-9a-fA-F]{2})*$/.test(raw)) {
+      // weiroll's CommandBuilder.setupDynamicVariable requires dynamic state
+      // variables to be a non-zero multiple of 32 bytes. The natural empty-bytes
+      // literal `0x` is 0 bytes long and trips that check at execute time.
+      // Encode it as a 32-byte zero word — the abi-encoded form of `bytes("")`.
+      if (raw.length === 2) return `0x${'00'.repeat(32)}` as HexString
+      return raw as HexString
+    }
     throw new Error(`buildWorkflowDefinitionFromCatalog: unsupported bytes literal "${raw}"`)
   }
 
@@ -104,8 +111,12 @@ function applyUseTemplateMap(actions: CatalogAction[], variableMap: Record<strin
       // Callback templates are compiled into one pinned bytes slot. Empty configurable
       // bytes inputs cannot be configured separately by the outer workflow, and the
       // current callback use case is Morpho's no-op `bytes data = 0x`.
+      // An empty bytes literal must be encoded as a 32-byte zero word — the
+      // abi-encoded form of `bytes("")`. The raw `'0x'` literal lands as a
+      // 0-byte state slot and trips weiroll's CommandBuilder check that
+      // dynamic state variables be a non-zero multiple of 32 bytes.
       ...(input.configurable && input.parameter === 'bytes' && (input.input ?? []).length === 0
-        ? { configurable: false, input: ['0x'] }
+        ? { configurable: false, input: [`0x${'00'.repeat(32)}`] }
         : { input: (input.input ?? []).map((value) => mapTemplateReference(value, variableMap)) }),
     })),
   }))
