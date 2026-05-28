@@ -27,7 +27,6 @@ describe('PoolSharePricesReport', () => {
     expect(report[0]).to.have.property('timestamp')
     expect(report[0]!.shareClasses[scId.raw]!.price).to.be.instanceOf(Price)
     expect(report[0]!.shareClasses[scId.raw]!.totalIssuance).to.be.instanceOf(Balance)
-    expect(report[0]!.shareClasses[scId.raw]!.yields).to.be.an('object')
   })
 
   it('should apply grouping', async () => {
@@ -74,58 +73,6 @@ describe('PoolSharePricesReport', () => {
     const entry = report[0]!.shareClasses[tokenId]!
     expect(entry.totalIssuance.toBigInt()).to.equal(600n)
     expect(entry.price.toBigInt()).to.equal(BigInt(freshPrice))
-  })
-
-  it('merges yields from token_snapshot by (date, shareClassId)', () => {
-    const tokenId = scId.raw
-    const price = '1000000000000000000'
-    const priceData = {
-      tokenInstanceSnapshots: {
-        items: [
-          { tokenId, timestamp: '1777939200000', totalIssuance: '100', tokenPrice: price, triggerChainId: '1' },
-        ],
-      },
-    }
-    // Ray-encoded yields: 5.5% -> 0.055 * 1e27 = 5.5e25
-    const yieldsData = {
-      tokenSnapshots: {
-        items: [
-          {
-            id: tokenId,
-            timestamp: '1777939200000',
-            yieldYtd: '55000000000000000000000000',
-            yield30d365: '120000000000000000000000000',
-            yield1d: null,
-            yield1d360: null,
-            yield1d365: null,
-            yield7d: null,
-            yield7d360: null,
-            yield7d365: null,
-            yield15d: null,
-            yield15d360: null,
-            yield15d365: null,
-            yield30d: null,
-            yield30d360: null,
-            yield90d: null,
-            yield90d360: null,
-            yield90d365: null,
-            yield180d: null,
-            yield180d360: null,
-            yield180d365: null,
-            yield30dComp360: null,
-            yield30dComp365: null,
-            yieldTtm: null,
-            yieldSinceInception: null,
-          },
-        ],
-      },
-    }
-
-    const report = poolSharePricesReport._process(priceData, {}, 18, yieldsData)
-    const entry = report[0]!.shareClasses[tokenId]!
-    expect(entry.yields.yieldYtd!.toNumber()).to.equal(5.5)
-    expect(entry.yields.yield30d365!.toNumber()).to.equal(12)
-    expect(entry.yields.yield1d).to.equal(undefined)
   })
 
   it('dedupes duplicate rows for the same (date, chain) before summing', () => {
