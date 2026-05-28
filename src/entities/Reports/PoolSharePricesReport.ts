@@ -1,4 +1,4 @@
-import { map, switchMap, combineLatest } from 'rxjs'
+import { combineLatest, map, switchMap } from 'rxjs'
 import { Centrifuge } from '../../Centrifuge.js'
 import { HexString } from '../../types/index.js'
 import { TokenInstanceSnapshotFilter } from '../../types/indexer.js'
@@ -53,34 +53,35 @@ export class PoolSharePricesReport extends Entity {
    * @returns The share prices report.
    */
   report(filter: SharePricesReportFilter = {}) {
-    const { groupBy } = filter
-    return this._query(['report', groupBy?.toString()], () =>
+    const { from, to, groupBy } = filter
+    return this._query(['report', from?.toString(), to?.toString(), groupBy?.toString()], () =>
       combineLatest([this.pool._shareClassIds(), this.pool.decimals()]).pipe(
         switchMap(([shareClassIds, poolDecimals]) =>
           this._root
             ._queryIndexer<SharePriceData>(
               `query ($filter: TokenInstanceSnapshotFilter) {
-                  tokenInstanceSnapshots(
-                    where: $filter
-                    orderBy: "timestamp"
-                    orderDirection: "desc"
-                    limit: 1000
-                  ) {
-                    items {
-                      tokenId
-                      timestamp
-                      totalIssuance
-                      tokenPrice
-                      triggerChainId
-                    }
-                  }
-                }`,
+									tokenInstanceSnapshots(
+										where: $filter
+										orderBy: "timestamp"
+										orderDirection: "desc"
+										limit: 1000
+									) {
+										items {
+											tokenId
+											timestamp
+											totalIssuance
+											tokenPrice
+											triggerChainId
+										}
+									}
+								}`,
               {
                 filter: {
                   tokenId_in: shareClassIds
                     .filter((id) => !filter.shareClassId || filter.shareClassId.equals(id))
                     .map((id) => id.toString()),
                   trigger_ends_with: 'NewPeriod',
+                  // TODO from/to
                 } satisfies TokenInstanceSnapshotFilter,
               },
               undefined,
