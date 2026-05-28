@@ -1,4 +1,4 @@
-import { map, switchMap, combineLatest } from 'rxjs'
+import { map, switchMap } from 'rxjs'
 import { Centrifuge } from '../../Centrifuge.js'
 import { HexString } from '../../types/index.js'
 import { TokenSnapshotFilter } from '../../types/indexer.js'
@@ -8,7 +8,6 @@ import { Entity } from '../Entity.js'
 import { Pool } from '../Pool.js'
 import { PoolReports } from './PoolReports.js'
 import { DataReportFilter } from './types.js'
-import { toEpochMs } from './timeUtils.js'
 import { applyGrouping } from './utils.js'
 
 /**
@@ -132,16 +131,11 @@ export class PoolShareYieldsReport extends Entity {
    * `(date, shareClassId)` dedupe keeps the latest snapshot per day.
    */
   report(filter: ShareYieldsReportFilter = {}) {
-    const { from, to, groupBy } = filter
-    return this._query(['report', from?.toString(), to?.toString(), groupBy?.toString()], () =>
+    const { groupBy } = filter
+    return this._query(['report', groupBy?.toString()], () =>
       this.pool._shareClassIds().pipe(
-        switchMap((shareClassIds) => {
-          const selectedShareClassIds = shareClassIds
-            .filter((id) => !filter.shareClassId || filter.shareClassId.equals(id))
-            .map((id) => id.toString())
-          const fromMs = toEpochMs(from)
-          const toMs = toEpochMs(to)
-          return this._root
+        switchMap((shareClassIds) =>
+          this._root
             ._queryIndexer<ShareYieldsData>(
               `query ($filter: TokenSnapshotFilter) {
                   tokenSnapshots(
@@ -159,16 +153,16 @@ export class PoolShareYieldsReport extends Entity {
                 }`,
               {
                 filter: {
-                  id_in: selectedShareClassIds,
-                  ...(fromMs !== undefined ? { timestamp_gte: String(fromMs) } : {}),
-                  ...(toMs !== undefined ? { timestamp_lte: String(toMs) } : {}),
+                  id_in: shareClassIds
+                    .filter((id) => !filter.shareClassId || filter.shareClassId.equals(id))
+                    .map((id) => id.toString()),
                 } satisfies TokenSnapshotFilter,
               },
               undefined,
               60 * 60 * 1000
             )
             .pipe(map((data) => this._process(data, filter)))
-        })
+        )
       )
     )
   }

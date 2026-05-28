@@ -8,7 +8,6 @@ import { Entity } from '../Entity.js'
 import { Pool } from '../Pool.js'
 import { PoolReports } from './PoolReports.js'
 import { DataReportFilter } from './types.js'
-import { toEpochMs } from './timeUtils.js'
 import { applyGrouping } from './utils.js'
 
 export type SharePricesReport = {
@@ -54,18 +53,11 @@ export class PoolSharePricesReport extends Entity {
    * @returns The share prices report.
    */
   report(filter: SharePricesReportFilter = {}) {
-    const { from, to, groupBy } = filter
-    return this._query(['report', from?.toString(), to?.toString(), groupBy?.toString()], () =>
+    const { groupBy } = filter
+    return this._query(['report', groupBy?.toString()], () =>
       combineLatest([this.pool._shareClassIds(), this.pool.decimals()]).pipe(
-        switchMap(([shareClassIds, poolDecimals]) => {
-          const selectedShareClassIds = shareClassIds
-            .filter((id) => !filter.shareClassId || filter.shareClassId.equals(id))
-            .map((id) => id.toString())
-          // Indexer snapshots store timestamps as epoch-millisecond strings.
-          // Callers may pass `from`/`to` in either seconds or ms; normalize to ms.
-          const fromMs = toEpochMs(from)
-          const toMs = toEpochMs(to)
-          return this._root
+        switchMap(([shareClassIds, poolDecimals]) =>
+          this._root
             ._queryIndexer<SharePriceData>(
               `query ($filter: TokenInstanceSnapshotFilter) {
                   tokenInstanceSnapshots(
@@ -85,17 +77,17 @@ export class PoolSharePricesReport extends Entity {
                 }`,
               {
                 filter: {
-                  tokenId_in: selectedShareClassIds,
+                  tokenId_in: shareClassIds
+                    .filter((id) => !filter.shareClassId || filter.shareClassId.equals(id))
+                    .map((id) => id.toString()),
                   trigger_ends_with: 'NewPeriod',
-                  ...(fromMs !== undefined ? { timestamp_gte: String(fromMs) } : {}),
-                  ...(toMs !== undefined ? { timestamp_lte: String(toMs) } : {}),
                 } satisfies TokenInstanceSnapshotFilter,
               },
               undefined,
               60 * 60 * 1000
             )
             .pipe(map((data) => this._process(data, filter, poolDecimals)))
-        })
+        )
       )
     )
   }
