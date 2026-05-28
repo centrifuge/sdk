@@ -183,7 +183,10 @@ export class PoolSharePricesReport extends Entity {
           )
           // Yields live on the share-class-level token_snapshot entity (not the
           // per-network token_instance_snapshot), so we fetch them in a second
-          // query and merge by (date, shareClassId).
+          // query and merge by (date, shareClassId). No trigger filter: yields
+          // are populated on price-update events (e.g. UpdatePricePoolPerShare,
+          // UpdateShareClass), not on NewPeriod snapshots. The (date, id)
+          // dedupe in _process keeps the latest snapshot per day.
           const yieldsData$ = this._root._queryIndexer<ShareYieldsData>(
             `query ($filter: TokenSnapshotFilter) {
                 tokenSnapshots(
@@ -202,7 +205,6 @@ export class PoolSharePricesReport extends Entity {
             {
               filter: {
                 id_in: selectedShareClassIds,
-                trigger_ends_with: 'NewPeriod',
               } satisfies TokenSnapshotFilter,
             },
             undefined,
