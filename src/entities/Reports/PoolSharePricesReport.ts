@@ -105,6 +105,16 @@ function rayPercent(value: string | null | undefined): DecimalJsType | undefined
   }
 }
 
+/**
+ * Normalize a numeric timestamp to epoch milliseconds. Values smaller than
+ * 1e12 are treated as seconds (any sensible ms timestamp from the last few
+ * decades is well past that threshold).
+ */
+function toEpochMs(value: number | undefined): number | undefined {
+  if (value === undefined || !Number.isFinite(value)) return undefined
+  return value < 1e12 ? value * 1000 : value
+}
+
 export type SharePricesReportFilter = DataReportFilter & {
   shareClassId?: ShareClassId
 }
@@ -154,6 +164,10 @@ export class PoolSharePricesReport extends Entity {
           const selectedShareClassIds = shareClassIds
             .filter((id) => !filter.shareClassId || filter.shareClassId.equals(id))
             .map((id) => id.toString())
+          // Indexer snapshots store timestamps as epoch-millisecond strings.
+          // Callers may pass `from`/`to` in either seconds or ms; normalize to ms.
+          const fromMs = toEpochMs(from)
+          const toMs = toEpochMs(to)
           const priceData$ = this._root._queryIndexer<SharePriceData>(
             `query ($filter: TokenInstanceSnapshotFilter) {
                 tokenInstanceSnapshots(
@@ -175,7 +189,8 @@ export class PoolSharePricesReport extends Entity {
               filter: {
                 tokenId_in: selectedShareClassIds,
                 trigger_ends_with: 'NewPeriod',
-                // TODO from/to
+                ...(fromMs !== undefined ? { timestamp_gte: String(fromMs) } : {}),
+                ...(toMs !== undefined ? { timestamp_lte: String(toMs) } : {}),
               } satisfies TokenInstanceSnapshotFilter,
             },
             undefined,
@@ -205,6 +220,8 @@ export class PoolSharePricesReport extends Entity {
             {
               filter: {
                 id_in: selectedShareClassIds,
+                ...(fromMs !== undefined ? { timestamp_gte: String(fromMs) } : {}),
+                ...(toMs !== undefined ? { timestamp_lte: String(toMs) } : {}),
               } satisfies TokenSnapshotFilter,
             },
             undefined,
