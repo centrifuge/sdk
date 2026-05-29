@@ -177,12 +177,12 @@ export class PoolShareYieldsReport extends Entity {
       const date = new Date(Number(row.timestamp)).toISOString().slice(0, 10)
       const byTokenId = (yieldsByDate[date] ??= {})
       if (byTokenId[row.id]) return
-      const y: ShareYields = {}
+      const yields: ShareYields = {}
       for (const field of YIELD_FIELDS) {
-        const v = rayPercent(row[field])
-        if (v !== undefined) y[field] = v
+        const value = rayPercent(row[field])
+        if (value !== undefined) yields[field] = value
       }
-      byTokenId[row.id] = y
+      byTokenId[row.id] = yields
     })
 
     const items = Object.entries(yieldsByDate).map(([date, shareClasses]) => ({
