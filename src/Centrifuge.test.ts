@@ -188,6 +188,107 @@ describe('Centrifuge', () => {
     })
   })
 
+  describe('Cross-chain adapters and messages', () => {
+    const adapterA = '0xAAaa0000000000000000000000000000000000aa'
+    const adapterB = '0xBBbb0000000000000000000000000000000000bb'
+
+    function stubMultiAdapter(centrifuge: Centrifuge, quorum: number, threshold: number, adapters: string[]) {
+      const readContract = sinon.stub().callsFake(async ({ functionName, args }: any) => {
+        if (functionName === 'quorum') return quorum
+        if (functionName === 'threshold') return threshold
+        if (functionName === 'adapters') return adapters[Number(args[2])]
+        throw new Error(`unexpected functionName: ${functionName}`)
+      })
+      sinon.stub(centrifuge as any, '_protocolAddresses').returns(of({ multiAdapter: randomAddress() } as any))
+      sinon.stub(centrifuge as any, 'getClient').returns(of({ readContract } as any))
+    }
+
+    it('globalAdapters reads the MultiAdapter pool-0 slot and returns adapters + threshold', async () => {
+      const centrifuge = new Centrifuge({ environment: 'testnet' })
+      stubMultiAdapter(centrifuge, 2, 1, [adapterA, adapterB])
+
+      const result = await centrifuge.globalAdapters(1, 2)
+      expect(result.adapters).to.deep.equal([adapterA.toLowerCase(), adapterB.toLowerCase()])
+      expect(result.threshold).to.equal(1)
+    })
+
+    it('pool.adapters reads the MultiAdapter pool-specific slot via the same path', async () => {
+      const centrifuge = new Centrifuge({ environment: 'testnet' })
+      stubMultiAdapter(centrifuge, 1, 1, [adapterA])
+      const pool = new Pool(centrifuge, poolId.raw)
+
+      const result = await pool.adapters(2)
+      expect(result.adapters).to.deep.equal([adapterA.toLowerCase()])
+      expect(result.threshold).to.equal(1)
+    })
+
+    it('pool.messages maps indexer payloads to typed CrosschainMessages and applies status filter', async () => {
+      const centrifuge = new Centrifuge({ environment: 'testnet' })
+      const queryIndexer = sinon.stub(centrifuge as any, '_queryIndexer').returns(
+        of({
+          crosschainPayloads: {
+            totalCount: 2,
+            items: [
+              {
+                id: '0xabc',
+                index: 0,
+                fromCentrifugeId: '1',
+                toCentrifugeId: '2',
+                poolId: poolId.raw.toString(),
+                tokenId: null,
+                status: 'InTransit',
+                gasLimit: '246355',
+                gasPrice: '1200014',
+                createdAt: '1773411360000',
+                deliveredAt: null,
+                completedAt: null,
+              },
+              {
+                id: '0xdef',
+                index: 1,
+                fromCentrifugeId: '1',
+                toCentrifugeId: '3',
+                poolId: poolId.raw.toString(),
+                tokenId: '0xtoken',
+                status: 'Completed',
+                gasLimit: null,
+                gasPrice: null,
+                createdAt: '1773411360000',
+                deliveredAt: '1773411400000',
+                completedAt: '1773411500000',
+              },
+            ],
+          },
+        })
+      )
+      const pool = new Pool(centrifuge, poolId.raw)
+
+      const result = await pool.messages({ status: ['InTransit', 'Underpaid'], fromCentrifugeId: 1, limit: 10 })
+      expect(result.totalCount).to.equal(2)
+      expect(result.items).to.have.length(2)
+      expect(result.items[0]!.status).to.equal('InTransit')
+      expect(result.items[0]!.fromCentrifugeId).to.equal(1)
+      expect(result.items[0]!.toCentrifugeId).to.equal(2)
+      expect(result.items[0]!.gasLimit).to.equal(246355n)
+      expect(result.items[0]!.gasPrice).to.equal(1200014n)
+      expect(result.items[0]!.createdAt).to.be.instanceOf(Date)
+      expect(result.items[0]!.deliveredAt).to.equal(undefined)
+      expect(result.items[1]!.gasLimit).to.equal(undefined)
+      expect(result.items[1]!.deliveredAt).to.be.instanceOf(Date)
+
+      // Filter encoding: status_in for arrays, single status passed through, plus poolId always.
+      const [, vars] = queryIndexer.firstCall.args as [string, Record<string, unknown>]
+      const filter = vars.filter as Record<string, unknown>
+      expect(filter).to.deep.include({
+        poolId: poolId.raw.toString(),
+        fromCentrifugeId: '1',
+        status_in: ['InTransit', 'Underpaid'],
+      })
+      expect(filter.toCentrifugeId).to.equal(undefined)
+      expect(vars.limit).to.equal(10)
+    })
+  })
+
   describe('Query', () => {
     it('should return the first value when awaited', async () => {
       const value = await context.centrifuge._query(null, () => of(1, 2, 3))
