@@ -15,6 +15,40 @@ import { Entity } from './Entity.js'
 import { PoolNetwork } from './PoolNetwork.js'
 import { PoolReports } from './Reports/PoolReports.js'
 import { ShareClass } from './ShareClass.js'
+
+/**
+ * Status of a cross-chain message (indexer-side `CrosschainPayload`).
+ *
+ * - `Underpaid` — gas paid was less than required; awaiting top-up.
+ * - `InTransit` — sent from the origin, not yet delivered on the destination.
+ * - `Delivered` — handled on the destination; may still be awaiting follow-up.
+ * - `PartiallyFailed` — at least one inner message failed.
+ * - `Completed` — fully processed end-to-end.
+ */
+export type CrosschainMessageStatus = 'Underpaid' | 'InTransit' | 'Delivered' | 'PartiallyFailed' | 'Completed'
+
+export type CrosschainMessagesFilter = {
+  fromCentrifugeId?: CentrifugeId
+  toCentrifugeId?: CentrifugeId
+  status?: CrosschainMessageStatus | CrosschainMessageStatus[]
+  limit?: number
+}
+
+export type CrosschainMessage = {
+  id: HexString
+  index: number
+  fromCentrifugeId: CentrifugeId
+  toCentrifugeId: CentrifugeId
+  poolId: string | null
+  tokenId: string | null
+  status: CrosschainMessageStatus
+  gasLimit: bigint | undefined
+  gasPrice: bigint | undefined
+  createdAt: Date
+  deliveredAt: Date | undefined
+  completedAt: Date | undefined
+}
+
 export class Pool extends Entity {
   id: PoolId
 
@@ -857,34 +891,103 @@ export class Pool extends Entity {
   }
 
   /**
-   * Get the configured adapters for a specific network.
-   * @param centrifugeId - The centrifuge ID of the network
+   * Get the configured adapter set and signature threshold for this pool on a
+   * specific network. Reads the MultiAdapter on the pool's hub chain.
+   *
+   * Use `centrifuge.globalAdapters(hub, target)` for the default (pool 0) set.
+   *
+   * @param centrifugeId - The centrifuge ID of the destination network
    */
   adapters(centrifugeId: CentrifugeId) {
     return this._query(['adapters', this.id.toString(), centrifugeId], () =>
-      combineLatest([this._root._protocolAddresses(this.centrifugeId), this._root.getClient(this.centrifugeId)]).pipe(
-        switchMap(([{ multiAdapter }, client]) =>
-          defer(async () => {
-            const quorum = await client.readContract({
-              address: multiAdapter,
-              abi: ABI.MultiAdapter,
-              functionName: 'quorum',
-              args: [centrifugeId, this.id.raw],
-            })
-            const adapters = await Promise.all(
-              Array.from({ length: quorum }, (_, index) =>
-                client.readContract({
-                  address: multiAdapter,
-                  abi: ABI.MultiAdapter,
-                  functionName: 'adapters',
-                  args: [centrifugeId, this.id.raw, BigInt(index)],
-                })
-              )
-            )
-            return adapters.map((addr) => addr.toLowerCase()) as HexString[]
-          })
-        )
-      )
+      this._root._readMultiAdapter(this.centrifugeId, centrifugeId, this.id.raw)
+    )
+  }
+
+  /**
+   * Query cross-chain messages (indexer-side: `CrosschainPayload`) for this
+   * pool. Without a filter, returns the most recent batch across all routes
+   * and statuses; `filter.status` is the common case (e.g. `'InTransit'` for
+   * pending in-flight messages).
+   *
+   * @param filter.fromCentrifugeId - Origin network filter.
+   * @param filter.toCentrifugeId - Destination network filter.
+   * @param filter.status - One status or an array of statuses to include.
+   * @param filter.limit - Page size. Default 100.
+   */
+  messages(filter: CrosschainMessagesFilter = {}) {
+    const { fromCentrifugeId, toCentrifugeId, status, limit = 100 } = filter
+    return this._query(
+      ['messages', this.id.toString(), fromCentrifugeId, toCentrifugeId, status?.toString(), limit],
+      () =>
+        this._root
+          ._queryIndexer<{
+            crosschainPayloads: {
+              totalCount: number
+              items: {
+                id: string
+                index: number
+                fromCentrifugeId: string
+                toCentrifugeId: string
+                poolId: string | null
+                tokenId: string | null
+                status: CrosschainMessageStatus
+                gasLimit: string | null
+                gasPrice: string | null
+                createdAt: string
+                deliveredAt: string | null
+                completedAt: string | null
+              }[]
+            }
+          }>(
+            `query ($filter: CrosschainPayloadFilter, $limit: Int!) {
+              crosschainPayloads(where: $filter, orderBy: "createdAt", orderDirection: "desc", limit: $limit) {
+                totalCount
+                items {
+                  id
+                  index
+                  fromCentrifugeId
+                  toCentrifugeId
+                  poolId
+                  tokenId
+                  status
+                  gasLimit
+                  gasPrice
+                  createdAt
+                  deliveredAt
+                  completedAt
+                }
+              }
+            }`,
+            {
+              filter: {
+                poolId: this.id.raw.toString(),
+                ...(fromCentrifugeId !== undefined ? { fromCentrifugeId: String(fromCentrifugeId) } : {}),
+                ...(toCentrifugeId !== undefined ? { toCentrifugeId: String(toCentrifugeId) } : {}),
+                ...(Array.isArray(status) ? { status_in: status } : status ? { status } : {}),
+              },
+              limit,
+            }
+          )
+          .pipe(
+            map(({ crosschainPayloads }) => ({
+              totalCount: crosschainPayloads.totalCount,
+              items: crosschainPayloads.items.map((item) => ({
+                id: item.id as HexString,
+                index: item.index,
+                fromCentrifugeId: Number(item.fromCentrifugeId) as CentrifugeId,
+                toCentrifugeId: Number(item.toCentrifugeId) as CentrifugeId,
+                poolId: item.poolId,
+                tokenId: item.tokenId,
+                status: item.status,
+                gasLimit: item.gasLimit ? BigInt(item.gasLimit) : undefined,
+                gasPrice: item.gasPrice ? BigInt(item.gasPrice) : undefined,
+                createdAt: new Date(Number(item.createdAt)),
+                deliveredAt: item.deliveredAt ? new Date(Number(item.deliveredAt)) : undefined,
+                completedAt: item.completedAt ? new Date(Number(item.completedAt)) : undefined,
+              })),
+            }))
+          )
     )
   }
 

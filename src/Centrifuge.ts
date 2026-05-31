@@ -644,6 +644,65 @@ export class Centrifuge {
   }
 
   /**
+   * Get the default (pool 0) adapter set and signature threshold configured on
+   * a hub's MultiAdapter for messages targeting another network. This is the
+   * fallback set used when a pool has no per-pool adapter configuration.
+   *
+   * @param hubCentrifugeId - The centrifuge ID of the hub chain where the
+   *   MultiAdapter contract lives.
+   * @param targetCentrifugeId - The centrifuge ID of the destination network.
+   */
+  globalAdapters(hubCentrifugeId: CentrifugeId, targetCentrifugeId: CentrifugeId) {
+    return this._query(['globalAdapters', hubCentrifugeId, targetCentrifugeId], () =>
+      this._readMultiAdapter(hubCentrifugeId, targetCentrifugeId, 0n)
+    )
+  }
+
+  /**
+   * @internal
+   *
+   * Read the adapter set and signature threshold for a `(target, poolId)` pair
+   * from the MultiAdapter contract on a hub chain. `poolId` is `0n` for the
+   * global default slot. Used by `Pool.adapters()` and `globalAdapters()`.
+   */
+  _readMultiAdapter(hubCentrifugeId: CentrifugeId, targetCentrifugeId: CentrifugeId, poolId: bigint) {
+    return combineLatest([this._protocolAddresses(hubCentrifugeId), this.getClient(hubCentrifugeId)]).pipe(
+      switchMap(([{ multiAdapter }, client]) =>
+        defer(async () => {
+          const [quorum, threshold] = await Promise.all([
+            client.readContract({
+              address: multiAdapter,
+              abi: ABI.MultiAdapter,
+              functionName: 'quorum',
+              args: [targetCentrifugeId, poolId],
+            }),
+            client.readContract({
+              address: multiAdapter,
+              abi: ABI.MultiAdapter,
+              functionName: 'threshold',
+              args: [targetCentrifugeId, poolId],
+            }),
+          ])
+          const adapters = await Promise.all(
+            Array.from({ length: Number(quorum) }, (_, index) =>
+              client.readContract({
+                address: multiAdapter,
+                abi: ABI.MultiAdapter,
+                functionName: 'adapters',
+                args: [targetCentrifugeId, poolId, BigInt(index)],
+              })
+            )
+          )
+          return {
+            adapters: adapters.map((addr) => addr.toLowerCase() as HexString),
+            threshold: Number(threshold),
+          }
+        })
+      )
+    )
+  }
+
+  /**
    * Register an asset
    * @param originCentrifugeId - The centrifuge ID where the asset exists
    * @param registerOnCentrifugeId - The centrifuge ID where the asset should be registered
