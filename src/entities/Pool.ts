@@ -915,10 +915,10 @@ export class Pool extends Entity {
    * @param filter.status - One status or an array of statuses to include.
    * @param filter.limit - Page size. Default 100.
    */
-  messages(filter: CrosschainMessagesFilter = {}) {
+  crosschainMessages(filter: CrosschainMessagesFilter = {}) {
     const { fromCentrifugeId, toCentrifugeId, status, limit = 100 } = filter
     return this._query(
-      ['messages', this.id.toString(), fromCentrifugeId, toCentrifugeId, status?.toString(), limit],
+      ['crosschainMessages', this.id.toString(), fromCentrifugeId, toCentrifugeId, status?.toString(), limit],
       () =>
         this._root
           ._queryIndexer<{

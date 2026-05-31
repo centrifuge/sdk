@@ -222,7 +222,7 @@ describe('Centrifuge', () => {
       expect(result.threshold).to.equal(1)
     })
 
-    it('pool.messages maps indexer payloads to typed CrosschainMessages and applies status filter', async () => {
+    it('pool.crosschainMessages maps indexer payloads to typed CrosschainMessages and applies status filter', async () => {
       const centrifuge = new Centrifuge({ environment: 'testnet' })
       const queryIndexer = sinon.stub(centrifuge as any, '_queryIndexer').returns(
         of({
@@ -263,7 +263,7 @@ describe('Centrifuge', () => {
       )
       const pool = new Pool(centrifuge, poolId.raw)
 
-      const result = await pool.messages({ status: ['InTransit', 'Underpaid'], fromCentrifugeId: 1, limit: 10 })
+      const result = await pool.crosschainMessages({ status: ['InTransit', 'Underpaid'], fromCentrifugeId: 1, limit: 10 })
       expect(result.totalCount).to.equal(2)
       expect(result.items).to.have.length(2)
       expect(result.items[0]!.status).to.equal('InTransit')
