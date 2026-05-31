@@ -37,6 +37,12 @@ import { verifyDeployments } from './config/verifyDeployments.js'
 import { PERMIT_TYPEHASH } from './constants.js'
 import { Investor } from './entities/Investor.js'
 import { Pool } from './entities/Pool.js'
+import {
+  queryCrosschainMessage,
+  queryCrosschainMessages,
+  type CrosschainMessageIncludes,
+  type CrosschainMessagesFilter,
+} from './entities/crosschainMessages.js'
 import type {
   Client,
   CurrencyDetails,
@@ -665,6 +671,28 @@ export class Centrifuge {
    * from the MultiAdapter contract on a hub chain. `poolId` is `0n` for the
    * global default slot. Used by `Pool.adapters()` and `globalAdapters()`.
    */
+  /**
+   * Query cross-chain messages across all pools. Pass `filter.poolId` to scope
+   * to one pool (or use `Pool.crosschainMessages` for the typed shortcut).
+   *
+   * Use `filter.include` to opt into nested data (pool, token, blockchains,
+   * inner messages, adapter participations). For long lists, pass
+   * `before`/`after` cursors from a previous page's `pageInfo`.
+   */
+  crosschainMessages(filter: CrosschainMessagesFilter = {}) {
+    return queryCrosschainMessages(this, filter)
+  }
+
+  /**
+   * Look up a single cross-chain message by its composite key
+   * `(payloadId, payloadIndex)`. Returns `undefined` when the indexer has no
+   * record. By default all available joins (pool, token, blockchains, inner
+   * messages, adapter participations) are included.
+   */
+  crosschainMessage(id: HexString, index: number, include?: CrosschainMessageIncludes) {
+    return queryCrosschainMessage(this, id, index, include)
+  }
+
   _readMultiAdapter(hubCentrifugeId: CentrifugeId, targetCentrifugeId: CentrifugeId, poolId: bigint) {
     return combineLatest([this._protocolAddresses(hubCentrifugeId), this.getClient(hubCentrifugeId)]).pipe(
       switchMap(([{ multiAdapter }, client]) =>
