@@ -60,6 +60,7 @@ import {
   type TransactionContext,
 } from './types/transaction.js'
 import { Balance } from './utils/BigInt.js'
+import { assertCrosschainMessagingEnabled } from './utils/crosschainHotfix.js'
 import { addEstimateBuffer, estimateBatchBridgeFee } from './utils/gas.js'
 import { generateShareClassSalt, randomUint } from './utils/index.js'
 import { createPinning, getUrlFromHash } from './utils/ipfs.js'
@@ -666,6 +667,9 @@ export class Centrifuge {
   ) {
     const self = this
     return this._transact(async function* (ctx) {
+      assertCrosschainMessagingEnabled(originCentrifugeId)
+      assertCrosschainMessagingEnabled(registerOnCentrifugeId)
+
       const [addresses, estimate] = await Promise.all([
         self._protocolAddresses(originCentrifugeId),
         self._estimate(originCentrifugeId, registerOnCentrifugeId, MessageType.RegisterAsset),
@@ -1294,8 +1298,10 @@ export class Centrifuge {
     toCentrifugeId: CentrifugeId,
     messageType: MessageTypeWithSubType | MessageTypeWithSubType[]
   ) {
-    return this._query(['estimate', fromCentrifugeId, toCentrifugeId, messageType], () =>
-      combineLatest([this._protocolAddresses(fromCentrifugeId), this.getClient(fromCentrifugeId)]).pipe(
+    return this._query(['estimate', fromCentrifugeId, toCentrifugeId, messageType], () => {
+      assertCrosschainMessagingEnabled(toCentrifugeId)
+
+      return combineLatest([this._protocolAddresses(fromCentrifugeId), this.getClient(fromCentrifugeId)]).pipe(
         switchMap(([{ multiAdapter, gasService }, publicClient]) => {
           const types = Array.isArray(messageType) ? messageType : [messageType]
           const gasMessagePayloads = types.map((type) => {
@@ -1311,7 +1317,7 @@ export class Centrifuge {
           })
         })
       )
-    )
+    })
   }
 
   /** @internal */

@@ -5,6 +5,7 @@ import type { Centrifuge } from '../Centrifuge.js'
 import { NULL_ADDRESS, SAFE_PROXY_BYTECODE } from '../constants.js'
 import { HexString } from '../types/index.js'
 import { MessageType, MessageTypeWithSubType, VaultUpdateKind } from '../types/transaction.js'
+import { assertCrosschainMessagingEnabled } from '../utils/crosschainHotfix.js'
 import { addressToBytes32, encode } from '../utils/index.js'
 import { makeThenable, repeatOnEvents } from '../utils/rx.js'
 import { doTransaction, parseEventLogs, wrapTransaction } from '../utils/transaction.js'
@@ -681,6 +682,8 @@ export class PoolNetwork extends Entity {
   ) {
     const self = this
     return this._transact(async function* (ctx) {
+      assertCrosschainMessagingEnabled(self.centrifugeId)
+
       const [
         {
           hub,
@@ -914,6 +917,8 @@ export class PoolNetwork extends Entity {
   unlinkVaults(vaults: { shareClassId: ShareClassId; assetId: AssetId; address: HexString }[]) {
     const self = this
     return this._transact(async function* (ctx) {
+      assertCrosschainMessagingEnabled(self.centrifugeId)
+
       if (vaults.length === 0) {
         throw new Error('No vaults to unlink')
       }
@@ -972,6 +977,8 @@ export class PoolNetwork extends Entity {
   linkVaults(vaults: { shareClassId: ShareClassId; assetId: AssetId; address: HexString }[]) {
     const self = this
     return this._transact(async function* (ctx) {
+      assertCrosschainMessagingEnabled(self.centrifugeId)
+
       if (vaults.length === 0) {
         throw new Error('No vaults to link')
       }

@@ -7,6 +7,11 @@ import { PoolMetadataInput, ShareClassInput } from '../types/poolInput.js'
 import { PoolMetadata } from '../types/poolMetadata.js'
 import { MessageType, MessageTypeWithSubType } from '../types/transaction.js'
 import { NATIONAL_CURRENCY_METADATA } from '../utils/currencies.js'
+import {
+  addMessageForEnabledTarget,
+  filterCrosschainEnabledTargets,
+  isCrosschainMessagingDisabled,
+} from '../utils/crosschainHotfix.js'
 import { addressToBytes32, generateShareClassSalt } from '../utils/index.js'
 import { repeatOnEvents } from '../utils/rx.js'
 import { wrapTransaction } from '../utils/transaction.js'
@@ -641,10 +646,6 @@ export class Pool extends Entity {
 
       const batch: HexString[] = []
       const messages: Record<number, MessageTypeWithSubType[]> = {}
-      function addMessage(centId: number, message: MessageTypeWithSubType) {
-        if (!messages[centId]) messages[centId] = []
-        messages[centId].push(message)
-      }
 
       // Only add metadata update if we have a CID
       if (cid) {
@@ -683,6 +684,8 @@ export class Pool extends Entity {
       })
 
       for (const [centId, shareClasses] of shareClassesToBeUpdatedPerNetwork) {
+        if (isCrosschainMessagingDisabled(centId)) continue
+
         if (shareClasses.length > 0) {
           await Promise.all(
             shareClasses.map(async (sc: ShareClass) => {
@@ -694,7 +697,7 @@ export class Pool extends Entity {
                 })
               )
 
-              addMessage(centId, { type: MessageType.NotifyShareClass, poolId: self.id })
+              addMessageForEnabledTarget(messages, centId, { type: MessageType.NotifyShareClass, poolId: self.id })
             })
           )
         }
@@ -789,7 +792,8 @@ export class Pool extends Entity {
     const self = this
     return this._transact(async function* (ctx) {
       const [{ hub }] = await Promise.all([self._root._protocolAddresses(self.centrifugeId)])
-      const batch = updates.map(({ centrifugeId, address, canManage }) =>
+      const enabledUpdates = filterCrosschainEnabledTargets(updates)
+      const batch = enabledUpdates.map(({ centrifugeId, address, canManage }) =>
         encodeFunctionData({
           abi: ABI.Hub,
           functionName: 'updateBalanceSheetManager',
@@ -797,10 +801,16 @@ export class Pool extends Entity {
         })
       )
       const messages: Record<number, MessageTypeWithSubType[]> = {}
-      updates.forEach(({ centrifugeId }) => {
-        if (!messages[centrifugeId]) messages[centrifugeId] = []
-        messages[centrifugeId].push({ type: MessageType.UpdateBalanceSheetManager, poolId: self.id })
+      enabledUpdates.forEach(({ centrifugeId }) => {
+        addMessageForEnabledTarget(messages, centrifugeId, {
+          type: MessageType.UpdateBalanceSheetManager,
+          poolId: self.id,
+        })
       })
+
+      if (batch.length === 0) {
+        throw new Error('No enabled networks to update balance sheet managers')
+      }
 
       yield* wrapTransaction('Update balance sheet managers', ctx, {
         contract: hub,
@@ -850,7 +860,8 @@ export class Pool extends Entity {
     return this._transact(async function* (ctx) {
       const { hub } = await self._root._protocolAddresses(self.centrifugeId)
 
-      const batch = updates.map(({ centrifugeId, localAdapters, remoteAdapters, threshold, recoveryIndex }) =>
+      const enabledUpdates = filterCrosschainEnabledTargets(updates)
+      const batch = enabledUpdates.map(({ centrifugeId, localAdapters, remoteAdapters, threshold, recoveryIndex }) =>
         encodeFunctionData({
           abi: ABI.Hub,
           functionName: 'setAdapters',
@@ -867,10 +878,13 @@ export class Pool extends Entity {
       )
 
       const messages: Record<number, MessageTypeWithSubType[]> = {}
-      updates.forEach(({ centrifugeId }) => {
-        if (!messages[centrifugeId]) messages[centrifugeId] = []
-        messages[centrifugeId].push(MessageType.SetPoolAdapters)
+      enabledUpdates.forEach(({ centrifugeId }) => {
+        addMessageForEnabledTarget(messages, centrifugeId, MessageType.SetPoolAdapters)
       })
+
+      if (batch.length === 0) {
+        throw new Error('No enabled networks to set pool adapters')
+      }
 
       yield* wrapTransaction('Set pool adapters', ctx, {
         contract: hub,

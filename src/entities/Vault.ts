@@ -5,6 +5,7 @@ import type { Centrifuge } from '../Centrifuge.js'
 import type { HexString } from '../types/index.js'
 import { MessageType } from '../types/transaction.js'
 import { Balance } from '../utils/BigInt.js'
+import { assertCrosschainMessagingEnabled } from '../utils/crosschainHotfix.js'
 import { addressToBytes32, encode } from '../utils/index.js'
 import { Permit, signPermit } from '../utils/permit.js'
 import { repeatOnEvents } from '../utils/rx.js'
@@ -348,8 +349,13 @@ export class Vault extends Entity {
   asyncDeposit(amount: Balance) {
     const self = this
     return this._transact(async function* (ctx) {
+      assertCrosschainMessagingEnabled(self.centrifugeId)
+
       const [estimate, investment, { vaultRouter }, isSyncDeposit, signingAddressCode] = await Promise.all([
-        self._root._estimate(self.centrifugeId, self.pool.id.centrifugeId, { type: MessageType.Request, poolId: self.pool.id }),
+        self._root._estimate(self.centrifugeId, self.pool.id.centrifugeId, {
+          type: MessageType.Request,
+          poolId: self.pool.id,
+        }),
         self.investment(ctx.signingAddress),
         self._root._protocolAddresses(self.centrifugeId),
         self._isSyncDeposit(),
@@ -429,8 +435,13 @@ export class Vault extends Entity {
   cancelDepositRequest() {
     const self = this
     return this._transact(async function* (ctx) {
+      assertCrosschainMessagingEnabled(self.centrifugeId)
+
       const [estimate, investment, { vaultRouter }] = await Promise.all([
-        self._root._estimate(self.centrifugeId, self.pool.id.centrifugeId, { type: MessageType.Request, poolId: self.pool.id }),
+        self._root._estimate(self.centrifugeId, self.pool.id.centrifugeId, {
+          type: MessageType.Request,
+          poolId: self.pool.id,
+        }),
         self.investment(ctx.signingAddress),
         self._root._protocolAddresses(self.centrifugeId),
       ])
@@ -456,8 +467,13 @@ export class Vault extends Entity {
   asyncRedeem(sharesAmount: Balance) {
     const self = this
     return this._transact(async function* (ctx) {
+      assertCrosschainMessagingEnabled(self.centrifugeId)
+
       const [estimate, investment, { vaultRouter }, isOperator] = await Promise.all([
-        self._root._estimate(self.centrifugeId, self.pool.id.centrifugeId, { type: MessageType.Request, poolId: self.pool.id }),
+        self._root._estimate(self.centrifugeId, self.pool.id.centrifugeId, {
+          type: MessageType.Request,
+          poolId: self.pool.id,
+        }),
         self.investment(ctx.signingAddress),
         self._root._protocolAddresses(self.centrifugeId),
         self._isOperator(ctx.signingAddress),
@@ -509,8 +525,13 @@ export class Vault extends Entity {
   cancelRedeemRequest() {
     const self = this
     return this._transact(async function* (ctx) {
+      assertCrosschainMessagingEnabled(self.centrifugeId)
+
       const [estimate, investment, { vaultRouter }] = await Promise.all([
-        self._root._estimate(self.centrifugeId, self.pool.id.centrifugeId, { type: MessageType.Request, poolId: self.pool.id }),
+        self._root._estimate(self.centrifugeId, self.pool.id.centrifugeId, {
+          type: MessageType.Request,
+          poolId: self.pool.id,
+        }),
         self.investment(ctx.signingAddress),
         self._root._protocolAddresses(self.centrifugeId),
       ])
@@ -624,6 +645,7 @@ export class Vault extends Entity {
             ctx.signingAddress,
           ],
         }),
+        messages: { [self.centrifugeId]: [{ type: MessageType.TrustedContractUpdate, poolId: self.pool.id }] },
       })
     }, this.pool.centrifugeId)
   }
