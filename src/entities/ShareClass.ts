@@ -20,6 +20,12 @@ import { MessageType, MessageTypeWithSubType } from '../types/transaction.js'
 import { convertToEvmAddress } from '../utils/addresses.js'
 import { AddressMap } from '../utils/AddressMap.js'
 import { Balance, Price } from '../utils/BigInt.js'
+import {
+  addMessageForEnabledTarget,
+  assertCrosschainMessagingEnabled,
+  filterCrosschainEnabledTargets,
+  isCrosschainMessagingDisabled,
+} from '../utils/crosschainHotfix.js'
 import { addressToBytes32, encode, randomUint } from '../utils/index.js'
 import { repeatOnEvents } from '../utils/rx.js'
 import { wrapTransaction } from '../utils/transaction.js'
@@ -651,10 +657,6 @@ export class ShareClass extends Entity {
       ])
       const batch: HexString[] = []
       const messages: Record<number, MessageTypeWithSubType[]> = {}
-      function addMessage(centId: number, message: MessageTypeWithSubType) {
-        if (!messages[centId]) messages[centId] = []
-        messages[centId].push(message)
-      }
 
       batch.push(
         encodeFunctionData({
@@ -671,8 +673,11 @@ export class ShareClass extends Entity {
 
       await Promise.all(
         activeNetworks.map(async (activeNetwork) => {
-          const networkDetails = await activeNetwork.details()
           const id = activeNetwork.centrifugeId
+
+          if (isCrosschainMessagingDisabled(id)) return
+
+          const networkDetails = await activeNetwork.details()
 
           const isShareClassInNetwork = networkDetails.activeShareClasses.find((shareClass) =>
             shareClass.id.equals(self.id)
@@ -686,7 +691,10 @@ export class ShareClass extends Entity {
                 args: [self.pool.id.raw, self.id.raw, id, ctx.signingAddress],
               })
             )
-            addMessage(id, { type: MessageType.NotifyPricePoolPerShare, poolId: self.pool.id })
+            addMessageForEnabledTarget(messages, id, {
+              type: MessageType.NotifyPricePoolPerShare,
+              poolId: self.pool.id,
+            })
           }
         })
       )
@@ -702,6 +710,8 @@ export class ShareClass extends Entity {
   setMaxAssetPriceAge(assetId: AssetId, maxPriceAge: number) {
     const self = this
     return this._transact(async function* (ctx) {
+      assertCrosschainMessagingEnabled(assetId.centrifugeId)
+
       const { hub } = await self._root._protocolAddresses(self.pool.centrifugeId)
       yield* wrapTransaction('Set max asset price age', ctx, {
         contract: hub,
@@ -720,6 +730,8 @@ export class ShareClass extends Entity {
   setMaxSharePriceAge(centrifugeId: CentrifugeId, maxPriceAge: number) {
     const self = this
     return this._transact(async function* (ctx) {
+      assertCrosschainMessagingEnabled(centrifugeId)
+
       const { hub } = await self._root._protocolAddresses(self.pool.centrifugeId)
       yield* wrapTransaction('Set max share price age', ctx, {
         contract: hub,
@@ -738,6 +750,8 @@ export class ShareClass extends Entity {
   notifyAssetPrice(assetId: AssetId) {
     const self = this
     return this._transact(async function* (ctx) {
+      assertCrosschainMessagingEnabled(assetId.centrifugeId)
+
       const { hub } = await self._root._protocolAddresses(self.pool.centrifugeId)
       yield* wrapTransaction('Notify asset price', ctx, {
         contract: hub,
@@ -756,6 +770,8 @@ export class ShareClass extends Entity {
   notifySharePrice(centrifugeId: CentrifugeId) {
     const self = this
     return this._transact(async function* (ctx) {
+      assertCrosschainMessagingEnabled(centrifugeId)
+
       const { hub } = await self._root._protocolAddresses(self.pool.centrifugeId)
       yield* wrapTransaction('Notify share price', ctx, {
         contract: hub,
@@ -802,9 +818,6 @@ export class ShareClass extends Entity {
         ),
       ])
       const pendingAmounts = pendingAmountsData.byVault
-      const assetsWithApprove = assets.filter((a) => 'approveAssetAmount' in a).length
-      const assetsWithIssue = assets.filter((a) => 'issuePricePerShare' in a).length
-      const gasLimitPerAsset = assetsWithIssue ? GAS_LIMIT / BigInt(assetsWithIssue) : 0n
       const estimatePerMessage = 700_000n
       const estimatePerMessageIfLocal = 360_000n
 
@@ -824,14 +837,17 @@ export class ShareClass extends Entity {
         throw new Error('Assets array contains multiple entries for the same asset ID')
       }
 
+      const crosschainEnabledAssets = assets.filter(
+        (asset) => !isCrosschainMessagingDisabled(asset.assetId.centrifugeId)
+      )
+      const assetsWithApprove = crosschainEnabledAssets.filter((a) => 'approveAssetAmount' in a).length
+      const assetsWithIssue = crosschainEnabledAssets.filter((a) => 'issuePricePerShare' in a).length
+      const gasLimitPerAsset = assetsWithIssue ? GAS_LIMIT / BigInt(assetsWithIssue) : 0n
+
       const batch: HexString[] = []
       const messages: Record<number, MessageTypeWithSubType[]> = {}
-      function addMessage(centId: number, message: MessageTypeWithSubType) {
-        if (!messages[centId]) messages[centId] = []
-        messages[centId].push(message)
-      }
 
-      for (const asset of assets) {
+      for (const asset of crosschainEnabledAssets) {
         const gasPerMessage =
           asset.assetId.centrifugeId === self.pool.centrifugeId ? estimatePerMessageIfLocal : estimatePerMessage
         let gasLeft = gasLimitPerAsset
@@ -864,7 +880,10 @@ export class ShareClass extends Entity {
               ],
             })
           )
-          addMessage(asset.assetId.centrifugeId, { type: MessageType.RequestCallback, poolId: self.pool.id })
+          addMessageForEnabledTarget(messages, asset.assetId.centrifugeId, {
+            type: MessageType.RequestCallback,
+            poolId: self.pool.id,
+          })
           gasLeft -= gasPerMessage
           nowDepositEpoch++
         }
@@ -900,7 +919,10 @@ export class ShareClass extends Entity {
                 ],
               })
             )
-            addMessage(asset.assetId.centrifugeId, { type: MessageType.RequestCallback, poolId: self.pool.id })
+            addMessageForEnabledTarget(messages, asset.assetId.centrifugeId, {
+              type: MessageType.RequestCallback,
+              poolId: self.pool.id,
+            })
             gasLeft -= gasPerMessage
           }
           // If we've issued shares, also notify a number of invest orders
@@ -923,7 +945,10 @@ export class ShareClass extends Entity {
                     ],
                   })
                 )
-                addMessage(asset.assetId.centrifugeId, { type: MessageType.RequestCallback, poolId: self.pool.id })
+                addMessageForEnabledTarget(messages, asset.assetId.centrifugeId, {
+                  type: MessageType.RequestCallback,
+                  poolId: self.pool.id,
+                })
               }
             })
           }
@@ -981,9 +1006,6 @@ export class ShareClass extends Entity {
       ])
       const pendingAmounts = pendingAmountsData.byVault
 
-      const assetsWithApprove = assets.filter((a) => 'approveShareAmount' in a).length
-      const assetsWithRevoke = assets.filter((a) => 'revokePricePerShare' in a).length
-      const gasLimitPerAsset = assetsWithRevoke ? GAS_LIMIT / BigInt(assetsWithRevoke) : 0n
       const estimatePerMessage = 700_000n
       const estimatePerMessageIfLocal = 360_000n
 
@@ -1003,14 +1025,17 @@ export class ShareClass extends Entity {
         throw new Error('Assets array contains multiple entries for the same asset ID')
       }
 
+      const crosschainEnabledAssets = assets.filter(
+        (asset) => !isCrosschainMessagingDisabled(asset.assetId.centrifugeId)
+      )
+      const assetsWithApprove = crosschainEnabledAssets.filter((a) => 'approveShareAmount' in a).length
+      const assetsWithRevoke = crosschainEnabledAssets.filter((a) => 'revokePricePerShare' in a).length
+      const gasLimitPerAsset = assetsWithRevoke ? GAS_LIMIT / BigInt(assetsWithRevoke) : 0n
+
       const batch: HexString[] = []
       const messages: Record<number, MessageTypeWithSubType[]> = {}
-      function addMessage(centId: number, message: MessageTypeWithSubType) {
-        if (!messages[centId]) messages[centId] = []
-        messages[centId].push(message)
-      }
 
-      for (const asset of assets) {
+      for (const asset of crosschainEnabledAssets) {
         const gasPerMessage =
           asset.assetId.centrifugeId === self.pool.centrifugeId ? estimatePerMessageIfLocal : estimatePerMessage
         let gasLeft = gasLimitPerAsset
@@ -1075,7 +1100,10 @@ export class ShareClass extends Entity {
                 ],
               })
             )
-            addMessage(asset.assetId.centrifugeId, { type: MessageType.RequestCallback, poolId: self.pool.id })
+            addMessageForEnabledTarget(messages, asset.assetId.centrifugeId, {
+              type: MessageType.RequestCallback,
+              poolId: self.pool.id,
+            })
             gasLeft -= gasPerMessage
           }
 
@@ -1099,7 +1127,10 @@ export class ShareClass extends Entity {
                     ],
                   })
                 )
-                addMessage(asset.assetId.centrifugeId, { type: MessageType.RequestCallback, poolId: self.pool.id })
+                addMessageForEnabledTarget(messages, asset.assetId.centrifugeId, {
+                  type: MessageType.RequestCallback,
+                  poolId: self.pool.id,
+                })
               }
             })
           }
@@ -1131,6 +1162,8 @@ export class ShareClass extends Entity {
   claimDeposit(assetId: AssetId, investor: HexString) {
     const self = this
     return this._transact(async function* (ctx) {
+      assertCrosschainMessagingEnabled(assetId.centrifugeId)
+
       const [{ batchRequestManager }, investorOrder] = await Promise.all([
         self._root._protocolAddresses(self.pool.centrifugeId),
         self._investorOrder(assetId, investor),
@@ -1161,6 +1194,8 @@ export class ShareClass extends Entity {
   claimRedeem(assetId: AssetId, investor: HexString) {
     const self = this
     return this._transact(async function* (ctx) {
+      assertCrosschainMessagingEnabled(assetId.centrifugeId)
+
       const [{ batchRequestManager }, investorOrder] = await Promise.all([
         self._root._protocolAddresses(self.pool.centrifugeId),
         self._investorOrder(assetId, investor),
@@ -1209,12 +1244,8 @@ export class ShareClass extends Entity {
 
       const batch: HexString[] = []
       const messages: Record<number, MessageTypeWithSubType[]> = {}
-      function addMessage(centId: number, message: MessageTypeWithSubType) {
-        if (!messages[centId]) messages[centId] = []
-        messages[centId].push(message)
-      }
 
-      members.forEach((member) => {
+      filterCrosschainEnabledTargets(members).forEach((member) => {
         batch.push(
           encodeFunctionData({
             abi: ABI.Hub,
@@ -1232,7 +1263,10 @@ export class ShareClass extends Entity {
             ],
           })
         )
-        addMessage(member.centrifugeId, { type: MessageType.UpdateRestriction, poolId: self.pool.id })
+        addMessageForEnabledTarget(messages, member.centrifugeId, {
+          type: MessageType.UpdateRestriction,
+          poolId: self.pool.id,
+        })
       })
 
       if (batch.length === 0) {
@@ -1533,6 +1567,8 @@ export class ShareClass extends Entity {
     const self = this
 
     return this._transact(async function* (ctx) {
+      assertCrosschainMessagingEnabled(centrifugeId)
+
       const { hub } = await self._root._protocolAddresses(self.pool.centrifugeId)
       const payload = encodePacked(
         ['uint8', 'bytes32'],
@@ -1560,6 +1596,8 @@ export class ShareClass extends Entity {
     const self = this
 
     return this._transact(async function* (ctx) {
+      assertCrosschainMessagingEnabled(centrifugeId)
+
       const { hub } = await self._root._protocolAddresses(self.pool.centrifugeId)
       const payload = encodePacked(
         ['uint8', 'bytes32'],
@@ -2313,6 +2351,8 @@ export class ShareClass extends Entity {
   updateValuation(centrifugeId: CentrifugeId, valuation: HexString) {
     const self = this
     return this._transact(async function* (ctx) {
+      assertCrosschainMessagingEnabled(centrifugeId)
+
       const [{ hub }, spokeAddresses] = await Promise.all([
         self._root._protocolAddresses(self.pool.centrifugeId),
         self._root._protocolAddresses(centrifugeId),
@@ -2346,6 +2386,8 @@ export class ShareClass extends Entity {
   updateHook(centrifugeId: CentrifugeId, hook: HexString) {
     const self = this
     return this._transact(async function* (ctx) {
+      assertCrosschainMessagingEnabled(centrifugeId)
+
       const { hub } = await self._root._protocolAddresses(self.pool.centrifugeId)
 
       yield* wrapTransaction('Update hook', ctx, {
@@ -2373,6 +2415,8 @@ export class ShareClass extends Entity {
 
     const self = this
     return this._transact(async function* (ctx) {
+      assertCrosschainMessagingEnabled(centrifugeId)
+
       const [{ hub }, spokeAddresses] = await Promise.all([
         self._root._protocolAddresses(self.pool.centrifugeId),
         self._root._protocolAddresses(centrifugeId),
@@ -2557,6 +2601,9 @@ export class ShareClass extends Entity {
   ) {
     const self = this
     return this._transact(async function* (ctx) {
+      assertCrosschainMessagingEnabled(sourceCentrifugeId)
+      assertCrosschainMessagingEnabled(destinationCentrifugeId)
+
       const { spoke } = await self._root._protocolAddresses(sourceCentrifugeId)
 
       yield* wrapTransaction('Cross chain transfer shares', ctx, {
@@ -3469,6 +3516,8 @@ export class ShareClass extends Entity {
   _updateContract(centrifugeId: CentrifugeId, target: HexString, payload: HexString) {
     const self = this
     return this._transact(async function* (ctx) {
+      assertCrosschainMessagingEnabled(centrifugeId)
+
       const { hub } = await self._root._protocolAddresses(self.pool.centrifugeId)
       yield* wrapTransaction('Update contract', ctx, {
         contract: hub,

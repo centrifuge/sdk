@@ -9,6 +9,7 @@ import type { HexString } from '../types/index.js'
 import { MerkleProofPolicy, MerkleProofPolicyInput, MerkleProofWorkflow } from '../types/poolMetadata.js'
 import { MessageType } from '../types/transaction.js'
 import { Balance, BigIntWrapper, Price } from '../utils/BigInt.js'
+import { assertCrosschainMessagingEnabled } from '../utils/crosschainHotfix.js'
 import { addressToBytes32, encode } from '../utils/index.js'
 import { wrapTransaction } from '../utils/transaction.js'
 import { Entity } from './Entity.js'
@@ -164,6 +165,8 @@ export class MerkleProofManager extends Entity {
       ])
 
       const { SimpleMerkleTree: SimpleMerkleTreeConstructor } = importedMerkleTree.default || importedMerkleTree
+      assertCrosschainMessagingEnabled(id)
+
       const { metadata, shareClasses } = poolDetails
       const strategistAddress = strategist.toLowerCase()
       const existingEntry = metadata?.merkleProofManager?.[self.network.centrifugeId]?.[strategistAddress as any]
@@ -391,6 +394,8 @@ export class MerkleProofManager extends Entity {
       ])
 
       const { SimpleMerkleTree: SimpleMerkleTreeConstructor } = importedMerkleTree.default || importedMerkleTree
+      assertCrosschainMessagingEnabled(id)
+
       const { metadata, shareClasses } = poolDetails
 
       const policies = await buildPoliciesFromInputs(policyInputs, client)
