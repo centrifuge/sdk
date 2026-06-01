@@ -5,6 +5,7 @@ import { Centrifuge } from '../Centrifuge.js'
 import { HexString } from '../types/index.js'
 import { MessageType } from '../types/transaction.js'
 import { Balance } from '../utils/BigInt.js'
+import { assertCrosschainMessagingEnabled } from '../utils/crosschainHotfix.js'
 import { addressToBytes32, encode } from '../utils/index.js'
 import { doTransaction, wrapTransaction } from '../utils/transaction.js'
 import { AssetId } from '../utils/types.js'
@@ -171,6 +172,8 @@ export class OnOffRampManager extends Entity {
   setReceiver(assetId: AssetId, receiver: HexString, enabled: boolean = true) {
     const self = this
     return this._transact(async function* (ctx) {
+      assertCrosschainMessagingEnabled(self.network.centrifugeId)
+
       const { hub } = await self._root._protocolAddresses(self.network.pool.centrifugeId)
 
       yield* wrapTransaction(enabled ? 'Enable Receiver' : 'Disable Receiver', ctx, {
@@ -203,6 +206,8 @@ export class OnOffRampManager extends Entity {
   setRelayer(relayer: HexString, enabled: boolean = true) {
     const self = this
     return this._transact(async function* (ctx) {
+      assertCrosschainMessagingEnabled(self.network.centrifugeId)
+
       const { hub } = await self._root._protocolAddresses(self.network.pool.centrifugeId)
 
       yield* wrapTransaction(enabled ? 'Enable Relayer' : 'Disable Relayer', ctx, {
@@ -220,7 +225,9 @@ export class OnOffRampManager extends Entity {
             ctx.signingAddress,
           ],
         }),
-        messages: { [self.network.centrifugeId]: [{ type: MessageType.TrustedContractUpdate, poolId: self.network.pool.id }] },
+        messages: {
+          [self.network.centrifugeId]: [{ type: MessageType.TrustedContractUpdate, poolId: self.network.pool.id }],
+        },
       })
     }, self.network.pool.centrifugeId)
   }
@@ -228,6 +235,8 @@ export class OnOffRampManager extends Entity {
   setAsset(assetId: AssetId) {
     const self = this
     return this._transact(async function* (ctx) {
+      assertCrosschainMessagingEnabled(self.network.centrifugeId)
+
       const { hub } = await self._root._protocolAddresses(self.network.pool.centrifugeId)
 
       yield* wrapTransaction('Set Asset', ctx, {
@@ -245,7 +254,9 @@ export class OnOffRampManager extends Entity {
             ctx.signingAddress,
           ],
         }),
-        messages: { [self.network.centrifugeId]: [{ type: MessageType.TrustedContractUpdate, poolId: self.network.pool.id }] },
+        messages: {
+          [self.network.centrifugeId]: [{ type: MessageType.TrustedContractUpdate, poolId: self.network.pool.id }],
+        },
       })
     }, self.network.pool.centrifugeId)
   }
