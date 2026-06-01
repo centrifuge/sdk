@@ -84,6 +84,14 @@ const WORKFLOW_MARKETPLACE_CID: Record<string, string> = {
   testnet: 'QmR2xdN56iJPNPVnBgZiy8WyVqKPvHtfg7JbXyHYqJs6Gx',
 }
 
+// Temporary testnet shim until the indexer exposes Deployment.onchainPMFactory.
+const TESTNET_ONCHAIN_PM_FACTORY_BY_CENTRIFUGE_ID: Record<number, HexString> = {
+  1: '0xF3c808e6D7C25B19c97a9597CaAcFB8Ba780a580',
+  2: '0xF3c808e6D7C25B19c97a9597CaAcFB8Ba780a580',
+  3: '0xF3c808e6D7C25B19c97a9597CaAcFB8Ba780a580',
+  9: '0xF3c808e6D7C25B19c97a9597CaAcFB8Ba780a580',
+}
+
 const envConfig = {
   mainnet: {
     indexerUrl: 'https://api.centrifuge.io',
@@ -1416,7 +1424,6 @@ export class Centrifuge {
                 syncDepositVaultFactory
                 syncManager
                 tokenFactory
-                onchainPMFactory
                 tokenRecoverer
                 vaultDecoder
                 vaultRegistry
@@ -1426,6 +1433,21 @@ export class Centrifuge {
             }
           }`
       ).pipe(
+        map((data) => {
+          if (this.#config.environment !== 'testnet') return data
+
+          return {
+            ...data,
+            deployments: {
+              ...data.deployments,
+              items: data.deployments.items.map((deployment) => {
+                const centrifugeId = Number(deployment.centrifugeId)
+                const onchainPMFactory = TESTNET_ONCHAIN_PM_FACTORY_BY_CENTRIFUGE_ID[centrifugeId]
+                return onchainPMFactory ? { ...deployment, onchainPMFactory } : deployment
+              }),
+            },
+          }
+        }),
         map((data) => {
           // KNOWN_DEPLOYMENTS holds mainnet addresses only — mainnet and testnet
           // reuse the same centrifugeIds for different chains, so a single allowlist
