@@ -21,6 +21,7 @@ import type {
   Signer,
   TransactionContext,
 } from '../types/transaction.js'
+import { assertMessagesDoNotTargetDisabledChains } from './crosschainHotfix.js'
 import { CentrifugeId } from './types.js'
 
 class TransactionError extends Error {
@@ -91,6 +92,10 @@ export async function* wrapTransaction(
       messages,
     }
   } else {
+    if (messages) {
+      assertMessagesDoNotTargetDisabledChains(messages)
+    }
+
     const messagesEstimates = messages
       ? await Promise.all(
           Object.entries(messages).map(async ([centId, messageTypes]) =>
