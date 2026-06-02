@@ -65,7 +65,7 @@ export type MerkleProofPolicyInput = Omit<MerkleProofPolicy, 'inputCombinations'
   valueNonZero?: boolean
 }
 
-export interface WorkflowGroupEntry {
+export interface WorkflowPolicyEntry {
   workflowRef: string
   /** Per-slot hex values for configurable inputs; keyed by slot key. Empty when no configurable slots. */
   configurableValues: Record<string, HexString>
@@ -74,17 +74,22 @@ export interface WorkflowGroupEntry {
   addedAt: string
 }
 
-export interface WorkflowGroup {
+/**
+ * A strategist's set of whitelisted workflows on the pool's OnchainPM.
+ *
+ * The on-chain policy is keyed by (OnchainPM address → strategist) — the
+ * OnchainPM is per-pool and `policy[strategist]` holds the Merkle root — so each
+ * strategist has exactly one policy per pool. The share class id required by the
+ * `Hub.updateContract` routing call is derived at policy-update time rather than
+ * stored here.
+ */
+export interface WorkflowPolicy {
   /** Client-generated UUID; stable across metadata updates. */
   id: string
-  name: string
   description?: string
   /** On-chain strategist address. EOA for now; Safe address when Safe integration lands. */
   strategistAddress: HexString
-  /** Raw share class ID (bytes16) this group manages on OnchainPM. Resolved from vault address on first workflow add. */
-  scId?: HexString
-  canAddBlank: boolean
-  workflows: WorkflowGroupEntry[]
+  workflows: WorkflowPolicyEntry[]
   createdAt: string
   updatedAt?: string
 }
@@ -189,5 +194,5 @@ export type PoolMetadata = {
     data: Record<string, unknown>[]
   }
   addressLabels?: Record<string, string>
-  workflowGroups?: WorkflowGroup[]
+  workflowPolicies?: WorkflowPolicy[]
 }
