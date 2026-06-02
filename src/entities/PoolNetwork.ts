@@ -1,5 +1,5 @@
 import { combineLatest, concat, defer, EMPTY, firstValueFrom, map, of, switchMap } from 'rxjs'
-import { encodeFunctionData, getContract, maxUint128 } from 'viem'
+import { encodeAbiParameters, encodeFunctionData, getContract, maxUint128 } from 'viem'
 import { ABI } from '../abi/index.js'
 import type { Centrifuge } from '../Centrifuge.js'
 import { NULL_ADDRESS, SAFE_PROXY_BYTECODE } from '../constants.js'
@@ -261,18 +261,70 @@ export class PoolNetwork extends Entity {
   }
 
   /**
-   * Register a deployed OnchainPM as a Balance Sheet Manager on the hub chain.
-   * Use this with the address obtained from deployOnchainPM().
+   * Register a deployed OnchainPM as a Balance Sheet Manager on the hub chain
+   * and, in the same batched transaction, grant it minter rights on the pool's
+   * accounting token (workflows that mint/burn accounting tokens need this).
+   *
+   * Both calls are batched into a single `Hub` transaction signed on the hub
+   * chain. The minter grant is routed `Hub.updateContract` → Spoke
+   * `contractUpdater` → `AccountingToken.trustedCall`, which decodes
+   * `abi.encode(bytes32 who, bool canMint)`.
+   *
    * @param managerAddress - The deployed OnchainPM contract address
+   * @param scId - Share class used for the accounting-token `updateContract`
+   *   routing. The minter mapping is pool-wide, so any of the pool's share
+   *   classes works; defaults to the pool's first share class.
    */
-  registerOnchainPMAsBSManager(managerAddress: HexString) {
-    return this.pool.updateBalanceSheetManagers([
-      {
-        centrifugeId: this.centrifugeId,
-        address: managerAddress,
-        canManage: true,
-      },
-    ])
+  registerOnchainPMAsBSManager(managerAddress: HexString, scId?: HexString) {
+    const self = this
+    return this._transact(async function* (ctx) {
+      assertCrosschainMessagingEnabled(self.centrifugeId)
+
+      const { hub } = await self._root._protocolAddresses(self.pool.centrifugeId)
+      const { accountingToken } = await self._root._protocolAddresses(self.centrifugeId)
+
+      const resolvedScId = scId ?? (await firstValueFrom(self.pool.shareClasses()))[0]?.id.raw
+      if (!resolvedScId) {
+        throw new Error('No share class found for pool to route the accounting-token minter update')
+      }
+
+      // 1. Register the OnchainPM as a balance sheet manager.
+      const registerManagerCall = encodeFunctionData({
+        abi: ABI.Hub,
+        functionName: 'updateBalanceSheetManager',
+        args: [self.pool.id.raw, self.centrifugeId, addressToBytes32(managerAddress), true, ctx.signingAddress],
+      })
+
+      // 2. Grant the OnchainPM minter rights on the accounting token.
+      const minterPayload = encodeAbiParameters(
+        [{ type: 'bytes32' }, { type: 'bool' }],
+        [addressToBytes32(managerAddress), true]
+      )
+      const grantMinterCall = encodeFunctionData({
+        abi: ABI.Hub,
+        functionName: 'updateContract',
+        args: [
+          self.pool.id.raw,
+          resolvedScId,
+          self.centrifugeId,
+          addressToBytes32(accountingToken),
+          minterPayload,
+          0n,
+          ctx.signingAddress,
+        ],
+      })
+
+      yield* wrapTransaction('Register OnchainPM as balance sheet manager', ctx, {
+        contract: hub,
+        data: [registerManagerCall, grantMinterCall],
+        messages: {
+          [self.centrifugeId]: [
+            { type: MessageType.UpdateBalanceSheetManager, poolId: self.pool.id },
+            { type: MessageType.TrustedContractUpdate, poolId: self.pool.id },
+          ],
+        },
+      })
+    }, this.pool.centrifugeId)
   }
 
   /**

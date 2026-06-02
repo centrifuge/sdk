@@ -1,7 +1,7 @@
 import { expect } from 'chai'
 import { lastValueFrom, Observable, of } from 'rxjs'
 import sinon from 'sinon'
-import { encodeAbiParameters, encodeEventTopics, parseAbi } from 'viem'
+import { decodeFunctionData, encodeAbiParameters, encodeEventTopics, parseAbi } from 'viem'
 import type { TransactionReceipt } from 'viem'
 import { ABI } from '../abi/index.js'
 import { Centrifuge } from '../Centrifuge.js'
@@ -646,33 +646,51 @@ describe('PoolNetwork.deployOnchainPM', () => {
 })
 
 describe('PoolNetwork.registerOnchainPMAsBSManager', () => {
+  const hub = '0xcccccccccccccccccccccccccccccccccccccccc'
+  const accountingToken = '0xdddddddddddddddddddddddddddddddddddddddd'
+  const managerAddress = '0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb' as const
+
   afterEach(() => {
     sinon.restore()
   })
 
-  it('registers the OnchainPM as a balance sheet manager for the current network', async () => {
+  it('batches the BSM registration and the accounting-token minter grant into one hub transaction', async () => {
     const root = {
-      _transact: sinon.stub(),
+      _protocolAddresses: sinon.stub().resolves({ hub, accountingToken }),
+      _transact: (callback: (ctx: any) => AsyncGenerator<unknown> | Observable<unknown>, cId: number) => {
+        const tx = new Observable<unknown>((subscriber) => {
+          ;(async () => {
+            try {
+              // isBatching short-circuits wrapTransaction to yield the raw batch payload.
+              const result = callback({ isBatching: true, signingAddress, centrifugeId: cId, root })
+              if (Symbol.asyncIterator in result) {
+                for await (const item of result) subscriber.next(item)
+              } else {
+                result.subscribe(subscriber)
+                return
+              }
+              subscriber.complete()
+            } catch (error) {
+              subscriber.error(error)
+            }
+          })()
+        })
+        return Object.assign(tx, { centrifugeId: cId })
+      },
     }
+
     const pool = new Pool(root as any, poolId.raw)
-    const updateBalanceSheetManagers = sinon
-      .stub(pool, 'updateBalanceSheetManagers')
-      .returns(of({ type: 'TransactionConfirmed' } as any) as any)
-
+    sinon.stub(pool, 'shareClasses').returns(of([{ id: { raw: scId.raw } }]) as any)
     const pn = new PoolNetwork(root as any, pool, centId)
-    const managerAddress = '0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb' as const
 
-    await lastValueFrom(pn.registerOnchainPMAsBSManager(managerAddress) as unknown as Observable<any>)
+    const batch = (await lastValueFrom(
+      pn.registerOnchainPMAsBSManager(managerAddress) as unknown as Observable<any>
+    )) as { contract: string; data: `0x${string}`[]; messages: Record<number, { type: number }[]> }
 
-    expect(
-      updateBalanceSheetManagers.calledOnceWith([
-        {
-          centrifugeId: centId,
-          address: managerAddress,
-          canManage: true,
-        },
-      ])
-    ).to.be.true
+    expect(batch.contract).to.equal(hub)
+    expect(batch.data).to.have.length(2)
+    expect(decodeFunctionData({ abi: ABI.Hub, data: batch.data[0]! }).functionName).to.equal('updateBalanceSheetManager')
+    expect(decodeFunctionData({ abi: ABI.Hub, data: batch.data[1]! }).functionName).to.equal('updateContract')
   })
 })
 
