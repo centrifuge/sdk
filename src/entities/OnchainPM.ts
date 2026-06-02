@@ -1,6 +1,6 @@
 import type { SimpleMerkleTree } from '@openzeppelin/merkle-tree'
-import { from, switchMap } from 'rxjs'
-import { encodeFunctionData, toHex } from 'viem'
+import { combineLatest, from, map, switchMap } from 'rxjs'
+import { encodeFunctionData, parseAbi, toHex } from 'viem'
 import { ABI } from '../abi/index.js'
 import type { Centrifuge } from '../Centrifuge.js'
 import type { HexString } from '../types/index.js'
@@ -38,6 +38,34 @@ export class OnchainPM extends Entity {
               args: [strategist],
             })
           )
+        )
+      )
+    )
+  }
+
+  /**
+   * Whether this OnchainPM is fully authorized to run workflows for the pool —
+   * i.e. it is both a balance sheet manager and a minter on the pool's
+   * accounting token. `authorizeOnchainPM` grants both; surface this so the UI
+   * can detect a partial/stale state and re-authorize.
+   */
+  isAuthorized() {
+    const self = this
+    return this._query(['isAuthorized'], () =>
+      combineLatest([
+        from(this._root._protocolAddresses(this.network.centrifugeId)),
+        from(this._root.getClient(this.network.centrifugeId)),
+        this.network.pool.isBalanceSheetManager(this.network.centrifugeId, this.address),
+      ]).pipe(
+        switchMap(([{ accountingToken }, client, isBalanceSheetManager]) =>
+          from(
+            client.readContract({
+              address: accountingToken,
+              abi: parseAbi(['function minters(uint64, address) view returns (bool)']),
+              functionName: 'minters',
+              args: [self.network.pool.id.raw, self.address],
+            })
+          ).pipe(map((isMinter) => Boolean(isBalanceSheetManager) && Boolean(isMinter)))
         )
       )
     )
