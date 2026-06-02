@@ -645,7 +645,7 @@ describe('PoolNetwork.deployOnchainPM', () => {
   })
 })
 
-describe('PoolNetwork.registerOnchainPMAsBSManager', () => {
+describe('PoolNetwork.authorizeOnchainPM', () => {
   const hub = '0xcccccccccccccccccccccccccccccccccccccccc'
   const accountingToken = '0xdddddddddddddddddddddddddddddddddddddddd'
   const managerAddress = '0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb' as const
@@ -684,7 +684,7 @@ describe('PoolNetwork.registerOnchainPMAsBSManager', () => {
     const pn = new PoolNetwork(root as any, pool, centId)
 
     const batch = (await lastValueFrom(
-      pn.registerOnchainPMAsBSManager(managerAddress) as unknown as Observable<any>
+      pn.authorizeOnchainPM(managerAddress) as unknown as Observable<any>
     )) as { contract: string; data: `0x${string}`[]; messages: Record<number, { type: number }[]> }
 
     expect(batch.contract).to.equal(hub)

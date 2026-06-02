@@ -261,9 +261,10 @@ export class PoolNetwork extends Entity {
   }
 
   /**
-   * Register a deployed OnchainPM as a Balance Sheet Manager on the hub chain
-   * and, in the same batched transaction, grant it minter rights on the pool's
-   * accounting token (workflows that mint/burn accounting tokens need this).
+   * Authorize a deployed OnchainPM for this pool. Registers it as a Balance
+   * Sheet Manager on the hub chain and, in the same batched transaction, grants
+   * it minter rights on the pool's accounting token (workflows that mint/burn
+   * accounting tokens need this).
    *
    * Both calls are batched into a single `Hub` transaction signed on the hub
    * chain. The minter grant is routed `Hub.updateContract` → Spoke
@@ -275,7 +276,7 @@ export class PoolNetwork extends Entity {
    *   routing. The minter mapping is pool-wide, so any of the pool's share
    *   classes works; defaults to the pool's first share class.
    */
-  registerOnchainPMAsBSManager(managerAddress: HexString, scId?: HexString) {
+  authorizeOnchainPM(managerAddress: HexString, scId?: HexString) {
     const self = this
     return this._transact(async function* (ctx) {
       assertCrosschainMessagingEnabled(self.centrifugeId)
