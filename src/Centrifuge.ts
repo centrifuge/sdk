@@ -94,10 +94,10 @@ const TESTNET_ONCHAIN_PM_FACTORY_BY_CENTRIFUGE_ID: Record<number, HexString> = {
 
 // Temporary testnet shim until the indexer exposes Deployment.accountingToken.
 const TESTNET_ACCOUNTING_TOKEN_BY_CENTRIFUGE_ID: Record<number, HexString> = {
-  1: '0x4D0c60ec2127Ded422F61C0725b4775c0c361AEd',
-  2: '0x4D0c60ec2127Ded422F61C0725b4775c0c361AEd',
-  3: '0x4D0c60ec2127Ded422F61C0725b4775c0c361AEd',
-  9: '0x4D0c60ec2127Ded422F61C0725b4775c0c361AEd',
+  1: '0x5ba3f068cefa1e84adafcb7191bf4c02c3b724f8',
+  2: '0x5ba3f068cefa1e84adafcb7191bf4c02c3b724f8',
+  3: '0x5ba3f068cefa1e84adafcb7191bf4c02c3b724f8',
+  9: '0x5ba3f068cefa1e84adafcb7191bf4c02c3b724f8',
 }
 
 const envConfig = {
