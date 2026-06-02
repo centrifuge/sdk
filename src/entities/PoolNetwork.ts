@@ -235,7 +235,7 @@ export class PoolNetwork extends Entity {
         }
       }
 
-      const result = yield* doTransaction('DeployOnchainPM', ctx, () =>
+      const result = yield* doTransaction('Deploy onchain PM', ctx, () =>
         ctx.walletClient.writeContract({
           address: onchainPMFactory,
           abi: ABI.OnchainPMFactory,
@@ -315,7 +315,7 @@ export class PoolNetwork extends Entity {
         ],
       })
 
-      yield* wrapTransaction('Register OnchainPM as balance sheet manager', ctx, {
+      yield* wrapTransaction('Authorize onchain PM', ctx, {
         contract: hub,
         data: [registerManagerCall, grantMinterCall],
         messages: {
