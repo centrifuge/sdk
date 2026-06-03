@@ -566,86 +566,65 @@ export class ShareClass extends Entity {
         self.pool.metadata(),
       ])
 
-      let data: HexString | HexString[]
-      if (isLiability) {
-        const expenseAccount =
-          (accounts as any)[AccountType.Expense] || metadata?.shareClasses?.[self.id.raw]?.defaultAccounts?.expense
-        const liabilityAccount =
-          (accounts as any)[AccountType.Liability] || metadata?.shareClasses?.[self.id.raw]?.defaultAccounts?.liability
-        if (liabilityAccount === undefined) {
-          throw new Error('Missing required accounts for liability creation')
-        }
-        if (expenseAccount) {
-          data = encodeFunctionData({
-            abi: ABI.Hub,
-            functionName: 'initializeLiability',
-            args: [self.pool.id.raw, self.id.raw, assetId.raw, valuation, expenseAccount, liabilityAccount],
-          })
-        } else {
-          const newExpenseAccount = await self._getFreeAccountId()
-          const createAccountData = encodeFunctionData({
-            abi: ABI.Hub,
-            functionName: 'createAccount',
-            args: [self.pool.id.raw, newExpenseAccount, true],
-          })
-          const initHoldingData = encodeFunctionData({
-            abi: ABI.Hub,
-            functionName: 'initializeLiability',
-            args: [self.pool.id.raw, self.id.raw, assetId.raw, valuation, newExpenseAccount, liabilityAccount],
-          })
-          data = [createAccountData, initHoldingData]
-        }
-      } else {
-        const assetAccount =
-          (accounts as any)[AccountType.Asset] || metadata?.shareClasses?.[self.id.raw]?.defaultAccounts?.asset
-        const equityAccount =
-          (accounts as any)[AccountType.Equity] || metadata?.shareClasses?.[self.id.raw]?.defaultAccounts?.equity
-        const gainAccount =
-          (accounts as any)[AccountType.Gain] || metadata?.shareClasses?.[self.id.raw]?.defaultAccounts?.gain
-        const lossAccount =
-          (accounts as any)[AccountType.Loss] || metadata?.shareClasses?.[self.id.raw]?.defaultAccounts?.loss
-        if (equityAccount === undefined || gainAccount === undefined || lossAccount === undefined) {
-          throw new Error('Missing required accounts for holding creation')
-        }
-        if (assetAccount) {
-          data = encodeFunctionData({
-            abi: ABI.Hub,
-            functionName: 'initializeHolding',
-            args: [
-              self.pool.id.raw,
-              self.id.raw,
-              assetId.raw,
-              valuation,
-              assetAccount,
-              equityAccount,
-              gainAccount,
-              lossAccount,
-            ],
-          })
-        } else {
-          const newAssetAccount = await self._getFreeAccountId()
-          const createAccountData = encodeFunctionData({
+      const provided = (accounts ?? {}) as Record<number, number | undefined>
+      const defaults = metadata?.shareClasses?.[self.id.raw]?.defaultAccounts
+      const createAccountCalls: HexString[] = []
+
+      // Resolve an account id from the explicit input or the share class defaults,
+      // otherwise allocate a fresh account with the correct normal balance. By
+      // double-entry convention asset/loss/expense are debit-normal; equity/gain/
+      // liability are credit-normal. This lets a holding be created on a pool that
+      // hasn't pre-created its accounts (instead of reverting "Missing required accounts").
+      const resolveAccount = async (
+        explicit: number | undefined,
+        fallback: number | undefined,
+        isDebitNormal: boolean
+      ): Promise<bigint> => {
+        const existing = explicit ?? fallback
+        if (existing !== undefined) return BigInt(existing)
+        const id = await self._getFreeAccountId()
+        createAccountCalls.push(
+          encodeFunctionData({
             abi: ABI.Hub,
             functionName: 'createAccount',
-            args: [self.pool.id.raw, newAssetAccount, false],
+            args: [self.pool.id.raw, id, isDebitNormal],
           })
-          const initHoldingData = encodeFunctionData({
-            abi: ABI.Hub,
-            functionName: 'initializeHolding',
-            args: [
-              self.pool.id.raw,
-              self.id.raw,
-              assetId.raw,
-              valuation,
-              newAssetAccount,
-              equityAccount,
-              gainAccount,
-              lossAccount,
-            ],
-          })
-          data = [createAccountData, initHoldingData]
-        }
+        )
+        return id
       }
+
+      let initData: HexString
+      if (isLiability) {
+        const expenseAccount = await resolveAccount(provided[AccountType.Expense], defaults?.expense, true)
+        const liabilityAccount = await resolveAccount(provided[AccountType.Liability], defaults?.liability, false)
+        initData = encodeFunctionData({
+          abi: ABI.Hub,
+          functionName: 'initializeLiability',
+          args: [self.pool.id.raw, self.id.raw, assetId.raw, valuation, expenseAccount, liabilityAccount],
+        })
+      } else {
+        const assetAccount = await resolveAccount(provided[AccountType.Asset], defaults?.asset, true)
+        const equityAccount = await resolveAccount(provided[AccountType.Equity], defaults?.equity, false)
+        const gainAccount = await resolveAccount(provided[AccountType.Gain], defaults?.gain, false)
+        const lossAccount = await resolveAccount(provided[AccountType.Loss], defaults?.loss, true)
+        initData = encodeFunctionData({
+          abi: ABI.Hub,
+          functionName: 'initializeHolding',
+          args: [
+            self.pool.id.raw,
+            self.id.raw,
+            assetId.raw,
+            valuation,
+            assetAccount,
+            equityAccount,
+            gainAccount,
+            lossAccount,
+          ],
+        })
+      }
+
+      const data: HexString | HexString[] =
+        createAccountCalls.length > 0 ? [...createAccountCalls, initData] : initData
       yield* wrapTransaction('Create holding', ctx, {
         contract: hub,
         data,
