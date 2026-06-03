@@ -188,6 +188,251 @@ describe('Centrifuge', () => {
     })
   })
 
+  describe('Cross-chain adapters and messages', () => {
+    const adapterA = '0xAAaa0000000000000000000000000000000000aa'
+    const adapterB = '0xBBbb0000000000000000000000000000000000bb'
+
+    function stubMultiAdapter(centrifuge: Centrifuge, quorum: number, threshold: number, adapters: string[]) {
+      const readContract = sinon.stub().callsFake(async ({ functionName, args }: any) => {
+        if (functionName === 'quorum') return quorum
+        if (functionName === 'threshold') return threshold
+        if (functionName === 'adapters') return adapters[Number(args[2])]
+        throw new Error(`unexpected functionName: ${functionName}`)
+      })
+      sinon.stub(centrifuge as any, '_protocolAddresses').returns(of({ multiAdapter: randomAddress() } as any))
+      sinon.stub(centrifuge as any, 'getClient').returns(of({ readContract } as any))
+    }
+
+    it('globalAdapters reads the MultiAdapter pool-0 slot and returns adapters + threshold', async () => {
+      const centrifuge = new Centrifuge({ environment: 'testnet' })
+      stubMultiAdapter(centrifuge, 2, 1, [adapterA, adapterB])
+
+      const result = await centrifuge.globalAdapters(1, 2)
+      expect(result.adapters).to.deep.equal([adapterA.toLowerCase(), adapterB.toLowerCase()])
+      expect(result.threshold).to.equal(1)
+    })
+
+    it('pool.adapters reads the MultiAdapter pool-specific slot via the same path', async () => {
+      const centrifuge = new Centrifuge({ environment: 'testnet' })
+      stubMultiAdapter(centrifuge, 1, 1, [adapterA])
+      const pool = new Pool(centrifuge, poolId.raw)
+
+      const result = await pool.adapters(2)
+      expect(result.adapters).to.deep.equal([adapterA.toLowerCase()])
+      expect(result.threshold).to.equal(1)
+    })
+
+    function basePayload(overrides: Partial<Record<string, unknown>> = {}) {
+      return {
+        id: '0xabc',
+        index: 0,
+        fromCentrifugeId: '1',
+        toCentrifugeId: '2',
+        poolId: poolId.raw.toString(),
+        tokenId: null,
+        status: 'InTransit',
+        rawData: null,
+        gasLimit: '246355',
+        gasPrice: '1200014',
+        createdAt: '1773411360000',
+        deliveredAt: null,
+        completedAt: null,
+        preparedAtTxHash: '0xprepared',
+        deliveredAtTxHash: null,
+        ...overrides,
+      }
+    }
+
+    const samplePageInfo = { hasNextPage: false, hasPreviousPage: false, startCursor: null, endCursor: null }
+
+    it('pool.crosschainMessages maps payloads, returns pageInfo, and applies status + cursor filter', async () => {
+      const centrifuge = new Centrifuge({ environment: 'testnet' })
+      const queryIndexer = sinon.stub(centrifuge as any, '_queryIndexer').returns(
+        of({
+          crosschainPayloads: {
+            totalCount: 2,
+            pageInfo: { hasNextPage: true, hasPreviousPage: false, startCursor: 'a', endCursor: 'b' },
+            items: [
+              basePayload(),
+              basePayload({
+                id: '0xdef',
+                index: 1,
+                toCentrifugeId: '3',
+                tokenId: '0xtoken',
+                status: 'Completed',
+                gasLimit: null,
+                gasPrice: null,
+                deliveredAt: '1773411400000',
+                completedAt: '1773411500000',
+              }),
+            ],
+          },
+        })
+      )
+      const pool = new Pool(centrifuge, poolId.raw)
+
+      const result = await pool.crosschainMessages({
+        status: ['InTransit', 'Underpaid'],
+        fromCentrifugeId: 1,
+        after: 'cursor-x',
+        limit: 10,
+      })
+      expect(result.totalCount).to.equal(2)
+      expect(result.pageInfo).to.deep.equal({
+        hasNextPage: true,
+        hasPreviousPage: false,
+        startCursor: 'a',
+        endCursor: 'b',
+      })
+      expect(result.items).to.have.length(2)
+      expect(result.items[0]!.fromCentrifugeId).to.equal(1)
+      expect(result.items[0]!.toCentrifugeId).to.equal(2)
+      expect(result.items[0]!.gasLimit).to.equal(246355n)
+      expect(result.items[0]!.createdAt).to.be.instanceOf(Date)
+      expect(result.items[0]!.deliveredAt).to.equal(undefined)
+      // Joins not requested -> undefined.
+      expect(result.items[0]!.pool).to.equal(undefined)
+      expect(result.items[0]!.innerMessages).to.equal(undefined)
+      expect(result.items[1]!.gasLimit).to.equal(undefined)
+      expect(result.items[1]!.deliveredAt).to.be.instanceOf(Date)
+
+      const [, vars] = queryIndexer.firstCall.args as [string, Record<string, unknown>]
+      expect(vars.filter).to.deep.equal({
+        poolId: poolId.raw.toString(),
+        fromCentrifugeId: '1',
+        status_in: ['InTransit', 'Underpaid'],
+      })
+      expect(vars.limit).to.equal(10)
+      expect(vars.after).to.equal('cursor-x')
+    })
+
+    it('pool.crosschainMessages requests joined fields and maps them when `include` is set', async () => {
+      const centrifuge = new Centrifuge({ environment: 'testnet' })
+      const queryIndexer = sinon.stub(centrifuge as any, '_queryIndexer').returns(
+        of({
+          crosschainPayloads: {
+            totalCount: 1,
+            pageInfo: samplePageInfo,
+            items: [
+              basePayload({
+                pool: { id: poolId.raw.toString(), name: 'Foo Pool' },
+                token: { name: 'Foo Share', symbol: 'FOO' },
+                fromBlockchain: { id: '11155111', centrifugeId: '1', network: 'sepolia' },
+                toBlockchain: { id: '84532', centrifugeId: '2', network: 'base-sepolia' },
+                crosschainMessages: {
+                  items: [
+                    {
+                      id: '0xmsg',
+                      index: 0,
+                      poolId: poolId.raw.toString(),
+                      tokenId: null,
+                      payloadId: '0xabc',
+                      payloadIndex: 0,
+                      fromCentrifugeId: '1',
+                      toCentrifugeId: '2',
+                      messageType: 'NotifyPool',
+                      status: 'AwaitingBatchDelivery',
+                      rawData: '0xdeadbeef',
+                      data: { foo: 1 },
+                      failReason: null,
+                      createdAt: '1773411360000',
+                      executedAt: null,
+                      executedAtTxHash: null,
+                    },
+                  ],
+                },
+                adapterParticipations: {
+                  items: [
+                    {
+                      centrifugeId: '1',
+                      fromCentrifugeId: '1',
+                      toCentrifugeId: '2',
+                      type: 'PAYLOAD',
+                      side: 'SEND',
+                      gasPaid: '123',
+                      timestamp: '1773411360000',
+                      transactionHash: '0xtx',
+                      adapter: { address: '0xadapter', name: 'Axelar', centrifugeId: '1' },
+                    },
+                  ],
+                },
+              }),
+            ],
+          },
+        })
+      )
+      const pool = new Pool(centrifuge, poolId.raw)
+
+      const result = await pool.crosschainMessages({
+        include: { pool: true, token: true, blockchains: true, innerMessages: true, adapterParticipations: true },
+      })
+      const m = result.items[0]!
+      expect(m.pool).to.deep.equal({ id: poolId.raw.toString(), name: 'Foo Pool' })
+      expect(m.token).to.deep.equal({ name: 'Foo Share', symbol: 'FOO' })
+      expect(m.fromBlockchain).to.deep.equal({ id: '11155111', centrifugeId: 1, network: 'sepolia' })
+      expect(m.toBlockchain?.network).to.equal('base-sepolia')
+      expect(m.innerMessages).to.have.length(1)
+      expect(m.innerMessages![0]!.messageType).to.equal('NotifyPool')
+      expect(m.innerMessages![0]!.data).to.deep.equal({ foo: 1 })
+      expect(m.adapterParticipations).to.have.length(1)
+      expect(m.adapterParticipations![0]!.gasPaid).to.equal(123n)
+      expect(m.adapterParticipations![0]!.adapter?.name).to.equal('Axelar')
+
+      // The selection must include all join fragments.
+      const [query] = queryIndexer.firstCall.args as [string]
+      expect(query).to.match(/pool \{ id name \}/)
+      expect(query).to.match(/crosschainMessages \{/)
+      expect(query).to.match(/adapterParticipations\(orderBy/)
+    })
+
+    it('centrifuge.crosschainMessages encodes `preparedAtTxHash` filter and is not pool-scoped', async () => {
+      const centrifuge = new Centrifuge({ environment: 'testnet' })
+      const queryIndexer = sinon.stub(centrifuge as any, '_queryIndexer').returns(
+        of({ crosschainPayloads: { totalCount: 0, pageInfo: samplePageInfo, items: [] } })
+      )
+
+      await centrifuge.crosschainMessages({ preparedAtTxHash: '0xbatchtx' })
+
+      const [, vars] = queryIndexer.firstCall.args as [string, Record<string, unknown>]
+      const filter = vars.filter as Record<string, unknown>
+      expect(filter).to.deep.equal({ preparedAtTxHash: '0xbatchtx' })
+      expect(filter.poolId).to.equal(undefined)
+    })
+
+    it('centrifuge.crosschainMessage reads a single payload by (id, index) and defaults to all joins', async () => {
+      const centrifuge = new Centrifuge({ environment: 'testnet' })
+      const queryIndexer = sinon.stub(centrifuge as any, '_queryIndexer').returns(
+        of({
+          crosschainPayload: basePayload({
+            pool: { id: poolId.raw.toString(), name: 'Foo' },
+            token: null,
+            fromBlockchain: null,
+            toBlockchain: null,
+            crosschainMessages: { items: [] },
+            adapterParticipations: { items: [] },
+          }),
+        })
+      )
+
+      const message = await centrifuge.crosschainMessage('0xabc' as `0x${string}`, 0)
+      expect(message?.id).to.equal('0xabc')
+      expect(message?.pool?.name).to.equal('Foo')
+
+      const [query, vars] = queryIndexer.firstCall.args as [string, Record<string, unknown>]
+      expect(vars).to.deep.equal({ id: '0xabc', index: 0 })
+      // Default include = all joins, so the query selects them.
+      expect(query).to.match(/crosschainMessages \{/)
+      expect(query).to.match(/adapterParticipations\(orderBy/)
+    })
+
+    it('centrifuge.crosschainMessage returns undefined when the indexer has no record', async () => {
+      const centrifuge = new Centrifuge({ environment: 'testnet' })
+      sinon.stub(centrifuge as any, '_queryIndexer').returns(of({ crosschainPayload: null }))
+      const message = await centrifuge.crosschainMessage('0xmissing' as `0x${string}`, 0)
+      expect(message).to.equal(undefined)
+    })
+  })
+
   describe('Query', () => {
     it('should return the first value when awaited', async () => {
       const value = await context.centrifuge._query(null, () => of(1, 2, 3))

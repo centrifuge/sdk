@@ -8,6 +8,23 @@ export { OnchainPM, buildPolicyUpdate, generateExecuteProof } from './entities/O
 export type { PolicyUpdateRequest, PolicyUpdateResult } from './entities/OnchainPM.js'
 export * from './entities/OnOffRampManager.js'
 export * from './entities/Pool.js'
+export type {
+  AdapterParticipation,
+  AdapterParticipationSide,
+  AdapterParticipationType,
+  CrosschainAdapterRef,
+  CrosschainBlockchainRef,
+  CrosschainInnerMessage,
+  CrosschainInnerMessageStatus,
+  CrosschainMessage,
+  CrosschainMessageIncludes,
+  CrosschainMessageStatus,
+  CrosschainMessagesFilter,
+  CrosschainMessagesPage,
+  CrosschainMessagesPageInfo,
+  CrosschainPoolRef,
+  CrosschainTokenRef,
+} from './entities/crosschainMessages.js'
 export * from './entities/PoolNetwork.js'
 export * from './entities/Reports/PoolReports.js'
 export * from './entities/Reports/PoolShareYieldsReport.js'

@@ -20,6 +20,8 @@ import { Entity } from './Entity.js'
 import { PoolNetwork } from './PoolNetwork.js'
 import { PoolReports } from './Reports/PoolReports.js'
 import { ShareClass } from './ShareClass.js'
+import { queryCrosschainMessages, type CrosschainMessagesFilter } from './crosschainMessages.js'
+
 export class Pool extends Entity {
   id: PoolId
 
@@ -895,35 +897,31 @@ export class Pool extends Entity {
   }
 
   /**
-   * Get the configured adapters for a specific network.
-   * @param centrifugeId - The centrifuge ID of the network
+   * Get the configured adapter set and signature threshold for this pool on a
+   * specific network. Reads the MultiAdapter on the pool's hub chain.
+   *
+   * Use `centrifuge.globalAdapters(hub, target)` for the default (pool 0) set.
+   *
+   * @param centrifugeId - The centrifuge ID of the destination network
    */
   adapters(centrifugeId: CentrifugeId) {
     return this._query(['adapters', this.id.toString(), centrifugeId], () =>
-      combineLatest([this._root._protocolAddresses(this.centrifugeId), this._root.getClient(this.centrifugeId)]).pipe(
-        switchMap(([{ multiAdapter }, client]) =>
-          defer(async () => {
-            const quorum = await client.readContract({
-              address: multiAdapter,
-              abi: ABI.MultiAdapter,
-              functionName: 'quorum',
-              args: [centrifugeId, this.id.raw],
-            })
-            const adapters = await Promise.all(
-              Array.from({ length: quorum }, (_, index) =>
-                client.readContract({
-                  address: multiAdapter,
-                  abi: ABI.MultiAdapter,
-                  functionName: 'adapters',
-                  args: [centrifugeId, this.id.raw, BigInt(index)],
-                })
-              )
-            )
-            return adapters.map((addr) => addr.toLowerCase()) as HexString[]
-          })
-        )
-      )
+      this._root._readMultiAdapter(this.centrifugeId, centrifugeId, this.id.raw)
     )
+  }
+
+  /**
+   * Query cross-chain messages (indexer-side: `CrosschainPayload`) for this
+   * pool. Without a filter, returns the most recent batch across all routes
+   * and statuses; `filter.status` is the common case (e.g. `'InTransit'` for
+   * pending in-flight messages).
+   *
+   * Use `filter.include` to opt into nested data (pool, token, blockchains,
+   * inner messages, adapter participations). For paginating very long lists,
+   * pass `before`/`after` cursors from a previous page's `pageInfo`.
+   */
+  crosschainMessages(filter: Omit<CrosschainMessagesFilter, 'poolId'> = {}) {
+    return queryCrosschainMessages(this._root, { ...filter, poolId: this.id })
   }
 
   createAccounts(accounts: { accountId: bigint; isDebitNormal: boolean }[]) {

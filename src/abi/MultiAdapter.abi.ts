@@ -15,7 +15,7 @@ export default [
   // 'function rely(address user)',
   // 'function send(uint16 centrifugeId, bytes payload, uint256 gasLimit, address refund) payable returns (bytes32)',
   // 'function setAdapters(uint16 centrifugeId, uint64 poolId, address[] addresses, uint8 threshold_, uint8 recoveryIndex_)',
-  // 'function threshold(uint16 centrifugeId, uint64 poolId) view returns (uint8)',
+  'function threshold(uint16 centrifugeId, uint64 poolId) view returns (uint8)',
   // 'function votes(uint16 centrifugeId, bytes32 payloadHash) view returns (int16[8])',
   // 'function wards(address) view returns (uint256)',
   // 'event Deny(address indexed user)',

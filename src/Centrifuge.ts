@@ -37,6 +37,12 @@ import { verifyDeployments } from './config/verifyDeployments.js'
 import { PERMIT_TYPEHASH } from './constants.js'
 import { Investor } from './entities/Investor.js'
 import { Pool } from './entities/Pool.js'
+import {
+  queryCrosschainMessage,
+  queryCrosschainMessages,
+  type CrosschainMessageIncludes,
+  type CrosschainMessagesFilter,
+} from './entities/crosschainMessages.js'
 import type {
   Client,
   CurrencyDetails,
@@ -663,6 +669,87 @@ export class Centrifuge {
             wormholeAdapter,
             layerZeroAdapter,
             chainlinkAdapter,
+          }
+        })
+      )
+    )
+  }
+
+  /**
+   * Get the default (pool 0) adapter set and signature threshold configured on
+   * a hub's MultiAdapter for messages targeting another network. This is the
+   * fallback set used when a pool has no per-pool adapter configuration.
+   *
+   * @param hubCentrifugeId - The centrifuge ID of the hub chain where the
+   *   MultiAdapter contract lives.
+   * @param targetCentrifugeId - The centrifuge ID of the destination network.
+   */
+  globalAdapters(hubCentrifugeId: CentrifugeId, targetCentrifugeId: CentrifugeId) {
+    return this._query(['globalAdapters', hubCentrifugeId, targetCentrifugeId], () =>
+      this._readMultiAdapter(hubCentrifugeId, targetCentrifugeId, 0n)
+    )
+  }
+
+  /**
+   * @internal
+   *
+   * Read the adapter set and signature threshold for a `(target, poolId)` pair
+   * from the MultiAdapter contract on a hub chain. `poolId` is `0n` for the
+   * global default slot. Used by `Pool.adapters()` and `globalAdapters()`.
+   */
+  /**
+   * Query cross-chain messages across all pools. Pass `filter.poolId` to scope
+   * to one pool (or use `Pool.crosschainMessages` for the typed shortcut).
+   *
+   * Use `filter.include` to opt into nested data (pool, token, blockchains,
+   * inner messages, adapter participations). For long lists, pass
+   * `before`/`after` cursors from a previous page's `pageInfo`.
+   */
+  crosschainMessages(filter: CrosschainMessagesFilter = {}) {
+    return queryCrosschainMessages(this, filter)
+  }
+
+  /**
+   * Look up a single cross-chain message by its composite key
+   * `(payloadId, payloadIndex)`. Returns `undefined` when the indexer has no
+   * record. By default all available joins (pool, token, blockchains, inner
+   * messages, adapter participations) are included.
+   */
+  crosschainMessage(id: HexString, index: number, include?: CrosschainMessageIncludes) {
+    return queryCrosschainMessage(this, id, index, include)
+  }
+
+  _readMultiAdapter(hubCentrifugeId: CentrifugeId, targetCentrifugeId: CentrifugeId, poolId: bigint) {
+    return combineLatest([this._protocolAddresses(hubCentrifugeId), this.getClient(hubCentrifugeId)]).pipe(
+      switchMap(([{ multiAdapter }, client]) =>
+        defer(async () => {
+          const [quorum, threshold] = await Promise.all([
+            client.readContract({
+              address: multiAdapter,
+              abi: ABI.MultiAdapter,
+              functionName: 'quorum',
+              args: [targetCentrifugeId, poolId],
+            }),
+            client.readContract({
+              address: multiAdapter,
+              abi: ABI.MultiAdapter,
+              functionName: 'threshold',
+              args: [targetCentrifugeId, poolId],
+            }),
+          ])
+          const adapters = await Promise.all(
+            Array.from({ length: Number(quorum) }, (_, index) =>
+              client.readContract({
+                address: multiAdapter,
+                abi: ABI.MultiAdapter,
+                functionName: 'adapters',
+                args: [targetCentrifugeId, poolId, BigInt(index)],
+              })
+            )
+          )
+          return {
+            adapters: adapters.map((addr) => addr.toLowerCase() as HexString),
+            threshold: Number(threshold),
           }
         })
       )
