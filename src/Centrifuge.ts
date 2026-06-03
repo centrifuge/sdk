@@ -92,6 +92,14 @@ const TESTNET_ONCHAIN_PM_FACTORY_BY_CENTRIFUGE_ID: Record<number, HexString> = {
   9: '0xF3c808e6D7C25B19c97a9597CaAcFB8Ba780a580',
 }
 
+// Temporary testnet shim until the indexer exposes Deployment.accountingToken.
+const TESTNET_ACCOUNTING_TOKEN_BY_CENTRIFUGE_ID: Record<number, HexString> = {
+  1: '0x5ba3f068cefa1e84adafcb7191bf4c02c3b724f8',
+  2: '0x5ba3f068cefa1e84adafcb7191bf4c02c3b724f8',
+  3: '0x5ba3f068cefa1e84adafcb7191bf4c02c3b724f8',
+  9: '0x5ba3f068cefa1e84adafcb7191bf4c02c3b724f8',
+}
+
 const envConfig = {
   mainnet: {
     indexerUrl: 'https://api.centrifuge.io',
@@ -1443,7 +1451,12 @@ export class Centrifuge {
               items: data.deployments.items.map((deployment) => {
                 const centrifugeId = Number(deployment.centrifugeId)
                 const onchainPMFactory = TESTNET_ONCHAIN_PM_FACTORY_BY_CENTRIFUGE_ID[centrifugeId]
-                return onchainPMFactory ? { ...deployment, onchainPMFactory } : deployment
+                const accountingToken = TESTNET_ACCOUNTING_TOKEN_BY_CENTRIFUGE_ID[centrifugeId]
+                return {
+                  ...deployment,
+                  ...(onchainPMFactory ? { onchainPMFactory } : {}),
+                  ...(accountingToken ? { accountingToken } : {}),
+                }
               }),
             },
           }
