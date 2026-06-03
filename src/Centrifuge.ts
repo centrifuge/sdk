@@ -49,7 +49,8 @@ import type {
 import { PoolMetadataInput } from './types/poolInput.js'
 import { PoolMetadata } from './types/poolMetadata.js'
 import type { CentrifugeQueryOptions, Query } from './types/query.js'
-import type { CatalogAction, MarketplaceWorkflow } from './types/workflow.js'
+import type { CatalogAction, MarketplaceWorkflow, RuntimeVariable } from './types/workflow.js'
+import { runtimeVariableName } from './types/workflow.js'
 import {
   emptyMessage,
   MessageType,
@@ -81,7 +82,7 @@ const PINNING_API_DEMO = 'https://europe-central2-peak-vista-185616.cloudfunctio
 // CIDs are in the GitHub release notes: https://github.com/centrifuge/workflows/releases
 const WORKFLOW_MARKETPLACE_CID: Record<string, string> = {
   mainnet: 'QmQp1KEDPGpKQ7tVzqq92sAJ61tjfSi58FHCTjCEnvePQ7',
-  testnet: 'QmR2xdN56iJPNPVnBgZiy8WyVqKPvHtfg7JbXyHYqJs6Gx',
+  testnet: 'QmTNi5CAuxhubqJQMyt9tcDhuoWCx6FmEDygkhqkqUjJr8',
 }
 
 // Temporary testnet shim until the indexer exposes Deployment.onchainPMFactory.
@@ -973,13 +974,20 @@ export class Centrifuge {
         const res = await fetch(url)
         if (!res.ok) throw new Error(`workflowMarketplace: IPFS fetch failed — ${res.status} ${res.statusText}`)
         const catalog = await res.json()
-        const templates: Record<string, { actions: CatalogAction[]; runtimeVariables?: string[] }> =
+        const templates: Record<string, { actions: CatalogAction[]; runtimeVariables?: RuntimeVariable[] }> =
           catalog.templates ?? {}
         const rawWorkflows: unknown[] = Array.isArray(catalog) ? catalog : (catalog.workflows ?? [])
         return rawWorkflows
           .filter((w: any) => !w.useTemplate)
-          .map(
-            (w: any): MarketplaceWorkflow => ({
+          .map((w: any): MarketplaceWorkflow => {
+            // runtimeVariables may be the legacy `string[]` or the object form
+            // `{ name, token?, source? }[]` (centrifuge/workflows #84). Keep the full
+            // entries for the UI, and a normalized name list for everything else.
+            const runtimeVariableEntries: RuntimeVariable[] =
+              (Array.isArray(w.runtimeVariables) ? w.runtimeVariables : undefined) ??
+              templates[w.template]?.runtimeVariables ??
+              []
+            return {
               workflowRef: w.id ?? w.workflowRef,
               name: w.name,
               template: w.template,
@@ -994,12 +1002,10 @@ export class Centrifuge {
               useTemplate: w.useTemplate,
               templates,
               actions: templates[w.template]?.actions ?? [],
-              runtimeVariables:
-                (Array.isArray(w.runtimeVariables) ? w.runtimeVariables : undefined) ??
-                templates[w.template]?.runtimeVariables ??
-                [],
-            })
-          )
+              runtimeVariables: runtimeVariableEntries.map(runtimeVariableName),
+              runtimeVariableEntries,
+            }
+          })
       })
     )
   }

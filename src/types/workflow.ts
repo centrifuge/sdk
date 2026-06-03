@@ -80,10 +80,24 @@ export interface CatalogAction {
   returns?: string
 }
 
+/**
+ * A runtime input declaration. The legacy form is a bare variable name; the
+ * object form (centrifuge/workflows #84) additionally links an amount input to
+ * its denominating `token` (for decimals/symbol) and the `source` holder address
+ * whose balance bounds the max. `token`/`source` are `$`-references to declared,
+ * magic, or runtime variables.
+ */
+export type RuntimeVariable = string | { name: string; token?: string; source?: string }
+
+/** Normalize a {@link RuntimeVariable} to its bare-or-`$`-prefixed name. */
+export function runtimeVariableName(variable: RuntimeVariable): string {
+  return typeof variable === 'string' ? variable : variable.name
+}
+
 /** A reusable action template from the marketplace catalog. */
 export interface CatalogTemplate {
   actions: CatalogAction[]
-  runtimeVariables?: string[]
+  runtimeVariables?: RuntimeVariable[]
   id?: string
 }
 
@@ -123,6 +137,11 @@ export interface MarketplaceWorkflow {
   templates?: Record<string, CatalogTemplate>
   /** Human-readable contract call steps resolved from the template. */
   actions: CatalogAction[]
-  /** Runtime inputs supplied by the executor when the workflow runs. */
+  /** Runtime inputs supplied by the executor when the workflow runs (names only). */
   runtimeVariables?: string[]
+  /**
+   * Full runtime input declarations, preserving the optional `token`/`source`
+   * links from the object form. Aligned 1:1 with `runtimeVariables` by name.
+   */
+  runtimeVariableEntries?: RuntimeVariable[]
 }
