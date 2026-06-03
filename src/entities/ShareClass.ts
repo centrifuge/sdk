@@ -570,6 +570,10 @@ export class ShareClass extends Entity {
       const defaults = metadata?.shareClasses?.[self.id.raw]?.defaultAccounts
       const createAccountCalls: HexString[] = []
 
+      const { accounting } = await self._root._protocolAddresses(self.pool.centrifugeId)
+      const client = await firstValueFrom(self._root.getClient(self.pool.centrifugeId))
+      const allocatedIds = new Set<bigint>()
+
       // Resolve an account id from the explicit input or the share class defaults,
       // otherwise allocate a fresh account with the correct normal balance. By
       // double-entry convention asset/loss/expense are debit-normal; equity/gain/
@@ -582,7 +586,22 @@ export class ShareClass extends Entity {
       ): Promise<bigint> => {
         const existing = explicit ?? fallback
         if (existing !== undefined) return BigInt(existing)
-        const id = await self._getFreeAccountId()
+        // Generate a fresh id that doesn't already exist on-chain and isn't already
+        // allocated in this batch — `initializeHolding` reverts InvalidAccountCombination
+        // if any two of the four accounts collide.
+        let id = randomUint(256)
+        while (
+          allocatedIds.has(id) ||
+          (await client.readContract({
+            address: accounting,
+            abi: ABI.Accounting,
+            functionName: 'exists',
+            args: [self.pool.id.raw, id],
+          }))
+        ) {
+          id = randomUint(256)
+        }
+        allocatedIds.add(id)
         createAccountCalls.push(
           encodeFunctionData({
             abi: ABI.Hub,
