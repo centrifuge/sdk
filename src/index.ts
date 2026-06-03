@@ -16,7 +16,15 @@ export * from './entities/ShareClass.js'
 export * from './entities/Vault.js'
 export type { Client, Config, CurrencyDetails, HexString } from './types/index.js'
 export type { IssuerDetail, PoolMetadataInput, PoolReport, ShareClassInput } from './types/poolInput.js'
-export type { ActionDefinition, CatalogAction, CatalogActionInput, InputDefinition, MarketplaceWorkflow } from './types/workflow.js'
+export type {
+  ActionDefinition,
+  CatalogAction,
+  CatalogActionInput,
+  InputDefinition,
+  MarketplaceWorkflow,
+  RuntimeVariable,
+} from './types/workflow.js'
+export { runtimeVariableName } from './types/workflow.js'
 export * from './types/poolMetadata.js'
 export type { Query } from './types/query.js'
 export type {

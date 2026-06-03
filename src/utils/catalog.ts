@@ -1,6 +1,7 @@
 import { toFunctionSelector } from 'viem'
 import type { HexString } from '../types/index.js'
 import type { CatalogAction, CatalogActionInput, CatalogTemplate, MarketplaceWorkflow } from '../types/workflow.js'
+import { runtimeVariableName } from '../types/workflow.js'
 import { MAGIC_VARIABLE_KEYS } from './variables.js'
 import { CALL, UNUSED_SLOT, VALUECALL } from './weiroll.js'
 import type { WeirollAction, WorkflowDefinition, WorkflowStateSlot } from './weiroll.js'
@@ -426,7 +427,7 @@ export function buildWorkflowDefinitionFromCatalog(
           workflowId: '',
           templates,
           actions: applyUseTemplateMap(template.actions, inp.useTemplate.map ?? {}),
-          runtimeVariables: template.runtimeVariables ?? [],
+          runtimeVariables: (template.runtimeVariables ?? []).map(runtimeVariableName),
         }
         const templateDefinition = buildWorkflowDefinitionFromCatalog(templateWorkflow, { templates })
         return getOrAddSlot(`template:${actionIndex}:${inputIndex}:${templateName}`, {
