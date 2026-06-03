@@ -82,7 +82,7 @@ const PINNING_API_DEMO = 'https://europe-central2-peak-vista-185616.cloudfunctio
 // CIDs are in the GitHub release notes: https://github.com/centrifuge/workflows/releases
 const WORKFLOW_MARKETPLACE_CID: Record<string, string> = {
   mainnet: 'QmQp1KEDPGpKQ7tVzqq92sAJ61tjfSi58FHCTjCEnvePQ7',
-  testnet: 'QmTNi5CAuxhubqJQMyt9tcDhuoWCx6FmEDygkhqkqUjJr8',
+  testnet: 'bafybeibh5uk6gbruobn7bykmclidru32r5s4qgwapceycutep5qpxaeoca',
 }
 
 // Temporary testnet shim until the indexer exposes Deployment.onchainPMFactory.
