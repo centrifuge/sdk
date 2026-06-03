@@ -233,7 +233,12 @@ export class ShareClass extends Entity {
           if (res.length === 0) {
             return of([])
           }
-          const items = res.filter((item) => Number(item.centrifugeId) === centrifugeId || !centrifugeId)
+          const items = res.filter(
+            // Skip holdings whose asset metadata isn't indexed yet (`asset` is null):
+            // they can't be priced/rendered, and reading `asset.address` below would
+            // otherwise throw and fail the whole `balances()` stream.
+            (item) => (Number(item.centrifugeId) === centrifugeId || !centrifugeId) && item.asset != null
+          )
 
           if (items.length === 0) return of([])
 
