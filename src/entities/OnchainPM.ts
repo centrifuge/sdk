@@ -111,21 +111,23 @@ export class OnchainPM extends Entity {
   }
 
   /**
-   * Executes several whitelisted weiroll scripts in a single transaction via the
-   * OnchainPM's `multicall`. Each item is built exactly like {@link execute}'s
-   * argument; the items are ABI-encoded as `execute(...)` calls and batched, so
-   * they all succeed or revert together. `value` is the total native value
-   * forwarded to the multicall (sum of the individual workflows' values).
+   * Runs several whitelisted weiroll scripts in a single transaction via the
+   * OnchainPM's `multicall` — used to batch a strategist's "account"/accounting
+   * workflows (e.g. price updates) into one atomic accounting update. Each item is
+   * built exactly like {@link execute}'s argument; the items are ABI-encoded as
+   * `execute(...)` calls and batched, so they all succeed or revert together.
+   * `value` is the total native value forwarded to the multicall (sum of the
+   * individual workflows' values).
    *
    * @example
    * ```typescript
-   * await onchainPM.executeMultiple([
+   * await onchainPM.executeAccountingBatch([
    *   { commands, state, stateBitmap, callbacks: [], proof },
    *   { commands: c2, state: s2, stateBitmap: b2, callbacks: [], proof: p2 },
    * ])
    * ```
    */
-  executeMultiple(
+  executeAccountingBatch(
     items: {
       commands: HexString[]
       state: HexString[]
@@ -145,7 +147,7 @@ export class OnchainPM extends Entity {
         })
       )
       yield* wrapTransaction(
-        'Execute workflows',
+        'Accounting update',
         ctx,
         {
           contract: self.address,
