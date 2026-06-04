@@ -1,9 +1,34 @@
 import { expect } from 'chai'
 import { decodeAbiParameters } from 'viem'
-import { encodeConfigurableValue, encodeWorkflowInputValue, isWorkflowInputOptional } from './workflowExecute.js'
+import type { MarketplaceWorkflow } from '../types/workflow.js'
+import {
+  applyWorkflowExclusions,
+  encodeConfigurableValue,
+  encodeWorkflowInputValue,
+  isWorkflowInputOptional,
+} from './workflowExecute.js'
 
 const ADDRESS_A = '0x1111111111111111111111111111111111111111'
 const ADDRESS_B = '0x2222222222222222222222222222222222222222'
+
+/** Minimal workflow whose actions carry the given `optional` flags. */
+function workflowWithActions(optionalFlags: boolean[]): MarketplaceWorkflow {
+  return {
+    workflowRef: 'wf',
+    name: 'WF',
+    template: 't',
+    chainId: 1,
+    variables: {},
+    workflowId: `0x${'0'.repeat(64)}`,
+    version: 1,
+    actions: optionalFlags.map((optional, i) => ({
+      target: '$spoke',
+      selector: `function a${i}()`,
+      inputs: [],
+      optional,
+    })),
+  } as unknown as MarketplaceWorkflow
+}
 
 describe('utils/workflowExecute', () => {
   describe('encodeWorkflowInputValue', () => {
@@ -85,6 +110,42 @@ describe('utils/workflowExecute', () => {
       expect(isWorkflowInputOptional('(address,address)[]')).to.equal(true)
       expect(isWorkflowInputOptional('uint256')).to.equal(false)
       expect(isWorkflowInputOptional('address')).to.equal(false)
+    })
+  })
+
+  describe('applyWorkflowExclusions', () => {
+    it('returns the same workflow when nothing is excluded', () => {
+      const wf = workflowWithActions([true, false, true])
+      expect(applyWorkflowExclusions(wf, [])).to.equal(wf)
+      expect(applyWorkflowExclusions(wf).actions).to.have.length(3)
+    })
+
+    it('drops an excluded optional action', () => {
+      const wf = workflowWithActions([true, false, true])
+      const result = applyWorkflowExclusions(wf, [0])
+      expect(result.actions).to.have.length(2)
+      expect(result.actions.map((a) => a.selector)).to.deep.equal(['function a1()', 'function a2()'])
+      // does not mutate the input
+      expect(wf.actions).to.have.length(3)
+    })
+
+    it('drops multiple optional actions regardless of input order', () => {
+      const wf = workflowWithActions([true, false, true])
+      const result = applyWorkflowExclusions(wf, [2, 0])
+      expect(result.actions.map((a) => a.selector)).to.deep.equal(['function a1()'])
+    })
+
+    it('throws when excluding a non-optional action', () => {
+      expect(() => applyWorkflowExclusions(workflowWithActions([true, false]), [1])).to.throw(/not optional/)
+    })
+
+    it('throws on an out-of-range or negative index', () => {
+      expect(() => applyWorkflowExclusions(workflowWithActions([true]), [5])).to.throw(/invalid action index/)
+      expect(() => applyWorkflowExclusions(workflowWithActions([true]), [-1])).to.throw(/invalid action index/)
+    })
+
+    it('throws when the same action is excluded twice', () => {
+      expect(() => applyWorkflowExclusions(workflowWithActions([true, true]), [0, 0])).to.throw(/more than once/)
     })
   })
 })
