@@ -111,6 +111,57 @@ export class OnchainPM extends Entity {
   }
 
   /**
+   * Executes several whitelisted weiroll scripts in a single transaction via the
+   * OnchainPM's `multicall`. Each item is built exactly like {@link execute}'s
+   * argument; the items are ABI-encoded as `execute(...)` calls and batched, so
+   * they all succeed or revert together. `value` is the total native value
+   * forwarded to the multicall (sum of the individual workflows' values).
+   *
+   * @example
+   * ```typescript
+   * await onchainPM.executeMultiple([
+   *   { commands, state, stateBitmap, callbacks: [], proof },
+   *   { commands: c2, state: s2, stateBitmap: b2, callbacks: [], proof: p2 },
+   * ])
+   * ```
+   */
+  executeMultiple(
+    items: {
+      commands: HexString[]
+      state: HexString[]
+      stateBitmap: bigint
+      callbacks: Callback[]
+      proof: HexString[]
+    }[],
+    options: { simulate?: boolean; value?: bigint } = {}
+  ) {
+    const self = this
+    return this._transact(async function* (ctx) {
+      const calls = items.map((p) =>
+        encodeFunctionData({
+          abi: ABI.OnchainPM,
+          functionName: 'execute',
+          args: [p.commands, p.state, p.stateBitmap, p.callbacks, p.proof],
+        })
+      )
+      yield* wrapTransaction(
+        'Execute workflows',
+        ctx,
+        {
+          contract: self.address,
+          data: encodeFunctionData({
+            abi: ABI.OnchainPM,
+            functionName: 'multicall',
+            args: [calls],
+          }),
+          value: options.value,
+        },
+        { simulate: options.simulate ?? false }
+      )
+    }, this.network.centrifugeId)
+  }
+
+  /**
    * Submits a Hub.updateContract() transaction to update this OnchainPM's
    * policy root for a strategist. Called whenever workflows are added to or
    * removed from a group.
