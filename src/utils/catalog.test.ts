@@ -261,7 +261,13 @@ describe('utils/catalog', () => {
     // No FLAG_RAW — each parameter has its own slot.
     expect(definition.actions[0]!.rawMode).to.equal(undefined)
     // Slots: 0=amount(100), 1=domain/maxFee(0), 2=mintRecipient/burnToken, 3=destCaller, 4=minFinality(1000), 5=hookData
-    expect(definition.state[5]).to.deep.equal({ type: 'literal', value: hookData })
+    // The literal is stored in the inner ABI form [length][padded data] (31-byte value → length
+    // 0x1f + 32-byte padded data) so the 0x80 splice produces valid `bytes` calldata.
+    expect(definition.state[5]).to.deep.equal({
+      type: 'literal',
+      value:
+        '0x000000000000000000000000000000000000000000000000000000000000001f636374702d686f6f6b2d646174612d3030303030303030303030303030303100',
+    })
     // The 8 inputs reference slots [0,1,2,2,3,1,4,5]; bytes gets 0x80|5 = 133.
     expect(definition.actions[0]!.inputs).to.deep.equal([0, 1, 2, 2, 3, 1, 4, 133])
     // No rawcalldata slot.

@@ -205,7 +205,10 @@ function getWorkflowAbiParameter(parameter: string): AbiParameter {
 
 function decodeWorkflowValue(parameter: string, encodedValue: HexString, sourceSlot?: WorkflowStateSlot): unknown {
   if (parameter === 'bytes' && sourceSlot?.type === 'literal') {
-    return encodedValue
+    // Literal `bytes` slots are stored in the inner ABI form [length][padded data] (see
+    // encodeLiteralValue). Recover the raw value so the rawcalldata assembler can re-encode it.
+    const length = Number(BigInt(`0x${encodedValue.slice(2, 66)}`))
+    return `0x${encodedValue.slice(66, 66 + length * 2)}` as HexString
   }
 
   if (parameter === 'bytes') {

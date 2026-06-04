@@ -330,6 +330,10 @@ describe('utils/weiroll', () => {
 
     it('assembles bytes parameters as ABI dynamic calldata in raw mode', () => {
       const hookData = '0x636374702d686f6f6b2d646174612d30303030303030303030303030303031' as const
+      // Literal `bytes` slots are stored in the inner ABI form [length][padded data] (matches
+      // encodeLiteralValue); the rawcalldata assembler decodes it back to the raw value.
+      const hookDataFramed =
+        '0x000000000000000000000000000000000000000000000000000000000000001f636374702d686f6f6b2d646174612d3030303030303030303030303030303100' as const
       const workflow: WorkflowDefinition = {
         workflowRef: 'raw-bytes',
         actions: [
@@ -343,7 +347,7 @@ describe('utils/weiroll', () => {
           },
         ],
         state: [
-          { type: 'literal', value: hookData },
+          { type: 'literal', value: hookDataFramed },
           {
             type: 'rawcalldata',
             selector: SELECTOR,
@@ -356,7 +360,7 @@ describe('utils/weiroll', () => {
 
       const { state } = buildScript(workflow, { poolContext: POOL_CTX, configurableValues: {} })
 
-      expect(state[0]).to.equal(hookData)
+      expect(state[0]).to.equal(hookDataFramed)
       expect(state[1]).to.equal(concat([SELECTOR, encodeAbiParameters([{ type: 'bytes' }], [hookData])]))
     })
 
