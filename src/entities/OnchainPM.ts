@@ -6,7 +6,7 @@ import type { Centrifuge } from '../Centrifuge.js'
 import type { HexString } from '../types/index.js'
 import { addressToBytes32, encode } from '../utils/index.js'
 import type { Callback } from '../utils/scriptHash.js'
-import { buildWorkflowExecuteParams, type PolicyEntryInput } from '../utils/workflowExecute.js'
+import { buildWorkflowExecuteParams, computeWorkflowGroupScriptHashes, type PolicyEntryInput } from '../utils/workflowExecute.js'
 import { wrapTransaction } from '../utils/transaction.js'
 import { MessageType } from '../types/transaction.js'
 import { Entity } from './Entity.js'
@@ -276,10 +276,32 @@ export class OnchainPM extends Entity {
    *
    * The transaction is signed on the hub chain (pool.centrifugeId).
    */
-  updatePolicy(params: { scId: HexString; strategist: HexString; scriptHashes: HexString[]; refund?: HexString }) {
+  updatePolicy(params: {
+    scId: HexString
+    strategist: HexString
+    /** The whitelisted set. The Merkle leaves are computed from this when `scriptHashes` is omitted. */
+    policy?: PolicyEntryInput[]
+    /** Pre-computed leaves. Pass `[]` to disable the strategist. Takes precedence over `policy`. */
+    scriptHashes?: HexString[]
+    refund?: HexString
+  }) {
     const self = this
     return this._transact(async function* (ctx) {
       const { hub } = await self._root._protocolAddresses(self.network.pool.centrifugeId)
+
+      let scriptHashes = params.scriptHashes
+      if (scriptHashes === undefined) {
+        if (!params.policy) throw new Error('updatePolicy requires either `policy` or `scriptHashes`')
+        const poolEscrowAddress = await firstValueFrom(self.network.pool._escrow())
+        scriptHashes = await computeWorkflowGroupScriptHashes({
+          centrifuge: self._root,
+          network: self.network,
+          policy: params.policy,
+          strategist: params.strategist,
+          scId: params.scId,
+          poolEscrowAddress,
+        })
+      }
 
       const { calldata } = await buildPolicyUpdate({
         hub,
@@ -288,7 +310,7 @@ export class OnchainPM extends Entity {
         centrifugeId: self.network.centrifugeId,
         onchainPM: self.address,
         strategist: params.strategist,
-        scriptHashes: params.scriptHashes,
+        scriptHashes,
         refund: params.refund,
       })
       yield* wrapTransaction('Update workflow policy', ctx, {
