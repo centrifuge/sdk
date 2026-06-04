@@ -1,7 +1,12 @@
 import { toFunctionSelector } from 'viem'
 import type { HexString } from '../types/index.js'
-import type { CatalogAction, CatalogActionInput, CatalogTemplate, MarketplaceWorkflow } from '../types/workflow.js'
-import { runtimeVariableName } from '../types/workflow.js'
+import type {
+  CatalogAction,
+  CatalogActionInput,
+  CatalogTemplate,
+  CatalogVariable,
+  MarketplaceWorkflow,
+} from '../types/workflow.js'
 import { MAGIC_VARIABLE_KEYS } from './variables.js'
 import { CALL, UNUSED_SLOT, VALUECALL } from './weiroll.js'
 import type { WeirollAction, WorkflowDefinition, WorkflowStateSlot } from './weiroll.js'
@@ -62,14 +67,6 @@ function fallbackLabel(label: string | undefined, key: string, parameter: string
   return label?.trim() || key || parameter
 }
 
-function configurableKey(actionIndex: number, inputIndex: number): string {
-  return `configurable:${actionIndex}:${inputIndex}`
-}
-
-function anonymousRuntimeKey(actionIndex: number, inputIndex: number): string {
-  return `runtime:${actionIndex}:${inputIndex}`
-}
-
 const RAW_CALLDATA_PARAMETER_SET = new Set<string>(['(address,uint256)[]', '(address,address)[]'])
 const VARIABLE_LENGTH_PARAMETER_SET = new Set<string>(['bytes'])
 const PAYABLE_VALUE_RUNTIME_KEY_PREFIX = '__sdk_payable_value:'
@@ -114,14 +111,7 @@ function applyUseTemplateMap(actions: CatalogAction[], variableMap: Record<strin
     target: mapTemplateReference(action.target, variableMap),
     inputs: action.inputs.map((input) => ({
       ...input,
-      // Callback templates are compiled into one pinned bytes slot. Empty configurable
-      // bytes inputs cannot be configured separately by the outer workflow, and the
-      // current callback use case is Morpho's no-op `bytes data = 0x`. Pin it as an empty
-      // bytes literal — encodeLiteralValue frames it as a single 32-byte zero word
-      // (length 0), satisfying weiroll's "non-zero multiple of 32 bytes" requirement.
-      ...(input.configurable && input.parameter === 'bytes' && (input.input ?? []).length === 0
-        ? { configurable: false, input: ['0x'] }
-        : { input: (input.input ?? []).map((value) => mapTemplateReference(value, variableMap)) }),
+      input: (input.input ?? []).map((value) => mapTemplateReference(value, variableMap)),
     })),
   }))
 }
@@ -233,41 +223,11 @@ export function buildWorkflowDefinitionFromCatalog(
   }
   const computedRuntimeKeys = new Set([...computedVarSet].map(stripVariablePrefix))
 
-  const declaredRuntimeKeys = (workflow.runtimeVariables ?? []).map(stripVariablePrefix)
-  const bareRuntimeInputs = workflow.actions.flatMap((action, actionIndex) =>
-    action.inputs.flatMap((inp, inputIndex) =>
-      !inp.configurable && !inp.useTemplate && (inp.input ?? []).length === 0 ? [{ actionIndex, inputIndex }] : []
-    )
-  )
-  const bareRuntimeKeyByInput = new Map<string, string>()
-
-  if (bareRuntimeInputs.length > 0) {
-    if (declaredRuntimeKeys.length > 0 && declaredRuntimeKeys.length !== bareRuntimeInputs.length) {
-      throw new Error(
-        `buildWorkflowDefinitionFromCatalog: workflow "${workflow.workflowRef}" declares ${declaredRuntimeKeys.length} runtimeVariables for ${bareRuntimeInputs.length} empty non-configurable inputs`
-      )
-    }
-
-    bareRuntimeInputs.forEach(({ actionIndex, inputIndex }, idx) => {
-      const key = declaredRuntimeKeys[idx] ?? anonymousRuntimeKey(actionIndex, inputIndex)
-      if (MAGIC_KEY_SET.has(`$${key}`)) {
-        throw new Error(
-          `buildWorkflowDefinitionFromCatalog: workflow "${workflow.workflowRef}" runtime variable "${key}" collides with a magic variable`
-        )
-      }
-      if (workflow.variables[key] !== undefined) {
-        throw new Error(
-          `buildWorkflowDefinitionFromCatalog: workflow "${workflow.workflowRef}" runtime variable "${key}" collides with a workflow variable`
-        )
-      }
-      if (computedRuntimeKeys.has(key)) {
-        throw new Error(
-          `buildWorkflowDefinitionFromCatalog: workflow "${workflow.workflowRef}" runtime variable "${key}" collides with an action return`
-        )
-      }
-      bareRuntimeKeyByInput.set(`${actionIndex}:${inputIndex}`, key)
-    })
-  }
+  // Tagged variable kinds (explicit-input-kinds format): every $variable an input references
+  // is declared with a kind. pinned values come in via workflow.variables; configurable/runtime
+  // are classified from the kind here. Magic and `returns` names are implicit (not declared).
+  const kindByName = new Map<string, CatalogVariable['kind']>()
+  for (const v of templates[workflow.template]?.variables ?? []) kindByName.set(v.name, v.kind)
 
   const slotMap = new Map<string, number>()
   const stateSlots: WorkflowStateSlot[] = []
@@ -303,27 +263,34 @@ export function buildWorkflowDefinitionFromCatalog(
     let slot: WorkflowStateSlot
 
     if (raw.startsWith('$')) {
+      const key = stripVariablePrefix(raw)
+      const kind = kindByName.get(key)
       if (MAGIC_KEY_SET.has(raw)) {
         canonical = `magic:${raw}`
         slot = { type: 'magic', key: raw }
+      } else if (workflow.variables[key] !== undefined) {
+        // pinned: value provided per-workflow, baked in at whitelist time.
+        const encoded = encodeLiteralValue(workflow.variables[key]!, parameter)
+        canonical = `literal:${encoded}`
+        slot = { type: 'literal', value: encoded }
+      } else if (kind === 'pinned') {
+        throw new Error(
+          `buildWorkflowDefinitionFromCatalog: workflow "${workflow.workflowRef}" pinned variable "${key}" has no value in workflow.variables`
+        )
+      } else if (kind === 'configurable') {
+        // hub-manager-set at policy creation; one slot per configurable variable (keyed by name).
+        canonical = `configurable:${key}`
+        slot = { type: 'configurable', key, label: fallbackLabel(label, key, parameter), parameter, ...metadata }
       } else {
-        const resolved = workflow.variables[raw.slice(1)]
-        if (resolved !== undefined) {
-          const encoded = encodeLiteralValue(resolved, parameter)
-          canonical = `literal:${encoded}`
-          slot = { type: 'literal', value: encoded }
-        } else {
-          // computed (weiroll writes it) or user-supplied — both are runtime slots;
-          // the distinction lives in runtimeVariables, not in the slot type
-          const key = stripVariablePrefix(raw)
-          canonical = `runtime:${key}`
-          slot = {
-            type: 'runtime',
-            key,
-            label: fallbackLabel(label, key, parameter),
-            parameter,
-            ...metadata,
-          }
+        // kind === 'runtime' (strategist) or a computed `returns` (written by the VM). Both are
+        // runtime slots; computed ones are excluded from the user-facing runtimeVariables below.
+        canonical = `runtime:${key}`
+        slot = {
+          type: 'runtime',
+          key,
+          label: fallbackLabel(label, key, parameter),
+          parameter,
+          ...metadata,
         }
       }
     } else {
@@ -401,11 +368,6 @@ export function buildWorkflowDefinitionFromCatalog(
             `buildWorkflowDefinitionFromCatalog: workflow "${workflow.workflowRef}" action ${actionIndex} input ${inputIndex} uses useTemplate on non-bytes parameter "${inp.parameter}"`
           )
         }
-        if (inp.configurable) {
-          throw new Error(
-            `buildWorkflowDefinitionFromCatalog: workflow "${workflow.workflowRef}" action ${actionIndex} input ${inputIndex} cannot be both useTemplate and configurable`
-          )
-        }
         if (values.length !== 0) {
           throw new Error(
             `buildWorkflowDefinitionFromCatalog: workflow "${workflow.workflowRef}" action ${actionIndex} input ${inputIndex} uses useTemplate and must use an empty input array`
@@ -428,7 +390,7 @@ export function buildWorkflowDefinitionFromCatalog(
           workflowId: '',
           templates,
           actions: applyUseTemplateMap(template.actions, inp.useTemplate.map ?? {}),
-          runtimeVariables: (template.runtimeVariables ?? []).map(runtimeVariableName),
+          runtimeVariables: (template.variables ?? []).filter((v) => v.kind === 'runtime').map((v) => v.name),
         }
         const templateDefinition = buildWorkflowDefinitionFromCatalog(templateWorkflow, { templates })
         return getOrAddSlot(`template:${actionIndex}:${inputIndex}:${templateName}`, {
@@ -438,38 +400,12 @@ export function buildWorkflowDefinitionFromCatalog(
           ...slotMetadata,
         })
       }
-      if (inp.configurable) {
-        if (values.length !== 0) {
-          throw new Error(
-            `buildWorkflowDefinitionFromCatalog: workflow "${workflow.workflowRef}" action ${actionIndex} input ${inputIndex} is configurable and must use an empty input array`
-          )
-        }
-
-        const key = configurableKey(actionIndex, inputIndex)
-        return getOrAddSlot(`configurable:${key}`, {
-          type: 'configurable',
-          key,
-          label: fallbackLabel(inp.label, key, inp.parameter),
-          parameter: inp.parameter,
-          ...slotMetadata,
-        })
-      }
-
       if (values.length === 0) {
-        const runtimeKey = bareRuntimeKeyByInput.get(`${actionIndex}:${inputIndex}`)
-        if (!runtimeKey) {
-          throw new Error(
-            `buildWorkflowDefinitionFromCatalog: workflow "${workflow.workflowRef}" action ${actionIndex} input ${inputIndex} has no value and is not configurable`
-          )
-        }
-        return getOrAddSlot(`runtime:${runtimeKey}`, {
-          type: 'runtime',
-          key: runtimeKey,
-          label: fallbackLabel(inp.label, runtimeKey, inp.parameter),
-          parameter: inp.parameter,
-          ...slotMetadata,
-          ...(declaredRuntimeKeys.length === 0 ? { anonymous: true } : {}),
-        })
+        // No anonymous/empty slots in the tagged format — a value is a $variable or a literal,
+        // and a strategist value is a declared `runtime` variable. Empty is only for useTemplate.
+        throw new Error(
+          `buildWorkflowDefinitionFromCatalog: workflow "${workflow.workflowRef}" action ${actionIndex} input ${inputIndex} has an empty input — reference a $variable or literal (useTemplate is the only empty case)`
+        )
       }
 
       if (values.length > 1) {

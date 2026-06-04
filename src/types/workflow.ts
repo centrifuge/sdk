@@ -59,8 +59,8 @@ export interface InputDefinition {
 export interface CatalogActionInput {
   parameter: string
   label?: string
+  /** Each element is a `$variable` reference or an inline literal. Empty only with useTemplate. */
   input: string[]
-  configurable?: boolean
   useTemplate?: {
     template: string
     map?: Record<string, string>
@@ -94,10 +94,27 @@ export function runtimeVariableName(variable: RuntimeVariable): string {
   return typeof variable === 'string' ? variable : variable.name
 }
 
+/**
+ * A declared template variable (explicit-input-kinds tagged format). Every action input
+ * references a `$variable` (or inline literal); the variable carries its trust `kind`:
+ *  - `pinned`       — value fixed at generation time, provided per-workflow (addresses, ids)
+ *  - `configurable` — value set by the hub manager at policy creation, immutable after
+ *  - `param`        — bound by a caller's use.map (use-only templates; resolved away when inlined)
+ *  - `runtime`      — supplied by the strategist per execution (adversarial)
+ * `token`/`source` are runtime-only UI hints. Magic ($onchainPM, $poolId, …) and `returns`
+ * names are implicit and not declared here.
+ */
+export interface CatalogVariable {
+  name: string
+  kind: 'pinned' | 'configurable' | 'param' | 'runtime'
+  token?: string
+  source?: string
+}
+
 /** A reusable action template from the marketplace catalog. */
 export interface CatalogTemplate {
   actions: CatalogAction[]
-  runtimeVariables?: RuntimeVariable[]
+  variables?: CatalogVariable[]
   id?: string
 }
 

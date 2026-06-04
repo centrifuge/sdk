@@ -55,7 +55,7 @@ import type {
 import { PoolMetadataInput } from './types/poolInput.js'
 import { PoolMetadata } from './types/poolMetadata.js'
 import type { CentrifugeQueryOptions, Query } from './types/query.js'
-import type { CatalogAction, MarketplaceWorkflow, RuntimeVariable } from './types/workflow.js'
+import type { CatalogAction, CatalogTemplate, MarketplaceWorkflow, RuntimeVariable } from './types/workflow.js'
 import { runtimeVariableName } from './types/workflow.js'
 import {
   emptyMessage,
@@ -1061,19 +1061,16 @@ export class Centrifuge {
         const res = await fetch(url)
         if (!res.ok) throw new Error(`workflowMarketplace: IPFS fetch failed — ${res.status} ${res.statusText}`)
         const catalog = await res.json()
-        const templates: Record<string, { actions: CatalogAction[]; runtimeVariables?: RuntimeVariable[] }> =
-          catalog.templates ?? {}
+        const templates: Record<string, CatalogTemplate> = catalog.templates ?? {}
         const rawWorkflows: unknown[] = Array.isArray(catalog) ? catalog : (catalog.workflows ?? [])
         return rawWorkflows
           .filter((w: any) => !w.useTemplate)
           .map((w: any): MarketplaceWorkflow => {
-            // runtimeVariables may be the legacy `string[]` or the object form
-            // `{ name, token?, source? }[]` (centrifuge/workflows #84). Keep the full
-            // entries for the UI, and a normalized name list for everything else.
-            const runtimeVariableEntries: RuntimeVariable[] =
-              (Array.isArray(w.runtimeVariables) ? w.runtimeVariables : undefined) ??
-              templates[w.template]?.runtimeVariables ??
-              []
+            // Runtime inputs are the template's `kind: runtime` variables (explicit-input-kinds
+            // tagged format), carrying the optional token/source UI links.
+            const runtimeVariableEntries: RuntimeVariable[] = (templates[w.template]?.variables ?? [])
+              .filter((v) => v.kind === 'runtime')
+              .map((v) => ({ name: v.name, ...(v.token ? { token: v.token } : {}), ...(v.source ? { source: v.source } : {}) }))
             return {
               workflowRef: w.id ?? w.workflowRef,
               name: w.name,
