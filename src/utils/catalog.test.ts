@@ -303,10 +303,12 @@ describe('utils/catalog', () => {
     expect(definition.state.every((s) => s.type !== 'rawcalldata')).to.equal(true)
   })
 
-  it('still uses FLAG_RAW for runtime bytes parameters', () => {
-    // A bytes input with input: [] (runtime, non-configurable) must still
-    // produce a rawcalldata blob — FLAG_RAW behaviour is preserved for the
-    // case where the bytes value is not known at build time.
+  it('encodes runtime bytes via the 0x80 variable-length specifier, not FLAG_RAW (selector pinned)', () => {
+    // A runtime (input: [], non-configurable) bytes argument must NOT use FLAG_RAW: the weiroll
+    // VM's 0x80 variable-length input specifier splices the runtime bytes in while the call's
+    // selector stays in the (hashed) command word — so the strategist can vary only the argument
+    // value, never the function. Routing runtime bytes to FLAG_RAW handed them the whole calldata
+    // blob (selector included) — audit #18 / SECURITY.md §11.
     const workflow: MarketplaceWorkflow = {
       workflowRef: 'runtime-bytes',
       name: 'Runtime bytes',
@@ -330,8 +332,38 @@ describe('utils/catalog', () => {
 
     const definition = buildWorkflowDefinitionFromCatalog(workflow)
 
+    expect(definition.actions[0]!.rawMode).to.equal(undefined)
+    // slot 0 = runtime amount (plain index), slot 1 = runtime payload bytes (0x80 dynamic specifier)
+    expect(definition.actions[0]!.inputs).to.deep.equal([0, 0x80 | 1])
+    expect(definition.state.every((s) => s.type !== 'rawcalldata')).to.equal(true)
+    expect(definition.state[1]).to.deep.include({ type: 'runtime', parameter: 'bytes' })
+  })
+
+  it('uses FLAG_RAW only for non-variable-length dynamic types (e.g. tuple arrays)', () => {
+    // Tuple arrays can't be spliced per-input by the 0x80 specifier, so they still need raw
+    // calldata assembly. Their source values are pinned/configurable (baked at whitelist time),
+    // so the selector remains fixed in the hashed blob — no strategist selector control.
+    const workflow: MarketplaceWorkflow = {
+      workflowRef: 'tuple-array',
+      name: 'Tuple array',
+      template: 'tuple-array',
+      chainId: 1,
+      variables: { target: ADDRESS_A },
+      workflowId: '0x01',
+      version: 1,
+      runtimeVariables: [],
+      actions: [
+        {
+          target: '$target',
+          selector: 'function checkZeroAllowances((address,address)[])',
+          inputs: [{ parameter: '(address,address)[]', label: 'Pairs', input: [], configurable: true }],
+        },
+      ],
+    }
+
+    const definition = buildWorkflowDefinitionFromCatalog(workflow)
+
     expect(definition.actions[0]!.rawMode).to.equal(true)
-    // The action's single input points at the rawcalldata blob slot.
     const blobSlotIndex = definition.actions[0]!.inputs[0]
     expect(definition.state[blobSlotIndex!]).to.deep.include({ type: 'rawcalldata' })
   })

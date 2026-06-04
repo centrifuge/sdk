@@ -350,16 +350,14 @@ export function buildWorkflowDefinitionFromCatalog(
     const hasDynamicInput = action.inputs.some((input) => {
       if (!isDynamicAbiParameter(input.parameter)) return false
       if (input.useTemplate) return false
-      // Tuple arrays and similar non-variable-length dynamic types always need
-      // raw calldata assembly regardless of how their value is supplied.
-      if (!isVariableLengthParameter(input.parameter)) return true
-      // bytes/string: skip FLAG_RAW when the value is pinned at build time.
-      if (input.configurable) return false // configurable: locked in its own bit-1 slot
-      const values = input.input ?? []
-      // Declared variable or inline literal: value is a literal slot (bit-1).
-      if (values.length > 0 && values.every((v) => !computedVarSet.has(v))) return false
-      // Runtime (empty, non-configurable) or computed return: FLAG_RAW still applies.
-      return true
+      // Variable-length parameters (`bytes`/`string`) are ALWAYS encoded via the weiroll VM's
+      // 0x80 variable-length input specifier — for every source (literal, configurable, computed
+      // return, AND runtime). That path keeps the call's 4-byte selector in the (hashed) command
+      // word, so the strategist can vary only the argument value, never the function. Only
+      // non-variable-length dynamic types (e.g. tuple arrays) can't be spliced per-input and need
+      // FLAG_RAW assembly. Routing runtime `bytes` to FLAG_RAW (as before) handed the strategist
+      // the whole calldata blob including the selector — see audit #18 / SECURITY.md §11.
+      return !isVariableLengthParameter(input.parameter)
     })
     const hasComputedDynamicInput = action.inputs.some(
       (input) =>
