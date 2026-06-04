@@ -1,4 +1,4 @@
-import { catchError, combineLatest, defer, map, of, switchMap, timeout } from 'rxjs'
+import { catchError, combineLatest, defer, firstValueFrom, map, of, switchMap, timeout } from 'rxjs'
 import { encodeFunctionData, fromHex, parseAbi, toHex } from 'viem'
 import { ABI } from '../abi/index.js'
 import type { Centrifuge } from '../Centrifuge.js'
@@ -16,6 +16,8 @@ import { addressToBytes32, generateShareClassSalt } from '../utils/index.js'
 import { repeatOnEvents } from '../utils/rx.js'
 import { wrapTransaction } from '../utils/transaction.js'
 import { AssetId, CentrifugeId, PoolId, ShareClassId } from '../utils/types.js'
+import type { MarketplaceWorkflow } from '../types/workflow.js'
+import type { PolicyEntryInput } from '../utils/workflowExecute.js'
 import { Entity } from './Entity.js'
 import { PoolNetwork } from './PoolNetwork.js'
 import { PoolReports } from './Reports/PoolReports.js'
@@ -299,6 +301,122 @@ export class Pool extends Entity {
         })
       )
     })
+  }
+
+  /**
+   * Resolve a strategist's whitelisted workflows (pool policy metadata joined with the
+   * marketplace catalog), grouped per chain. Chain is derived from each workflow's catalog
+   * `chainId`. Each group carries the full `policy` (the Merkle proof tree for that chain).
+   * @internal
+   */
+  async _resolveStrategistWorkflows(strategist: HexString): Promise<
+    { centrifugeId: number; network: PoolNetwork; policy: PolicyEntryInput[] }[]
+  > {
+    const meta = await firstValueFrom(this.metadata())
+    const group = (meta?.workflowPolicies ?? []).find(
+      (policy) => policy.strategistAddress.toLowerCase() === strategist.toLowerCase()
+    )
+    if (!group) return []
+
+    const catalog = await firstValueFrom(this._root.workflowMarketplace())
+    const byRef = new Map<string, MarketplaceWorkflow>(catalog.map((w) => [w.workflowRef, w]))
+    const networks = await firstValueFrom(this.activeNetworks())
+
+    const byChain = new Map<number, { centrifugeId: number; network: PoolNetwork; policy: PolicyEntryInput[] }>()
+    const idCache = new Map<number, number>()
+    for (const entry of group.workflows) {
+      const workflow = byRef.get(entry.workflowRef)
+      if (!workflow) continue
+      let centrifugeId = idCache.get(workflow.chainId)
+      if (centrifugeId == null) {
+        centrifugeId = await firstValueFrom(this._root.id(workflow.chainId))
+        idCache.set(workflow.chainId, centrifugeId)
+      }
+      const network = networks.find((n) => n.centrifugeId === centrifugeId)
+      if (!network) continue
+      let bucket = byChain.get(centrifugeId)
+      if (!bucket) {
+        bucket = { centrifugeId, network, policy: [] }
+        byChain.set(centrifugeId, bucket)
+      }
+      bucket.policy.push({
+        workflow,
+        configurableValues: (entry.configurableValues ?? {}) as Record<string, HexString>,
+        excludedActions: entry.excludedActions ?? [],
+      })
+    }
+    return [...byChain.values()]
+  }
+
+  /** List the workflows whitelisted for a strategist, across chains. */
+  async listWorkflows(opts: { strategist: HexString }): Promise<
+    { workflowRef: string; name: string; group?: string; chainId: number; centrifugeId: number; runtimeVariables: string[] }[]
+  > {
+    const groups = await this._resolveStrategistWorkflows(opts.strategist)
+    return groups.flatMap((g) =>
+      g.policy.map((entry) => ({
+        workflowRef: entry.workflow.workflowRef,
+        name: entry.workflow.name,
+        group: entry.workflow.group,
+        chainId: entry.workflow.chainId,
+        centrifugeId: g.centrifugeId,
+        runtimeVariables: entry.workflow.runtimeVariables ?? [],
+      }))
+    )
+  }
+
+  /**
+   * Run one whitelisted workflow by `workflowRef`. Resolves the chain + OnchainPM and the
+   * proof tree from the strategist's policy, then submits via the OnchainPM. Awaiting the
+   * returned promise executes the transaction (or simulates it when `simulate` is set).
+   */
+  async executeWorkflow(
+    input: {
+      strategist: HexString
+      workflowRef: string
+      runtimeValues?: Record<string, HexString>
+      scId?: HexString
+    },
+    options: { simulate?: boolean } = {}
+  ) {
+    const groups = await this._resolveStrategistWorkflows(input.strategist)
+    for (const g of groups) {
+      const run = g.policy.findIndex((entry) => entry.workflow.workflowRef === input.workflowRef)
+      if (run < 0) continue
+      const onchainPM = await firstValueFrom(g.network.onchainPM())
+      if (!onchainPM) throw new Error(`OnchainPM is not deployed for workflow "${input.workflowRef}"`)
+      return onchainPM.executeWorkflow(
+        { policy: g.policy, run, strategist: input.strategist, scId: input.scId, runtimeValues: input.runtimeValues },
+        options
+      )
+    }
+    throw new Error(`Workflow "${input.workflowRef}" is not whitelisted for strategist ${input.strategist}`)
+  }
+
+  /**
+   * Plan an accounting update: every `account`-group workflow whitelisted for the strategist,
+   * grouped per chain. Returns one handle per chain whose `execute()`/`simulate()` build and
+   * submit that chain's atomic multicall. Multi-chain pools yield multiple handles.
+   */
+  async planAccountingUpdate(opts: { strategist: HexString }): Promise<
+    { centrifugeId: number; workflowRefs: string[]; execute: () => unknown; simulate: () => unknown }[]
+  > {
+    const groups = await this._resolveStrategistWorkflows(opts.strategist)
+    const plans: { centrifugeId: number; workflowRefs: string[]; execute: () => unknown; simulate: () => unknown }[] = []
+    for (const g of groups) {
+      const run = g.policy.flatMap((entry, index) => (entry.workflow.group === 'account' ? [index] : []))
+      if (run.length === 0) continue
+      const onchainPM = await firstValueFrom(g.network.onchainPM())
+      if (!onchainPM) continue
+      const batch = { policy: g.policy, run, strategist: opts.strategist }
+      plans.push({
+        centrifugeId: g.centrifugeId,
+        workflowRefs: run.map((index) => g.policy[index]!.workflow.workflowRef),
+        execute: () => onchainPM.executeAccountingBatch(batch),
+        simulate: () => onchainPM.executeAccountingBatch(batch, { simulate: true }),
+      })
+    }
+    return plans
   }
 
   /**
