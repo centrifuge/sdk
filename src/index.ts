@@ -96,3 +96,18 @@ export type { Callback } from './utils/scriptHash.js'
 export { MAGIC_VARIABLE_KEYS, resolveMagicVariables, resolveVariableLabel } from './utils/variables.js'
 export type { MagicVariableContext, MagicVariableKey } from './utils/variables.js'
 export { buildWorkflowDefinitionFromCatalog } from './utils/catalog.js'
+export {
+  applyWorkflowExclusions,
+  buildPreparedWorkflowDefinition,
+  buildWorkflowExecuteParams,
+  buildWorkflowScriptBase,
+  computeWorkflowGroupScriptHashes,
+  computeWorkflowScriptHash,
+  encodeConfigurableValue,
+  encodeWorkflowInputValue,
+  estimateWorkflowExecutionValue,
+  isWorkflowInputOptional,
+  resolveWorkflowPoolContext,
+  resolveWorkflowShareClassId,
+} from './utils/workflowExecute.js'
+export type { PolicyEntryInput } from './utils/workflowExecute.js'

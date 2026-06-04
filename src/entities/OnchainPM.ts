@@ -1,11 +1,12 @@
 import type { SimpleMerkleTree } from '@openzeppelin/merkle-tree'
-import { combineLatest, from, map, switchMap } from 'rxjs'
+import { combineLatest, firstValueFrom, from, map, switchMap } from 'rxjs'
 import { encodeFunctionData, parseAbi, toHex } from 'viem'
 import { ABI } from '../abi/index.js'
 import type { Centrifuge } from '../Centrifuge.js'
 import type { HexString } from '../types/index.js'
 import { addressToBytes32, encode } from '../utils/index.js'
 import type { Callback } from '../utils/scriptHash.js'
+import { buildWorkflowExecuteParams, type PolicyEntryInput } from '../utils/workflowExecute.js'
 import { wrapTransaction } from '../utils/transaction.js'
 import { MessageType } from '../types/transaction.js'
 import { Entity } from './Entity.js'
@@ -127,7 +128,7 @@ export class OnchainPM extends Entity {
    * ])
    * ```
    */
-  executeAccountingBatch(
+  executeRawBatch(
     items: {
       commands: HexString[]
       state: HexString[]
@@ -157,6 +158,106 @@ export class OnchainPM extends Entity {
             args: [calls],
           }),
           value: options.value,
+        },
+        { simulate: options.simulate ?? false }
+      )
+    }, this.network.centrifugeId)
+  }
+
+  /**
+   * Build and run several whitelisted workflows in one atomic `multicall` — the accounting
+   * update. The SDK builds each `run` entry's script/proof from `policy` (the strategist's
+   * full whitelisted set on this chain, which defines the Merkle proof tree), derives the
+   * pool escrow, and sums the native value. Permission preflights are the caller's concern;
+   * a reverted workflow surfaces via `simulate`.
+   */
+  executeAccountingBatch(
+    input: {
+      policy: PolicyEntryInput[]
+      run: number[]
+      runtimeValues?: Record<number, Record<string, HexString>>
+      strategist: HexString
+      scId?: HexString
+    },
+    options: { simulate?: boolean } = {}
+  ) {
+    const self = this
+    return this._transact(async function* (ctx) {
+      const poolEscrowAddress = await firstValueFrom(self.network.pool._escrow())
+      const built = await Promise.all(
+        input.run.map((index) =>
+          buildWorkflowExecuteParams({
+            centrifuge: self._root,
+            network: self.network,
+            entry: input.policy[index]!,
+            policy: input.policy,
+            strategist: input.strategist,
+            scId: input.scId,
+            poolEscrowAddress,
+            runtimeValues: input.runtimeValues?.[index],
+          })
+        )
+      )
+      const calls = built.map((p) =>
+        encodeFunctionData({
+          abi: ABI.OnchainPM,
+          functionName: 'execute',
+          args: [p.commands, p.state, p.stateBitmap, p.callbacks, p.proof],
+        })
+      )
+      const value = built.reduce((sum, p) => sum + p.value, 0n)
+      yield* wrapTransaction(
+        'Accounting update',
+        ctx,
+        {
+          contract: self.address,
+          data: encodeFunctionData({ abi: ABI.OnchainPM, functionName: 'multicall', args: [calls] }),
+          value,
+        },
+        { simulate: options.simulate ?? false }
+      )
+    }, this.network.centrifugeId)
+  }
+
+  /**
+   * Build and run a single whitelisted workflow. `policy` is the strategist's full
+   * whitelisted set on this chain (needed for the proof tree); `run` indexes the entry to
+   * execute. `runtimeValues` are the strategist's per-execution inputs (encoded).
+   */
+  executeWorkflow(
+    input: {
+      policy: PolicyEntryInput[]
+      run: number
+      runtimeValues?: Record<string, HexString>
+      strategist: HexString
+      scId?: HexString
+    },
+    options: { simulate?: boolean } = {}
+  ) {
+    const self = this
+    return this._transact(async function* (ctx) {
+      const poolEscrowAddress = await firstValueFrom(self.network.pool._escrow())
+      const p = await buildWorkflowExecuteParams({
+        centrifuge: self._root,
+        network: self.network,
+        entry: input.policy[input.run]!,
+        policy: input.policy,
+        strategist: input.strategist,
+        scId: input.scId,
+        poolEscrowAddress,
+        runtimeValues: input.runtimeValues,
+      })
+      yield* wrapTransaction(
+        'Execute workflow',
+        ctx,
+        {
+          contract: self.address,
+          data: encodeFunctionData({
+            abi: ABI.OnchainPM,
+            functionName: 'execute',
+            args: [p.commands, p.state, p.stateBitmap, p.callbacks, p.proof],
+          }),
+          value: p.value,
         },
         { simulate: options.simulate ?? false }
       )
