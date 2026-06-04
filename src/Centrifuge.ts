@@ -55,6 +55,8 @@ import type {
 import { PoolMetadataInput } from './types/poolInput.js'
 import { PoolMetadata } from './types/poolMetadata.js'
 import type { CentrifugeQueryOptions, Query } from './types/query.js'
+import type { CatalogAction, CatalogTemplate, MarketplaceWorkflow, RuntimeVariable } from './types/workflow.js'
+import { runtimeVariableName } from './types/workflow.js'
 import {
   emptyMessage,
   MessageType,
@@ -81,6 +83,29 @@ import {
 import { AssetId, CentrifugeId, PoolId, ShareClassId } from './utils/types.js'
 
 const PINNING_API_DEMO = 'https://europe-central2-peak-vista-185616.cloudfunctions.net/pinning-api-demo'
+
+// Update when centrifuge/workflows cuts a new release.
+// CIDs are in the GitHub release notes: https://github.com/centrifuge/workflows/releases
+const WORKFLOW_MARKETPLACE_CID: Record<string, string> = {
+  mainnet: 'QmQp1KEDPGpKQ7tVzqq92sAJ61tjfSi58FHCTjCEnvePQ7',
+  testnet: 'bafybeieomozw5bmwpgasa66czt3npcwol6fe3hw2esavfwtntyyjvfsnma',
+}
+
+// Temporary testnet shim until the indexer exposes Deployment.onchainPMFactory.
+const TESTNET_ONCHAIN_PM_FACTORY_BY_CENTRIFUGE_ID: Record<number, HexString> = {
+  1: '0xF3c808e6D7C25B19c97a9597CaAcFB8Ba780a580',
+  2: '0xF3c808e6D7C25B19c97a9597CaAcFB8Ba780a580',
+  3: '0xF3c808e6D7C25B19c97a9597CaAcFB8Ba780a580',
+  9: '0xF3c808e6D7C25B19c97a9597CaAcFB8Ba780a580',
+}
+
+// Temporary testnet shim until the indexer exposes Deployment.accountingToken.
+const TESTNET_ACCOUNTING_TOKEN_BY_CENTRIFUGE_ID: Record<number, HexString> = {
+  1: '0x5ba3f068cefa1e84adafcb7191bf4c02c3b724f8',
+  2: '0x5ba3f068cefa1e84adafcb7191bf4c02c3b724f8',
+  3: '0x5ba3f068cefa1e84adafcb7191bf4c02c3b724f8',
+  9: '0x5ba3f068cefa1e84adafcb7191bf4c02c3b724f8',
+}
 
 const envConfig = {
   mainnet: {
@@ -1011,6 +1036,64 @@ export class Centrifuge {
     )
   }
 
+  /**
+   * Fetches the centrifuge/workflows marketplace catalog from IPFS and returns
+   * all non-callback workflows for the current environment.
+   *
+   * Uses the SDK's configured `ipfsUrl` gateway. Falls back to a hardcoded
+   * default CID per environment when none is provided — pass an explicit `cid`
+   * to pin to a specific release without bumping the SDK (e.g. from an env var).
+   *
+   * Callback workflows (`useTemplate` present) are filtered out automatically.
+   */
+  workflowMarketplace(cid?: string): Query<MarketplaceWorkflow[]> {
+    const resolvedCid = cid ?? WORKFLOW_MARKETPLACE_CID[this.#config.environment] ?? ''
+    if (!resolvedCid) {
+      throw new Error(
+        `workflowMarketplace: no CID configured for environment "${this.#config.environment}". ` +
+          `Pass a CID explicitly or update WORKFLOW_MARKETPLACE_CID in Centrifuge.ts.`
+      )
+    }
+    return this._query(['workflowMarketplace', resolvedCid], () =>
+      defer(async () => {
+        const url = getUrlFromHash(resolvedCid, this.#config.ipfsUrl)
+        if (!url) throw new Error(`workflowMarketplace: invalid CID "${resolvedCid}"`)
+        const res = await fetch(url)
+        if (!res.ok) throw new Error(`workflowMarketplace: IPFS fetch failed — ${res.status} ${res.statusText}`)
+        const catalog = await res.json()
+        const templates: Record<string, CatalogTemplate> = catalog.templates ?? {}
+        const rawWorkflows: unknown[] = Array.isArray(catalog) ? catalog : (catalog.workflows ?? [])
+        return rawWorkflows
+          .filter((w: any) => !w.useTemplate)
+          .map((w: any): MarketplaceWorkflow => {
+            // Runtime inputs are the template's `kind: runtime` variables (explicit-input-kinds
+            // tagged format), carrying the optional token/source UI links.
+            const runtimeVariableEntries: RuntimeVariable[] = (templates[w.template]?.variables ?? [])
+              .filter((v) => v.kind === 'runtime')
+              .map((v) => ({ name: v.name, ...(v.token ? { token: v.token } : {}), ...(v.source ? { source: v.source } : {}) }))
+            return {
+              workflowRef: w.id ?? w.workflowRef,
+              name: w.name,
+              template: w.template,
+              category: w.category,
+              group: w.group,
+              chainId: w.chainId,
+              iconUrl: w.icon ?? w.iconUrl,
+              variables: w.variables ?? {},
+              workflowId: w.workflowId ? (w.workflowId.startsWith('0x') ? w.workflowId : `0x${w.workflowId}`) : '',
+              version: w.version,
+              workspace: w.workspace,
+              useTemplate: w.useTemplate,
+              templates,
+              actions: templates[w.template]?.actions ?? [],
+              runtimeVariables: runtimeVariableEntries.map(runtimeVariableName),
+              runtimeVariableEntries,
+            }
+          })
+      })
+    )
+  }
+
   #memoized = new Map<string, any>()
   #memoizeWith<T = any>(keys: any[], callback: () => T): T {
     const cacheKey = hashKey(keys)
@@ -1448,6 +1531,26 @@ export class Centrifuge {
             }
           }`
       ).pipe(
+        map((data) => {
+          if (this.#config.environment !== 'testnet') return data
+
+          return {
+            ...data,
+            deployments: {
+              ...data.deployments,
+              items: data.deployments.items.map((deployment) => {
+                const centrifugeId = Number(deployment.centrifugeId)
+                const onchainPMFactory = TESTNET_ONCHAIN_PM_FACTORY_BY_CENTRIFUGE_ID[centrifugeId]
+                const accountingToken = TESTNET_ACCOUNTING_TOKEN_BY_CENTRIFUGE_ID[centrifugeId]
+                return {
+                  ...deployment,
+                  ...(onchainPMFactory ? { onchainPMFactory } : {}),
+                  ...(accountingToken ? { accountingToken } : {}),
+                }
+              }),
+            },
+          }
+        }),
         map((data) => {
           // KNOWN_DEPLOYMENTS holds mainnet addresses only — mainnet and testnet
           // reuse the same centrifugeIds for different chains, so a single allowlist

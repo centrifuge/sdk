@@ -4,6 +4,8 @@ export { ABI } from './abi/index.js'
 export * from './entities/BalanceSheet.js'
 export * from './entities/Investor.js'
 export * from './entities/MerkleProofManager.js'
+export { OnchainPM, buildPolicyUpdate, generateExecuteProof } from './entities/OnchainPM.js'
+export type { PolicyUpdateRequest, PolicyUpdateResult } from './entities/OnchainPM.js'
 export * from './entities/OnOffRampManager.js'
 export * from './entities/Pool.js'
 export type {
@@ -31,9 +33,19 @@ export * from './entities/ShareClass.js'
 export * from './entities/Vault.js'
 export type { Client, Config, CurrencyDetails, HexString } from './types/index.js'
 export type { IssuerDetail, PoolMetadataInput, PoolReport, ShareClassInput } from './types/poolInput.js'
+export type {
+  ActionDefinition,
+  CatalogAction,
+  CatalogActionInput,
+  InputDefinition,
+  MarketplaceWorkflow,
+  RuntimeVariable,
+} from './types/workflow.js'
+export { runtimeVariableName } from './types/workflow.js'
 export * from './types/poolMetadata.js'
 export type { Query } from './types/query.js'
 export type {
+  DeployedOnchainPMStatus,
   EIP1193ProviderLike,
   OperationConfirmedStatus,
   OperationPendingStatus,
@@ -47,6 +59,7 @@ export type {
   Signer,
   Transaction,
 } from './types/transaction.js'
+export { MessageType, VaultUpdateKind } from './types/transaction.js'
 export { Balance, Perquintill, Price, Rate } from './utils/BigInt.js'
 export type { GroupBy } from './utils/date.js'
 export * from './utils/types.js'
@@ -60,3 +73,41 @@ export { Centrifuge }
 export default Centrifuge
 
 export { parseEventLogs } from './utils/transaction.js'
+export {
+  CALL,
+  STATICCALL,
+  VALUECALL,
+  FLAG_RAW,
+  UNUSED_SLOT,
+  encodeCommand,
+  buildScript,
+  fillRuntimeSlots,
+} from './utils/weiroll.js'
+export type {
+  WeirollCallType,
+  WeirollAction,
+  WorkflowStateSlot,
+  WorkflowDefinition,
+  PoolContext,
+  ScriptResult,
+} from './utils/weiroll.js'
+export { computeScriptHash } from './utils/scriptHash.js'
+export type { Callback } from './utils/scriptHash.js'
+export { MAGIC_VARIABLE_KEYS, resolveMagicVariables, resolveVariableLabel } from './utils/variables.js'
+export type { MagicVariableContext, MagicVariableKey } from './utils/variables.js'
+export { buildWorkflowDefinitionFromCatalog } from './utils/catalog.js'
+export {
+  applyWorkflowExclusions,
+  buildPreparedWorkflowDefinition,
+  buildWorkflowExecuteParams,
+  buildWorkflowScriptBase,
+  computeWorkflowGroupScriptHashes,
+  computeWorkflowScriptHash,
+  encodeConfigurableValue,
+  encodeWorkflowInputValue,
+  estimateWorkflowExecutionValue,
+  isWorkflowInputOptional,
+  resolveWorkflowPoolContext,
+  resolveWorkflowShareClassId,
+} from './utils/workflowExecute.js'
+export type { PolicyEntryInput } from './utils/workflowExecute.js'

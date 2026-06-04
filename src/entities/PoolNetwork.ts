@@ -1,5 +1,5 @@
 import { combineLatest, concat, defer, EMPTY, firstValueFrom, map, of, switchMap } from 'rxjs'
-import { encodeFunctionData, getContract, maxUint128 } from 'viem'
+import { encodeAbiParameters, encodeFunctionData, getContract, maxUint128 } from 'viem'
 import { ABI } from '../abi/index.js'
 import type { Centrifuge } from '../Centrifuge.js'
 import { NULL_ADDRESS, SAFE_PROXY_BYTECODE } from '../constants.js'
@@ -13,6 +13,7 @@ import { AssetId, CentrifugeId, ShareClassId } from '../utils/types.js'
 import { BalanceSheet } from './BalanceSheet.js'
 import { Entity } from './Entity.js'
 import { MerkleProofManager } from './MerkleProofManager.js'
+import { OnchainPM } from './OnchainPM.js'
 import { OnOffRampManager } from './OnOffRampManager.js'
 import type { Pool } from './Pool.js'
 import { ShareClass } from './ShareClass.js'
@@ -173,6 +174,161 @@ export class PoolNetwork extends Entity {
   }
 
   /**
+   * Returns the OnchainPM entity for this pool on this chain,
+   * or null if one has not been deployed yet.
+   *
+   * `OnchainPMFactory.getAddress(poolId)` is a pure CREATE2 calculation that
+   * always returns the predicted address regardless of deployment. We must
+   * additionally check that there's actually bytecode at that address before
+   * returning an entity — otherwise downstream calls revert with empty data.
+   */
+  onchainPM() {
+    return this._query(['onchainPM'], () =>
+      combineLatest([this._root._protocolAddresses(this.centrifugeId), this._root.getClient(this.centrifugeId)]).pipe(
+        switchMap(([{ onchainPMFactory }, client]) =>
+          defer(async () => {
+            const address = await client.readContract({
+              address: onchainPMFactory,
+              abi: ABI.OnchainPMFactory,
+              functionName: 'getAddress',
+              args: [this.pool.id.raw],
+            })
+            if (!address || address === NULL_ADDRESS) return null
+            const code = await client.getCode({ address })
+            if (!code || code === '0x') return null
+            return new OnchainPM(this._root, this, address)
+          })
+        )
+      )
+    )
+  }
+
+  /**
+   * Deploy an OnchainPM for this pool on this chain via OnchainPMFactory.
+   *
+   * Permissionless — anyone can call this. Idempotent: if one is already deployed
+   * the transaction is skipped and the existing address is yielded immediately.
+   *
+   * Emits `{ type: 'DeployedOnchainPM', address }` on completion.
+   */
+  deployOnchainPM() {
+    const self = this
+
+    return this._transact(async function* (ctx) {
+      const { onchainPMFactory } = await self._root._protocolAddresses(self.centrifugeId)
+
+      // factory.getAddress() is a pure CREATE2 calculation — it returns the predicted
+      // address whether or not the contract was actually deployed. We must also check
+      // there's code at that address before treating it as already-deployed.
+      const predictedAddress = (await ctx.publicClient.readContract({
+        address: onchainPMFactory,
+        abi: ABI.OnchainPMFactory,
+        functionName: 'getAddress',
+        args: [self.pool.id.raw],
+      })) as HexString
+
+      if (predictedAddress && predictedAddress !== NULL_ADDRESS) {
+        const code = await ctx.publicClient.getCode({ address: predictedAddress })
+        if (code && code !== '0x') {
+          yield { type: 'DeployedOnchainPM', address: predictedAddress } as const
+          return
+        }
+      }
+
+      const result = yield* doTransaction('Deploy onchain PM', ctx, () =>
+        ctx.walletClient.writeContract({
+          address: onchainPMFactory,
+          abi: ABI.OnchainPMFactory,
+          functionName: 'newOnchainPM',
+          args: [self.pool.id.raw],
+        })
+      )
+
+      const events = parseEventLogs({
+        logs: result.receipt.logs,
+        eventName: 'DeployOnchainPM',
+        address: onchainPMFactory,
+      })
+
+      const deployEvent = events[0]
+      const args = deployEvent?.args as { manager?: HexString } | undefined
+      if (!args?.manager) {
+        throw new Error('DeployOnchainPM event not found in transaction receipt')
+      }
+
+      yield { type: 'DeployedOnchainPM', address: args.manager } as const
+    }, self.centrifugeId)
+  }
+
+  /**
+   * Authorize a deployed OnchainPM for this pool. Registers it as a Balance
+   * Sheet Manager on the hub chain and, in the same batched transaction, grants
+   * it minter rights on the pool's accounting token (workflows that mint/burn
+   * accounting tokens need this).
+   *
+   * Both calls are batched into a single `Hub` transaction signed on the hub
+   * chain. The minter grant is routed `Hub.updateContract` → Spoke
+   * `contractUpdater` → `AccountingToken.trustedCall`, which decodes
+   * `abi.encode(bytes32 who, bool canMint)`.
+   *
+   * @param managerAddress - The deployed OnchainPM contract address
+   * @param scId - Share class used for the accounting-token `updateContract`
+   *   routing. The minter mapping is pool-wide, so any of the pool's share
+   *   classes works; defaults to the pool's first share class.
+   */
+  authorizeOnchainPM(managerAddress: HexString, scId?: HexString) {
+    const self = this
+    return this._transact(async function* (ctx) {
+      assertCrosschainMessagingEnabled(self.centrifugeId)
+
+      const { hub } = await self._root._protocolAddresses(self.pool.centrifugeId)
+      const { accountingToken } = await self._root._protocolAddresses(self.centrifugeId)
+
+      const resolvedScId = scId ?? (await firstValueFrom(self.pool.shareClasses()))[0]?.id.raw
+      if (!resolvedScId) {
+        throw new Error('No share class found for pool to route the accounting-token minter update')
+      }
+
+      // 1. Register the OnchainPM as a balance sheet manager.
+      const registerManagerCall = encodeFunctionData({
+        abi: ABI.Hub,
+        functionName: 'updateBalanceSheetManager',
+        args: [self.pool.id.raw, self.centrifugeId, addressToBytes32(managerAddress), true, ctx.signingAddress],
+      })
+
+      // 2. Grant the OnchainPM minter rights on the accounting token.
+      const minterPayload = encodeAbiParameters(
+        [{ type: 'bytes32' }, { type: 'bool' }],
+        [addressToBytes32(managerAddress), true]
+      )
+      const grantMinterCall = encodeFunctionData({
+        abi: ABI.Hub,
+        functionName: 'updateContract',
+        args: [
+          self.pool.id.raw,
+          resolvedScId,
+          self.centrifugeId,
+          addressToBytes32(accountingToken),
+          minterPayload,
+          0n,
+          ctx.signingAddress,
+        ],
+      })
+
+      yield* wrapTransaction('Authorize onchain PM', ctx, {
+        contract: hub,
+        data: [registerManagerCall, grantMinterCall],
+        messages: {
+          [self.centrifugeId]: [
+            { type: MessageType.UpdateBalanceSheetManager, poolId: self.pool.id },
+            { type: MessageType.TrustedContractUpdate, poolId: self.pool.id },
+          ],
+        },
+      })
+    }, this.pool.centrifugeId)
+  }
+
+  /**
    * Compute the deterministic address for a Merkle Proof Manager before deployment.
    * @returns The predicted contract address
    */
@@ -273,19 +429,14 @@ export class PoolNetwork extends Entity {
    */
   onOfframpManager(scId: ShareClassId) {
     return this._query(null, () =>
-      combineLatest([
-        this._deployedOnOffRampManagers(scId),
-        this.pool.balanceSheetManagers(),
-      ]).pipe(
+      combineLatest([this._deployedOnOffRampManagers(scId), this.pool.balanceSheetManagers()]).pipe(
         map(([deployedOnOffRampManagers, balanceSheetManagers]) => {
           if (!deployedOnOffRampManagers.length) {
             throw new Error('OnOffRampManager not found')
           }
 
           const bsManagerAddresses = new Set(
-            balanceSheetManagers
-              .filter((m) => m.centrifugeId === this.centrifugeId)
-              .map((m) => m.address.toLowerCase())
+            balanceSheetManagers.filter((m) => m.centrifugeId === this.centrifugeId).map((m) => m.address.toLowerCase())
           )
           const verifiedManagers = deployedOnOffRampManagers.filter((deployed) =>
             bsManagerAddresses.has(deployed.address.toLowerCase())
@@ -316,10 +467,7 @@ export class PoolNetwork extends Entity {
   assignOnOffRampManagerPermissions(scId: ShareClassId) {
     const self = this
     return this._transact(() => {
-      return combineLatest([
-        this._deployedOnOffRampManagers(scId),
-        this.pool.balanceSheetManagers(),
-      ]).pipe(
+      return combineLatest([this._deployedOnOffRampManagers(scId), this.pool.balanceSheetManagers()]).pipe(
         switchMap(([deployedOnOffRampManager, balanceSheetManagers]) => {
           const bsManagers = new Map<string, { address: `0x${string}`; centrifugeId: number; type: string }>()
           balanceSheetManagers.forEach((manager) => {

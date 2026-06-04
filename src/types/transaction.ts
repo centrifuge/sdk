@@ -117,6 +117,11 @@ export type DeployedOnOfframpManagerStatus = {
   address: HexString
 }
 
+export type DeployedOnchainPMStatus = {
+  type: 'DeployedOnchainPM'
+  address: HexString
+}
+
 export type OperationStatus =
   | OperationSigningStatus
   | OperationSigningMessageStatus
@@ -126,6 +131,7 @@ export type OperationStatus =
   | OperationSwitchChainStatus
   | SimulationStatus
   | DeployedOnOfframpManagerStatus
+  | DeployedOnchainPMStatus
 
 export type EIP1193ProviderLike = {
   request(...args: any): Promise<any>

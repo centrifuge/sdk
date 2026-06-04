@@ -93,6 +93,9 @@ export type ProtocolContracts = {
   balanceSheet: HexString
   merkleProofManagerFactory: HexString
   onOfframpManagerFactory: HexString
+  onchainPMFactory: HexString
+  /** ERC-6909 accounting token used by OnchainPM workflows. Minter perms are keyed by pool. */
+  accountingToken: HexString
   tokenRecoverer: HexString
   contractUpdater: HexString
   vaultDecoder: HexString

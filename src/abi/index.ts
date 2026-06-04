@@ -14,6 +14,9 @@ import HubRegistryAbi from './HubRegistry.abi.js'
 import MerkleProofManagerAbi from './MerkleProofManager.abi.js'
 import MerkleProofManagerFactoryAbi from './MerkleProofManagerFactory.abi.js'
 import MessageDispatcherAbi from './MessageDispatcher.abi.js'
+import OnchainPMAbi from './OnchainPM.abi.js'
+import OnchainPMFactoryAbi from './OnchainPMFactory.abi.js'
+import OracleValuationAbi from './OracleValuation.abi.js'
 import MultiAdapterAbi from './MultiAdapter.abi.js'
 import OnOffRampManagerAbi from './OnOffRampManager.abi.js'
 import OnOffRampManagerFactoryAbi from './OnOffRampManagerFactory.abi.js'
@@ -25,6 +28,7 @@ import SpokeAbi from './Spoke.abi.js'
 import SyncManagerAbi from './SyncManager.abi.js'
 import ValuationAbi from './Valuation.abi.js'
 import VaultRegistryAbi from './VaultRegistry.abi.js'
+import ScriptHelpersAbi from './ScriptHelpers.abi.js'
 import VaultRouterAbi from './VaultRouter.abi.js'
 
 export const ABI = {
@@ -55,4 +59,8 @@ export const ABI = {
   OnOffRampManager: parseAbi(OnOffRampManagerAbi),
   OnOffRampManagerFactory: parseAbi(OnOffRampManagerFactoryAbi),
   MerkleProofManagerFactory: parseAbi(MerkleProofManagerFactoryAbi),
+  OnchainPM: parseAbi(OnchainPMAbi),
+  OnchainPMFactory: parseAbi(OnchainPMFactoryAbi),
+  OracleValuation: parseAbi(OracleValuationAbi),
+  ScriptHelpers: parseAbi(ScriptHelpersAbi),
 }

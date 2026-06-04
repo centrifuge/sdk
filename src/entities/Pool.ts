@@ -1,10 +1,10 @@
-import { catchError, combineLatest, defer, map, of, switchMap, timeout } from 'rxjs'
+import { catchError, combineLatest, defer, firstValueFrom, map, of, switchMap, timeout } from 'rxjs'
 import { encodeFunctionData, fromHex, parseAbi, toHex } from 'viem'
 import { ABI } from '../abi/index.js'
 import type { Centrifuge } from '../Centrifuge.js'
 import { HexString } from '../types/index.js'
 import { PoolMetadataInput, ShareClassInput } from '../types/poolInput.js'
-import { PoolMetadata } from '../types/poolMetadata.js'
+import { PoolMetadata, WorkflowPolicyEntry } from '../types/poolMetadata.js'
 import { MessageType, MessageTypeWithSubType } from '../types/transaction.js'
 import { NATIONAL_CURRENCY_METADATA } from '../utils/currencies.js'
 import {
@@ -16,6 +16,8 @@ import { addressToBytes32, generateShareClassSalt } from '../utils/index.js'
 import { repeatOnEvents } from '../utils/rx.js'
 import { wrapTransaction } from '../utils/transaction.js'
 import { AssetId, CentrifugeId, PoolId, ShareClassId } from '../utils/types.js'
+import type { MarketplaceWorkflow } from '../types/workflow.js'
+import { resolveWorkflowShareClassId, type PolicyEntryInput } from '../utils/workflowExecute.js'
 import { Entity } from './Entity.js'
 import { PoolNetwork } from './PoolNetwork.js'
 import { PoolReports } from './Reports/PoolReports.js'
@@ -299,6 +301,210 @@ export class Pool extends Entity {
         })
       )
     })
+  }
+
+  /**
+   * Resolve a strategist's whitelisted workflows (pool policy metadata joined with the
+   * marketplace catalog), grouped per chain. Chain is derived from each workflow's catalog
+   * `chainId`. Each group carries the full `policy` (the Merkle proof tree for that chain).
+   * @internal
+   */
+  async _resolveStrategistWorkflows(strategist: HexString): Promise<
+    { centrifugeId: number; network: PoolNetwork; policy: PolicyEntryInput[] }[]
+  > {
+    const meta = await firstValueFrom(this.metadata())
+    const group = (meta?.workflowPolicies ?? []).find(
+      (policy) => policy.strategistAddress.toLowerCase() === strategist.toLowerCase()
+    )
+    if (!group) return []
+
+    const catalog = await firstValueFrom(this._root.workflowMarketplace())
+    const byRef = new Map<string, MarketplaceWorkflow>(catalog.map((w) => [w.workflowRef, w]))
+    const networks = await firstValueFrom(this.activeNetworks())
+
+    const byChain = new Map<number, { centrifugeId: number; network: PoolNetwork; policy: PolicyEntryInput[] }>()
+    const idCache = new Map<number, number>()
+    for (const entry of group.workflows) {
+      const workflow = byRef.get(entry.workflowRef)
+      if (!workflow) continue
+      let centrifugeId = idCache.get(workflow.chainId)
+      if (centrifugeId == null) {
+        centrifugeId = await firstValueFrom(this._root.id(workflow.chainId))
+        idCache.set(workflow.chainId, centrifugeId)
+      }
+      const network = networks.find((n) => n.centrifugeId === centrifugeId)
+      if (!network) continue
+      let bucket = byChain.get(centrifugeId)
+      if (!bucket) {
+        bucket = { centrifugeId, network, policy: [] }
+        byChain.set(centrifugeId, bucket)
+      }
+      bucket.policy.push({
+        workflow,
+        configurableValues: (entry.configurableValues ?? {}) as Record<string, HexString>,
+        excludedActions: entry.excludedActions ?? [],
+      })
+    }
+    return [...byChain.values()]
+  }
+
+  /** List the workflows whitelisted for a strategist, across chains. */
+  async listWorkflows(opts: { strategist: HexString }): Promise<
+    { workflowRef: string; name: string; group?: string; chainId: number; centrifugeId: number; runtimeVariables: string[] }[]
+  > {
+    const groups = await this._resolveStrategistWorkflows(opts.strategist)
+    return groups.flatMap((g) =>
+      g.policy.map((entry) => ({
+        workflowRef: entry.workflow.workflowRef,
+        name: entry.workflow.name,
+        group: entry.workflow.group,
+        chainId: entry.workflow.chainId,
+        centrifugeId: g.centrifugeId,
+        runtimeVariables: entry.workflow.runtimeVariables ?? [],
+      }))
+    )
+  }
+
+  /**
+   * Run one whitelisted workflow by `workflowRef`. Resolves the chain + OnchainPM and the
+   * proof tree from the strategist's policy, then submits via the OnchainPM. Awaiting the
+   * returned promise executes the transaction (or simulates it when `simulate` is set).
+   */
+  async executeWorkflow(
+    input: {
+      strategist: HexString
+      workflowRef: string
+      runtimeValues?: Record<string, HexString>
+      scId?: HexString
+    },
+    options: { simulate?: boolean } = {}
+  ) {
+    const groups = await this._resolveStrategistWorkflows(input.strategist)
+    for (const g of groups) {
+      const run = g.policy.findIndex((entry) => entry.workflow.workflowRef === input.workflowRef)
+      if (run < 0) continue
+      const onchainPM = await firstValueFrom(g.network.onchainPM())
+      if (!onchainPM) throw new Error(`OnchainPM is not deployed for workflow "${input.workflowRef}"`)
+      return onchainPM.executeWorkflow(
+        { policy: g.policy, run, strategist: input.strategist, scId: input.scId, runtimeValues: input.runtimeValues },
+        options
+      )
+    }
+    throw new Error(`Workflow "${input.workflowRef}" is not whitelisted for strategist ${input.strategist}`)
+  }
+
+  /**
+   * Plan an accounting update: every `account`-group workflow whitelisted for the strategist,
+   * grouped per chain. Returns one handle per chain whose `execute()`/`simulate()` build and
+   * submit that chain's atomic multicall. Multi-chain pools yield multiple handles.
+   */
+  async planAccountingUpdate(opts: { strategist: HexString }): Promise<
+    { centrifugeId: number; workflowRefs: string[]; execute: () => unknown; simulate: () => unknown }[]
+  > {
+    const groups = await this._resolveStrategistWorkflows(opts.strategist)
+    const plans: { centrifugeId: number; workflowRefs: string[]; execute: () => unknown; simulate: () => unknown }[] = []
+    for (const g of groups) {
+      const run = g.policy.flatMap((entry, index) => (entry.workflow.group === 'account' ? [index] : []))
+      if (run.length === 0) continue
+      const onchainPM = await firstValueFrom(g.network.onchainPM())
+      if (!onchainPM) continue
+      const batch = { policy: g.policy, run, strategist: opts.strategist }
+      plans.push({
+        centrifugeId: g.centrifugeId,
+        workflowRefs: run.map((index) => g.policy[index]!.workflow.workflowRef),
+        execute: () => onchainPM.executeAccountingBatch(batch),
+        simulate: () => onchainPM.executeAccountingBatch(batch, { simulate: true }),
+      })
+    }
+    return plans
+  }
+
+  /**
+   * Whitelist a workflow for a strategist. Reads the current policy from the pool metadata,
+   * appends (or replaces) the entry, and updates both the metadata and the OnchainPM Merkle
+   * root for the workflow's chain in one transaction. Awaiting the result submits it.
+   */
+  async addToPolicy(input: {
+    strategist: HexString
+    workflowRef: string
+    configurableValues?: Record<string, HexString>
+    excludedActions?: number[]
+    scId?: HexString
+  }) {
+    return this._applyPolicyChange(input.strategist, input.scId, input.workflowRef, (entries) => [
+      ...entries.filter((entry) => entry.workflowRef !== input.workflowRef),
+      {
+        workflowRef: input.workflowRef,
+        configurableValues: input.configurableValues ?? {},
+        excludedActions: input.excludedActions,
+        addedAt: new Date().toISOString(),
+      },
+    ])
+  }
+
+  /** Remove a whitelisted workflow from a strategist's policy (metadata + on-chain root). */
+  async removeFromPolicy(input: { strategist: HexString; workflowRef: string; scId?: HexString }) {
+    return this._applyPolicyChange(input.strategist, input.scId, input.workflowRef, (entries) =>
+      entries.filter((entry) => entry.workflowRef !== input.workflowRef)
+    )
+  }
+
+  /** @internal Shared add/remove flow: mutate the strategist's entries, then update metadata + root. */
+  private async _applyPolicyChange(
+    strategist: HexString,
+    scIdInput: HexString | undefined,
+    affectedWorkflowRef: string,
+    mutate: (entries: WorkflowPolicyEntry[]) => WorkflowPolicyEntry[]
+  ) {
+    const metadata = await firstValueFrom(this.metadata())
+    const catalog = await firstValueFrom(this._root.workflowMarketplace())
+    const byRef = new Map<string, MarketplaceWorkflow>(catalog.map((w) => [w.workflowRef, w]))
+
+    const affected = byRef.get(affectedWorkflowRef)
+    if (!affected) throw new Error(`Workflow "${affectedWorkflowRef}" is not in the marketplace catalog`)
+
+    const centrifugeId = await firstValueFrom(this._root.id(affected.chainId))
+    const networks = await firstValueFrom(this.activeNetworks())
+    const network = networks.find((n) => n.centrifugeId === centrifugeId)
+    if (!network) throw new Error(`Pool has no active network for chain ${affected.chainId}`)
+    const onchainPM = await firstValueFrom(network.onchainPM())
+    if (!onchainPM) throw new Error('OnchainPM is not deployed on this network')
+    const scId = await resolveWorkflowShareClassId(network, scIdInput)
+
+    const policies = (metadata?.workflowPolicies ?? []).map((policy) => ({ ...policy }))
+    let group = policies.find((policy) => policy.strategistAddress.toLowerCase() === strategist.toLowerCase())
+    if (!group) {
+      group = { id: crypto.randomUUID(), strategistAddress: strategist, workflows: [], createdAt: new Date().toISOString() }
+      policies.push(group)
+    }
+    group.workflows = mutate(group.workflows)
+    group.updatedAt = new Date().toISOString()
+
+    const newMetadata = { ...(metadata ?? {}), workflowPolicies: policies } as PoolMetadata
+
+    // Rebuild the affected chain's full policy (catalog-joined) for the new Merkle root.
+    const idCache = new Map<number, number>([[affected.chainId, centrifugeId]])
+    const chainPolicy: PolicyEntryInput[] = []
+    for (const entry of group.workflows) {
+      const workflow = byRef.get(entry.workflowRef)
+      if (!workflow) continue
+      let cid = idCache.get(workflow.chainId)
+      if (cid == null) {
+        cid = await firstValueFrom(this._root.id(workflow.chainId))
+        idCache.set(workflow.chainId, cid)
+      }
+      if (cid !== centrifugeId) continue
+      chainPolicy.push({
+        workflow,
+        configurableValues: (entry.configurableValues ?? {}) as Record<string, HexString>,
+        excludedActions: entry.excludedActions ?? [],
+      })
+    }
+
+    return this._root.batchTransactions('Update workflow policy', [
+      this.updateMetadata(newMetadata),
+      onchainPM.updatePolicy({ scId, strategist, policy: chainPolicy }),
+    ])
   }
 
   /**
@@ -818,6 +1024,30 @@ export class Pool extends Entity {
         contract: hub,
         data: batch,
         messages,
+      })
+    }, this.centrifugeId)
+  }
+
+  /**
+   * Update an OracleValuation feeder on the hub chain for this pool.
+   */
+  updateOracleValuationFeeder(
+    oracleValuation: HexString,
+    centrifugeId: CentrifugeId,
+    feeder: HexString,
+    canFeed: boolean
+  ) {
+    const self = this
+    return this._transact(async function* (ctx) {
+      const data = encodeFunctionData({
+        abi: ABI.OracleValuation,
+        functionName: 'updateFeeder',
+        args: [self.id.raw, centrifugeId, addressToBytes32(feeder), canFeed],
+      })
+
+      yield* wrapTransaction('Update oracle valuation feeder', ctx, {
+        contract: oracleValuation,
+        data,
       })
     }, this.centrifugeId)
   }
