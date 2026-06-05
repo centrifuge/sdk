@@ -23,7 +23,7 @@ export const UNUSED_SLOT = 0xff as const
 const IDX_VALUE_MASK = 0x7f as const
 
 /** Maximum number of state slots (stateBitmap is uint128). */
-const MAX_STATE_SLOTS = 128
+export const MAX_STATE_SLOTS = 128
 const MAX_COMMAND_INPUT_SPECIFIERS = 32
 const EMPTY_BYTES = '0x' as HexString
 

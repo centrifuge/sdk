@@ -55,7 +55,7 @@ import type {
 import { PoolMetadataInput } from './types/poolInput.js'
 import { PoolMetadata } from './types/poolMetadata.js'
 import type { CentrifugeQueryOptions, Query } from './types/query.js'
-import type { CatalogAction, CatalogTemplate, MarketplaceWorkflow, RuntimeVariable } from './types/workflow.js'
+import type { CatalogAction, MarketplaceWorkflow, RuntimeVariable } from './types/workflow.js'
 import { runtimeVariableName } from './types/workflow.js'
 import {
   emptyMessage,
@@ -67,6 +67,7 @@ import {
   type TransactionContext,
 } from './types/transaction.js'
 import { Balance } from './utils/BigInt.js'
+import { parseMarketplaceCatalog } from './utils/catalog.js'
 import { assertCrosschainMessagingEnabled } from './utils/crosschainHotfix.js'
 import { addEstimateBuffer, estimateBatchBridgeFee } from './utils/gas.js'
 import { generateShareClassSalt, randomUint } from './utils/index.js'
@@ -1061,8 +1062,10 @@ export class Centrifuge {
         const res = await fetch(url)
         if (!res.ok) throw new Error(`workflowMarketplace: IPFS fetch failed — ${res.status} ${res.statusText}`)
         const catalog = await res.json()
-        const templates: Record<string, CatalogTemplate> = catalog.templates ?? {}
-        const rawWorkflows: unknown[] = Array.isArray(catalog) ? catalog : (catalog.workflows ?? [])
+        // Validate the untrusted catalog shape before mapping. Throws on structural /
+        // integrity problems (unknown template ref, malformed variables/workflowId)
+        // instead of silently coercing them through `as any`.
+        const { templates, workflows: rawWorkflows } = parseMarketplaceCatalog(catalog)
         return rawWorkflows
           .filter((w: any) => !w.useTemplate)
           .map((w: any): MarketplaceWorkflow => {
@@ -1070,7 +1073,11 @@ export class Centrifuge {
             // tagged format), carrying the optional token/source UI links.
             const runtimeVariableEntries: RuntimeVariable[] = (templates[w.template]?.variables ?? [])
               .filter((v) => v.kind === 'runtime')
-              .map((v) => ({ name: v.name, ...(v.token ? { token: v.token } : {}), ...(v.source ? { source: v.source } : {}) }))
+              .map((v) => ({
+                name: v.name,
+                ...(v.token ? { token: v.token } : {}),
+                ...(v.source ? { source: v.source } : {}),
+              }))
             return {
               workflowRef: w.id ?? w.workflowRef,
               name: w.name,
