@@ -3011,7 +3011,7 @@ export class ShareClass extends Entity {
                         }
                       >()
 
-                      for (const item of data.pendingInvestOrders.items) {
+                      data.pendingInvestOrders.items.forEach((item) => {
                         const assetId = new AssetId(item.assetId)
                         const account = item.account.toLowerCase() as HexString
 
@@ -3023,9 +3023,9 @@ export class ShareClass extends Entity {
                           pendingAmount: item.pendingAssetsAmount || '0',
                           queuedAmount: item.queuedAssetsAmount || '0',
                         })
-                      }
+                      })
 
-                      for (const item of data.investOrders.items) {
+                      data.investOrders.items.forEach((item) => {
                         const assetId = new AssetId(item.assetId)
                         const account = item.account.toLowerCase() as HexString
                         const key = `${assetId.toString()}-${account}`
@@ -3040,7 +3040,7 @@ export class ShareClass extends Entity {
                             queuedAmount: '0',
                           })
                         }
-                      }
+                      })
 
                       return Array.from(byKey.values())
                     })(),
@@ -3288,7 +3288,7 @@ export class ShareClass extends Entity {
                         }
                       >()
 
-                      for (const item of data.pendingRedeemOrders.items) {
+                      data.pendingRedeemOrders.items.forEach((item) => {
                         const assetId = new AssetId(item.assetId)
                         const account = item.account.toLowerCase() as HexString
 
@@ -3301,9 +3301,9 @@ export class ShareClass extends Entity {
                           queuedAmount: new Balance(item.queuedSharesAmount ?? '0', tokenDecimals),
                           tokenDecimals,
                         })
-                      }
+                      })
 
-                      for (const item of data.redeemOrders.items) {
+                      data.redeemOrders.items.forEach((item) => {
                         const assetId = new AssetId(item.assetId)
                         const account = item.account.toLowerCase() as HexString
                         const key = `${assetId.toString()}-${account}`
@@ -3319,7 +3319,7 @@ export class ShareClass extends Entity {
                             tokenDecimals,
                           })
                         }
-                      }
+                      })
 
                       return Array.from(byKey.values())
                     })(),
