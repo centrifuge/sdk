@@ -642,8 +642,7 @@ export class ShareClass extends Entity {
         })
       }
 
-      const data: HexString | HexString[] =
-        createAccountCalls.length > 0 ? [...createAccountCalls, initData] : initData
+      const data: HexString | HexString[] = createAccountCalls.length > 0 ? [...createAccountCalls, initData] : initData
       yield* wrapTransaction('Create holding', ctx, {
         contract: hub,
         data,
@@ -2876,19 +2875,6 @@ export class ShareClass extends Entity {
                     asset { decimals centrifugeId }
                   }
                 }
-                outstandingInvests(where: { tokenId: $scId }, limit: 1000) {
-                  items {
-                    account
-                    assetId
-                    tokenId
-                    approvedAmount
-                    approvedAt
-                    depositAmount
-                    epochIndex
-                    pendingAmount
-                    queuedAmount
-                  }
-                }
               }`,
               { scId: this.id.raw }
             )
@@ -2948,19 +2934,6 @@ export class ShareClass extends Entity {
                       asset: { decimals: number; centrifugeId: string }
                     }[]
                   }
-                  outstandingInvests: {
-                    items: {
-                      account: HexString
-                      assetId: string
-                      tokenId: string
-                      approvedAmount: string
-                      approvedAt: string | null
-                      depositAmount: string
-                      epochIndex: number
-                      pendingAmount: string
-                      queuedAmount: string
-                    }[]
-                  }
                 }) => {
                   const maxEpochByAsset = new Map<string, number>()
                   for (const item of data.epochInvestOrders.items) {
@@ -3017,16 +2990,60 @@ export class ShareClass extends Entity {
                         createdAtTxHash: item.createdAtTxHash ?? null,
                       }
                     }),
-                    outstandingInvests: data.outstandingInvests.items.map((item) => ({
-                      assetId: new AssetId(item.assetId),
-                      account: item.account.toLowerCase() as HexString,
-                      investor: item.account.toLowerCase() as HexString,
-                      tokenId: item.tokenId.toLowerCase() as HexString,
-                      approvedAmount: item.approvedAmount,
-                      depositAmount: item.depositAmount,
-                      pendingAmount: item.pendingAmount,
-                      queuedAmount: item.queuedAmount,
-                    })),
+                    // Derived: the deprecated `outstandingInvests` indexer field was removed
+                    // (testnet). It enumerated every investor with outstanding activity —
+                    // pending OR queued OR approved-but-not-yet-issued. We reconstruct that set
+                    // as the union of pendingInvestOrders (pending/queued) and the open
+                    // investOrders (issuedAt: null → approved-but-not-issued), keyed by
+                    // (investor, assetId). pending/queued amounts come from the pending table
+                    // (raw strings, '0' for approved-only investors); consumers wrap them in
+                    // Balance with asset decimals and only read assetId/investor/pending/queued.
+                    outstandingInvests: (() => {
+                      const byKey = new Map<
+                        string,
+                        {
+                          assetId: AssetId
+                          account: HexString
+                          investor: HexString
+                          tokenId: HexString
+                          pendingAmount: string
+                          queuedAmount: string
+                        }
+                      >()
+
+                      data.pendingInvestOrders.items.forEach((item) => {
+                        const assetId = new AssetId(item.assetId)
+                        const account = item.account.toLowerCase() as HexString
+
+                        byKey.set(`${assetId.toString()}-${account}`, {
+                          assetId,
+                          account,
+                          investor: account,
+                          tokenId: this.id.raw,
+                          pendingAmount: item.pendingAssetsAmount || '0',
+                          queuedAmount: item.queuedAssetsAmount || '0',
+                        })
+                      })
+
+                      data.investOrders.items.forEach((item) => {
+                        const assetId = new AssetId(item.assetId)
+                        const account = item.account.toLowerCase() as HexString
+                        const key = `${assetId.toString()}-${account}`
+
+                        if (!byKey.has(key)) {
+                          byKey.set(key, {
+                            assetId,
+                            account,
+                            investor: account,
+                            tokenId: this.id.raw,
+                            pendingAmount: '0',
+                            queuedAmount: '0',
+                          })
+                        }
+                      })
+
+                      return Array.from(byKey.values())
+                    })(),
                   }
                 }
               ),
@@ -3112,20 +3129,6 @@ export class ShareClass extends Entity {
               token { decimals }
             }
           }
-          outstandingRedeems(where: {tokenId:  $scId}, limit: 1000) {
-            items {
-              account
-              assetId
-              tokenId
-              epochIndex
-              approvedAmount
-              approvedAt
-              depositAmount
-              pendingAmount
-              queuedAmount
-              token { decimals }
-            }
-          }
         }`,
               { scId: this.id.raw }
             )
@@ -3187,20 +3190,6 @@ export class ShareClass extends Entity {
                       claimedAt: string | null
                       claimedAssetsAmount: string
                       asset: { decimals: number; centrifugeId: string }
-                      token: { decimals: number }
-                    }[]
-                  }
-                  outstandingRedeems: {
-                    items: {
-                      account: HexString
-                      assetId: string
-                      tokenId: string
-                      epochIndex: number
-                      approvedAmount: string
-                      approvedAt: string | null
-                      depositAmount: string
-                      pendingAmount: string
-                      queuedAmount: string
                       token: { decimals: number }
                     }[]
                   }
@@ -3272,21 +3261,68 @@ export class ShareClass extends Entity {
                         revokedAt: item.revokedAt ? new Date(item.revokedAt) : null,
                       }
                     }),
-                    outstandingRedeems: data.outstandingRedeems.items.map((item) => {
-                      const tokenDecimals = item.token.decimals
-                      return {
-                        assetId: new AssetId(item.assetId),
-                        account: item.account.toLowerCase() as HexString,
-                        investor: item.account.toLowerCase() as HexString,
-                        tokenId: item.tokenId.toLowerCase() as HexString,
-                        approvedAt: item.approvedAt ? new Date(item.approvedAt) : null,
-                        approvedAmount: new Balance(item.approvedAmount, tokenDecimals),
-                        depositAmount: new Balance(item.depositAmount, tokenDecimals),
-                        pendingAmount: new Balance(item.pendingAmount, tokenDecimals),
-                        queuedAmount: new Balance(item.queuedAmount, tokenDecimals),
-                        tokenDecimals,
-                      }
-                    }),
+                    // Derived: the deprecated `outstandingRedeems` indexer field was removed
+                    // (testnet). It enumerated every investor with outstanding activity —
+                    // pending OR queued OR approved-but-not-yet-revoked. We reconstruct that set
+                    // as the union of pendingRedeemOrders (pending/queued) and the open
+                    // redeemOrders (revokedAt: null → approved-but-not-revoked), keyed by
+                    // (investor, assetId). pending/queued amounts come from the pending table as
+                    // Balance (already scaled by token decimals; zero for approved-only
+                    // investors); consumers only read assetId/investor/pending/queued.
+                    outstandingRedeems: (() => {
+                      const tokenDecimals =
+                        data.epochOutstandingRedeems.items[0]?.token.decimals ??
+                        data.epochRedeemOrders.items[0]?.token.decimals ??
+                        18
+
+                      const byKey = new Map<
+                        string,
+                        {
+                          assetId: AssetId
+                          account: HexString
+                          investor: HexString
+                          tokenId: HexString
+                          pendingAmount: Balance
+                          queuedAmount: Balance
+                          tokenDecimals: number
+                        }
+                      >()
+
+                      data.pendingRedeemOrders.items.forEach((item) => {
+                        const assetId = new AssetId(item.assetId)
+                        const account = item.account.toLowerCase() as HexString
+
+                        byKey.set(`${assetId.toString()}-${account}`, {
+                          assetId,
+                          account,
+                          investor: account,
+                          tokenId: this.id.raw,
+                          pendingAmount: new Balance(item.pendingSharesAmount ?? '0', tokenDecimals),
+                          queuedAmount: new Balance(item.queuedSharesAmount ?? '0', tokenDecimals),
+                          tokenDecimals,
+                        })
+                      })
+
+                      data.redeemOrders.items.forEach((item) => {
+                        const assetId = new AssetId(item.assetId)
+                        const account = item.account.toLowerCase() as HexString
+                        const key = `${assetId.toString()}-${account}`
+
+                        if (!byKey.has(key)) {
+                          byKey.set(key, {
+                            assetId,
+                            account,
+                            investor: account,
+                            tokenId: this.id.raw,
+                            pendingAmount: new Balance('0', tokenDecimals),
+                            queuedAmount: new Balance('0', tokenDecimals),
+                            tokenDecimals,
+                          })
+                        }
+                      })
+
+                      return Array.from(byKey.values())
+                    })(),
                   }
                 }
               ),
