@@ -8,7 +8,7 @@ import type {
   MarketplaceWorkflow,
 } from '../types/workflow.js'
 import { MAGIC_VARIABLE_KEYS } from './variables.js'
-import { CALL, UNUSED_SLOT, VALUECALL } from './weiroll.js'
+import { CALL, MAX_STATE_SLOTS, UNUSED_SLOT, VALUECALL } from './weiroll.js'
 import type { WeirollAction, WorkflowDefinition, WorkflowStateSlot } from './weiroll.js'
 
 const MAGIC_KEY_SET = new Set<string>(MAGIC_VARIABLE_KEYS)
@@ -124,6 +124,18 @@ function encodeInputSpecifier(parameter: string, slotIndex: number): number {
   return isVariableLengthParameter(parameter) ? 0x80 | slotIndex : slotIndex
 }
 
+// The 0x80 high bit marks a variable-length slot, so the index itself must fit in 7 bits.
+// Output specifiers share that constraint with inputs (encodeInputSpecifier above) — validate
+// it symmetrically here instead of relying solely on the aggregate slot-count check in
+// buildScript(), so the precondition is explicit at every encode site.
+function encodeOutputSpecifier(slotIndex: number, dynamic: boolean): number {
+  if (slotIndex < 0 || slotIndex > 0x7f) {
+    throw new Error(`buildWorkflowDefinitionFromCatalog: output slot index ${slotIndex} exceeds weiroll limit 127`)
+  }
+
+  return dynamic ? 0x80 | slotIndex : slotIndex
+}
+
 function inferReturnValueModes(workflow: MarketplaceWorkflow): Map<string, 'static' | 'dynamic'> {
   const returnModes = new Map<string, 'static' | 'dynamic'>()
 
@@ -163,6 +175,86 @@ function inferReturnValueModes(workflow: MarketplaceWorkflow): Map<string, 'stat
   }
 
   return returnModes
+}
+
+/** Validated, structurally-sound view of a fetched marketplace catalog. */
+export interface ParsedMarketplaceCatalog {
+  templates: Record<string, CatalogTemplate>
+  workflows: Record<string, unknown>[]
+}
+
+const WORKFLOW_ID_RE = /^(0x)?[0-9a-fA-F]{64}$/
+
+/**
+ * Validates the shape of a raw marketplace catalog before it is mapped into
+ * `MarketplaceWorkflow[]`.
+ *
+ * The catalog is untrusted data fetched over the network (IPFS gateway), so we fail
+ * loudly on structural problems rather than coercing with `as any` and silently
+ * producing malformed workflows. A workflow that references a missing template, or
+ * carries a non-object `variables` map or a malformed `workflowId`, is a tampering /
+ * integrity signal — surfacing it here prevents a manager from later being shown (and
+ * signing a policy for) a workflow the SDK could not faithfully reconstruct.
+ *
+ * Accepts either `{ templates, workflows }` or a bare `workflows` array (the two shapes
+ * the SDK already supports). Callback entries (`useTemplate` present) are passed through
+ * without per-field checks since the caller filters them out.
+ */
+export function parseMarketplaceCatalog(raw: unknown): ParsedMarketplaceCatalog {
+  if (raw === null || typeof raw !== 'object') {
+    throw new Error('marketplace catalog: expected a JSON object or array')
+  }
+
+  const obj = raw as Record<string, unknown>
+  const templatesRaw = Array.isArray(raw) ? {} : (obj.templates ?? {})
+  if (templatesRaw === null || typeof templatesRaw !== 'object' || Array.isArray(templatesRaw)) {
+    throw new Error('marketplace catalog: `templates` must be an object')
+  }
+
+  const workflowsRaw = Array.isArray(raw) ? raw : (obj.workflows ?? [])
+  if (!Array.isArray(workflowsRaw)) {
+    throw new Error('marketplace catalog: `workflows` must be an array')
+  }
+
+  const templates = templatesRaw as Record<string, CatalogTemplate>
+  const workflows: Record<string, unknown>[] = []
+
+  for (let i = 0; i < workflowsRaw.length; i++) {
+    const entry = workflowsRaw[i]
+    if (entry === null || typeof entry !== 'object' || Array.isArray(entry)) {
+      throw new Error(`marketplace catalog: workflow at index ${i} must be an object`)
+    }
+    const w = entry as Record<string, unknown>
+
+    // Callback templates are filtered out by the caller; skip per-field integrity checks.
+    if (w.useTemplate) {
+      workflows.push(w)
+      continue
+    }
+
+    const ref = w.id ?? w.workflowRef
+    if (typeof ref !== 'string' || ref.length === 0) {
+      throw new Error(`marketplace catalog: workflow at index ${i} is missing a string id/workflowRef`)
+    }
+    if (typeof w.template !== 'string' || !(w.template in templates)) {
+      throw new Error(`marketplace catalog: workflow "${ref}" references unknown template "${String(w.template)}"`)
+    }
+    if (
+      w.variables !== undefined &&
+      (w.variables === null || typeof w.variables !== 'object' || Array.isArray(w.variables))
+    ) {
+      throw new Error(`marketplace catalog: workflow "${ref}" has a non-object \`variables\` field`)
+    }
+    if (w.workflowId !== undefined && w.workflowId !== null && w.workflowId !== '') {
+      if (typeof w.workflowId !== 'string' || !WORKFLOW_ID_RE.test(w.workflowId)) {
+        throw new Error(`marketplace catalog: workflow "${ref}" has an invalid workflowId (expected 32-byte hex)`)
+      }
+    }
+
+    workflows.push(w)
+  }
+
+  return { templates, workflows }
 }
 
 /**
@@ -423,7 +515,7 @@ export function buildWorkflowDefinitionFromCatalog(
       action.returns != null
         ? (() => {
             const outputSlot = getOrAddVariableSlot(action.returns)
-            return returnValueModes.get(action.returns) === 'dynamic' ? 0x80 | outputSlot : outputSlot
+            return encodeOutputSpecifier(outputSlot, returnValueModes.get(action.returns) === 'dynamic')
           })()
         : UNUSED_SLOT
 
@@ -490,6 +582,16 @@ export function buildWorkflowDefinitionFromCatalog(
         s.type === 'runtime' && !computedRuntimeKeys.has(s.key) && s.system !== 'payableValue'
     )
     .map((s) => s.key)
+
+  // Defense-in-depth: weiroll slot indices must fit in 7 bits and the stateBitmap is a
+  // uint128, so a definition can hold at most MAX_STATE_SLOTS slots. buildScript() enforces
+  // the same bound, but assert it here too so a catalog that over-allocates fails at
+  // build-from-catalog time with a catalog-specific message rather than later.
+  if (stateSlots.length > MAX_STATE_SLOTS) {
+    throw new Error(
+      `buildWorkflowDefinitionFromCatalog: workflow "${workflow.workflowRef}" has ${stateSlots.length} state slots — maximum is ${MAX_STATE_SLOTS}`
+    )
+  }
 
   return {
     workflowRef: workflow.workflowRef,

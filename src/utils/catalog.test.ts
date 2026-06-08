@@ -2,7 +2,7 @@ import { expect } from 'chai'
 import { decodeAbiParameters, toFunctionSelector } from 'viem'
 import type { HexString } from '../types/index.js'
 import type { CatalogTemplate, CatalogVariable, MarketplaceWorkflow } from '../types/workflow.js'
-import { buildWorkflowDefinitionFromCatalog } from './catalog.js'
+import { buildWorkflowDefinitionFromCatalog, parseMarketplaceCatalog } from './catalog.js'
 import { buildScript } from './weiroll.js'
 
 const ADDRESS_A = '0x1111111111111111111111111111111111111111' as const
@@ -18,7 +18,7 @@ function tagged(
   template: string,
   variables: CatalogVariable[],
   actions: CatalogTemplate['actions'],
-  workflowVariables: Record<string, string>,
+  workflowVariables: Record<string, string>
 ): MarketplaceWorkflow {
   const templates = { [template]: { actions, variables } }
   return {
@@ -63,7 +63,7 @@ describe('utils/catalog', () => {
           ],
         },
       ],
-      { router: ADDRESS_A },
+      { router: ADDRESS_A }
     )
 
     const definition = buildWorkflowDefinitionFromCatalog(workflow)
@@ -89,7 +89,7 @@ describe('utils/catalog', () => {
           inputs: [{ parameter: 'uint256', label: 'Amount', input: [] }],
         },
       ],
-      { router: ADDRESS_A },
+      { router: ADDRESS_A }
     )
     expect(() => buildWorkflowDefinitionFromCatalog(workflow)).to.throw('has an empty input')
   })
@@ -105,7 +105,7 @@ describe('utils/catalog', () => {
           inputs: [{ parameter: 'address', label: 'Router', input: ['$router'] }],
         },
       ],
-      {}, // router not provided
+      {} // router not provided
     )
     expect(() => buildWorkflowDefinitionFromCatalog(workflow)).to.throw('pinned variable "router" has no value')
   })
@@ -129,7 +129,7 @@ describe('utils/catalog', () => {
           ],
         },
       ],
-      { guard: ADDRESS_A },
+      { guard: ADDRESS_A }
     )
 
     const definition = buildWorkflowDefinitionFromCatalog(workflow)
@@ -137,7 +137,11 @@ describe('utils/catalog', () => {
     expect(definition.actions[0]).to.deep.include({ target: ADDRESS_A, selector })
     expect(definition.actions[0]!.rawMode).to.equal(true)
     expect(definition.actions[0]!.inputs).to.deep.equal([3])
-    expect(definition.state[2]).to.deep.include({ type: 'configurable', key: 'slippageAssets', parameter: '(address,uint256)[]' })
+    expect(definition.state[2]).to.deep.include({
+      type: 'configurable',
+      key: 'slippageAssets',
+      parameter: '(address,uint256)[]',
+    })
     expect(definition.state[3]).to.deep.equal({
       type: 'rawcalldata',
       selector,
@@ -163,16 +167,24 @@ describe('utils/catalog', () => {
           inputs: [
             { parameter: 'uint256', label: 'Amount', input: ['100'] },
             { parameter: 'uint32', label: 'Destination domain', input: ['0'] },
-            { parameter: 'bytes32', label: 'Mint recipient', input: ['0x0000000000000000000000002222222222222222222222222222222222222222'] },
+            {
+              parameter: 'bytes32',
+              label: 'Mint recipient',
+              input: ['0x0000000000000000000000002222222222222222222222222222222222222222'],
+            },
             { parameter: 'address', label: 'Burn token', input: [ADDRESS_B] },
-            { parameter: 'bytes32', label: 'Destination caller', input: ['0x0000000000000000000000001111111111111111111111111111111111111111'] },
+            {
+              parameter: 'bytes32',
+              label: 'Destination caller',
+              input: ['0x0000000000000000000000001111111111111111111111111111111111111111'],
+            },
             { parameter: 'uint256', label: 'Max fee', input: ['0'] },
             { parameter: 'uint32', label: 'Min finality threshold', input: ['1000'] },
             { parameter: 'bytes', label: 'Hook data', input: ['$hookData'] },
           ],
         },
       ],
-      { messenger: ADDRESS_A, hookData },
+      { messenger: ADDRESS_A, hookData }
     )
 
     const definition = buildWorkflowDefinitionFromCatalog(workflow)
@@ -206,7 +218,7 @@ describe('utils/catalog', () => {
           ],
         },
       ],
-      { messenger: ADDRESS_A },
+      { messenger: ADDRESS_A }
     )
 
     const definition = buildWorkflowDefinitionFromCatalog(workflow)
@@ -238,7 +250,7 @@ describe('utils/catalog', () => {
           ],
         },
       ],
-      { target: ADDRESS_A },
+      { target: ADDRESS_A }
     )
 
     const definition = buildWorkflowDefinitionFromCatalog(workflow)
@@ -329,9 +341,15 @@ describe('utils/catalog', () => {
 
     expect(definition.actions[0]!.rawMode).to.equal(undefined)
     expect(callbackInput).to.equal(0x80 | callbackSlot)
-    expect(definition.state[callbackSlot]).to.deep.include({ type: 'template', label: 'Callback data', actionIndex: 0, inputIndex: 4 })
+    expect(definition.state[callbackSlot]).to.deep.include({
+      type: 'template',
+      label: 'Callback data',
+      actionIndex: 0,
+      inputIndex: 4,
+    })
     const templateSlot = definition.state[callbackSlot]
-    if (!templateSlot || templateSlot.type !== 'template') throw new Error('Expected callback slot to be a template slot')
+    if (!templateSlot || templateSlot.type !== 'template')
+      throw new Error('Expected callback slot to be a template slot')
     expect(templateSlot.workflow.actions[2]!.rawMode).to.equal(undefined)
     expect(definition.runtimeVariables).to.deep.equal(['amount'])
 
@@ -350,10 +368,109 @@ describe('utils/catalog', () => {
     expect(declaredLength).to.equal((callbackBytes.length - 2) / 2)
     const [commands, callbackState, callbackStateBitmap] = decodeAbiParameters(
       [{ type: 'bytes32[]' }, { type: 'bytes[]' }, { type: 'uint128' }],
-      callbackBytes,
+      callbackBytes
     )
     expect(Array.isArray(commands)).to.equal(true)
     expect(Array.isArray(callbackState)).to.equal(true)
     expect(typeof callbackStateBitmap).to.equal('bigint')
+  })
+
+  // Defense-in-depth: the catalog builder must reject workflows that need more than 128
+  // state slots (weiroll slot indices are 7-bit; stateBitmap is uint128), rather than
+  // emitting malformed specifiers. buildScript() enforces the same cap downstream.
+  it('rejects a workflow that exceeds the weiroll state-slot limit', () => {
+    const selector = 'function f(address)'
+    const count = 130
+    const variables: CatalogVariable[] = []
+    const actions: CatalogTemplate['actions'] = []
+    const workflowVariables: Record<string, string> = {}
+    for (let i = 0; i < count; i++) {
+      const name = `v${i}`
+      variables.push({ name, kind: 'pinned' })
+      // Distinct values so each maps to its own state slot (slots are deduped by value).
+      workflowVariables[name] = `0x${(i + 1).toString(16).padStart(40, '0')}`
+      actions.push({
+        target: '$balanceSheet',
+        selector,
+        inputs: [{ parameter: 'address', input: [`$${name}`] }],
+      } as CatalogTemplate['actions'][number])
+    }
+    variables.push({ name: 'balanceSheet', kind: 'pinned' })
+    workflowVariables.balanceSheet = ADDRESS_B
+    const workflow = tagged('oversized', variables, actions, workflowVariables)
+
+    // Either the per-slot encoder (limit 127) or the aggregate count check (maximum 128)
+    // fires first — both are the same hardening, so assert on either message.
+    expect(() => buildWorkflowDefinitionFromCatalog(workflow)).to.throw(/limit 127|maximum is 128/)
+  })
+})
+
+describe('utils/catalog — parseMarketplaceCatalog', () => {
+  const goodId = `0x${'ab'.repeat(32)}`
+  const validCatalog = () => ({
+    templates: { t1: { actions: [], variables: [] } },
+    workflows: [{ id: 'wf1', template: 't1', variables: {}, workflowId: goodId }],
+  })
+
+  it('accepts a well-formed { templates, workflows } catalog', () => {
+    const { templates, workflows } = parseMarketplaceCatalog(validCatalog())
+    expect(Object.keys(templates)).to.deep.equal(['t1'])
+    expect(workflows).to.have.length(1)
+  })
+
+  it('accepts a bare workflows array with no templates', () => {
+    const { templates, workflows } = parseMarketplaceCatalog([{ id: 'wf', useTemplate: { template: 'x' } }])
+    expect(templates).to.deep.equal({})
+    expect(workflows).to.have.length(1)
+  })
+
+  it('accepts a workflowId with or without 0x prefix, and an absent/empty one', () => {
+    expect(() => parseMarketplaceCatalog(validCatalog())).to.not.throw()
+    const noPrefix = validCatalog()
+    noPrefix.workflows[0]!.workflowId = 'ab'.repeat(32)
+    expect(() => parseMarketplaceCatalog(noPrefix)).to.not.throw()
+    const empty = validCatalog()
+    empty.workflows[0]!.workflowId = ''
+    expect(() => parseMarketplaceCatalog(empty)).to.not.throw()
+  })
+
+  it('passes callback (useTemplate) entries through without per-field checks', () => {
+    const cat = { templates: {}, workflows: [{ useTemplate: { template: 'cb' } }] }
+    expect(() => parseMarketplaceCatalog(cat)).to.not.throw()
+  })
+
+  it('throws on a non-object catalog', () => {
+    expect(() => parseMarketplaceCatalog(null)).to.throw(/expected a JSON object or array/)
+    expect(() => parseMarketplaceCatalog('nope')).to.throw(/expected a JSON object or array/)
+  })
+
+  it('throws when templates is not an object', () => {
+    expect(() => parseMarketplaceCatalog({ templates: [], workflows: [] })).to.throw(/`templates` must be an object/)
+  })
+
+  it('throws when workflows is not an array', () => {
+    expect(() => parseMarketplaceCatalog({ templates: {}, workflows: {} })).to.throw(/`workflows` must be an array/)
+  })
+
+  it('throws when a workflow references an unknown template', () => {
+    const cat = { templates: { t1: { actions: [], variables: [] } }, workflows: [{ id: 'wf', template: 'missing' }] }
+    expect(() => parseMarketplaceCatalog(cat)).to.throw(/references unknown template "missing"/)
+  })
+
+  it('throws when a workflow is missing an id/workflowRef', () => {
+    const cat = { templates: { t1: { actions: [], variables: [] } }, workflows: [{ template: 't1' }] }
+    expect(() => parseMarketplaceCatalog(cat)).to.throw(/missing a string id\/workflowRef/)
+  })
+
+  it('throws when variables is not an object', () => {
+    const cat = validCatalog()
+    ;(cat.workflows[0] as Record<string, unknown>).variables = []
+    expect(() => parseMarketplaceCatalog(cat)).to.throw(/non-object `variables`/)
+  })
+
+  it('throws on a malformed workflowId', () => {
+    const cat = validCatalog()
+    cat.workflows[0]!.workflowId = '0xdeadbeef'
+    expect(() => parseMarketplaceCatalog(cat)).to.throw(/invalid workflowId/)
   })
 })

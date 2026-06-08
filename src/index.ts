@@ -79,6 +79,7 @@ export {
   VALUECALL,
   FLAG_RAW,
   UNUSED_SLOT,
+  MAX_STATE_SLOTS,
   encodeCommand,
   buildScript,
   fillRuntimeSlots,
@@ -95,7 +96,8 @@ export { computeScriptHash } from './utils/scriptHash.js'
 export type { Callback } from './utils/scriptHash.js'
 export { MAGIC_VARIABLE_KEYS, resolveMagicVariables, resolveVariableLabel } from './utils/variables.js'
 export type { MagicVariableContext, MagicVariableKey } from './utils/variables.js'
-export { buildWorkflowDefinitionFromCatalog } from './utils/catalog.js'
+export { buildWorkflowDefinitionFromCatalog, parseMarketplaceCatalog } from './utils/catalog.js'
+export type { ParsedMarketplaceCatalog } from './utils/catalog.js'
 export {
   applyWorkflowExclusions,
   buildPreparedWorkflowDefinition,
