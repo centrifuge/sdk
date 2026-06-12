@@ -5,7 +5,8 @@ export type FileType = { uri: string; mime: string }
 /**
  * APY display modes read by the invest app: an indexer yield window (7d/30d/90d/180d) combined
  * with a day-count basis (365/360), optionally compounded (30d only), the windowless modes
- * ttm/ytd/sinceInception, or 'none' to hide APY entirely.
+ * ttm/ytd/sinceInception, 'fixed' to display the hardcoded apyPercentage as the APY, or 'none'
+ * to hide APY entirely.
  */
 export type ApyMode =
   | '7d365'
@@ -21,6 +22,7 @@ export type ApyMode =
   | 'ttm'
   | 'ytd'
   | 'sinceInception'
+  | 'fixed'
   | 'none'
 
 /**
