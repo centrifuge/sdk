@@ -2,6 +2,33 @@ import { HexString } from './index.js'
 
 export type FileType = { uri: string; mime: string }
 
+/**
+ * APY display modes read by the invest app: an indexer yield window (7d/30d/90d/180d) combined
+ * with a day-count basis (365/360), optionally compounded (30d only), the windowless modes
+ * ttm/ytd/sinceInception, or 'none' to hide APY entirely.
+ */
+export type ApyMode =
+  | '7d365'
+  | '7d360'
+  | '30d365'
+  | '30d360'
+  | '30dComp365'
+  | '30dComp360'
+  | '90d365'
+  | '90d360'
+  | '180d365'
+  | '180d360'
+  | 'ttm'
+  | 'ytd'
+  | 'sinceInception'
+  | 'none'
+
+/**
+ * @deprecated No longer recognized by the invest app — these fall back to '30d365'. Kept in the
+ * union so metadata documents that predate the new vocabulary still type-check when read.
+ */
+export type LegacyApyMode = 'target' | '7day' | '30day' | '90day' | 'automatic'
+
 export type MerkleProofWorkflow = {
   id: string
   name: string
@@ -149,14 +176,23 @@ export type PoolMetadata = {
       reportUrl?: string
       reportFile?: FileType | null
     }[]
+    /** Expense ratio in percent, kept as a string, e.g. '0.25' */
+    expenseRatio?: string
   }
   shareClasses: Record<
     HexString,
     {
       icon?: FileType | null
       minInitialInvestment?: number | null
+      /** Fallback APY in percent, shown while the indexer has no computed yield yet */
       apyPercentage?: number | null
-      apy?: 'target' | '7day' | '30day' | '90day' | 'ytd' | 'sinceInception' | 'automatic' | null
+      apy?: ApyMode | LegacyApyMode | null
+      /** Weighted average asset maturity in days, e.g. 63.33; row hidden in the invest app when unset */
+      weightedAverageMaturity?: number | null
+      /** Past year performance in percent, e.g. 4.1; row hidden in the invest app when unset */
+      pastYearPerformance?: number | null
+      /** 'underlying' for wrapper tokens whose performance track record predates the wrapper */
+      pastYearPerformanceSource?: 'fund' | 'underlying' | null
       defaultAccounts?: {
         asset?: number
         equity?: number

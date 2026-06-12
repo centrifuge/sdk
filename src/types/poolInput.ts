@@ -1,5 +1,5 @@
 import { HexString } from './index.js'
-import { PoolMetadata } from './poolMetadata.js'
+import { ApyMode, LegacyApyMode, PoolMetadata } from './poolMetadata.js'
 
 export type FileType = { uri: string; mime: string }
 
@@ -16,7 +16,7 @@ export type ShareClassInput = {
   symbolName: string
   minInvestment?: number | null
   apyPercentage?: number | null
-  apy?: 'target' | '7day' | '30day' | '90day' | 'ytd' | 'sinceInception' | 'automatic' | null
+  apy?: ApyMode | LegacyApyMode | null
   salt?: string
   defaultAccounts?: PoolMetadata['shareClasses'][HexString]['defaultAccounts']
 }
