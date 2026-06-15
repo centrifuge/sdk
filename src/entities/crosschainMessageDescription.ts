@@ -129,15 +129,32 @@ function scaleDecimals(value: string, decimals = 18): number {
   return Number(value) * 10 ** -decimals
 }
 
+const numberFormatters = new Map<number, Intl.NumberFormat>()
+
+/** Cached `Intl.NumberFormat` per fraction-digit count (locale/grouping are constant). */
+function numberFormatter(decimals: number): Intl.NumberFormat {
+  let formatter = numberFormatters.get(decimals)
+  if (!formatter) {
+    formatter = new Intl.NumberFormat(undefined, {
+      useGrouping: true,
+      minimumFractionDigits: decimals,
+      maximumFractionDigits: decimals,
+    })
+    numberFormatters.set(decimals, formatter)
+  }
+  return formatter
+}
+
 /** Rounds a number to `decimals` places with locale grouping. */
 function roundNumber(value: number, decimals = 0): string {
   if (!Number.isFinite(value)) return value > 0 ? '∞' : '-∞'
   const n = Math.round(value * 10 ** decimals) / 10 ** decimals
-  return new Intl.NumberFormat(undefined, {
-    useGrouping: true,
-    minimumFractionDigits: decimals,
-    maximumFractionDigits: decimals,
-  }).format(n)
+  return numberFormatter(decimals).format(n)
+}
+
+/** Scales an integer-string value by `decimals` and renders it with 6 fraction digits. */
+function formatScaled(value: unknown, decimals: number): string {
+  return roundNumber(scaleDecimals(toSafeString(value, '0'), decimals), 6)
 }
 
 function capitalizeFirstLetter(value: string | undefined): string {
@@ -184,6 +201,8 @@ export function describeCrosschainMessage(
   const data = asRecord(message.data)
   const decimals = context.tokenDecimals ?? 18
 
+  // Keyed off the indexer's decoded message name (e.g. 'NotifyPool'), which is distinct
+  // from the on-chain `MessageType` enum used for encoding (e.g. `SetMaxAssetPriceAge`).
   switch (message.messageType) {
     case 'ScheduleUpgrade':
       return `Schedule upgrade ${shortenAddress(data.target)}`
@@ -208,10 +227,10 @@ export function describeCrosschainMessage(
       return `Deploy share token ${tokenSymbol(context)}`
 
     case 'NotifyPricePoolPerShare':
-      return `Update ${tokenSymbol(context)} price to ${roundNumber(scaleDecimals(toSafeString(data.price, '0'), 18), 6)}`
+      return `Update ${tokenSymbol(context)} price to ${formatScaled(data.price, 18)}`
 
     case 'NotifyPricePoolPerAsset':
-      return `Update asset price to ${roundNumber(scaleDecimals(toSafeString(data.price, '0'), 18), 6)}`
+      return `Update asset price to ${formatScaled(data.price, 18)}`
 
     case 'NotifyShareMetadata':
       return 'Update share metadata'
@@ -220,10 +239,10 @@ export function describeCrosschainMessage(
       return `Update share hook to ${shortenAddress(data.hook)}`
 
     case 'InitiateTransferShares':
-      return `Initiate transfer of ${roundNumber(scaleDecimals(toSafeString(data.amount, '0'), decimals), 6)} ${tokenLabel(context)} to ${capitalizeFirstLetter(context.toBlockchain?.network) || '[??]'}`
+      return `Initiate transfer of ${formatScaled(data.amount, decimals)} ${tokenLabel(context)} to ${capitalizeFirstLetter(context.toBlockchain?.network) || '[??]'}`
 
     case 'ExecuteTransferShares':
-      return `Transfer ${roundNumber(scaleDecimals(toSafeString(data.amount, '0'), decimals), 6)} ${tokenLabel(context)} to ${capitalizeFirstLetter(context.toBlockchain?.network) || '[??]'}`
+      return `Transfer ${formatScaled(data.amount, decimals)} ${tokenLabel(context)} to ${capitalizeFirstLetter(context.toBlockchain?.network) || '[??]'}`
 
     case 'UpdateRestriction': {
       const payload = decodedPayloadOf(message.data)
