@@ -2468,14 +2468,19 @@ export class ShareClass extends Entity {
   }
 
   /**
-   * Check whether cross-chain transfers are enabled for this share class by verifying
-   * that chain representative addresses are whitelisted as members on each other's chains.
-   * Only checks chains that use the fullRestrictionsHook, since other hooks don't restrict
-   * cross-chain transfers.
+   * Check whether cross-chain transfers are enabled for this share class by verifying that,
+   * across the chains using the fullRestrictionsHook:
+   *  - each chain's representative address is whitelisted as a member on every other chain, and
+   *  - each chain's own spoke is whitelisted as a member on that chain.
    *
-   * @returns Observable of boolean — true if all fullRestrictionsHook chain pairs have
-   *          each other's representative addresses whitelisted, or if there are fewer
-   *          than 2 such chains (nothing to restrict).
+   * The spoke check matters because cross-chain delivery mints to the spoke before forwarding to
+   * the receiver, and that mint falls through to `isTargetMember(spoke)` — so transfers to a chain
+   * revert if its spoke isn't a member, even when all representative addresses are whitelisted.
+   * Only fullRestrictionsHook chains are checked, since other hooks don't restrict transfers.
+   *
+   * @returns Observable of boolean — true if every fullRestrictionsHook chain has the other chains'
+   *          representative addresses and its own spoke whitelisted, or if there are fewer than 2
+   *          such chains (nothing to restrict).
    */
   crossChainTransferStatus() {
     return this._query(['crossChainTransferStatus'], () =>
@@ -2501,8 +2506,8 @@ export class ShareClass extends Entity {
 
               const allDeployedCentrifugeIds = deployments.map((d) => d.centrifugeId)
 
-              // For each fullRestrictionsHook chain, check if all other chains' rep addresses are members
-              const checks = fullRestrictionsCentrifugeIds.flatMap((centrifugeId) =>
+              // For each fullRestrictionsHook chain, check that all other chains' rep addresses are members.
+              const repChecks = fullRestrictionsCentrifugeIds.flatMap((centrifugeId) =>
                 allDeployedCentrifugeIds
                   .filter((otherId) => otherId !== centrifugeId)
                   .map((otherId) => {
@@ -2511,7 +2516,19 @@ export class ShareClass extends Entity {
                   })
               )
 
-              return combineLatest(checks).pipe(map((results) => results.every((r) => r)))
+              // For each fullRestrictionsHook chain, also check that its own spoke is a member — the
+              // inbound mint targets the spoke, so transfers to the chain fail without it.
+              const spokeChecks = fullRestrictionsCentrifugeIds.map((centrifugeId) =>
+                this._root
+                  ._protocolAddresses(centrifugeId)
+                  .pipe(
+                    switchMap((addresses) =>
+                      this.member(addresses.spoke, centrifugeId).pipe(map((result) => result.isMember))
+                    )
+                  )
+              )
+
+              return combineLatest([...repChecks, ...spokeChecks]).pipe(map((results) => results.every((r) => r)))
             })
           )
         })
