@@ -25,6 +25,15 @@ export type {
   CrosschainPoolRef,
   CrosschainTokenRef,
 } from './entities/crosschainMessages.js'
+export {
+  CROSSCHAIN_MESSAGE_DESCRIPTION_COMPLETE,
+  describeCrosschainMessage,
+  isCrosschainMessageDescriptionComplete,
+} from './entities/crosschainMessageDescription.js'
+export type {
+  CrosschainMessageDescriptionContext,
+  DescribableCrosschainMessage,
+} from './entities/crosschainMessageDescription.js'
 export * from './entities/PoolNetwork.js'
 export * from './entities/Reports/PoolReports.js'
 export * from './entities/Reports/PoolShareYieldsReport.js'
