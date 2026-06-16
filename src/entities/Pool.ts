@@ -1117,6 +1117,62 @@ export class Pool extends Entity {
   }
 
   /**
+   * Per-adapter live + in-flight state for this pool on the spoke→hub route,
+   * from the indexer. `isEnabled` is the set confirmed live on the spoke;
+   * `crosschainInProgress` flags an adapter whose enable/disable was triggered
+   * on the hub but has not yet been confirmed on the spoke (`null` once settled).
+   *
+   * Unlike `adapters()` — which reads the hub MultiAdapter and so reports a
+   * triggered change as already active — this reflects what is actually live
+   * versus still in transit.
+   *
+   * @param centrifugeId - The centrifuge ID of the spoke network
+   */
+  adapterStatus(centrifugeId: CentrifugeId) {
+    return this._query(['adapterStatus', this.id.toString(), centrifugeId, this.centrifugeId], () =>
+      this._root
+        ._queryIndexer<{
+          poolAdapters: {
+            items: {
+              adapterAddress: HexString
+              isEnabled: boolean | null
+              crosschainInProgress: 'Enabled' | 'Disabled' | null
+              adapter: { name: string } | null
+            }[]
+          }
+        }>(
+          `query ($poolId: BigInt!, $local: String!, $remote: String!) {
+            poolAdapters(where: { poolId: $poolId, localCentrifugeId: $local, remoteCentrifugeId: $remote }) {
+              items {
+                adapterAddress
+                isEnabled
+                crosschainInProgress
+                adapter {
+                  name
+                }
+              }
+            }
+          }`,
+          {
+            poolId: this.id.toString(),
+            local: String(centrifugeId),
+            remote: String(this.centrifugeId),
+          }
+        )
+        .pipe(
+          map(({ poolAdapters }) =>
+            poolAdapters.items.map((item) => ({
+              address: item.adapterAddress.toLowerCase() as HexString,
+              name: item.adapter?.name ?? 'unknown',
+              isEnabled: !!item.isEnabled,
+              crosschainInProgress: item.crosschainInProgress ?? null,
+            }))
+          )
+        )
+    )
+  }
+
+  /**
    * Query cross-chain messages (indexer-side: `CrosschainPayload`) for this
    * pool. Without a filter, returns the most recent batch across all routes
    * and statuses; `filter.status` is the common case (e.g. `'InTransit'` for
