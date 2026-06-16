@@ -3,9 +3,11 @@ import type { CentrifugeId } from './types.js'
 
 export const PLUME_CENTRIFUGE_ID = 4
 
-// Temporary production hotfix: Plume cross-chain messaging is disabled until the
-// protocol adapter wiring is fixed. Remove this allowlist once Ops confirms Plume.
-export const TEMPORARILY_DISABLED_CROSSCHAIN_CENTRIFUGE_IDS = [PLUME_CENTRIFUGE_ID] as const
+// Kill-switch for temporarily disabling cross-chain messaging to specific
+// networks (e.g. while a network's adapter wiring is being fixed). Currently
+// empty — all networks are enabled, including Plume. To disable a network
+// again, add its centrifugeId here.
+export const TEMPORARILY_DISABLED_CROSSCHAIN_CENTRIFUGE_IDS = [] as const
 
 const disabledCentrifugeIds = new Set<number>(TEMPORARILY_DISABLED_CROSSCHAIN_CENTRIFUGE_IDS)
 
