@@ -819,8 +819,12 @@ export class PoolNetwork extends Entity {
         }
       }
 
-      // notifyPool must come before the other pool-related messages, because they depend on the pool being active
-      if (!details.isActive) {
+      // notifyPool must come before the other pool-related messages, because they depend on the pool
+      // being active. Only do it on the first deployment to this chain: once any share class is
+      // active here the pool is already registered, and re-notifying it (e.g. when deploying a second
+      // share class to the same chain) reverts. `activeShareClasses` is treated as authoritative since
+      // an active share class implies an active pool even if `isActive` lags.
+      if (!details.isActive && details.activeShareClasses.length === 0) {
         batch.push(
           encodeFunctionData({
             abi: ABI.Hub,
