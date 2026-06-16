@@ -11,7 +11,9 @@ import {
 describe('crosschainHotfix', () => {
   const poolId = PoolId.from(1, 1)
 
-  it('skips messages targeting Plume', () => {
+  // The disabled list is currently empty, so all targets (including Plume) are
+  // enabled. These tests document that and exercise the kill-switch helpers.
+  it('allows messages to all networks when nothing is disabled', () => {
     const messages: Record<number, MessageTypeWithSubType[]> = {
       1: [{ type: MessageType.NotifyPricePoolPerShare, poolId }],
     }
@@ -21,19 +23,17 @@ describe('crosschainHotfix', () => {
       poolId,
     })
 
-    expect(added).to.equal(false)
-    expect(messages).to.have.keys(['1'])
+    expect(added).to.equal(true)
+    expect(messages[PLUME_CENTRIFUGE_ID]).to.have.length(1)
   })
 
-  it('throws before estimating or submitting Plume messages', () => {
-    expect(() => assertCrosschainMessagingEnabled(PLUME_CENTRIFUGE_ID)).to.throw(
-      `Cross-chain messaging for centrifugeId ${PLUME_CENTRIFUGE_ID} is temporarily disabled`
-    )
+  it('does not throw for any target when nothing is disabled', () => {
+    expect(() => assertCrosschainMessagingEnabled(PLUME_CENTRIFUGE_ID)).to.not.throw()
 
     expect(() =>
       assertMessagesDoNotTargetDisabledChains({
         [PLUME_CENTRIFUGE_ID]: [{ type: MessageType.NotifyPricePoolPerShare, poolId }],
       })
-    ).to.throw(`Cross-chain messaging for centrifugeId ${PLUME_CENTRIFUGE_ID} is temporarily disabled`)
+    ).to.not.throw()
   })
 })
