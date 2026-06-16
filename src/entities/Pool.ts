@@ -5,6 +5,7 @@ import type { Centrifuge } from '../Centrifuge.js'
 import { HexString } from '../types/index.js'
 import { PoolMetadataInput, ShareClassInput } from '../types/poolInput.js'
 import { PoolMetadata, WorkflowPolicyEntry } from '../types/poolMetadata.js'
+import type { Query } from '../types/query.js'
 import { MessageType, MessageTypeWithSubType } from '../types/transaction.js'
 import { NATIONAL_CURRENCY_METADATA } from '../utils/currencies.js'
 import {
@@ -23,6 +24,23 @@ import { PoolNetwork } from './PoolNetwork.js'
 import { PoolReports } from './Reports/PoolReports.js'
 import { ShareClass } from './ShareClass.js'
 import { queryCrosschainMessages, type CrosschainMessagesFilter } from './crosschainMessages.js'
+
+/**
+ * In-flight state of a cross-chain adapter change. `'Enabled'` / `'Disabled'`
+ * is the target state of a change triggered on the hub but not yet confirmed on
+ * the spoke; `null` means the adapter is settled (no change in transit).
+ */
+export type AdapterProgress = 'Enabled' | 'Disabled' | null
+
+/** Per-adapter live + in-flight state for a pool, as returned by {@link Pool.adapterStatus}. */
+export type AdapterStatus = {
+  address: HexString
+  /** Indexer adapter name, e.g. `chainlink`, `layerZero`, `axelar`, `wormhole`. */
+  name: string
+  /** The live, confirmed state on the queried (spoke) chain. */
+  isEnabled: boolean
+  crosschainInProgress: AdapterProgress
+}
 
 export class Pool extends Entity {
   id: PoolId
@@ -1128,7 +1146,7 @@ export class Pool extends Entity {
    *
    * @param centrifugeId - The centrifuge ID of the spoke network
    */
-  adapterStatus(centrifugeId: CentrifugeId) {
+  adapterStatus(centrifugeId: CentrifugeId): Query<AdapterStatus[]> {
     return this._query(['adapterStatus', this.id.toString(), centrifugeId, this.centrifugeId], () =>
       this._root
         ._queryIndexer<{
@@ -1136,7 +1154,7 @@ export class Pool extends Entity {
             items: {
               adapterAddress: HexString
               isEnabled: boolean | null
-              crosschainInProgress: 'Enabled' | 'Disabled' | null
+              crosschainInProgress: AdapterProgress
               adapter: { name: string } | null
             }[]
           }
@@ -1160,12 +1178,12 @@ export class Pool extends Entity {
           }
         )
         .pipe(
-          map(({ poolAdapters }) =>
+          map(({ poolAdapters }): AdapterStatus[] =>
             poolAdapters.items.map((item) => ({
               address: item.adapterAddress.toLowerCase() as HexString,
               name: item.adapter?.name ?? 'unknown',
               isEnabled: !!item.isEnabled,
-              crosschainInProgress: item.crosschainInProgress ?? null,
+              crosschainInProgress: item.crosschainInProgress,
             }))
           )
         )
