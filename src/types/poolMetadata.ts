@@ -189,6 +189,11 @@ export type PoolMetadata = {
       /** Fallback APY in percent, shown while the indexer has no computed yield yet */
       apyPercentage?: number | null
       apy?: ApyMode | LegacyApyMode | null
+      /**
+       * Free-text tooltip shown by the invest app alongside the APY; used with apy: 'fixed' to
+       * explain the hardcoded apyPercentage (e.g. "Target APY set by the fund manager").
+       */
+      apyTooltip?: string | null
       /** Weighted average asset maturity in days, e.g. 63.33; row hidden in the invest app when unset */
       weightedAverageMaturity?: number | null
       /** Past year performance in percent, e.g. 4.1; row hidden in the invest app when unset */
