@@ -1,0 +1,212 @@
+name: review / pr
+
+on:
+  pull_request:
+    paths:
+      - 'src/**'
+      - 'docs/**'
+
+permissions:
+  contents: read
+  pull-requests: write
+  id-token: write
+
+jobs:
+  review:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          fetch-depth: 0
+
+      - name: Detect changed file categories
+        id: changed
+        run: |
+          BASE=${{ github.event.pull_request.base.sha }}
+          HEAD=${{ github.event.pull_request.head.sha }}
+
+          changed_files=$(git diff --name-only "$BASE"..."$HEAD")
+
+          # ABI changes → ABI correctness checks apply
+          has_abi_changes=$(echo "$changed_files" | grep -c 'src/abi/' || true)
+
+          # Entity changes → entity/observable pattern checks apply
+          has_entity_changes=$(echo "$changed_files" | grep -c 'src/entities/' || true)
+
+          echo "has_abi_changes=$has_abi_changes" >> $GITHUB_OUTPUT
+          echo "has_entity_changes=$has_entity_changes" >> $GITHUB_OUTPUT
+
+          # Full file list for Claude context
+          files=$(echo "$changed_files" | grep -E '^(src|docs)/' | tr '\n' ' ')
+          echo "files=$files" >> $GITHUB_OUTPUT
+
+      - name: Review — ABI Correctness
+        if: steps.changed.outputs.files != ''
+        uses: anthropics/claude-code-action@v1
+        with:
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          model: claude-sonnet-4-6
+          track_progress: false
+          claude_args: |
+            --allowedTools "Read,Glob,Grep,Write,Bash(gh pr diff:*),Bash(gh pr view:*)" --model claude-sonnet-4-6
+          prompt: |
+            REPO: ${{ github.repository }}
+            PR NUMBER: ${{ github.event.pull_request.number }}
+
+            Read `.github/prompts/pr-review-abi.md` and follow every instruction in it.
+
+            ## Context
+
+            Changed files: ${{ steps.changed.outputs.files }}
+            ABI changes detected: ${{ steps.changed.outputs.has_abi_changes != '0' && 'YES' || 'no' }}
+
+            Write your review to `out/pr-review-abi.md` as instructed.
+
+      - name: Review — Entity & Observable Pattern
+        if: steps.changed.outputs.files != ''
+        uses: anthropics/claude-code-action@v1
+        with:
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          model: claude-sonnet-4-6
+          track_progress: false
+          claude_args: |
+            --allowedTools "Read,Glob,Grep,Write,Bash(gh pr diff:*),Bash(gh pr view:*)" --model claude-sonnet-4-6
+          prompt: |
+            REPO: ${{ github.repository }}
+            PR NUMBER: ${{ github.event.pull_request.number }}
+
+            Read `.github/prompts/pr-review-entity.md` and follow every instruction in it.
+
+            ## Context
+
+            Changed files: ${{ steps.changed.outputs.files }}
+            Entity changes detected: ${{ steps.changed.outputs.has_entity_changes != '0' && 'YES' || 'no' }}
+
+            Write your review to `out/pr-review-entity.md` as instructed.
+
+      - name: Review — Test Coverage
+        if: steps.changed.outputs.files != ''
+        uses: anthropics/claude-code-action@v1
+        with:
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          model: claude-sonnet-4-6
+          track_progress: false
+          claude_args: |
+            --allowedTools "Read,Glob,Grep,Write,Bash(gh pr diff:*),Bash(gh pr view:*)" --model claude-sonnet-4-6
+          prompt: |
+            REPO: ${{ github.repository }}
+            PR NUMBER: ${{ github.event.pull_request.number }}
+
+            Read `.github/prompts/pr-review-testing.md` and follow every instruction in it.
+
+            ## Context
+
+            Changed files: ${{ steps.changed.outputs.files }}
+            Entity changes detected: ${{ steps.changed.outputs.has_entity_changes != '0' && 'YES — check for missing tests' || 'no' }}
+            ABI changes detected: ${{ steps.changed.outputs.has_abi_changes != '0' && 'YES — check new functions are tested' || 'no' }}
+
+            Write your review to `out/pr-review-testing.md` as instructed.
+
+      - name: Review — Public API & Hygiene
+        if: steps.changed.outputs.files != ''
+        uses: anthropics/claude-code-action@v1
+        with:
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          model: claude-haiku-4-5
+          track_progress: false
+          claude_args: |
+            --allowedTools "Read,Glob,Grep,Write,Bash(gh pr diff:*),Bash(gh pr view:*)" --model claude-haiku-4-5
+          prompt: |
+            REPO: ${{ github.repository }}
+            PR NUMBER: ${{ github.event.pull_request.number }}
+
+            Read `.github/prompts/pr-review-hygiene.md` and follow every instruction in it.
+
+            ## Context
+
+            Changed files: ${{ steps.changed.outputs.files }}
+            ABI changes detected: ${{ steps.changed.outputs.has_abi_changes != '0' && 'YES — check src/abi/index.ts registration' || 'no' }}
+
+            Write your review to `out/pr-review-hygiene.md` as instructed.
+
+      - name: Merge review outputs
+        if: steps.changed.outputs.files != ''
+        run: |
+          set -e
+          mkdir -p out
+
+          verdict_rank() {
+            case "$1" in BLOCK) echo 3;; CONCERN) echo 2;; PASS) echo 1;; *) echo 0;; esac
+          }
+
+          # Determine worst verdict across all four dimensions
+          worst="PASS"
+          for dim in abi entity testing hygiene; do
+            f="out/pr-review-${dim}.md"
+            [ -f "$f" ] || continue
+            v=$(grep -m1 '^VERDICT:' "$f" | sed 's/VERDICT:[[:space:]]*//' | tr -d '[:space:]')
+            [ "$(verdict_rank "$v")" -gt "$(verdict_rank "$worst")" ] && worst="$v"
+          done
+
+          # Collect checklist items (lines starting with "- [")
+          checklist_file=$(mktemp)
+          for dim in abi entity testing hygiene; do
+            f="out/pr-review-${dim}.md"
+            [ -f "$f" ] || continue
+            grep -E '^\- \[' "$f" >> "$checklist_file" || true
+          done
+
+          # Collect finding rows (lines starting with "| <digit>"), renumbered
+          findings_file=$(mktemp)
+          n=1
+          for dim in abi entity testing hygiene; do
+            f="out/pr-review-${dim}.md"
+            [ -f "$f" ] || continue
+            while IFS= read -r line; do
+              echo "$line" | sed "s/^|[[:space:]]*[0-9][0-9]*[[:space:]]*/| $n /" >> "$findings_file"
+              n=$((n + 1))
+            done < <(grep -E '^\| *[0-9]' "$f" || true)
+          done
+
+          # Assemble merged output
+          {
+            printf '<!-- sdk-ai-review -->\n\n'
+            printf '### AI Code Review\n\n'
+            printf '**Verdict**: %s\n\n' "$worst"
+            printf '**Checklist**:\n'
+            cat "$checklist_file"
+            printf '\n**Findings** — one per row:\n\n'
+            printf '| # | Dimension | Severity | File | Issue | Suggested fix |\n'
+            printf '|---|-----------|----------|------|-------|---------------|\n'
+            cat "$findings_file"
+          } > out/pr-review.md
+
+          rm -f "$checklist_file" "$findings_file"
+
+      - name: Post or update review comment
+        if: steps.changed.outputs.files != ''
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR: ${{ github.event.pull_request.number }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -e
+          if [ ! -f out/pr-review.md ]; then
+            echo "::warning::out/pr-review.md not produced — skipping comment post"
+            exit 0
+          fi
+          MARKER='<!-- sdk-ai-review -->'
+          BODY=$(cat out/pr-review.md)
+          if ! head -1 out/pr-review.md | grep -qF "$MARKER"; then
+            echo "::error::pr-review.md is missing the marker on its first line"
+            exit 1
+          fi
+          COMMENT_ID=$(gh api "repos/$REPO/issues/$PR/comments" --paginate \
+            --jq ".[] | select(.body | contains(\"$MARKER\")) | .id" | head -1)
+          if [ -n "$COMMENT_ID" ]; then
+            echo "Updating existing comment $COMMENT_ID"
+            gh api "repos/$REPO/issues/comments/$COMMENT_ID" -X PATCH -f body="$BODY" > /dev/null
+          else
+            echo "Creating new comment"
+            gh api "repos/$REPO/issues/$PR/comments" -f body="$BODY" > /dev/null
+          fi
