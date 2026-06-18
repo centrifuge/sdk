@@ -22,6 +22,13 @@ const assetId = AssetId.from(centId, 1)
 const defaultAssetsAmount = Balance.fromFloat(100, 6)
 
 describe('Investor', () => {
+  describe('netValue', () => {
+    it('should convert raw bigint to float with full precision', async () => {
+      const inv = await context.centrifuge.investor(investor)
+      expect(inv.netValue(1000500000n, 6)).to.equal(1000.5)
+    })
+  })
+
   describe('portfolio', () => {
     it('should fetch its portfolio', async () => {
       const account = await context.centrifuge.investor(investor)
