@@ -87,13 +87,31 @@ describe('describeCrosschainMessage', () => {
         messageType: 'Request',
         data: { decodedPayload: { type: 'DepositRequest', data: { investor: ADDRESS } } },
       })
-    ).to.equal('Deposit request by 0xac4...032')
+    ).to.equal('Investment by 0xac4...032')
     expect(
       describeCrosschainMessage({
         messageType: 'RequestCallback',
         data: { decodedPayload: { type: 'FulfilledDepositRequest' } },
       })
-    ).to.equal('Fulfilled deposit request')
+    ).to.equal('Unlock investment')
+  })
+
+  it('aligns Request/RequestCallback labels with the app order vocabulary', () => {
+    const request = (type: string) =>
+      describeCrosschainMessage({ messageType: 'Request', data: { decodedPayload: { type, data: { investor: ADDRESS } } } })
+    const callback = (type: string) =>
+      describeCrosschainMessage({ messageType: 'RequestCallback', data: { decodedPayload: { type } } })
+    // A deposit/redeem request reads as an investment/redemption.
+    expect(request('RedeemRequest')).to.equal('Redemption by 0xac4...032')
+    expect(request('CancelDepositRequest')).to.equal('Cancel investment by 0xac4...032')
+    // Issuance/revocation read as the executed investment/redemption.
+    expect(callback('IssuedShares')).to.equal('Executed investment')
+    expect(callback('RevokedShares')).to.equal('Executed redemption')
+    // Fulfilled callbacks read as "Unlock …".
+    expect(callback('FulfilledRedeemRequest')).to.equal('Unlock redemption')
+    expect(callback('FulfilledCancelDepositRequest')).to.equal('Unlock cancel investment')
+    // Unmapped variants still fall back to a de-camel-cased label.
+    expect(callback('ApprovedDeposits')).to.equal('Approved deposits')
   })
 
   it('un-camel-cases unknown message types instead of throwing', () => {
