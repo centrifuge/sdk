@@ -104,6 +104,7 @@ describe('describeCrosschainMessage', () => {
     // A deposit/redeem request reads as an investment/redemption.
     expect(request('RedeemRequest')).to.equal('Redemption by 0xac4...032')
     expect(request('CancelDepositRequest')).to.equal('Cancel investment by 0xac4...032')
+    expect(request('CancelRedeemRequest')).to.equal('Cancel redemption by 0xac4...032')
     // Issuance/revocation read as the executed investment/redemption.
     expect(callback('IssuedShares')).to.equal('Executed investment')
     expect(callback('RevokedShares')).to.equal('Executed redemption')
