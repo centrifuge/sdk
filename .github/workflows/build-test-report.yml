@@ -32,13 +32,13 @@ jobs:
       - name: Run Build
         run: pnpm build
 
-      # 🛑 Tests are temporarily disabled until we figure out testing strategy
-      - name: Run tests (skipped)
-        run: echo "Skipping tests for now - CI test step disabled"
+      - name: Run unit tests
+        run: pnpm test:unit
 
-      # You can re-enable later by restoring:
-      # - name: Run tests
-      #   run: pnpm test:coverage
+      # Integration tests (entity tests) require a Tenderly fork or local Anvil — not yet enabled in CI.
+      # To re-enable later:
+      # - name: Run integration tests
+      #   run: pnpm test
       #   env:
       #     TENDERLY_ACCESS_KEY: ${{ secrets.TENDERLY_ACCESS_KEY }}
       #     PROJECT_SLUG: ${{ secrets.PROJECT_SLUG }}
