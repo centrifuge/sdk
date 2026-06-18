@@ -220,4 +220,9 @@ export class Investor extends Entity {
   allTransactions(poolId: PoolId) {
     return this.transactions(poolId, 1, 1000)
   }
+
+  // Calculates the net investment value in human-readable form
+  netValue(rawAmount: bigint, decimals: number): number {
+    return Number(rawAmount) / 10 ** decimals
+  }
 }
