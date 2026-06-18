@@ -183,7 +183,7 @@ jobs:
 
           rm -f "$checklist_file" "$findings_file"
 
-      - name: Post or update review comment
+      - name: Post review comment
         if: steps.changed.outputs.files != ''
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -201,12 +201,4 @@ jobs:
             echo "::error::pr-review.md is missing the marker on its first line"
             exit 1
           fi
-          COMMENT_ID=$(gh api "repos/$REPO/issues/$PR/comments" --paginate \
-            --jq ".[] | select(.body | contains(\"$MARKER\")) | .id" | head -1)
-          if [ -n "$COMMENT_ID" ]; then
-            echo "Updating existing comment $COMMENT_ID"
-            gh api "repos/$REPO/issues/comments/$COMMENT_ID" -X PATCH -f body="$BODY" > /dev/null
-          else
-            echo "Creating new comment"
-            gh api "repos/$REPO/issues/$PR/comments" -f body="$BODY" > /dev/null
-          fi
+          gh api "repos/$REPO/issues/$PR/comments" -f body="$BODY" > /dev/null
