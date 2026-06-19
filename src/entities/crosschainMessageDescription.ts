@@ -168,6 +168,29 @@ function unCamelCase(value: string | undefined): string {
   return value.replace(/(?<!^)[A-Z]/g, (letter) => ` ${letter.toLowerCase()}`)
 }
 
+/**
+ * Investor-facing label for a `Request` / `RequestCallback` payload type, aligned with the
+ * app's order vocabulary (see centrifuge/apps-v3#1056):
+ * - a deposit/redeem request reads as an investment/redemption,
+ * - share issuance/revocation reads as the executed investment/redemption,
+ * - a `Fulfilled…` callback reads as `Unlock …` (the funds/shares become claimable).
+ *
+ * Unmapped types fall back to a de-camel-cased label.
+ */
+const REQUEST_TYPE_LABELS: Record<string, string> = {
+  IssuedShares: 'Executed investment',
+  RevokedShares: 'Executed redemption',
+}
+
+function requestLabel(type: string | undefined): string {
+  if (!type) return unCamelCase(type)
+  const mapped = REQUEST_TYPE_LABELS[type]
+  if (mapped) return mapped
+  const unlocked = type.startsWith('Fulfilled') ? `Unlock${type.slice('Fulfilled'.length)}` : type
+  const vocab = unlocked.replace('DepositRequest', 'Investment').replace('RedeemRequest', 'Redemption')
+  return unCamelCase(vocab)
+}
+
 function tokenLabel(ctx: CrosschainMessageDescriptionContext): string {
   return ctx.token?.name ?? ctx.token?.symbol ?? '[??]'
 }
@@ -278,12 +301,12 @@ export function describeCrosschainMessage(
 
     case 'Request': {
       const payload = decodedPayloadOf(message.data)
-      return `${unCamelCase(payload?.type)} by ${shortenAddress(payload?.data?.investor)}`
+      return `${requestLabel(payload?.type)} by ${shortenAddress(payload?.data?.investor)}`
     }
 
     case 'RequestCallback': {
       const payload = decodedPayloadOf(message.data)
-      return unCamelCase(payload?.type)
+      return requestLabel(payload?.type)
     }
 
     case 'SetRequestManager':
