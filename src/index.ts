@@ -55,6 +55,9 @@ export * from './types/poolMetadata.js'
 export { migratePoolMetadataToV2, parsePoolMetadataV2, resolveLinkTarget } from './utils/poolMetadataMigration.js'
 export type { Query } from './types/query.js'
 export type {
+  BuildOnlyOptions,
+  BuiltCall,
+  BuiltTransaction,
   DeployedOnchainPMStatus,
   EIP1193ProviderLike,
   OperationConfirmedStatus,
