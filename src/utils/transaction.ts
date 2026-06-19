@@ -1,6 +1,7 @@
 import {
   AbiEvent,
   decodeEventLog,
+  encodeFunctionData,
   LocalAccount,
   Log,
   parseAbi,
@@ -33,7 +34,10 @@ class TransactionError extends Error {
 
 export class ChainMismatchError extends Error {
   override name = 'ChainMismatchError'
-  constructor(public expected: number, public actual: number) {
+  constructor(
+    public expected: number,
+    public actual: number
+  ) {
     super(
       `Wallet is connected to chainId=${actual} but transaction targets chainId=${expected}. ` +
         `Refusing to submit to avoid sending funds on the wrong network.`
@@ -60,6 +64,24 @@ export type BatchTransactionData = {
   data: HexString[]
   value?: bigint
   messages?: Record<number, MessageTypeWithSubType[]>
+}
+
+const MULTICALL_ABI = parseAbi(['function multicall(bytes[] data) payable'])
+
+/**
+ * Encode the outer calldata for a set of inner calls exactly as the signing
+ * path sends it: a single inner call is sent verbatim (no multicall wrapper),
+ * while two or more are wrapped in `multicall(bytes[])`. Centralizing this keeps
+ * `wrapTransaction` (broadcast) and `buildOnly` (build) byte-for-byte identical.
+ */
+export function encodeBatchCalldata(data: HexString[]): HexString {
+  if (data.length === 0) throw new Error('No calldata to encode')
+  if (data.length === 1) return data[0]!
+  return encodeFunctionData({
+    abi: MULTICALL_ABI,
+    functionName: 'multicall',
+    args: [data],
+  })
 }
 
 export async function* wrapTransaction(
@@ -109,18 +131,9 @@ export async function* wrapTransaction(
     if (!options.simulate) {
       const result = yield* doTransaction(title, ctx, async () => {
         await assertWalletChainMatches(ctx)
-        if (data.length === 1) {
-          return ctx.walletClient.sendTransaction({
-            to: contract,
-            data: data[0],
-            value,
-          })
-        }
-        return ctx.walletClient.writeContract({
-          address: contract,
-          abi: parseAbi(['function multicall(bytes[] data) payable']),
-          functionName: 'multicall',
-          args: [data],
+        return ctx.walletClient.sendTransaction({
+          to: contract,
+          data: encodeBatchCalldata(data),
           value,
         })
       })
