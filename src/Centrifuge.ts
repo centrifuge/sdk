@@ -1461,10 +1461,12 @@ export class Centrifuge {
 
   /**
    * Verified-deployments stream. On mainnet, every emission has been checked against
-   * the bundled `KNOWN_DEPLOYMENTS` allowlist; a mismatch surfaces as a
-   * `DeploymentMismatchError` on the observable. Apps can subscribe to this directly
-   * to render a maintenance/error UI when the indexer disagrees with the SDK's
-   * bundled addresses. Protects against indexer misconfiguration or compromise.
+   * the bundled `KNOWN_DEPLOYMENTS` allowlist. A contract whose indexer-returned address
+   * doesn't match is dropped from the emission (with a warning) so it can't be used,
+   * rather than failing the whole stream — one stale address never takes down every
+   * chain. An unknown centrifugeId still surfaces as `UnknownDeploymentError`. Protects
+   * against indexer misconfiguration or compromise: an unverified address is never
+   * returned, so the app can't transact against it.
    */
   deployments() {
     return this._deployments()

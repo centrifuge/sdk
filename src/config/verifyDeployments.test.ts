@@ -1,10 +1,6 @@
 import { expect } from 'chai'
-import {
-  DeploymentMismatchError,
-  UnknownDeploymentError,
-  verifyDeployments,
-  type IndexerDeploymentResponse,
-} from './verifyDeployments.js'
+import sinon from 'sinon'
+import { UnknownDeploymentError, verifyDeployments, type IndexerDeploymentResponse } from './verifyDeployments.js'
 import type { KnownDeployment } from './deployments.js'
 import type { HexString } from '../types/index.js'
 
@@ -113,7 +109,9 @@ function makeAllowlistEntry(overrides: Partial<KnownDeployment> = {}): KnownDepl
   }
 }
 
-function makeResponse(deployments: ReturnType<typeof makeDeployment>[] = [makeDeployment()]): IndexerDeploymentResponse {
+function makeResponse(
+  deployments: ReturnType<typeof makeDeployment>[] = [makeDeployment()]
+): IndexerDeploymentResponse {
   return {
     blockchains: { items: [{ id: '11155111', centrifugeId: '1', name: 'sepolia' }] },
     deployments: { items: deployments },
@@ -134,27 +132,38 @@ describe('verifyDeployments', () => {
     expect(() => verifyDeployments(data, allowlist)).not.to.throw()
   })
 
-  it('throws DeploymentMismatchError when an indexer address differs from the allowlist', () => {
-    const allowlist = { 1: makeAllowlistEntry() }
-    const data = makeResponse([makeDeployment({ hub: ADDR_EVIL })])
-    expect(() => verifyDeployments(data, allowlist))
-      .to.throw(DeploymentMismatchError)
-      .with.property('field', 'hub')
+  it('drops a mismatched address (and warns) instead of rejecting the whole response', () => {
+    const warn = sinon.stub(console, 'warn')
+    try {
+      const allowlist = { 1: makeAllowlistEntry() }
+      const data = makeResponse([makeDeployment({ hub: ADDR_EVIL })])
+      const result = verifyDeployments(data, allowlist)
+      const item = result.deployments.items[0] as Record<string, unknown>
+      // Mismatched field is removed so it can never be used...
+      expect(item.hub).to.equal(undefined)
+      // ...but every other field on the deployment is untouched.
+      expect(item.spoke).to.equal(ADDR_A)
+      expect(warn.calledOnce).to.equal(true)
+      expect(warn.firstCall.args[0]).to.contain("field='hub'")
+    } finally {
+      warn.restore()
+    }
   })
 
-  it('reports the offending centrifugeId and field in the error', () => {
-    const allowlist = { 1: makeAllowlistEntry() }
-    const data = makeResponse([makeDeployment({ spoke: ADDR_EVIL })])
+  it('only drops the offending field, leaving other deployments intact', () => {
+    const warn = sinon.stub(console, 'warn')
     try {
-      verifyDeployments(data, allowlist)
-      expect.fail('expected throw')
-    } catch (err) {
-      expect(err).to.be.instanceOf(DeploymentMismatchError)
-      const e = err as DeploymentMismatchError
-      expect(e.centrifugeId).to.equal(1)
-      expect(e.field).to.equal('spoke')
-      expect(e.actual).to.equal(ADDR_EVIL)
-      expect(e.expected.toLowerCase()).to.equal(ADDR_A.toLowerCase())
+      const allowlist = { 1: makeAllowlistEntry(), 2: makeAllowlistEntry({ name: 'other', chainId: 2 }) }
+      const good = makeDeployment({ centrifugeId: '2' })
+      const bad = makeDeployment({ centrifugeId: '1', spoke: ADDR_EVIL })
+      const result = verifyDeployments(makeResponse([good, bad]), allowlist)
+      const goodItem = result.deployments.items[0] as Record<string, unknown>
+      const badItem = result.deployments.items[1] as Record<string, unknown>
+      expect(goodItem.spoke).to.equal(ADDR_A) // untouched chain unaffected
+      expect(badItem.spoke).to.equal(undefined) // only the mismatched field dropped
+      expect(badItem.hub).to.equal(ADDR_A)
+    } finally {
+      warn.restore()
     }
   })
 
@@ -170,20 +179,25 @@ describe('verifyDeployments', () => {
     expect(() => verifyDeployments(data, allowlist, { allowUnknownDeployments: true })).not.to.throw()
   })
 
-  it('still rejects mismatches on known centIds even when allowUnknownDeployments=true', () => {
-    const allowlist = { 1: makeAllowlistEntry() }
-    const data = makeResponse([makeDeployment({ hub: ADDR_EVIL })])
-    expect(() => verifyDeployments(data, allowlist, { allowUnknownDeployments: true })).to.throw(
-      DeploymentMismatchError
-    )
+  it('still drops mismatches on known centIds even when allowUnknownDeployments=true', () => {
+    const warn = sinon.stub(console, 'warn')
+    try {
+      const allowlist = { 1: makeAllowlistEntry() }
+      const data = makeResponse([makeDeployment({ hub: ADDR_EVIL })])
+      const result = verifyDeployments(data, allowlist, { allowUnknownDeployments: true })
+      expect((result.deployments.items[0] as Record<string, unknown>).hub).to.equal(undefined)
+      expect(warn.calledOnce).to.equal(true)
+    } finally {
+      warn.restore()
+    }
   })
 
   it('skips fields the indexer omits (allowlist is a superset of the SDK query)', () => {
     // The bundled allowlist is generated from the protocol repo and contains
     // every deployed contract; the SDK's GraphQL query is a subset. Fields
     // absent from the indexer response are skipped — the verifier only checks
-    // what came back. A substituted address is still caught (covered by
-    // 'throws DeploymentMismatchError when an indexer address differs' above).
+    // what came back. A substituted address that IS returned is still handled
+    // (covered by 'drops a mismatched address' above).
     const allowlist = { 1: makeAllowlistEntry() }
     const partial = makeDeployment()
     delete (partial as Record<string, unknown>).hub
