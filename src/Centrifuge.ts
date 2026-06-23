@@ -83,7 +83,7 @@ import {
 } from './utils/transaction.js'
 import { AssetId, CentrifugeId, PoolId, ShareClassId } from './utils/types.js'
 
-const PINNING_API_DEMO = 'https://europe-central2-peak-vista-185616.cloudfunctions.net/pinning-api-demo'
+const PINNING_API = 'https://pinning.centrifugelabs.io'
 
 // Update when centrifuge/workflows cuts a new release.
 // CIDs are in the GitHub release notes: https://github.com/centrifuge/workflows/releases
@@ -112,12 +112,12 @@ const envConfig = {
   mainnet: {
     indexerUrl: 'https://api.centrifuge.io',
     ipfsUrl: 'https://ipfs.centrifuge.io',
-    ...createPinning(PINNING_API_DEMO),
+    ...createPinning(PINNING_API),
   },
   testnet: {
     indexerUrl: 'https://api-v3-test.cfg.embrio.tech/graphql',
     ipfsUrl: 'https://ipfs.centrifuge.io',
-    ...createPinning(PINNING_API_DEMO),
+    ...createPinning(PINNING_API),
   },
 } satisfies Record<string, EnvConfig>
 
