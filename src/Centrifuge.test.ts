@@ -237,7 +237,7 @@ describe('Centrifuge', () => {
         createdAt: '1773411360000',
         deliveredAt: null,
         completedAt: null,
-        preparedAtTxHash: '0xprepared',
+        createdAtTxHash: '0xprepared',
         deliveredAtTxHash: null,
         ...overrides,
       }
@@ -385,17 +385,17 @@ describe('Centrifuge', () => {
       expect(query).to.match(/adapterParticipations\(orderBy/)
     })
 
-    it('centrifuge.crosschainMessages encodes `preparedAtTxHash` filter and is not pool-scoped', async () => {
+    it('centrifuge.crosschainMessages encodes `createdAtTxHash` filter and is not pool-scoped', async () => {
       const centrifuge = new Centrifuge({ environment: 'testnet' })
       const queryIndexer = sinon.stub(centrifuge as any, '_queryIndexer').returns(
         of({ crosschainPayloads: { totalCount: 0, pageInfo: samplePageInfo, items: [] } })
       )
 
-      await centrifuge.crosschainMessages({ preparedAtTxHash: '0xbatchtx' })
+      await centrifuge.crosschainMessages({ createdAtTxHash: '0xbatchtx' })
 
       const [, vars] = queryIndexer.firstCall.args as [string, Record<string, unknown>]
       const filter = vars.filter as Record<string, unknown>
-      expect(filter).to.deep.equal({ preparedAtTxHash: '0xbatchtx' })
+      expect(filter).to.deep.equal({ createdAtTxHash: '0xbatchtx' })
       expect(filter.poolId).to.equal(undefined)
     })
 
