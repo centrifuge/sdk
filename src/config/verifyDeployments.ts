@@ -54,8 +54,20 @@ export type VerifyOptions = {
  * Verifies an indexer deployment response against the bundled KNOWN_DEPLOYMENTS allowlist.
  *
  * For each indexer-returned deployment, looks up the expected record by centrifugeId
- * and asserts every contract address field matches (case-insensitive). Throws on the
- * first mismatch. Returns the response unchanged on success.
+ * and checks every contract address field (case-insensitive).
+ *
+ * On a mismatch the offending **field is dropped** from the returned deployment (with a
+ * warning) rather than throwing — so one bad address never rejects the whole response.
+ * The indexer can transiently serve a stale (older, still-real) address while reindexing
+ * after a redeploy; that must not lock the entire app across every chain. Dropping the
+ * field keeps the security guarantee — the SDK never hands back an unverified address, so
+ * the app can never transact against one — while the rest of that chain, and every other
+ * chain, keeps working. The dropped contract is simply unavailable until the indexer
+ * matches the bundled allowlist. The response is mutated in place and returned.
+ *
+ * An unknown centrifugeId still throws `UnknownDeploymentError` in strict mode (the
+ * default): a fake chain added to a compromised indexer is a different threat from a
+ * stale-but-real contract address, and there's nothing safe to fall back to.
  *
  * If the bundled allowlist is empty (e.g. on first commit before `pnpm gen:deployments`
  * has been run), verification is skipped with a warning. This avoids breaking dev/test
@@ -98,11 +110,18 @@ export function verifyDeployments(
       // the protocol repo and includes every deployed contract; the SDK's
       // GraphQL query is a subset of that. We only validate what was actually
       // returned — if the SDK doesn't query a field, it can't verify it, but
-      // it also doesn't depend on it. An attacker substituting a poisoned
-      // address for a queried field is still caught.
+      // it also doesn't depend on it.
       if (!actualValue) continue
       if (!addressesEqual(actualValue, expectedValue as string)) {
-        throw new DeploymentMismatchError(centId, String(field), String(expectedValue), actualValue)
+        // Drop the unverified field instead of rejecting the whole response.
+        // The app never receives the address, so it can't transact against it;
+        // only this one contract becomes unavailable. See the function doc.
+        console.warn(
+          `[centrifuge-sdk] Dropping unverified address for centrifugeId=${centId} field='${String(field)}'. ` +
+            `Expected ${String(expectedValue)}, indexer returned ${actualValue}. This contract will be ` +
+            `unavailable until the indexer matches the bundled allowlist.`
+        )
+        delete (deployment as Record<string, unknown>)[field as string]
       }
     }
   }
