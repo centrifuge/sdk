@@ -106,7 +106,7 @@ export type CrosschainMessage = {
   createdAt: Date
   deliveredAt: Date | undefined
   completedAt: Date | undefined
-  preparedAtTxHash: HexString | undefined
+  createdAtTxHash: HexString | undefined
   deliveredAtTxHash: HexString | undefined
   pool: CrosschainPoolRef | undefined
   token: CrosschainTokenRef | undefined
@@ -135,7 +135,7 @@ export type CrosschainMessagesFilter = {
   toCentrifugeId?: CentrifugeId
   status?: CrosschainMessageStatus | CrosschainMessageStatus[]
   /** Match all payloads emitted by the same source transaction (batch). */
-  preparedAtTxHash?: HexString
+  createdAtTxHash?: HexString
   limit?: number
   before?: string
   after?: string
@@ -201,7 +201,7 @@ const PAYLOAD_BASE_FIELDS = `
   createdAt
   deliveredAt
   completedAt
-  preparedAtTxHash
+  createdAtTxHash
   deliveredAtTxHash
 `
 
@@ -229,7 +229,7 @@ type CrosschainPayloadRaw = {
   createdAt: string
   deliveredAt: string | null
   completedAt: string | null
-  preparedAtTxHash: string | null
+  createdAtTxHash: string | null
   deliveredAtTxHash: string | null
   pool?: { id: string; name: string | null } | null
   token?: { name: string | null; symbol: string | null } | null
@@ -290,7 +290,7 @@ function toMessage(raw: CrosschainPayloadRaw): CrosschainMessage {
     createdAt: new Date(Number(raw.createdAt)),
     deliveredAt: raw.deliveredAt ? new Date(Number(raw.deliveredAt)) : undefined,
     completedAt: raw.completedAt ? new Date(Number(raw.completedAt)) : undefined,
-    preparedAtTxHash: raw.preparedAtTxHash ? (raw.preparedAtTxHash as HexString) : undefined,
+    createdAtTxHash: raw.createdAtTxHash ? (raw.createdAtTxHash as HexString) : undefined,
     deliveredAtTxHash: raw.deliveredAtTxHash ? (raw.deliveredAtTxHash as HexString) : undefined,
     pool: raw.pool ? { id: raw.pool.id, name: raw.pool.name ?? undefined } : undefined,
     token: raw.token ? { name: raw.token.name ?? undefined, symbol: raw.token.symbol ?? undefined } : undefined,
@@ -335,13 +335,13 @@ function toMessage(raw: CrosschainPayloadRaw): CrosschainMessage {
 }
 
 function buildWhere(filter: CrosschainMessagesFilter) {
-  const { poolId, fromCentrifugeId, toCentrifugeId, status, preparedAtTxHash } = filter
+  const { poolId, fromCentrifugeId, toCentrifugeId, status, createdAtTxHash } = filter
   return {
     ...(poolId !== undefined ? { poolId: (typeof poolId === 'bigint' ? poolId : poolId.raw).toString() } : {}),
     ...(fromCentrifugeId !== undefined ? { fromCentrifugeId: String(fromCentrifugeId) } : {}),
     ...(toCentrifugeId !== undefined ? { toCentrifugeId: String(toCentrifugeId) } : {}),
     ...(Array.isArray(status) ? { status_in: status } : status ? { status } : {}),
-    ...(preparedAtTxHash ? { preparedAtTxHash } : {}),
+    ...(createdAtTxHash ? { createdAtTxHash } : {}),
   }
 }
 
@@ -357,7 +357,7 @@ function filterCacheKey(filter: CrosschainMessagesFilter) {
     filter.fromCentrifugeId,
     filter.toCentrifugeId,
     Array.isArray(filter.status) ? filter.status.join(',') : (filter.status ?? ''),
-    filter.preparedAtTxHash ?? '',
+    filter.createdAtTxHash ?? '',
     filter.limit ?? '',
     filter.before ?? '',
     filter.after ?? '',
