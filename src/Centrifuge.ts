@@ -1269,6 +1269,16 @@ export class Centrifuge {
           self.getChainConfig(centrifugeId),
           self.getClient(centrifugeId),
         ])
+        // `walletClient`/`signer` are never available in build mode (no signer is
+        // set). Rather than hand out `undefined` casts that surface as opaque
+        // TypeErrors, expose throwing getters so any accidental dereference fails
+        // with a descriptive message that points at the cause.
+        const throwInBuildMode = (field: 'walletClient' | 'signer'): never => {
+          throw new Error(
+            `Cannot access \`${field}\` in build-only mode: buildOnly() runs without a signer. ` +
+              `This method needs to sign and cannot be built. Use a method that routes through wrapTransaction.`
+          )
+        }
         const transaction = transactionCallback({
           isBatching: true,
           isBuilding: true,
@@ -1276,10 +1286,12 @@ export class Centrifuge {
           chain,
           centrifugeId,
           publicClient,
-          // Not used in build mode — wrapTransaction's batching branch never
-          // touches the wallet client. Present only to satisfy the context type.
-          walletClient: undefined as unknown as WalletClient<any, Chain, Account>,
-          signer: undefined as unknown as Signer,
+          get walletClient(): WalletClient<any, Chain, Account> {
+            return throwInBuildMode('walletClient')
+          },
+          get signer(): Signer {
+            return throwInBuildMode('signer')
+          },
           root: self,
         })
         if (Symbol.asyncIterator in transaction) {
@@ -1450,7 +1462,7 @@ export class Centrifuge {
     // produce (relevant for any method that embeds the address in calldata).
     this.#buildOnly.set(tx, { fromAddress: getAddress(fromAddress) })
 
-    const built = (await firstValueFrom(tx.pipe(first()))) as unknown as BatchTransactionData
+    const built = (await firstValueFrom(tx)) as unknown as BatchTransactionData
     if (!built || !built.contract || !built.data) {
       throw new Error('buildOnly: transaction did not produce build-only calldata (does it use wrapTransaction?)')
     }

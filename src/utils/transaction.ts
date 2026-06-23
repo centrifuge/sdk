@@ -66,6 +66,10 @@ export type BatchTransactionData = {
   messages?: Record<number, MessageTypeWithSubType[]>
 }
 
+// Encoding-only ABI fragment for `encodeBatchCalldata` — not a contract-instance
+// ABI. The `multicall(bytes[])` signature is also present in several registered
+// contract ABIs (Hub, BalanceSheet, VaultRouter, …); this standalone fragment
+// keeps the encoder self-contained and independent of any one contract's ABI.
 const MULTICALL_ABI = parseAbi(['function multicall(bytes[] data) payable'])
 
 /**

@@ -65,6 +65,7 @@ export type {
   OperationSignedMessageStatus,
   OperationSigningMessageStatus,
   OperationSigningStatus,
+  MessageTypeWithSubType,
   OperationStatus,
   OperationStatusType,
   OperationSwitchChainStatus,

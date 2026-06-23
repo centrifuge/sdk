@@ -167,6 +167,41 @@ describe('buildOnly', () => {
     expect(built.messages).to.eql(messages)
   })
 
+  it('throws a descriptive error if a build callback dereferences walletClient or signer', async () => {
+    const centrifuge = new Centrifuge({ environment: 'testnet' })
+    stubChain(centrifuge)
+
+    const walletTx = (centrifuge as any)._transact(async function* (ctx: any) {
+      // A method that needs to sign would touch the wallet client — invalid in build mode.
+      void ctx.walletClient
+      yield* wrapTransaction('Needs wallet', ctx, { contract: randomAddress(), data: '0x' })
+    }, centId)
+
+    let walletError: unknown
+    try {
+      await centrifuge.buildOnly(walletTx)
+    } catch (e) {
+      walletError = e
+    }
+    expect(walletError).to.be.instanceOf(Error)
+    expect((walletError as Error).message).to.contain('build-only mode')
+    expect((walletError as Error).message).to.contain('walletClient')
+
+    const signerTx = (centrifuge as any)._transact(async function* (ctx: any) {
+      void ctx.signer
+      yield* wrapTransaction('Needs signer', ctx, { contract: randomAddress(), data: '0x' })
+    }, centId)
+
+    let signerError: unknown
+    try {
+      await centrifuge.buildOnly(signerTx)
+    } catch (e) {
+      signerError = e
+    }
+    expect(signerError).to.be.instanceOf(Error)
+    expect((signerError as Error).message).to.contain('signer')
+  })
+
   it('does not consume the signer when one is set', async () => {
     const centrifuge = new Centrifuge({ environment: 'testnet' })
     stubChain(centrifuge)
