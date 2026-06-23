@@ -135,6 +135,14 @@ export async function* wrapTransaction(
     if (!options.simulate) {
       const result = yield* doTransaction(title, ctx, async () => {
         await assertWalletChainMatches(ctx)
+        // Both the single-call and multicall cases broadcast via `sendTransaction`
+        // with calldata from `encodeBatchCalldata` (the same encoder `buildOnly`
+        // uses), instead of `writeContract` for the multicall case. The bytes are
+        // identical — `writeContract` just calls `encodeFunctionData` + `sendTransaction`
+        // internally — so the on-chain effect and gas are unchanged; this only
+        // moves ABI encoding to one shared helper so the build and signing paths
+        // can never diverge. (Pre-flight ABI validation is unaffected: the calldata
+        // is encoded from the same ABI either way.)
         return ctx.walletClient.sendTransaction({
           to: contract,
           data: encodeBatchCalldata(data),

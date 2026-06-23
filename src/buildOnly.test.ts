@@ -1,12 +1,16 @@
 import { expect } from 'chai'
 import { of } from 'rxjs'
 import sinon from 'sinon'
-import { encodeFunctionData, getAddress, parseAbi, zeroAddress } from 'viem'
+import { encodeFunctionData, getAddress, parseAbi, toHex, zeroAddress } from 'viem'
 import { sepolia } from 'viem/chains'
+import { ABI } from './abi/index.js'
 import { Centrifuge } from './Centrifuge.js'
+import { Pool } from './entities/Pool.js'
+import { mockPoolMetadata } from './tests/mocks/mockPoolMetadata.js'
 import { randomAddress } from './tests/utils.js'
 import { HexString } from './types/index.js'
 import { MessageType, MessageTypeWithSubType } from './types/transaction.js'
+import { PoolId } from './utils/types.js'
 import { makeThenable } from './utils/rx.js'
 import { wrapTransaction } from './utils/transaction.js'
 
@@ -220,5 +224,53 @@ describe('buildOnly', () => {
     const built = await centrifuge.buildOnly(tx)
     expect(built.data).to.equal(data)
     expect(signer.request.called).to.equal(false)
+  })
+
+  describe('real entity methods', () => {
+    const poolId = PoolId.from(centId, 1)
+    const hub = randomAddress()
+    const cid = 'QmTestCidForBuildOnlyMetadata'
+
+    // Drives a real entity method (Pool.updateMetadata) through buildOnly end to
+    // end — pinning + address resolution + wrapTransaction — and asserts the
+    // calldata is byte-equal to the known Hub.setPoolMetadata encoding. Stubs the
+    // network I/O (indexer/IPFS) so it runs in the fast suite without Tenderly.
+    function makeCentrifuge() {
+      const centrifuge = new Centrifuge({
+        environment: 'testnet',
+        // Deterministic pin so the encoded CID is known.
+        pinJson: async () => cid,
+      })
+      stubChain(centrifuge)
+      sinon.stub(centrifuge as any, '_protocolAddresses').returns(makeThenable(of({ hub } as any)))
+      return centrifuge
+    }
+
+    it('builds Pool.updateMetadata() byte-equal to the signing-path encoding', async () => {
+      const centrifuge = makeCentrifuge()
+      const pool = new Pool(centrifuge, poolId.raw)
+
+      const built = await centrifuge.buildOnly(pool.updateMetadata(mockPoolMetadata))
+
+      const expected = encodeFunctionData({
+        abi: ABI.Hub,
+        functionName: 'setPoolMetadata',
+        args: [poolId.raw, toHex(cid)],
+      })
+      expect(built.to.toLowerCase()).to.equal(hub.toLowerCase())
+      expect(built.data).to.equal(expected)
+      expect(built.value).to.equal(0n)
+      expect(built.chainId).to.equal(chainId)
+      expect(built.calls).to.have.length(1)
+      expect(built.calls[0]!.data).to.equal(expected)
+    })
+
+    it('builds a real entity method with no signer set', async () => {
+      const centrifuge = makeCentrifuge()
+      const pool = new Pool(centrifuge, poolId.raw)
+      expect(centrifuge.signer).to.equal(null)
+      const built = await centrifuge.buildOnly(pool.updateMetadata(mockPoolMetadata))
+      expect(built.data).to.match(/^0x/)
+    })
   })
 })

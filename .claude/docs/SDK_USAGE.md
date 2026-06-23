@@ -105,6 +105,15 @@ sign**; when omitted, the zero address is used:
 const built = await centrifuge.buildOnly(tx, { fromAddress: '0xYourSender...' })
 ```
 
+> **Note on the default.** When `fromAddress` is omitted, `buildOnly` does **not**
+> error — it silently embeds the zero address as `signingAddress`. For a method
+> whose construction bakes the sender into the calldata (permit flows, anything
+> that records `ctx.signingAddress` on-chain), that produces valid-looking bytes
+> with the wrong sender. **Always pass `fromAddress` for sender-dependent
+> methods.** Methods that genuinely need to _sign_ at build time (off-chain
+> permit signatures) cannot be built at all and will throw a descriptive error if
+> their build callback dereferences `walletClient`/`signer`.
+
 Notes and limitations:
 
 - **No signing, custody, policy, or broadcast.** `buildOnly` returns bytes and
