@@ -212,18 +212,11 @@ describe('parsePoolMetadataV2', () => {
     expect(() => parsePoolMetadataV2(bad)).to.throw(/exactly one of/)
   })
 
-  it('tolerates an unknown (future) section ref — open registry', () => {
-    const doc = clone(mockPoolMetadataV2)
-    const section = doc.pool.factsheet!.body.find((b) => b.id === 'performance') as Record<string, unknown>
-    section.ref = 'someFutureSection'
-    expect(() => parsePoolMetadataV2(doc)).to.not.throw()
-  })
-
-  it('rejects a non-string / empty section ref', () => {
+  it('rejects an unknown section ref (closed, SDK-enforced registry)', () => {
     const bad = clone(mockPoolMetadataV2)
     const section = bad.pool.factsheet!.body.find((b) => b.id === 'performance') as Record<string, unknown>
-    section.ref = 123
-    expect(() => parsePoolMetadataV2(bad)).to.throw(/\.ref must be a non-empty string/)
+    section.ref = 'someFutureSection'
+    expect(() => parsePoolMetadataV2(bad)).to.throw(/section ref/)
   })
 
   it('rejects columnVisibility not aligned to headers', () => {
@@ -251,24 +244,18 @@ describe('parsePoolMetadataV2', () => {
     expect(() => parsePoolMetadataV2(bad)).to.throw(/unknown block type/)
   })
 
-  it('tolerates unknown (future) live-data keys — open registries', () => {
-    const doc = clone(mockPoolMetadataV2)
-    const chart = doc.pool.factsheet!.body.find((b) => b.id === 'live-chart') as Record<string, unknown>
+  it('rejects an unknown chart dataRef (closed, SDK-enforced registry)', () => {
+    const bad = clone(mockPoolMetadataV2)
+    const chart = bad.pool.factsheet!.body.find((b) => b.id === 'live-chart') as Record<string, unknown>
     chart.dataRef = 'someFutureDataset'
-    const live = doc.pool.factsheet!.body.find((b) => b.id === 'monthly') as {
-      dataRef: string
-      columns: Record<string, unknown>[]
-    }
-    live.dataRef = 'someFutureRowDimension'
-    live.columns[1]!.metric = 'someFutureMetric'
-    expect(() => parsePoolMetadataV2(doc)).to.not.throw()
+    expect(() => parsePoolMetadataV2(bad)).to.throw(/dataRef is invalid/)
   })
 
-  it('rejects a non-string indexer metric', () => {
+  it('rejects an unknown live-table indexer metric (closed, SDK-enforced registry)', () => {
     const bad = clone(mockPoolMetadataV2)
     const live = bad.pool.factsheet!.body.find((b) => b.id === 'monthly') as { columns: Record<string, unknown>[] }
-    live.columns[1]!.metric = 42
-    expect(() => parsePoolMetadataV2(bad)).to.throw(/\.metric must be a non-empty string/)
+    live.columns[1]!.metric = 'someFutureMetric'
+    expect(() => parsePoolMetadataV2(bad)).to.throw(/indexer metric/)
   })
 
   it('tolerates a pool with no factsheet', () => {

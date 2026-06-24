@@ -277,33 +277,36 @@ export type AxisFormat = 'number' | 'percent' | 'currency'
 /**
  * Live-chart datasets whose config is authored in metadata but whose data the app fetches live.
  *
- * PROVISIONAL, app-owned registry, expected to grow/change (centrifuge/apps-invest#200). The listed
- * keys are current placeholders; the metadata only *references* a key and the app resolves it,
- * blanking any it does not recognize. The `(string & {})` makes the type open: a future key never
- * needs an SDK release, and readers must tolerate unknown values (never reject the document).
+ * Closed, app-owned registry — the SDK is the alignment point. The current values are PROVISIONAL
+ * placeholders and the set is expected to grow (centrifuge/apps-invest#200), but growth is
+ * deliberately gated: the SDK rejects unknown keys on write, so adding a key is a coordinated change
+ * across the management app, SDK, and invest app (and ships in an SDK release). Reads are not
+ * validated, so a newer document never breaks an older reader. The metadata only references a key;
+ * the app resolves it.
  */
-export type DataRef = 'apyVsBenchmarks' | 'maturityDistribution' | (string & {})
+export type DataRef = 'apyVsBenchmarks' | 'maturityDistribution'
 
 /**
- * App-owned section units rendered by the invest app (structure + content + data).
- * EXTENDABLE (additive), not a permanently closed set — more refs are expected. Current mapping:
- * `onchainMetrics` = performance charts, `smartContracts` = addresses & smart contracts.
+ * App-owned section units rendered by the invest app (structure + content + data). Closed and
+ * SDK-validated on write; expected to grow additively via coordinated SDK releases (see
+ * {@link DataRef}). Current mapping: `onchainMetrics` = performance charts, `smartContracts` =
+ * addresses & smart contracts.
  */
-export type SectionRef = 'onchainMetrics' | 'smartContracts' | (string & {})
+export type SectionRef = 'onchainMetrics' | 'smartContracts'
 
 /**
- * App-owned indexer query/aggregation registry referenced by `liveTable` columns.
- * PROVISIONAL placeholder set (centrifuge/apps-invest#200): each key is its own query and the set
- * is expected to split into more granular, per-series / per-date-pair keys (e.g. `monthlyReturn` is
- * not yet defined). Open by design — see {@link DataRef}.
+ * App-owned indexer query/aggregation registry referenced by `liveTable` columns. Closed and
+ * SDK-validated on write. The current keys are PROVISIONAL: each is its own query and the set is
+ * expected to split into more granular per-series / per-date-pair keys (`monthlyReturn` is not yet
+ * defined). Adding or renaming a key is a coordinated SDK release — see {@link DataRef}.
  */
-export type LiveMetric = 'tokenPrice' | 'nav' | 'apy30d' | 'navChange' | 'monthlyReturn' | (string & {})
+export type LiveMetric = 'tokenPrice' | 'nav' | 'apy30d' | 'navChange' | 'monthlyReturn'
 
 /**
- * App-owned dataset (row dimension) for `liveTable`. PROVISIONAL, expected to grow — open by
- * design, see {@link DataRef}.
+ * App-owned dataset (row dimension) for `liveTable`. Closed and SDK-validated on write; grows via
+ * coordinated SDK releases — see {@link DataRef}.
  */
-export type LiveDataset = 'monthlySummary' | (string & {})
+export type LiveDataset = 'monthlySummary'
 
 export type ColumnFormat = 'text' | 'number' | 'percent' | 'currency'
 
