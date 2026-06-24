@@ -226,6 +226,34 @@ describe('buildOnly', () => {
     expect(signer.request.called).to.equal(false)
   })
 
+  it('consumes the build-only flag so re-subscribing does not re-enter build mode', async () => {
+    const centrifuge = new Centrifuge({ environment: 'testnet' })
+    stubChain(centrifuge)
+    const contract = randomAddress()
+    const data = encodeFunctionData({ abi: TEST_ABI, functionName: 'setValue', args: [3n] })
+
+    const tx = (centrifuge as any)._transact(async function* (ctx: any) {
+      yield* wrapTransaction('Set value', ctx, { contract, data })
+    }, centId)
+
+    // First use builds successfully (no signer needed).
+    const built = await centrifuge.buildOnly(tx)
+    expect(built.data).to.equal(data)
+
+    // The flag is now consumed. `$tx` re-runs the generator on a fresh
+    // subscription; without cleanup it would silently re-enter build mode and
+    // emit BatchTransactionData. With cleanup it falls through to the signing
+    // path, which requires a signer — so it must error rather than build again.
+    let error: unknown
+    try {
+      await tx
+    } catch (e) {
+      error = e
+    }
+    expect(error).to.be.instanceOf(Error)
+    expect((error as Error).message).to.contain('Signer not set')
+  })
+
   describe('real entity methods', () => {
     const poolId = PoolId.from(centId, 1)
     const hub = randomAddress()

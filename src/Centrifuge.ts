@@ -1462,7 +1462,18 @@ export class Centrifuge {
     // produce (relevant for any method that embeds the address in calldata).
     this.#buildOnly.set(tx, { fromAddress: getAddress(fromAddress) })
 
-    const built = (await firstValueFrom(tx)) as unknown as BatchTransactionData
+    // The flag is consumed on first use and always removed afterwards. `$tx` is
+    // `defer(transact)`, so every subscription re-runs the generator and re-reads
+    // this WeakMap; leaving the flag set would make a later subscription (e.g.
+    // `await tx` to actually sign) silently re-enter build mode and yield
+    // `BatchTransactionData` where `OperationStatus` is expected. `finally`
+    // guarantees cleanup even when the build callback throws.
+    let built: BatchTransactionData
+    try {
+      built = (await firstValueFrom(tx)) as unknown as BatchTransactionData
+    } finally {
+      this.#buildOnly.delete(tx)
+    }
     if (!built || !built.contract || !built.data) {
       throw new Error('buildOnly: transaction did not produce build-only calldata (does it use wrapTransaction?)')
     }
