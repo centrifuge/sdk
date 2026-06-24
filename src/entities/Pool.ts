@@ -4,10 +4,11 @@ import { ABI } from '../abi/index.js'
 import type { Centrifuge } from '../Centrifuge.js'
 import { HexString } from '../types/index.js'
 import { PoolMetadataInput, ShareClassInput } from '../types/poolInput.js'
-import { PoolMetadata, WorkflowPolicyEntry } from '../types/poolMetadata.js'
+import { isLegacyPoolMetadata, PoolMetadata, PoolMetadataV2, WorkflowPolicyEntry } from '../types/poolMetadata.js'
 import type { Query } from '../types/query.js'
-import { MessageType, MessageTypeWithSubType } from '../types/transaction.js'
+import { MessageType, MessageTypeWithSubType, TransactionContext } from '../types/transaction.js'
 import { NATIONAL_CURRENCY_METADATA } from '../utils/currencies.js'
+import { migratePoolMetadataToV2, parsePoolMetadataV2 } from '../utils/poolMetadataMigration.js'
 import {
   addMessageForEnabledTarget,
   filterCrosschainEnabledTargets,
@@ -278,10 +279,7 @@ export class Pool extends Entity {
     const transactions = deployments
       .filter((d) => d.shareClasses.length > 0)
       .map((deployment) => {
-        return new PoolNetwork(this._root, this, deployment.centrifugeId).deploy(
-          deployment.shareClasses,
-          []
-        )
+        return new PoolNetwork(this._root, this, deployment.centrifugeId).deploy(deployment.shareClasses, [])
       })
 
     if (transactions.length === 0) {
@@ -327,9 +325,9 @@ export class Pool extends Entity {
    * `chainId`. Each group carries the full `policy` (the Merkle proof tree for that chain).
    * @internal
    */
-  async _resolveStrategistWorkflows(strategist: HexString): Promise<
-    { centrifugeId: number; network: PoolNetwork; policy: PolicyEntryInput[] }[]
-  > {
+  async _resolveStrategistWorkflows(
+    strategist: HexString
+  ): Promise<{ centrifugeId: number; network: PoolNetwork; policy: PolicyEntryInput[] }[]> {
     const meta = await firstValueFrom(this.metadata())
     const group = (meta?.workflowPolicies ?? []).find(
       (policy) => policy.strategistAddress.toLowerCase() === strategist.toLowerCase()
@@ -367,8 +365,17 @@ export class Pool extends Entity {
   }
 
   /** List the workflows whitelisted for a strategist, across chains. */
-  async listWorkflows(opts: { strategist: HexString }): Promise<
-    { workflowRef: string; name: string; group?: string; chainId: number; centrifugeId: number; runtimeVariables: string[] }[]
+  async listWorkflows(opts: {
+    strategist: HexString
+  }): Promise<
+    {
+      workflowRef: string
+      name: string
+      group?: string
+      chainId: number
+      centrifugeId: number
+      runtimeVariables: string[]
+    }[]
   > {
     const groups = await this._resolveStrategistWorkflows(opts.strategist)
     return groups.flatMap((g) =>
@@ -416,11 +423,12 @@ export class Pool extends Entity {
    * grouped per chain. Returns one handle per chain whose `execute()`/`simulate()` build and
    * submit that chain's atomic multicall. Multi-chain pools yield multiple handles.
    */
-  async planAccountingUpdate(opts: { strategist: HexString }): Promise<
-    { centrifugeId: number; workflowRefs: string[]; execute: () => unknown; simulate: () => unknown }[]
-  > {
+  async planAccountingUpdate(opts: {
+    strategist: HexString
+  }): Promise<{ centrifugeId: number; workflowRefs: string[]; execute: () => unknown; simulate: () => unknown }[]> {
     const groups = await this._resolveStrategistWorkflows(opts.strategist)
-    const plans: { centrifugeId: number; workflowRefs: string[]; execute: () => unknown; simulate: () => unknown }[] = []
+    const plans: { centrifugeId: number; workflowRefs: string[]; execute: () => unknown; simulate: () => unknown }[] =
+      []
     for (const g of groups) {
       const run = g.policy.flatMap((entry, index) => (entry.workflow.group === 'account' ? [index] : []))
       if (run.length === 0) continue
@@ -492,7 +500,12 @@ export class Pool extends Entity {
     const policies = (metadata?.workflowPolicies ?? []).map((policy) => ({ ...policy }))
     let group = policies.find((policy) => policy.strategistAddress.toLowerCase() === strategist.toLowerCase())
     if (!group) {
-      group = { id: crypto.randomUUID(), strategistAddress: strategist, workflows: [], createdAt: new Date().toISOString() }
+      group = {
+        id: crypto.randomUUID(),
+        strategistAddress: strategist,
+        workflows: [],
+        createdAt: new Date().toISOString(),
+      }
       policies.push(group)
     }
     group.workflows = mutate(group.workflows)
@@ -613,23 +626,50 @@ export class Pool extends Entity {
   }
 
   /**
-   * Update pool metadata.
+   * Update pool metadata. Only v2 metadata can be written; legacy (v1) documents are rejected.
+   * Migrate a legacy pool with {@link migrateMetadata} first.
+   *
+   * The legacy-rejection is eager (synchronous) so passing a v1 document fails fast at the call
+   * site rather than only once the transaction is awaited.
    */
   updateMetadata(metadata: PoolMetadata) {
+    if (isLegacyPoolMetadata(metadata)) {
+      throw new Error('Cannot write legacy (v1) pool metadata. Call pool.migrateMetadata() first.')
+    }
     const self = this
     return this._transact(async function* (ctx) {
-      const cid = await self._root.config.pinJson(metadata)
-
-      const { hub } = await self._root._protocolAddresses(self.centrifugeId)
-      yield* wrapTransaction('Update metadata', ctx, {
-        contract: hub,
-        data: encodeFunctionData({
-          abi: ABI.Hub,
-          functionName: 'setPoolMetadata',
-          args: [self.id.raw, toHex(cid)],
-        }),
-      })
+      yield* self.#setPoolMetadata(ctx, metadata as PoolMetadataV2)
     }, this.centrifugeId)
+  }
+
+  /**
+   * Read the current (legacy or v2) metadata, migrate it forward to v2, and write it back. Throws
+   * if the pool has no metadata yet. The migrated document is the seed for the v2 factsheet and is
+   * ops-editable afterwards.
+   */
+  migrateMetadata() {
+    const self = this
+    return this._transact(async function* (ctx) {
+      const current = await firstValueFrom(self.metadata())
+      if (!current) throw new Error('No pool metadata found to migrate')
+      yield* self.#setPoolMetadata(ctx, migratePoolMetadataToV2(current))
+    }, this.centrifugeId)
+  }
+
+  /** Shared pin + encode + send path for v2 metadata writes. Validates before pinning. */
+  async *#setPoolMetadata(ctx: TransactionContext, metadata: PoolMetadataV2) {
+    parsePoolMetadataV2(metadata)
+    const cid = await this._root.config.pinJson(metadata)
+
+    const { hub } = await this._root._protocolAddresses(this.centrifugeId)
+    yield* wrapTransaction('Update metadata', ctx, {
+      contract: hub,
+      data: encodeFunctionData({
+        abi: ABI.Hub,
+        functionName: 'setPoolMetadata',
+        args: [this.id.raw, toHex(cid)],
+      }),
+    })
   }
 
   update(
@@ -673,23 +713,20 @@ export class Pool extends Entity {
       let cid: string | null = null
 
       if (shouldUpdateMetadata) {
-        const baseMetadata: PoolMetadata =
+        // Read metadata is migrated forward so the write path always emits v2.
+        const baseMetadata: PoolMetadataV2 =
           poolMetadata && poolMetadata.pool
-            ? poolMetadata
-            : ({
-                version: 1,
+            ? migratePoolMetadataToV2(poolMetadata)
+            : {
+                version: 2,
                 pool: {
                   name: '',
                   icon: null,
                   asset: { class: 'Private credit', subClass: '' },
                   issuer: {
                     name: '',
-                    repName: '',
-                    description: '',
                     email: '',
                     logo: null,
-                    shortDescription: '',
-                    categories: [],
                   },
                   poolStructure: '',
                   investorType: '',
@@ -698,15 +735,13 @@ export class Pool extends Entity {
                     forum: undefined,
                     website: undefined,
                   },
-                  details: [],
                   status: 'upcoming',
                   listed: false,
                   poolRatings: [],
-                  reports: [],
                 },
                 shareClasses: {},
                 holdings: { headers: [], data: [] },
-              } as PoolMetadata)
+              }
 
         const newShareClassesById: PoolMetadata['shareClasses'] = {}
         addedShareClasses.forEach((sc, index) => {
@@ -725,9 +760,9 @@ export class Pool extends Entity {
               ? 'open'
               : 'upcoming'
 
-        const formattedMetadata: PoolMetadata = {
+        const formattedMetadata: PoolMetadataV2 = {
           ...baseMetadata,
-          version: 1,
+          version: 2,
           pool: {
             ...baseMetadata.pool,
             name: metadataInput?.poolName ?? baseMetadata.pool.name,
@@ -740,12 +775,8 @@ export class Pool extends Entity {
             issuer: {
               ...baseMetadata.pool.issuer,
               name: metadataInput?.issuerName ?? baseMetadata.pool.issuer.name,
-              repName: metadataInput?.issuerRepName ?? baseMetadata.pool.issuer.repName,
-              description: metadataInput?.issuerDescription ?? baseMetadata.pool.issuer.description,
               email: metadataInput?.email ?? baseMetadata.pool.issuer.email,
               logo: metadataInput?.issuerLogo ?? baseMetadata.pool.issuer.logo,
-              shortDescription: metadataInput?.issuerShortDescription ?? baseMetadata.pool.issuer.shortDescription,
-              categories: metadataInput?.issuerCategories ?? baseMetadata.pool.issuer.categories,
             },
             poolStructure: metadataInput?.poolStructure ?? baseMetadata.pool.poolStructure,
             investorType: metadataInput?.investorType ?? baseMetadata.pool.investorType,
@@ -755,11 +786,10 @@ export class Pool extends Entity {
               forum: metadataInput?.forum ?? baseMetadata.pool.links?.forum,
               website: metadataInput?.website ?? baseMetadata.pool.links?.website,
             },
-            details: metadataInput?.details ?? baseMetadata.pool.details,
             status: poolStatus,
             listed: metadataInput?.listed ?? baseMetadata.pool.listed,
             poolRatings: metadataInput?.poolRatings ?? baseMetadata.pool.poolRatings,
-            reports: metadataInput?.report ? [metadataInput.report] : baseMetadata.pool.reports,
+            factsheet: metadataInput?.factsheet ?? baseMetadata.pool.factsheet,
           },
           shareClasses: { ...baseMetadata.shareClasses, ...newShareClassesById },
           holdings: {
@@ -782,6 +812,7 @@ export class Pool extends Entity {
           }
         })
 
+        parsePoolMetadataV2(formattedMetadata)
         cid = await self._root.config.pinJson(formattedMetadata)
       }
 

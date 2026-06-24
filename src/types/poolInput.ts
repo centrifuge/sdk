@@ -1,5 +1,5 @@
 import { HexString } from './index.js'
-import { ApyMode, LegacyApyMode, PoolMetadata } from './poolMetadata.js'
+import type { ApyMode, Factsheet, LegacyApyMode, PoolMetadata } from './poolMetadata.js'
 
 export type FileType = { uri: string; mime: string }
 
@@ -36,29 +36,34 @@ export type PoolMetadataInput = {
   poolIcon: FileType
   poolType: 'open' | 'closed'
   issuerName: string
-  issuerRepName: string
   issuerLogo: FileType
-  issuerShortDescription: string
-  issuerDescription: string
+  /**
+   * @deprecated v2 has no flat issuer description; author it via `factsheet` (e.g. an Overview
+   * `text` block). Ignored by `createPool`/`update` — kept only so legacy callers still compile.
+   */
+  issuerDescription?: string
   website: string
   forum: string
   email: string
   executiveSummary: FileType | null
+  /**
+   * @deprecated v2 has no flat `details`; author them via `factsheet` `text` blocks. Ignored by
+   * `createPool`/`update`.
+   */
   details?: IssuerDetail[]
-  issuerCategories: { type: string; value: string; description?: string }[]
+  /**
+   * @deprecated v2 has no flat issuer categories; author them via `factsheet` key facts. Ignored by
+   * `createPool`/`update`.
+   */
+  issuerCategories?: { type: string; value: string; description?: string }[]
   poolRatings: {
     agency?: string
     value?: string
     reportUrl?: string
-    reportFile?: FileType | null
   }[]
-  report?: PoolReport | null
+  /** v2 factsheet content model (centrifuge/apps-invest#200). */
+  factsheet?: Factsheet
   onboardingExperience: string
-  onboarding?: {
-    shareClasses: { [scId: string]: { agreement: FileType | undefined; openForOnboarding: boolean } }
-    taxInfoRequired?: boolean
-    externalOnboardingUrl?: string
-  }
   underlying?: {
     poolId?: number
   }

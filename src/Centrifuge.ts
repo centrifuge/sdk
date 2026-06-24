@@ -53,9 +53,10 @@ import type {
   UserProvidedConfig,
 } from './types/index.js'
 import { PoolMetadataInput } from './types/poolInput.js'
-import { PoolMetadata } from './types/poolMetadata.js'
+import { PoolMetadata, PoolMetadataV2 } from './types/poolMetadata.js'
+import { parsePoolMetadataV2 } from './utils/poolMetadataMigration.js'
 import type { CentrifugeQueryOptions, Query } from './types/query.js'
-import type { CatalogAction, MarketplaceWorkflow, RuntimeVariable } from './types/workflow.js'
+import type { MarketplaceWorkflow, RuntimeVariable } from './types/workflow.js'
 import { runtimeVariableName } from './types/workflow.js'
 import {
   emptyMessage,
@@ -250,8 +251,8 @@ export class Centrifuge {
         }
       })
 
-      const formattedMetadata: PoolMetadata = {
-        version: 1,
+      const formattedMetadata: PoolMetadataV2 = {
+        version: 2,
         pool: {
           name: metadataInput.poolName,
           icon: metadataInput.poolIcon,
@@ -261,12 +262,8 @@ export class Centrifuge {
           },
           issuer: {
             name: metadataInput.issuerName,
-            repName: metadataInput.issuerRepName,
-            description: metadataInput.issuerDescription,
             email: metadataInput.email,
             logo: metadataInput.issuerLogo,
-            shortDescription: metadataInput.issuerShortDescription,
-            categories: metadataInput.issuerCategories,
           },
           poolStructure: metadataInput.poolStructure,
           investorType: metadataInput.investorType,
@@ -275,31 +272,15 @@ export class Centrifuge {
             forum: metadataInput.forum,
             website: metadataInput.website,
           },
-          details: metadataInput.details,
           status: 'open',
           listed: metadataInput.listed ?? true,
           poolRatings: metadataInput.poolRatings.length > 0 ? metadataInput.poolRatings : [],
-          reports: metadataInput.report
-            ? [
-                {
-                  author: {
-                    name: metadataInput.report.author.name,
-                    title: metadataInput.report.author.title,
-                    avatar: metadataInput.report.author.avatar,
-                  },
-                  uri: metadataInput.report.uri,
-                },
-              ]
-            : [],
+          factsheet: metadataInput.factsheet,
         },
         shareClasses: shareClassesById,
-        onboarding: {
-          shareClasses: metadataInput.onboarding?.shareClasses || {},
-          taxInfoRequired: metadataInput.onboarding?.taxInfoRequired,
-          externalOnboardingUrl: metadataInput.onboarding?.externalOnboardingUrl,
-        },
       }
 
+      parsePoolMetadataV2(formattedMetadata)
       const cid = await self.config.pinJson(formattedMetadata)
 
       const setMetadataData = encodeFunctionData({
