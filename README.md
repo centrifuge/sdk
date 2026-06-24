@@ -54,7 +54,7 @@ const centrifuge = new Centrifuge({
   environment: 'mainnet' | 'testnet',         // optional, defaults to 'mainnet'
   rpcUrls?: { [chainId: number]: string },     // optional RPC endpoints
   indexerUrl?: string,                         // optional indexer API URL
-  ipfsUrl?: string                             // optional IPFS gateway, default: https://ipfs.centrifuge.io
+  ipfsUrl?: string                             // optional IPFS gateway, default: https://centrifuge-files.mypinata.cloud
 })
 ```
 
