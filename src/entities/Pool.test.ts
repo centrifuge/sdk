@@ -5,6 +5,7 @@ import { ABI } from '../abi/index.js'
 import { Centrifuge } from '../Centrifuge.js'
 import { NULL_ADDRESS } from '../constants.js'
 import { mockPoolMetadata } from '../tests/mocks/mockPoolMetadata.js'
+import { mockPoolMetadataV2 } from '../tests/mocks/mockPoolMetadataV2.js'
 import { context } from '../tests/setup.js'
 import { randomAddress } from '../tests/utils.js'
 import { PoolMetadataInput, ShareClassInput } from '../types/poolInput.js'
@@ -347,7 +348,8 @@ describe.skip('Pool', () => {
     const centrifugeWithPin = new Centrifuge({
       environment: 'testnet',
       pinJson: async (data) => {
-        expect(data).to.deep.equal(mockPoolMetadata)
+        expect(data).to.deep.equal(mockPoolMetadataV2)
+        expect((data as { version: number }).version).to.equal(2)
         return fakeHash
       },
       rpcUrls: {
@@ -360,11 +362,50 @@ describe.skip('Pool', () => {
     context.tenderlyFork.impersonateAddress = poolManager
     centrifugeWithPin.setSigner(context.tenderlyFork.signer)
 
-    const result = await pool.updateMetadata(mockPoolMetadata)
+    const result = await pool.updateMetadata(mockPoolMetadataV2)
 
     expect(result.type).to.equal('TransactionConfirmed')
 
     const details = await pool.details()
     expect(details.metadata!.pool.asset.class).to.equal('Private credit')
+  })
+
+  it('rejects writing legacy (v1) metadata via updateMetadata', async () => {
+    context.tenderlyFork.impersonateAddress = poolManager
+    context.centrifuge.setSigner(context.tenderlyFork.signer)
+
+    let error: Error | undefined
+    try {
+      await pool.updateMetadata(mockPoolMetadata)
+    } catch (e) {
+      error = e as Error
+    }
+    expect(error?.message).to.match(/migrateMetadata/)
+  })
+
+  it('migrates legacy metadata to v2 and writes it', async () => {
+    const fakeHash = 'QmPdzJkZ4PVJ21HfBXMJbGopSpUP9C9fqu3A1f9ZVhtRY2'
+
+    let pinned: { version?: number } | undefined
+    const centrifugeWithPin = new Centrifuge({
+      environment: 'testnet',
+      pinJson: async (data) => {
+        pinned = data as { version?: number }
+        return fakeHash
+      },
+      rpcUrls: {
+        11155111: context.tenderlyFork.rpcUrl,
+      },
+    })
+
+    const pool = await centrifugeWithPin.pool(poolId)
+
+    context.tenderlyFork.impersonateAddress = poolManager
+    centrifugeWithPin.setSigner(context.tenderlyFork.signer)
+
+    const result = await pool.migrateMetadata()
+
+    expect(result.type).to.equal('TransactionConfirmed')
+    expect(pinned?.version).to.equal(2)
   })
 })

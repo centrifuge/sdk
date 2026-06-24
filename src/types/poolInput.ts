@@ -1,5 +1,5 @@
 import { HexString } from './index.js'
-import { ApyMode, LegacyApyMode, PoolMetadata } from './poolMetadata.js'
+import type { ApyMode, Factsheet, LegacyApyMode, PoolMetadata } from './poolMetadata.js'
 
 export type FileType = { uri: string; mime: string }
 
@@ -36,9 +36,7 @@ export type PoolMetadataInput = {
   poolIcon: FileType
   poolType: 'open' | 'closed'
   issuerName: string
-  issuerRepName: string
   issuerLogo: FileType
-  issuerShortDescription: string
   issuerDescription: string
   website: string
   forum: string
@@ -50,15 +48,10 @@ export type PoolMetadataInput = {
     agency?: string
     value?: string
     reportUrl?: string
-    reportFile?: FileType | null
   }[]
-  report?: PoolReport | null
+  /** v2 factsheet content model (centrifuge/apps-invest#200). */
+  factsheet?: Factsheet
   onboardingExperience: string
-  onboarding?: {
-    shareClasses: { [scId: string]: { agreement: FileType | undefined; openForOnboarding: boolean } }
-    taxInfoRequired?: boolean
-    externalOnboardingUrl?: string
-  }
   underlying?: {
     poolId?: number
   }
