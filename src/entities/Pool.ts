@@ -279,10 +279,7 @@ export class Pool extends Entity {
     const transactions = deployments
       .filter((d) => d.shareClasses.length > 0)
       .map((deployment) => {
-        return new PoolNetwork(this._root, this, deployment.centrifugeId).deploy(
-          deployment.shareClasses,
-          []
-        )
+        return new PoolNetwork(this._root, this, deployment.centrifugeId).deploy(deployment.shareClasses, [])
       })
 
     if (transactions.length === 0) {
@@ -328,9 +325,9 @@ export class Pool extends Entity {
    * `chainId`. Each group carries the full `policy` (the Merkle proof tree for that chain).
    * @internal
    */
-  async _resolveStrategistWorkflows(strategist: HexString): Promise<
-    { centrifugeId: number; network: PoolNetwork; policy: PolicyEntryInput[] }[]
-  > {
+  async _resolveStrategistWorkflows(
+    strategist: HexString
+  ): Promise<{ centrifugeId: number; network: PoolNetwork; policy: PolicyEntryInput[] }[]> {
     const meta = await firstValueFrom(this.metadata())
     const group = (meta?.workflowPolicies ?? []).find(
       (policy) => policy.strategistAddress.toLowerCase() === strategist.toLowerCase()
@@ -368,8 +365,17 @@ export class Pool extends Entity {
   }
 
   /** List the workflows whitelisted for a strategist, across chains. */
-  async listWorkflows(opts: { strategist: HexString }): Promise<
-    { workflowRef: string; name: string; group?: string; chainId: number; centrifugeId: number; runtimeVariables: string[] }[]
+  async listWorkflows(opts: {
+    strategist: HexString
+  }): Promise<
+    {
+      workflowRef: string
+      name: string
+      group?: string
+      chainId: number
+      centrifugeId: number
+      runtimeVariables: string[]
+    }[]
   > {
     const groups = await this._resolveStrategistWorkflows(opts.strategist)
     return groups.flatMap((g) =>
@@ -417,11 +423,12 @@ export class Pool extends Entity {
    * grouped per chain. Returns one handle per chain whose `execute()`/`simulate()` build and
    * submit that chain's atomic multicall. Multi-chain pools yield multiple handles.
    */
-  async planAccountingUpdate(opts: { strategist: HexString }): Promise<
-    { centrifugeId: number; workflowRefs: string[]; execute: () => unknown; simulate: () => unknown }[]
-  > {
+  async planAccountingUpdate(opts: {
+    strategist: HexString
+  }): Promise<{ centrifugeId: number; workflowRefs: string[]; execute: () => unknown; simulate: () => unknown }[]> {
     const groups = await this._resolveStrategistWorkflows(opts.strategist)
-    const plans: { centrifugeId: number; workflowRefs: string[]; execute: () => unknown; simulate: () => unknown }[] = []
+    const plans: { centrifugeId: number; workflowRefs: string[]; execute: () => unknown; simulate: () => unknown }[] =
+      []
     for (const g of groups) {
       const run = g.policy.flatMap((entry, index) => (entry.workflow.group === 'account' ? [index] : []))
       if (run.length === 0) continue
@@ -493,7 +500,12 @@ export class Pool extends Entity {
     const policies = (metadata?.workflowPolicies ?? []).map((policy) => ({ ...policy }))
     let group = policies.find((policy) => policy.strategistAddress.toLowerCase() === strategist.toLowerCase())
     if (!group) {
-      group = { id: crypto.randomUUID(), strategistAddress: strategist, workflows: [], createdAt: new Date().toISOString() }
+      group = {
+        id: crypto.randomUUID(),
+        strategistAddress: strategist,
+        workflows: [],
+        createdAt: new Date().toISOString(),
+      }
       policies.push(group)
     }
     group.workflows = mutate(group.workflows)
@@ -616,13 +628,16 @@ export class Pool extends Entity {
   /**
    * Update pool metadata. Only v2 metadata can be written; legacy (v1) documents are rejected.
    * Migrate a legacy pool with {@link migrateMetadata} first.
+   *
+   * The legacy-rejection is eager (synchronous) so passing a v1 document fails fast at the call
+   * site rather than only once the transaction is awaited.
    */
   updateMetadata(metadata: PoolMetadata) {
+    if (isLegacyPoolMetadata(metadata)) {
+      throw new Error('Cannot write legacy (v1) pool metadata. Call pool.migrateMetadata() first.')
+    }
     const self = this
     return this._transact(async function* (ctx) {
-      if (isLegacyPoolMetadata(metadata)) {
-        throw new Error('Cannot write legacy (v1) pool metadata. Call pool.migrateMetadata() first.')
-      }
       yield* self.#setPoolMetadata(ctx, metadata as PoolMetadataV2)
     }, this.centrifugeId)
   }

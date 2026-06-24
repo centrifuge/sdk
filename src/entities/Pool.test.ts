@@ -4,7 +4,6 @@ import { getContract } from 'viem'
 import { ABI } from '../abi/index.js'
 import { Centrifuge } from '../Centrifuge.js'
 import { NULL_ADDRESS } from '../constants.js'
-import { mockPoolMetadata } from '../tests/mocks/mockPoolMetadata.js'
 import { mockPoolMetadataV2 } from '../tests/mocks/mockPoolMetadataV2.js'
 import { context } from '../tests/setup.js'
 import { randomAddress } from '../tests/utils.js'
@@ -370,19 +369,8 @@ describe.skip('Pool', () => {
     expect(details.metadata!.pool.asset.class).to.equal('Private credit')
   })
 
-  it('rejects writing legacy (v1) metadata via updateMetadata', async () => {
-    context.tenderlyFork.impersonateAddress = poolManager
-    context.centrifuge.setSigner(context.tenderlyFork.signer)
-
-    let error: Error | undefined
-    try {
-      await pool.updateMetadata(mockPoolMetadata)
-    } catch (e) {
-      error = e as Error
-    }
-    expect(error?.message).to.match(/migrateMetadata/)
-  })
-
+  // Full migrate → pin → on-chain confirm flow needs a forked chain, so it lives in this
+  // Tenderly-gated suite (the eager v1-rejection guard is covered live below, without Tenderly).
   it('migrates legacy metadata to v2 and writes it', async () => {
     const fakeHash = 'QmPdzJkZ4PVJ21HfBXMJbGopSpUP9C9fqu3A1f9ZVhtRY2'
 
