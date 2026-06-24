@@ -4,18 +4,14 @@ import {
   type AxisFormat,
   type ChartType,
   type ColumnFormat,
-  type DataRef,
   type Factsheet,
   isPoolMetadataV2,
   type KeyFact,
   type LayoutItem,
   type LegacyApyMode,
-  type LiveDataset,
-  type LiveMetric,
   type PoolMetadata,
   type PoolMetadataV1,
   type PoolMetadataV2,
-  type SectionRef,
   type Visibility,
 } from '../types/poolMetadata.js'
 
@@ -167,15 +163,18 @@ export function migratePoolMetadataToV2(legacy: PoolMetadata): PoolMetadataV2 {
  * Validation: hand-rolled structural checks (mirrors src/utils/catalog.ts; no zod dependency)
  * ============================================================================================== */
 
+// Stable, structural enums — these are part of the schema shape and are validated as closed sets.
 const VISIBILITIES = new Set<Visibility>(['public', 'whitelisted', 'hidden'])
 const CHART_TYPES = new Set<ChartType>(['line', 'area', 'bar', 'donut'])
 const AXIS_FORMATS = new Set<AxisFormat>(['number', 'percent', 'currency'])
 const XAXIS_TYPES = new Set(['category', 'time', 'number'])
-const DATA_REFS = new Set<DataRef>(['apyVsBenchmarks', 'maturityDistribution'])
-const SECTION_REFS = new Set<SectionRef>(['onchainMetrics', 'smartContracts'])
-const LIVE_METRICS = new Set<LiveMetric>(['tokenPrice', 'nav', 'apy30d', 'navChange', 'monthlyReturn'])
-const LIVE_DATASETS = new Set<LiveDataset>(['monthlySummary'])
 const COLUMN_FORMATS = new Set<ColumnFormat>(['text', 'number', 'percent', 'currency'])
+
+// NOTE: the live-data key registries (`dataRef` / `LiveMetric` / `LiveDataset`) and `section.ref`
+// are PROVISIONAL and app-owned (see centrifuge/apps-invest#200). They are validated as
+// non-empty strings only — NOT against today's known set — so a future granular key never requires
+// an SDK release and an older reader never rejects a newer document. The app resolves these keys
+// and blanks unknown ones; the SDK validates shape, not the registry.
 const CONTENT_BLOCK_TYPES = new Set(['text', 'table', 'chart', 'image', 'kpiGroup', 'tabGroup', 'liveTable'])
 const TAB_BLOCK_TYPES = new Set(['text', 'table', 'chart', 'kpiGroup'])
 const KPI_TRENDS = new Set(['up', 'down', 'neutral'])
@@ -244,8 +243,9 @@ function validateLiveColumn(value: unknown, where: string): void {
   assertVisibility(value.visibility, where)
   switch (value.source) {
     case 'indexer':
-      if (typeof value.metric !== 'string' || !LIVE_METRICS.has(value.metric as LiveMetric)) {
-        fail(`${where} has an invalid indexer metric "${String(value.metric)}"`)
+      // Open registry (LiveMetric): shape-only check; the app owns the value set.
+      if (typeof value.metric !== 'string' || value.metric.length === 0) {
+        fail(`${where}.metric must be a non-empty string`)
       }
       break
     case 'hardcoded':
@@ -293,8 +293,9 @@ function validateContentBlock(block: Record<string, unknown>, type: string, wher
         if (!Array.isArray(block.series)) fail(`${where}.series must be an array`)
         block.series.forEach((s, index) => validateChartSeries(s, `${where}.series[${index}]`))
       }
-      if (hasDataRef && (typeof block.dataRef !== 'string' || !DATA_REFS.has(block.dataRef as DataRef))) {
-        fail(`${where}.dataRef is invalid`)
+      // Open registry: any non-empty string is accepted; the app resolves/blanks unknown keys.
+      if (hasDataRef && (typeof block.dataRef !== 'string' || block.dataRef.length === 0)) {
+        fail(`${where}.dataRef must be a non-empty string`)
       }
       if (isObject(block.xAxis) && block.xAxis.type !== undefined && !XAXIS_TYPES.has(block.xAxis.type as string)) {
         fail(`${where}.xAxis.type is invalid`)
@@ -343,8 +344,9 @@ function validateContentBlock(block: Record<string, unknown>, type: string, wher
       break
     }
     case 'liveTable': {
-      if (typeof block.dataRef !== 'string' || !LIVE_DATASETS.has(block.dataRef as LiveDataset)) {
-        fail(`${where}.dataRef is invalid`)
+      // Open registry (LiveDataset): shape-only check; the app owns the value set.
+      if (typeof block.dataRef !== 'string' || block.dataRef.length === 0) {
+        fail(`${where}.dataRef must be a non-empty string`)
       }
       if (!Array.isArray(block.columns)) fail(`${where}.columns must be an array`)
       block.columns.forEach((column, index) => validateLiveColumn(column, `${where}.columns[${index}]`))
@@ -362,8 +364,9 @@ function validateLayoutItem(item: unknown, where: string): void {
   assertVisibility(item.visibility, where)
 
   if (item.type === 'section') {
-    if (typeof item.ref !== 'string' || !SECTION_REFS.has(item.ref as SectionRef)) {
-      fail(`${where} has an invalid section ref "${String(item.ref)}"`)
+    // Open registry (SectionRef): extendable/app-owned; shape-only check.
+    if (typeof item.ref !== 'string' || item.ref.length === 0) {
+      fail(`${where}.ref must be a non-empty string`)
     }
     return
   }

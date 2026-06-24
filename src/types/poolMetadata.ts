@@ -274,17 +274,36 @@ export type RichText = string
 export type ChartType = 'line' | 'area' | 'bar' | 'donut'
 export type AxisFormat = 'number' | 'percent' | 'currency'
 
-/** Chart datasets whose config is authored in metadata but whose data the app fetches live. */
-export type DataRef = 'apyVsBenchmarks' | 'maturityDistribution'
+/**
+ * Live-chart datasets whose config is authored in metadata but whose data the app fetches live.
+ *
+ * PROVISIONAL, app-owned registry, expected to grow/change (centrifuge/apps-invest#200). The listed
+ * keys are current placeholders; the metadata only *references* a key and the app resolves it,
+ * blanking any it does not recognize. The `(string & {})` makes the type open: a future key never
+ * needs an SDK release, and readers must tolerate unknown values (never reject the document).
+ */
+export type DataRef = 'apyVsBenchmarks' | 'maturityDistribution' | (string & {})
 
-/** Closed, app-owned section units rendered by the invest app (structure + content + data). */
-export type SectionRef = 'onchainMetrics' | 'smartContracts'
+/**
+ * App-owned section units rendered by the invest app (structure + content + data).
+ * EXTENDABLE (additive), not a permanently closed set — more refs are expected. Current mapping:
+ * `onchainMetrics` = performance charts, `smartContracts` = addresses & smart contracts.
+ */
+export type SectionRef = 'onchainMetrics' | 'smartContracts' | (string & {})
 
-/** Closed, app-owned indexer query+aggregation registry referenced by `liveTable` columns. */
-export type LiveMetric = 'tokenPrice' | 'nav' | 'apy30d' | 'navChange' | 'monthlyReturn'
+/**
+ * App-owned indexer query/aggregation registry referenced by `liveTable` columns.
+ * PROVISIONAL placeholder set (centrifuge/apps-invest#200): each key is its own query and the set
+ * is expected to split into more granular, per-series / per-date-pair keys (e.g. `monthlyReturn` is
+ * not yet defined). Open by design — see {@link DataRef}.
+ */
+export type LiveMetric = 'tokenPrice' | 'nav' | 'apy30d' | 'navChange' | 'monthlyReturn' | (string & {})
 
-/** Closed, app-owned dataset (row dimension) for `liveTable`. */
-export type LiveDataset = 'monthlySummary'
+/**
+ * App-owned dataset (row dimension) for `liveTable`. PROVISIONAL, expected to grow — open by
+ * design, see {@link DataRef}.
+ */
+export type LiveDataset = 'monthlySummary' | (string & {})
 
 export type ColumnFormat = 'text' | 'number' | 'percent' | 'currency'
 
