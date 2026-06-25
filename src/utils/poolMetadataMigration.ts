@@ -53,25 +53,16 @@ function normalizeCategoryType(type: string): string {
 
 /**
  * Issuer-category `type` values (normalized) that migrate into the "Service providers" key-fact
- * group, mapped to their display label. Anything not listed stays in "Key facts". This is a seed
- * heuristic, not a validated registry: an unmatched type is simply left in "Key facts", so the list
- * is safe to extend. NOTE: confirm/extend this against the production category vocabulary.
+ * group, mapped to their display label. Anything not listed stays in "Key facts" (the seed is
+ * ops-editable, so an unmatched type is low-cost). Manager roles (portfolio/investment/asset
+ * manager) are intentionally NOT here; they stay in Key facts. `administrator` is an alias of
+ * Fund Administrator.
  */
 const SERVICE_PROVIDER_CATEGORIES = new Map<string, string>([
-  ['portfoliomanager', 'Portfolio Manager'],
-  ['investmentmanager', 'Investment Manager'],
-  ['assetmanager', 'Asset Manager'],
   ['custodian', 'Custodian'],
-  ['subcustodian', 'Sub-Custodian'],
-  ['administrator', 'Administrator'],
   ['fundadministrator', 'Fund Administrator'],
+  ['administrator', 'Fund Administrator'],
   ['auditor', 'Auditor'],
-  ['trustee', 'Trustee'],
-  ['transferagent', 'Transfer Agent'],
-  ['payingagent', 'Paying Agent'],
-  ['legalcounsel', 'Legal Counsel'],
-  ['legaladvisor', 'Legal Advisor'],
-  ['primebroker', 'Prime Broker'],
 ])
 
 /** Document links only carry web/IPFS URIs; anything else (e.g. `javascript:`) is dropped. */
@@ -131,6 +122,14 @@ function buildFactsheet(
       keyFactItems.push({ label: category.type, value: text(category.value) })
     }
   }
+
+  // Seeded for every migrated pool (app-derived, no v1 source): the wallet infrastructure icon and
+  // the live "available networks" ref. Both are ops-editable afterwards.
+  keyFactItems.push({
+    label: 'Wallet infrastructure',
+    value: { kind: 'icons', icons: [{ source: 'app', key: 'fordefi' }] },
+  })
+  keyFactItems.push({ label: 'Available networks', value: { kind: 'ref', ref: 'availableNetworks' } })
 
   // Ratings render via the `ratings` ref widget, reading the typed `poolRatings` field verbatim
   // (agency/value/reportUrl/reportFile). The data is not duplicated into the key fact.

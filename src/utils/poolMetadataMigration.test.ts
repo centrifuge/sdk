@@ -27,8 +27,9 @@ function legacyFixture(): PoolMetadataV1 {
         logo: null,
         shortDescription: 'Acme',
         categories: [
-          { type: 'Trustee', value: 'Acme Trust' },
-          { type: 'Auditor', value: 'Acme Audit' },
+          { type: 'Portfolio Manager', value: 'Janus Henderson Investors' }, // manager role -> Key facts
+          { type: 'Custodian', value: 'J.P. Morgan' }, // -> Service providers
+          { type: 'Auditor', value: 'MHA Cayman' }, // -> Service providers
         ],
       },
       links: { executiveSummary: null },
@@ -120,7 +121,7 @@ describe('migratePoolMetadataToV2', () => {
     ])
   })
 
-  it('projects a titled "Key facts" group and splits service-provider categories into "Service providers"', () => {
+  it('projects a titled "Key facts" group (incl. seeded wallet infra + networks) and a "Service providers" group', () => {
     const { keyFacts } = migratePoolMetadataToV2(legacyFixture()).pool.factsheet!
     expect(keyFacts).to.deep.equal([
       {
@@ -135,6 +136,10 @@ describe('migratePoolMetadataToV2', () => {
           { label: 'Average asset maturity', value: { kind: 'text', text: '63 days' } },
           { label: 'Expense ratio', value: { kind: 'text', text: '0.25%' } },
           { label: 'Min. investment', value: { kind: 'text', text: '2,500' } },
+          // 'Portfolio Manager' is a manager role, kept in Key facts.
+          { label: 'Portfolio Manager', value: { kind: 'text', text: 'Janus Henderson Investors' } },
+          { label: 'Wallet infrastructure', value: { kind: 'icons', icons: [{ source: 'app', key: 'fordefi' }] } },
+          { label: 'Available networks', value: { kind: 'ref', ref: 'availableNetworks' } },
           { label: 'Ratings', value: { kind: 'ref', ref: 'ratings' } },
         ],
       },
@@ -142,13 +147,24 @@ describe('migratePoolMetadataToV2', () => {
         type: 'keyFactGroup',
         id: 'service-providers',
         title: 'Service providers',
-        // 'Trustee' and 'Auditor' are known service-provider category types.
         items: [
-          { label: 'Trustee', value: { kind: 'text', text: 'Acme Trust' } },
-          { label: 'Auditor', value: { kind: 'text', text: 'Acme Audit' } },
+          { label: 'Custodian', value: { kind: 'text', text: 'J.P. Morgan' } },
+          { label: 'Auditor', value: { kind: 'text', text: 'MHA Cayman' } },
         ],
       },
     ])
+  })
+
+  it('seeds wallet infrastructure + available networks even with no categories or ratings', () => {
+    const legacy = legacyFixture()
+    legacy.pool.issuer.categories = []
+    legacy.pool.poolRatings = []
+    const { keyFacts } = migratePoolMetadataToV2(legacy).pool.factsheet!
+    expect(keyFacts).to.have.length(1) // no Service providers group
+    const labels = keyFacts[0]!.items.map((i) => i.label)
+    expect(labels).to.include('Wallet infrastructure')
+    expect(labels).to.include('Available networks')
+    expect(labels).to.not.include('Ratings')
   })
 
   it('keeps unknown categories in "Key facts" and omits the Service providers group when none match', () => {
@@ -162,11 +178,11 @@ describe('migratePoolMetadataToV2', () => {
 
   it('matches service-provider category types case- and separator-insensitively', () => {
     const legacy = legacyFixture()
-    legacy.pool.issuer.categories = [{ type: 'portfolio_Manager', value: 'Janus Henderson Investors' }]
+    legacy.pool.issuer.categories = [{ type: 'Fund_Administrator', value: 'Trident Trust' }]
     const groups = migratePoolMetadataToV2(legacy).pool.factsheet!.keyFacts
     const serviceProviders = groups.find((g) => g.id === 'service-providers')
     expect(serviceProviders?.items).to.deep.equal([
-      { label: 'Portfolio Manager', value: { kind: 'text', text: 'Janus Henderson Investors' } },
+      { label: 'Fund Administrator', value: { kind: 'text', text: 'Trident Trust' } },
     ])
   })
 
