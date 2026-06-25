@@ -27,8 +27,9 @@ function legacyFixture(): PoolMetadataV1 {
         logo: null,
         shortDescription: 'Acme',
         categories: [
-          { type: 'Portfolio Manager', value: 'Janus Henderson Investors' }, // manager role -> Key facts
-          { type: 'Custodian', value: 'J.P. Morgan' }, // -> Service providers
+          { type: 'Investment Manager', value: 'Anemoy Asset Management Ltd.' }, // absorbed by Issuer (dropped)
+          { type: 'Sub-Investment Manager', value: 'Janus Henderson Investors' }, // -> Portfolio Manager (SP)
+          { type: 'Fund Administrator', value: 'Trident Trust Company (Cayman) Ltd' }, // -> Service providers
           { type: 'Auditor', value: 'MHA Cayman' }, // -> Service providers
         ],
       },
@@ -136,8 +137,7 @@ describe('migratePoolMetadataToV2', () => {
           { label: 'Average asset maturity', value: { kind: 'text', text: '63 days' } },
           { label: 'Expense ratio', value: { kind: 'text', text: '0.25%' } },
           { label: 'Min. investment', value: { kind: 'text', text: '2,500' } },
-          // 'Portfolio Manager' is a manager role, kept in Key facts.
-          { label: 'Portfolio Manager', value: { kind: 'text', text: 'Janus Henderson Investors' } },
+          // Investment Manager is absorbed into Issuer (no row); the other three are service providers.
           { label: 'Wallet infrastructure', value: { kind: 'icons', icons: [{ source: 'app', key: 'fordefi' }] } },
           { label: 'Available networks', value: { kind: 'ref', ref: 'availableNetworks' } },
           { label: 'Ratings', value: { kind: 'ref', ref: 'ratings' } },
@@ -148,11 +148,21 @@ describe('migratePoolMetadataToV2', () => {
         id: 'service-providers',
         title: 'Service providers',
         items: [
-          { label: 'Custodian', value: { kind: 'text', text: 'J.P. Morgan' } },
+          { label: 'Portfolio Manager', value: { kind: 'text', text: 'Janus Henderson Investors' } },
+          { label: 'Fund Administrator', value: { kind: 'text', text: 'Trident Trust Company (Cayman) Ltd' } },
           { label: 'Auditor', value: { kind: 'text', text: 'MHA Cayman' } },
         ],
       },
     ])
+  })
+
+  it('absorbs the Investment Manager category into the Issuer key fact (drops its own row)', () => {
+    const { keyFacts } = migratePoolMetadataToV2(legacyFixture()).pool.factsheet!
+    const allItems = keyFacts.flatMap((g) => g.items)
+    expect(allItems.filter((i) => i.label === 'Issuer')).to.have.length(1)
+    expect(allItems.some((i) => i.value.kind === 'text' && i.value.text === 'Anemoy Asset Management Ltd.')).to.equal(
+      false
+    )
   })
 
   it('seeds wallet infrastructure + available networks even with no categories or ratings', () => {

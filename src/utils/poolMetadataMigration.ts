@@ -52,18 +52,25 @@ function normalizeCategoryType(type: string): string {
 }
 
 /**
- * Issuer-category `type` values (normalized) that migrate into the "Service providers" key-fact
- * group, mapped to their display label. Anything not listed stays in "Key facts" (the seed is
- * ops-editable, so an unmatched type is low-cost). Manager roles (portfolio/investment/asset
- * manager) are intentionally NOT here; they stay in Key facts. `administrator` is an alias of
- * Fund Administrator.
+ * Issuer-category `type` values (normalized) that migrate into the "Service providers" group, mapped
+ * to their v2 display label (the v1 vocabulary differs from v2, e.g. "Sub-Investment Manager" is the
+ * v2 "Portfolio Manager"). Anything not listed stays in "Key facts" with its raw label (the seed is
+ * ops-editable, so an unmatched type is low-cost). `administrator` is an alias of Fund Administrator.
  */
 const SERVICE_PROVIDER_CATEGORIES = new Map<string, string>([
+  ['subinvestmentmanager', 'Portfolio Manager'],
   ['custodian', 'Custodian'],
   ['fundadministrator', 'Fund Administrator'],
   ['administrator', 'Fund Administrator'],
   ['auditor', 'Auditor'],
 ])
+
+/**
+ * Issuer-category `type` values (normalized) dropped from the factsheet because they are already
+ * represented elsewhere: "Investment Manager" is absorbed by the `Issuer` key fact (from
+ * `issuer.name`), so it is not rendered as its own row.
+ */
+const ABSORBED_CATEGORY_TYPES = new Set(['investmentmanager'])
 
 /** Document links only carry web/IPFS URIs; anything else (e.g. `javascript:`) is dropped. */
 function isSafeDocumentUri(uri: string): boolean {
@@ -115,7 +122,9 @@ function buildFactsheet(
   // falls back to "Key facts" (the seed is ops-editable, so a miss is low-cost).
   const serviceProviderItems: KeyFact[] = []
   for (const category of issuer.categories) {
-    const label = SERVICE_PROVIDER_CATEGORIES.get(normalizeCategoryType(category.type))
+    const key = normalizeCategoryType(category.type)
+    if (ABSORBED_CATEGORY_TYPES.has(key)) continue // e.g. Investment Manager -> the Issuer key fact
+    const label = SERVICE_PROVIDER_CATEGORIES.get(key)
     if (label) {
       serviceProviderItems.push({ label, value: text(category.value) })
     } else {
