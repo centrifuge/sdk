@@ -9,6 +9,7 @@ import {
   isPoolMetadataV2,
   type KeyFact,
   type KeyFactGroup,
+  type KeyFactValue,
   type LayoutItem,
   type LegacyApyMode,
   type LiveDataset,
@@ -17,6 +18,7 @@ import {
   type PoolMetadataV1,
   type PoolMetadataV2,
   type SectionRef,
+  type TableBlock,
   type Visibility,
 } from '../types/poolMetadata.js'
 
@@ -49,6 +51,30 @@ function formatMinInvestment(value: number): string {
 /** Tolerates legacy docs that omit (or malform) an array field by treating it as empty. */
 function asArray<T>(value: T[] | undefined): T[] {
   return Array.isArray(value) ? value : []
+}
+
+/**
+ * Folds a legacy off-chain `{ headers, data }` holdings blob into a `table` section, preserving
+ * every column verbatim (numbers stay numbers, null/undefined -> '', other values stringified +
+ * trimmed). Returns null when there are no headers or no data.
+ */
+function holdingsTableBlock(holdings: PoolMetadataV1['holdings']): TableBlock | null {
+  if (!holdings || !Array.isArray(holdings.headers) || holdings.headers.length === 0 || !Array.isArray(holdings.data)) {
+    return null
+  }
+  const { headers, data } = holdings
+  return {
+    type: 'table',
+    id: 'holdings',
+    title: 'Holdings',
+    headers,
+    rows: data.map((row) =>
+      headers.map((header) => {
+        const value = row[header]
+        return typeof value === 'number' ? value : value == null ? '' : String(value).trim()
+      })
+    ),
+  }
 }
 
 /** Normalizes an issuer category `type` for matching (case- and separator-insensitive). */
@@ -123,13 +149,10 @@ function buildFactsheet(
     keyFactItems.push({ label: 'Min. investment', value: text(formatMinInvestment(minInitialInvestment)) })
   }
 
-  // Issuer categories are split: known service-provider roles go into a "Service providers" group,
-  // everything else stays in "Key facts". Matching is case/separator-insensitive; an unknown type
-  // falls back to "Key facts" (the seed is ops-editable, so a miss is low-cost).
   const serviceProviderItems: KeyFact[] = []
   for (const category of asArray(issuer.categories)) {
     const key = normalizeCategoryType(category.type)
-    if (ABSORBED_CATEGORY_TYPES.has(key)) continue // e.g. Investment Manager -> the Issuer key fact
+    if (ABSORBED_CATEGORY_TYPES.has(key)) continue
     const label = SERVICE_PROVIDER_CATEGORIES.get(key)
     if (label) {
       serviceProviderItems.push({ label, value: text(category.value) })
@@ -138,22 +161,20 @@ function buildFactsheet(
     }
   }
 
-  // Seeded for every migrated pool (app-derived, no v1 source): the wallet infrastructure icon and
-  // the live "available networks" ref. Both are ops-editable afterwards.
+  // Seeded unconditionally because v1 has no source field for either: the app derives the deployed
+  // chains, and wallet infrastructure is currently Fordefi for all pools. Ops can edit/remove after.
   keyFactItems.push({
     label: 'Wallet infrastructure',
     value: { kind: 'icons', icons: [{ source: 'app', key: 'fordefi' }] },
   })
   keyFactItems.push({ label: 'Available networks', value: { kind: 'ref', ref: 'availableNetworks' } })
 
-  // Ratings render via the `ratings` ref widget, reading the typed `poolRatings` field verbatim
-  // (agency/value/reportUrl/reportFile). The data is not duplicated into the key fact.
   if (asArray(poolRatings).length > 0) {
     keyFactItems.push({ label: 'Ratings', value: { kind: 'ref', ref: 'ratings' } })
   }
 
-  // The right column is groups only. Seed a titled "Key facts" group, plus a "Service providers"
-  // group when any category matched.
+  // Right column is groups only (no bare key facts). The "Service providers" group is added only
+  // when at least one category mapped to it.
   const keyFacts: KeyFactGroup[] = [{ type: 'keyFactGroup', id: 'key-facts', title: 'Key facts', items: keyFactItems }]
   if (serviceProviderItems.length > 0) {
     keyFacts.push({
@@ -190,32 +211,15 @@ function buildFactsheet(
   }
   body.push({ type: 'section', id: 'performance', ref: 'onchainMetrics' })
 
-  // Legacy off-chain `holdings` ({ headers, data }) is folded into the factsheet as a `table`
-  // section, faithfully (no column dropped). Skipped entirely when there are no headers or no data.
-  const sections: LayoutItem[] = []
-  if (holdings && Array.isArray(holdings.headers) && holdings.headers.length > 0 && Array.isArray(holdings.data)) {
-    const { headers, data } = holdings
-    sections.push({
-      type: 'table',
-      id: 'holdings',
-      title: 'Holdings',
-      headers,
-      rows: data.map((row) =>
-        headers.map((header) => {
-          const value = row[header]
-          return typeof value === 'number' ? value : value == null ? '' : String(value).trim()
-        })
-      ),
-    })
-  }
-
+  const holdingsBlock = holdingsTableBlock(holdings)
   // `sections` is omitted (so the invest app renders its defaults) unless we have a holdings table.
-  return sections.length > 0 ? { body, keyFacts, sections } : { body, keyFacts }
+  return holdingsBlock ? { body, keyFacts, sections: [holdingsBlock] } : { body, keyFacts }
 }
 
 /**
  * Pure, idempotent legacy -> v2 migration. Performs no IPFS/network access so it stays
- * unit-testable. Returns the input unchanged when it is already v2.
+ * unit-testable. A document already at the current v2 shape is returned unchanged; a v2 document
+ * written by an earlier SDK is normalized forward via {@link upgradeLegacyV2}.
  *
  * - Strips fields unused by every consumer (`newInvestmentsStatus`, `reports`, `loanTemplates`,
  *   `issuer.repName/shortDescription`, onboarding extras) and reshapes `issuer`. `poolRatings` is
@@ -225,7 +229,7 @@ function buildFactsheet(
  *   blob into a `table` section (`id: 'holdings'`); `holdings` is not carried as a top-level field.
  */
 export function migratePoolMetadataToV2(legacy: PoolMetadata): PoolMetadataV2 {
-  if (isPoolMetadataV2(legacy)) return legacy
+  if (isPoolMetadataV2(legacy)) return upgradeLegacyV2(legacy)
 
   const {
     pool,
@@ -238,12 +242,13 @@ export function migratePoolMetadataToV2(legacy: PoolMetadata): PoolMetadataV2 {
     withdrawManagers,
   } = legacy
   const { issuer, poolRatings, ...restPool } = pool
-  // Explicitly drop fields that v2 does not carry. `report` (singular) is a stray non-schema field
-  // seen in some legacy documents (the real reports array is `reports`, dropped above).
+  // Explicitly drop fields that v2 does not carry. `report` (singular) and `poolStatus` are stray
+  // non-schema fields seen in some legacy documents (the real fields are `reports` and `status`).
   delete (restPool as Record<string, unknown>).newInvestmentsStatus
   delete (restPool as Record<string, unknown>).reports
   delete (restPool as Record<string, unknown>).details
   delete (restPool as Record<string, unknown>).report
+  delete (restPool as Record<string, unknown>).poolStatus
 
   const migratedShareClasses: PoolMetadataV2['shareClasses'] = {}
   for (const [scId, shareClass] of Object.entries(shareClasses)) {
@@ -274,6 +279,103 @@ export function migratePoolMetadataToV2(legacy: PoolMetadata): PoolMetadataV2 {
     ...(workflowPolicies !== undefined ? { workflowPolicies } : {}),
     ...(withdrawManagers !== undefined ? { withdrawManagers } : {}),
   }
+}
+
+/* ================================================================================================
+ * Intra-v2 upgrade: normalize a v2 document written by an earlier SDK to the current v2 shape
+ * ============================================================================================== */
+
+function isKeyFactGroup(value: unknown): boolean {
+  return typeof value === 'object' && value !== null && (value as Record<string, unknown>).type === 'keyFactGroup'
+}
+
+/** Converts an earlier-SDK flat KeyFact (`{ value?: string; valueRef?: 'apy' }`) to the discriminated shape. */
+function upgradeKeyFact(old: Record<string, unknown>): KeyFact {
+  const { value, valueRef, ...rest } = old
+  let next: KeyFactValue
+  if (valueRef === 'apy') next = { kind: 'ref', ref: 'apy' }
+  else if (value !== null && typeof value === 'object' && 'kind' in (value as object)) next = value as KeyFactValue
+  else next = { kind: 'text', text: typeof value === 'string' ? value : '' }
+  return { ...(rest as Omit<KeyFact, 'value'>), value: next }
+}
+
+/** True if `item` is (or, for a tabGroup, contains) a chart still using the `series`/`dataRef` shape. */
+function hasLegacyChart(item: unknown): boolean {
+  if (typeof item !== 'object' || item === null) return false
+  const block = item as Record<string, unknown>
+  if (block.type === 'chart') {
+    return block.data === undefined && (block.series !== undefined || block.dataRef !== undefined)
+  }
+  if (block.type === 'tabGroup' && Array.isArray(block.tabs)) {
+    return block.tabs.some((tab) => hasLegacyChart((tab as Record<string, unknown>)?.block))
+  }
+  return false
+}
+
+/** Converts an earlier-SDK chart block (`series?`/`dataRef?`) to the discriminated `data` field, in place. */
+function upgradeChartBlockInPlace(block: Record<string, unknown>): void {
+  if (block.type === 'chart' && block.data === undefined) {
+    if (Array.isArray(block.series)) block.data = { kind: 'inline', series: block.series }
+    else if (typeof block.dataRef === 'string') block.data = { kind: 'ref', dataRef: block.dataRef }
+    delete block.series
+    delete block.dataRef
+  }
+  if (block.type === 'tabGroup' && Array.isArray(block.tabs)) {
+    for (const tab of block.tabs) {
+      const inner = (tab as Record<string, unknown>)?.block
+      if (inner && typeof inner === 'object') upgradeChartBlockInPlace(inner as Record<string, unknown>)
+    }
+  }
+}
+
+/**
+ * Normalizes a document already at `version: 2` but written by an earlier SDK whose v2 shape differs:
+ * a flat `keyFacts: KeyFact[]` (now `KeyFactGroup[]`), chart blocks with `series`/`dataRef` (now a
+ * discriminated `data`), and a top-level `holdings` blob (now a factsheet `table` section). Without
+ * this, `update()` would re-validate such a document against the current validator and throw, with no
+ * upgrade path. Returns the input unchanged (same reference) when it is already the current shape.
+ */
+function upgradeLegacyV2(doc: PoolMetadataV2): PoolMetadataV2 {
+  const raw = doc as unknown as Record<string, unknown>
+  const pool = (raw.pool ?? {}) as Record<string, unknown>
+  const factsheet = pool.factsheet as Record<string, unknown> | undefined
+  const keyFacts = factsheet?.keyFacts
+  const layoutItems = [...asArray(factsheet?.body as unknown[]), ...asArray(factsheet?.sections as unknown[])]
+
+  const needsKeyFactUpgrade = Array.isArray(keyFacts) && keyFacts.some((item) => !isKeyFactGroup(item))
+  const needsHoldingsFold = raw.holdings != null
+  const needsChartUpgrade = layoutItems.some(hasLegacyChart)
+  if (!needsKeyFactUpgrade && !needsHoldingsFold && !needsChartUpgrade) return doc
+
+  const next = JSON.parse(JSON.stringify(doc)) as Record<string, unknown>
+  const nextPool = next.pool as Record<string, unknown>
+  const nextFactsheet = nextPool.factsheet as Record<string, unknown> | undefined
+
+  if (nextFactsheet) {
+    if (needsKeyFactUpgrade) {
+      // Wrap the flat list into one titled "Key facts" group, converting each item's value.
+      const items = (nextFactsheet.keyFacts as Record<string, unknown>[]).map(upgradeKeyFact)
+      nextFactsheet.keyFacts = [{ type: 'keyFactGroup', id: 'key-facts', title: 'Key facts', items }]
+    }
+    if (needsChartUpgrade) {
+      for (const item of [
+        ...asArray(nextFactsheet.body as unknown[]),
+        ...asArray(nextFactsheet.sections as unknown[]),
+      ]) {
+        if (item && typeof item === 'object') upgradeChartBlockInPlace(item as Record<string, unknown>)
+      }
+    }
+  }
+
+  if (needsHoldingsFold) {
+    const holdingsBlock = holdingsTableBlock(raw.holdings as PoolMetadataV1['holdings'])
+    delete next.holdings
+    if (holdingsBlock && nextFactsheet) {
+      nextFactsheet.sections = [...asArray(nextFactsheet.sections as LayoutItem[]), holdingsBlock]
+    }
+  }
+
+  return next as unknown as PoolMetadataV2
 }
 
 /* ================================================================================================

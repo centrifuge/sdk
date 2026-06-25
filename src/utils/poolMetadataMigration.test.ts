@@ -315,6 +315,93 @@ describe('migratePoolMetadataToV2', () => {
     expect(isPoolMetadataV2(v2)).to.equal(true)
     expect(() => parsePoolMetadataV2(v2)).to.not.throw()
   })
+
+  describe('intra-v2 upgrade (documents written by an earlier SDK)', () => {
+    // The shape an SDK <= 1.16.0 produced: flat keyFacts, chart series/dataRef, top-level holdings.
+    const oldV2 = () =>
+      ({
+        version: 2,
+        pool: {
+          name: 'Old V2 Pool',
+          factsheet: {
+            keyFacts: [
+              { label: 'Issuer', value: 'Acme' },
+              { label: 'APY', valueRef: 'apy' },
+            ],
+            body: [
+              { type: 'chart', id: 'c1', chartType: 'line', series: [{ name: 's', data: [{ x: 1, y: 2 }] }] },
+              { type: 'chart', id: 'c2', chartType: 'donut', dataRef: 'apyVsBenchmarks' },
+              {
+                type: 'tabGroup',
+                id: 'tg',
+                tabs: [
+                  {
+                    label: 'T',
+                    block: {
+                      type: 'chart',
+                      id: 'c3',
+                      chartType: 'bar',
+                      series: [{ name: 's', data: [{ label: 'a', value: 1 }] }],
+                    },
+                  },
+                ],
+              },
+            ],
+          },
+        },
+        shareClasses: {},
+        holdings: { headers: ['A'], data: [{ A: 'x' }] },
+      }) as unknown as PoolMetadataV2
+
+    it('upgrades flat keyFacts into a single Key facts group with discriminated values', () => {
+      const { keyFacts } = migratePoolMetadataToV2(oldV2()).pool.factsheet!
+      expect(keyFacts).to.deep.equal([
+        {
+          type: 'keyFactGroup',
+          id: 'key-facts',
+          title: 'Key facts',
+          items: [
+            { label: 'Issuer', value: { kind: 'text', text: 'Acme' } },
+            { label: 'APY', value: { kind: 'ref', ref: 'apy' } },
+          ],
+        },
+      ])
+    })
+
+    it('upgrades chart series/dataRef into discriminated data (incl. inside tab groups)', () => {
+      const body = migratePoolMetadataToV2(oldV2()).pool.factsheet!.body
+      const c1 = body.find((b) => b.id === 'c1') as Record<string, unknown>
+      expect(c1.data).to.deep.equal({ kind: 'inline', series: [{ name: 's', data: [{ x: 1, y: 2 }] }] })
+      expect(c1).to.not.have.property('series')
+      const c2 = body.find((b) => b.id === 'c2') as Record<string, unknown>
+      expect(c2.data).to.deep.equal({ kind: 'ref', dataRef: 'apyVsBenchmarks' })
+      const tg = body.find((b) => b.id === 'tg') as { tabs: { block: Record<string, unknown> }[] }
+      expect(tg.tabs[0]!.block.data).to.deep.equal({
+        kind: 'inline',
+        series: [{ name: 's', data: [{ label: 'a', value: 1 }] }],
+      })
+    })
+
+    it('folds a top-level holdings blob into a factsheet table section and removes the top-level field', () => {
+      const v2 = migratePoolMetadataToV2(oldV2())
+      expect(v2).to.not.have.property('holdings')
+      const holdings = v2.pool.factsheet!.sections!.find((s) => s.id === 'holdings')
+      expect(holdings).to.deep.equal({
+        type: 'table',
+        id: 'holdings',
+        title: 'Holdings',
+        headers: ['A'],
+        rows: [['x']],
+      })
+    })
+
+    it('produces a document that passes the current validator, and is then idempotent', () => {
+      const upgraded = migratePoolMetadataToV2(oldV2())
+      expect(() => parsePoolMetadataV2(upgraded)).to.not.throw()
+      // Already current shape -> returned unchanged (same reference).
+      expect(migratePoolMetadataToV2(upgraded)).to.equal(upgraded)
+    })
+  })
 })
 
 describe('parsePoolMetadataV2', () => {
