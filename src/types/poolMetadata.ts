@@ -162,6 +162,11 @@ export type PoolMetadataV1 = {
       executiveSummary: FileType | null
       forum?: string
       website?: string
+      /**
+       * Reusable named documents authored once and referenced anywhere in the factsheet via a
+       * {@link LinkTarget} `{ kind: 'linkRef', linkRef: key }`. See {@link LinkDocument}.
+       */
+      documents?: LinkDocument[]
     }
     details?: {
       title: string
@@ -401,6 +406,18 @@ export type LinkTarget =
   | { kind: 'file'; file: FileType }
   | { kind: 'href'; href: string }
   | { kind: 'linkRef'; linkRef: string }
+
+/**
+ * A reusable named document on `pool.links.documents`, referenced from a {@link LinkTarget} via
+ * `{ kind: 'linkRef', linkRef: key }`. Carries exactly one of `file` or `href`.
+ */
+export type LinkDocument = {
+  /** Unique slug a `linkRef` points at; must not collide with `executiveSummary`/`website`/`forum`. */
+  key: string
+  label: string
+  file?: FileType | null
+  href?: string
+}
 
 export type TextBlock = BlockBase & {
   type: 'text'

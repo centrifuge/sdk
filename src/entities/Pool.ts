@@ -784,6 +784,7 @@ export class Pool extends Entity {
               executiveSummary: metadataInput?.executiveSummary ?? baseMetadata.pool.links?.executiveSummary,
               forum: metadataInput?.forum ?? baseMetadata.pool.links?.forum,
               website: metadataInput?.website ?? baseMetadata.pool.links?.website,
+              documents: metadataInput?.linkDocuments ?? baseMetadata.pool.links?.documents,
             },
             status: poolStatus,
             listed: metadataInput?.listed ?? baseMetadata.pool.listed,

@@ -52,7 +52,7 @@ export type {
 } from './types/workflow.js'
 export { runtimeVariableName } from './types/workflow.js'
 export * from './types/poolMetadata.js'
-export { migratePoolMetadataToV2, parsePoolMetadataV2 } from './utils/poolMetadataMigration.js'
+export { migratePoolMetadataToV2, parsePoolMetadataV2, resolveLinkTarget } from './utils/poolMetadataMigration.js'
 export type { Query } from './types/query.js'
 export type {
   DeployedOnchainPMStatus,

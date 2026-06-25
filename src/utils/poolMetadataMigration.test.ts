@@ -3,7 +3,7 @@ import { mockPoolMetadata } from '../tests/mocks/mockPoolMetadata.js'
 import { mockPoolMetadataV2 } from '../tests/mocks/mockPoolMetadataV2.js'
 import type { PoolMetadataV1, PoolMetadataV2 } from '../types/poolMetadata.js'
 import { isPoolMetadataV2 } from '../types/poolMetadata.js'
-import { migratePoolMetadataToV2, parsePoolMetadataV2 } from './poolMetadataMigration.js'
+import { migratePoolMetadataToV2, parsePoolMetadataV2, resolveLinkTarget } from './poolMetadataMigration.js'
 
 const clone = <T>(value: T): T => JSON.parse(JSON.stringify(value)) as T
 
@@ -117,6 +117,16 @@ describe('migratePoolMetadataToV2', () => {
         { assetAddress: '0xa0b8', chainId: '1', manager: '0x1a3b', label: 'C-AC' },
       ],
     })
+  })
+
+  it('carries pool.links.documents through migration', () => {
+    const legacy = legacyFixture()
+    legacy.pool.links = {
+      executiveSummary: null,
+      documents: [{ key: 'tos', label: 'Terms', href: 'https://x.io/tos' }],
+    }
+    const v2 = migratePoolMetadataToV2(legacy)
+    expect(v2.pool.links.documents).to.deep.equal([{ key: 'tos', label: 'Terms', href: 'https://x.io/tos' }])
   })
 
   it('drops a stray pool.report (singular) non-schema field', () => {
@@ -659,5 +669,85 @@ describe('parsePoolMetadataV2', () => {
     }
     overview.links[0]!.target = { kind: 'linkRef' } // missing linkRef string
     expect(() => parsePoolMetadataV2(bad)).to.throw(/linkRef must be a string/)
+  })
+
+  // --- pool.links.documents (reusable named documents) ---
+
+  it('accepts pool.links.documents (file and href docs)', () => {
+    expect(() => parsePoolMetadataV2(mockPoolMetadataV2)).to.not.throw()
+  })
+
+  it('rejects a link document setting both file and href', () => {
+    const bad = clone(mockPoolMetadataV2)
+    bad.pool.links!.documents = [
+      { key: 'x', label: 'X', file: { uri: 'ipfs://Q', mime: 'application/pdf' }, href: 'https://x.io' },
+    ]
+    expect(() => parsePoolMetadataV2(bad)).to.throw(/exactly one of `file` or `href`/)
+  })
+
+  it('rejects a link document setting neither file nor href', () => {
+    const bad = clone(mockPoolMetadataV2)
+    bad.pool.links!.documents = [{ key: 'x', label: 'X' } as never]
+    expect(() => parsePoolMetadataV2(bad)).to.throw(/exactly one of `file` or `href`/)
+  })
+
+  it('rejects duplicate link-document keys', () => {
+    const bad = clone(mockPoolMetadataV2)
+    bad.pool.links!.documents = [
+      { key: 'dup', label: 'A', href: 'https://a.io' },
+      { key: 'dup', label: 'B', href: 'https://b.io' },
+    ]
+    expect(() => parsePoolMetadataV2(bad)).to.throw(/is duplicated/)
+  })
+
+  it('rejects a link-document key colliding with a built-in', () => {
+    const bad = clone(mockPoolMetadataV2)
+    bad.pool.links!.documents = [{ key: 'website', label: 'W', href: 'https://w.io' }]
+    expect(() => parsePoolMetadataV2(bad)).to.throw(/collides with a built-in/)
+  })
+
+  it('rejects a link document with an empty key', () => {
+    const bad = clone(mockPoolMetadataV2)
+    bad.pool.links!.documents = [{ key: '', label: 'X', href: 'https://x.io' }]
+    expect(() => parsePoolMetadataV2(bad)).to.throw(/key must be a non-empty string/)
+  })
+})
+
+describe('resolveLinkTarget', () => {
+  const links = mockPoolMetadataV2.pool.links
+
+  it('resolves inline file and href targets', () => {
+    expect(
+      resolveLinkTarget(links, { kind: 'file', file: { uri: 'ipfs://Q', mime: 'application/pdf' } })
+    ).to.deep.equal({
+      file: { uri: 'ipfs://Q', mime: 'application/pdf' },
+    })
+    expect(resolveLinkTarget(links, { kind: 'href', href: 'https://x.io' })).to.deep.equal({ href: 'https://x.io' })
+  })
+
+  it('resolves built-in linkRefs (executiveSummary -> file, website/forum -> url)', () => {
+    expect(resolveLinkTarget(links, { kind: 'linkRef', linkRef: 'executiveSummary' })).to.deep.equal({
+      file: links.executiveSummary,
+    })
+    expect(resolveLinkTarget(links, { kind: 'linkRef', linkRef: 'website' })).to.deep.equal({
+      href: 'https://newsilver.com',
+    })
+    expect(resolveLinkTarget(links, { kind: 'linkRef', linkRef: 'forum' })).to.deep.equal({
+      href: 'https://gov.centrifuge.io/tag/newsilver',
+    })
+  })
+
+  it('resolves named documents by key (file or href)', () => {
+    expect(resolveLinkTarget(links, { kind: 'linkRef', linkRef: 'prospectus' })).to.deep.equal({
+      file: { uri: 'ipfs://QmProspectusDoc', mime: 'application/pdf' },
+    })
+    expect(resolveLinkTarget(links, { kind: 'linkRef', linkRef: 'termsOfService' })).to.deep.equal({
+      href: 'https://example.com/tos',
+    })
+  })
+
+  it('returns null for an unknown linkRef or missing links', () => {
+    expect(resolveLinkTarget(links, { kind: 'linkRef', linkRef: 'nope' })).to.equal(null)
+    expect(resolveLinkTarget(undefined, { kind: 'linkRef', linkRef: 'website' })).to.equal(null)
   })
 })

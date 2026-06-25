@@ -7,12 +7,14 @@ import {
   type DataRef,
   type DocumentsBlock,
   type Factsheet,
+  type FileType,
   isPoolMetadataV2,
   type KeyFact,
   type KeyFactGroup,
   type KeyFactValue,
   type LayoutItem,
   type LegacyApyMode,
+  type LinkTarget,
   type LiveDataset,
   type LiveMetric,
   type PoolMetadata,
@@ -469,6 +471,28 @@ function validateFile(value: unknown, where: string): void {
   assertString(value.mime, `${where}.mime`)
 }
 
+const BUILTIN_LINK_KEYS = new Set(['executiveSummary', 'website', 'forum'])
+
+function validateLinkDocuments(documents: unknown): void {
+  if (!Array.isArray(documents)) fail('`pool.links.documents` must be an array')
+  const seen = new Set<string>()
+  documents.forEach((doc, index) => {
+    const where = `pool.links.documents[${index}]`
+    if (!isObject(doc)) fail(`${where} must be an object`)
+    if (typeof doc.key !== 'string' || doc.key.length === 0) fail(`${where}.key must be a non-empty string`)
+    if (typeof doc.label !== 'string' || doc.label.length === 0) fail(`${where}.label must be a non-empty string`)
+    // Exactly one of file (object) or non-empty href. A null file counts as absent.
+    const hasFile = isObject(doc.file)
+    const hasHref = typeof doc.href === 'string' && doc.href.length > 0
+    if (hasFile === hasHref) fail(`${where} must set exactly one of \`file\` or \`href\``)
+    if (hasFile) validateFile(doc.file, `${where}.file`)
+    // Built-ins resolve first, so a colliding key would be ambiguous (unreachable).
+    if (BUILTIN_LINK_KEYS.has(doc.key)) fail(`${where}.key "${doc.key}" collides with a built-in link key`)
+    if (seen.has(doc.key)) fail(`${where}.key "${doc.key}" is duplicated`)
+    seen.add(doc.key)
+  })
+}
+
 function validateLinkTarget(value: unknown, where: string): void {
   if (!isObject(value)) fail(`${where} must be an object`)
   switch (value.kind) {
@@ -768,8 +792,42 @@ export function parsePoolMetadataV2(raw: unknown): PoolMetadataV2 {
   if (!isObject(raw.pool)) fail('`pool` must be an object')
   assertString(raw.pool.name, '`pool.name`')
   if (raw.pool.geoRestrictions !== undefined) validateGeoRestrictions(raw.pool.geoRestrictions)
+  if (isObject(raw.pool.links) && raw.pool.links.documents !== undefined) {
+    validateLinkDocuments(raw.pool.links.documents)
+  }
   if (raw.pool.factsheet !== undefined) validateFactsheet(raw.pool.factsheet)
   return raw as PoolMetadataV2
+}
+
+/**
+ * Resolves a {@link LinkTarget} to a `{ href }` or `{ file }` against a pool's `links`. `linkRef`
+ * checks the built-in keys first (`executiveSummary` -> file, `website`/`forum` -> url), then
+ * `links.documents` by `key`. Returns `null` on no match (callers self-blank; never throw). Shared
+ * so the SDK and the invest app resolve references identically.
+ */
+export function resolveLinkTarget(
+  links: PoolMetadataV1['pool']['links'] | undefined,
+  target: LinkTarget
+): { href?: string; file?: FileType } | null {
+  switch (target.kind) {
+    case 'file':
+      return { file: target.file }
+    case 'href':
+      return { href: target.href }
+    case 'linkRef': {
+      const key = target.linkRef
+      if (key === 'executiveSummary') return links?.executiveSummary ? { file: links.executiveSummary } : null
+      if (key === 'website') return links?.website ? { href: links.website } : null
+      if (key === 'forum') return links?.forum ? { href: links.forum } : null
+      const doc = links?.documents?.find((d) => d.key === key)
+      if (!doc) return null
+      if (doc.file) return { file: doc.file }
+      if (doc.href) return { href: doc.href }
+      return null
+    }
+    default:
+      return null
+  }
 }
 
 /** Validates `pool.geoRestrictions.regions` as ISO 3166-1 alpha-2 codes (format only, strict on write). */

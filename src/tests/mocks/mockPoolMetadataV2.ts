@@ -31,6 +31,10 @@ export const mockPoolMetadataV2: PoolMetadataV2 = {
       },
       forum: 'https://gov.centrifuge.io/tag/newsilver',
       website: 'https://newsilver.com',
+      documents: [
+        { key: 'prospectus', label: 'Prospectus', file: { uri: 'ipfs://QmProspectusDoc', mime: 'application/pdf' } },
+        { key: 'termsOfService', label: 'Terms of Service', href: 'https://example.com/tos' },
+      ],
     },
     status: 'open',
     listed: true,
