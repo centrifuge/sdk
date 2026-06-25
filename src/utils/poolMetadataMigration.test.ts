@@ -230,13 +230,12 @@ describe('migratePoolMetadataToV2', () => {
     ])
   })
 
-  it('projects description, details and rating reports into body blocks', () => {
+  it('projects description and details into body blocks (no Documents block in body)', () => {
     const { body } = migratePoolMetadataToV2(legacyFixture()).pool.factsheet!
     expect(body).to.deep.equal([
       { type: 'text', id: 'overview', title: 'Overview', body: 'A long issuer description.' },
       { type: 'text', id: 'detail-0', title: 'Strategy', body: 'We do things.' },
       { type: 'text', id: 'detail-1', title: 'Risks', body: 'Things can go wrong.' },
-      { type: 'text', id: 'documents', title: 'Documents', body: '- [Moodys rating report](ipfs://Qm1)' },
       { type: 'section', id: 'performance', ref: 'onchainMetrics' },
     ])
   })
@@ -269,34 +268,45 @@ describe('migratePoolMetadataToV2', () => {
     })
   })
 
-  it('drops unsafe document URI schemes and escapes the rating label', () => {
+  it('builds a Documents tile section (full-width) from rating reports, dropping unsafe URIs', () => {
     const legacy = legacyFixture()
     legacy.pool.poolRatings = [
-      { agency: 'Evil [x](javascript:alert(1))', reportFile: { uri: 'javascript:alert(1)', mime: 'text/html' } },
+      { agency: 'Evil', reportFile: { uri: 'javascript:alert(1)', mime: 'text/html' } },
       { agency: 'Fitch', reportFile: { uri: 'https://x.io/r2', mime: 'application/pdf' } },
     ]
-    const documents = migratePoolMetadataToV2(legacy).pool.factsheet!.body.find((b) => b.id === 'documents')
+    const { body, sections } = migratePoolMetadataToV2(legacy).pool.factsheet!
+    expect(body.some((b) => b.id === 'documents')).to.equal(false) // not in the header region
+    const documents = sections!.find((s) => s.id === 'documents')
     expect(documents).to.deep.equal({
-      type: 'text',
+      type: 'documents',
       id: 'documents',
       title: 'Documents',
-      body: '- [Fitch rating report](https://x.io/r2)',
+      items: [
+        {
+          title: 'Fitch rating report',
+          target: { kind: 'file', file: { uri: 'https://x.io/r2', mime: 'application/pdf' } },
+        },
+      ],
     })
   })
 
-  it('omits the Documents block entirely when no rating has a safe URI', () => {
+  it('omits the Documents block entirely when no rating has a safe report URI', () => {
     const legacy = legacyFixture()
     legacy.pool.poolRatings = [{ agency: 'X', reportFile: { uri: 'javascript:alert(1)', mime: 'text/html' } }]
-    const documents = migratePoolMetadataToV2(legacy).pool.factsheet!.body.find((b) => b.id === 'documents')
-    expect(documents).to.equal(undefined)
+    const { body, sections } = migratePoolMetadataToV2(legacy).pool.factsheet!
+    expect(body.some((b) => b.id === 'documents')).to.equal(false)
+    expect((sections ?? []).some((s) => s.id === 'documents')).to.equal(false)
   })
 
-  it('omits sections (app renders defaults) when there is no holdings blob', () => {
-    expect(migratePoolMetadataToV2(legacyFixture()).pool.factsheet!.sections).to.equal(undefined)
+  it('omits sections (app renders defaults) when there is no documents block or holdings blob', () => {
+    const legacy = legacyFixture()
+    legacy.pool.poolRatings = [] // no rating reports => no Documents section
+    expect(migratePoolMetadataToV2(legacy).pool.factsheet!.sections).to.equal(undefined)
   })
 
   it('folds the legacy holdings blob into a table section, faithfully, dropping no column', () => {
     const legacy = legacyFixture()
+    legacy.pool.poolRatings = [] // isolate the holdings section
     legacy.holdings = {
       headers: ['Asset', 'ISIN', 'Amount'],
       data: [
@@ -323,10 +333,12 @@ describe('migratePoolMetadataToV2', () => {
 
   it('skips the holdings table when headers are empty or data is missing', () => {
     const emptyHeaders = legacyFixture()
+    emptyHeaders.pool.poolRatings = []
     emptyHeaders.holdings = { headers: [], data: [{ x: 1 }] }
     expect(migratePoolMetadataToV2(emptyHeaders).pool.factsheet!.sections).to.equal(undefined)
 
     const missingData = legacyFixture()
+    missingData.pool.poolRatings = []
     missingData.holdings = { headers: ['A'] } as unknown as PoolMetadataV1['holdings']
     expect(migratePoolMetadataToV2(missingData).pool.factsheet!.sections).to.equal(undefined)
   })

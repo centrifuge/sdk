@@ -5,6 +5,7 @@ import {
   type ChartType,
   type ColumnFormat,
   type DataRef,
+  type DocumentsBlock,
   type Factsheet,
   isPoolMetadataV2,
   type KeyFact,
@@ -109,9 +110,18 @@ function isSafeDocumentUri(uri: string): boolean {
   return scheme.startsWith('https://') || scheme.startsWith('ipfs://')
 }
 
-/** Escapes markdown link-breaking characters so an issuer-supplied label can't alter the link. */
-function escapeMarkdownText(text: string): string {
-  return text.replace(/[\\[\]()]/g, '\\$&').replace(/\s+/g, ' ')
+/**
+ * Builds a `documents` section from the rating report files (a tile per safe-URI report), or null
+ * when none have a usable report. Each tile targets the report file directly (`kind: 'file'`).
+ */
+function ratingDocumentsBlock(poolRatings: PoolMetadataV1['pool']['poolRatings']): DocumentsBlock | null {
+  const items = asArray(poolRatings)
+    .filter((rating) => rating.reportFile?.uri && isSafeDocumentUri(rating.reportFile.uri))
+    .map((rating) => ({
+      title: `${rating.agency ?? 'Rating'} rating report`,
+      target: { kind: 'file' as const, file: rating.reportFile! },
+    }))
+  return items.length > 0 ? { type: 'documents', id: 'documents', title: 'Documents', items } : null
 }
 
 /**
@@ -204,28 +214,18 @@ function buildFactsheet(
   asArray(details).forEach((detail, index) => {
     body.push({ type: 'text', id: `detail-${index}`, title: detail.title, body: detail.body })
   })
-  // Ratings reports are surfaced two ways: a Documents body block (markdown links to the report
-  // PDFs) and the `ratings` key-fact ref pill above. Both read the same typed `poolRatings` field.
-  const ratingsWithReports = asArray(poolRatings).filter(
-    (rating) => rating.reportFile?.uri && isSafeDocumentUri(rating.reportFile.uri)
-  )
-  if (ratingsWithReports.length > 0) {
-    body.push({
-      type: 'text',
-      id: 'documents',
-      title: 'Documents',
-      body: ratingsWithReports
-        .map(
-          (rating) => `- [${escapeMarkdownText(rating.agency ?? 'Rating')} rating report](${rating.reportFile!.uri})`
-        )
-        .join('\n'),
-    })
-  }
   body.push({ type: 'section', id: 'performance', ref: 'onchainMetrics' })
 
+  // Full-width region. Rating reports become a `documents` tile block (ratings are also surfaced
+  // as the `ratings` key-fact ref pill above; both read the same typed `poolRatings`). `sections` is
+  // omitted (so the invest app renders its defaults) only when there is neither a documents block
+  // nor a holdings table.
+  const sections: LayoutItem[] = []
+  const documentsBlock = ratingDocumentsBlock(poolRatings)
+  if (documentsBlock) sections.push(documentsBlock)
   const holdingsBlock = holdingsTableBlock(holdings)
-  // `sections` is omitted (so the invest app renders its defaults) unless we have a holdings table.
-  return holdingsBlock ? { body, keyFacts, sections: [holdingsBlock] } : { body, keyFacts }
+  if (holdingsBlock) sections.push(holdingsBlock)
+  return sections.length > 0 ? { body, keyFacts, sections } : { body, keyFacts }
 }
 
 /**
