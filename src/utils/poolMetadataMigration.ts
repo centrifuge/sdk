@@ -46,6 +46,11 @@ function formatMinInvestment(value: number): string {
   return value.toLocaleString('en-US')
 }
 
+/** Tolerates legacy docs that omit (or malform) an array field by treating it as empty. */
+function asArray<T>(value: T[] | undefined): T[] {
+  return Array.isArray(value) ? value : []
+}
+
 /** Normalizes an issuer category `type` for matching (case- and separator-insensitive). */
 function normalizeCategoryType(type: string): string {
   return type.toLowerCase().replace(/[\s_-]/g, '')
@@ -122,7 +127,7 @@ function buildFactsheet(
   // everything else stays in "Key facts". Matching is case/separator-insensitive; an unknown type
   // falls back to "Key facts" (the seed is ops-editable, so a miss is low-cost).
   const serviceProviderItems: KeyFact[] = []
-  for (const category of issuer.categories) {
+  for (const category of asArray(issuer.categories)) {
     const key = normalizeCategoryType(category.type)
     if (ABSORBED_CATEGORY_TYPES.has(key)) continue // e.g. Investment Manager -> the Issuer key fact
     const label = SERVICE_PROVIDER_CATEGORIES.get(key)
@@ -143,7 +148,7 @@ function buildFactsheet(
 
   // Ratings render via the `ratings` ref widget, reading the typed `poolRatings` field verbatim
   // (agency/value/reportUrl/reportFile). The data is not duplicated into the key fact.
-  if ((poolRatings ?? []).length > 0) {
+  if (asArray(poolRatings).length > 0) {
     keyFactItems.push({ label: 'Ratings', value: { kind: 'ref', ref: 'ratings' } })
   }
 
@@ -163,12 +168,12 @@ function buildFactsheet(
   if (issuer.description) {
     body.push({ type: 'text', id: 'overview', title: 'Overview', body: issuer.description })
   }
-  ;(details ?? []).forEach((detail, index) => {
+  asArray(details).forEach((detail, index) => {
     body.push({ type: 'text', id: `detail-${index}`, title: detail.title, body: detail.body })
   })
   // Ratings reports are surfaced two ways: a Documents body block (markdown links to the report
   // PDFs) and the `ratings` key-fact ref pill above. Both read the same typed `poolRatings` field.
-  const ratingsWithReports = (poolRatings ?? []).filter(
+  const ratingsWithReports = asArray(poolRatings).filter(
     (rating) => rating.reportFile?.uri && isSafeDocumentUri(rating.reportFile.uri)
   )
   if (ratingsWithReports.length > 0) {
@@ -188,7 +193,7 @@ function buildFactsheet(
   // Legacy off-chain `holdings` ({ headers, data }) is folded into the factsheet as a `table`
   // section, faithfully (no column dropped). Skipped entirely when there are no headers or no data.
   const sections: LayoutItem[] = []
-  if (holdings && holdings.headers.length > 0 && holdings.data) {
+  if (holdings && Array.isArray(holdings.headers) && holdings.headers.length > 0 && Array.isArray(holdings.data)) {
     const { headers, data } = holdings
     sections.push({
       type: 'table',

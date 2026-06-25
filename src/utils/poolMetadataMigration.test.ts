@@ -203,6 +203,14 @@ describe('migratePoolMetadataToV2', () => {
     expect(labels).to.not.include('Ratings')
   })
 
+  it('migrates cleanly when issuer.categories is absent (real legacy docs omit it)', () => {
+    const legacy = legacyFixture()
+    delete (legacy.pool.issuer as Record<string, unknown>).categories
+    expect(() => migratePoolMetadataToV2(legacy)).to.not.throw()
+    const { keyFacts } = migratePoolMetadataToV2(legacy).pool.factsheet!
+    expect(keyFacts).to.have.length(1) // Key facts only, no Service providers group
+  })
+
   it('keeps unknown categories in "Key facts" and omits the Service providers group when none match', () => {
     const legacy = legacyFixture()
     legacy.pool.issuer.categories = [{ type: 'Historical default rate', value: '0%' }]
