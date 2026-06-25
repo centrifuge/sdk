@@ -52,7 +52,7 @@ export const mockPoolMetadataV2: PoolMetadataV2 = {
         reportFile: { uri: 'ipfs://QmRatingReport', mime: 'application/pdf' },
       },
     ],
-    geoBlock: { regions: ['US', 'KP'] },
+    geoRestrictions: { regions: ['US', 'KP'] },
     factsheet: {
       keyFacts: [
         {
@@ -82,6 +82,12 @@ export const mockPoolMetadataV2: PoolMetadataV2 = {
               },
             },
             { label: 'Secret fact', value: { kind: 'text', text: 'hidden value' }, visibility: 'whitelisted' },
+            // Combined gates: shown only to a whitelisted wallet in an allowed region.
+            {
+              label: 'Restricted yield',
+              value: { kind: 'text', text: '12%' },
+              visibility: ['whitelisted', 'geo-restricted'],
+            },
           ],
         },
       ],
@@ -211,8 +217,8 @@ export const mockPoolMetadataV2: PoolMetadataV2 = {
           type: 'text',
           id: 'geo-note',
           title: 'Regional note',
-          body: 'Shown only outside blocked regions.',
-          visibility: 'geo-blocked',
+          body: 'Shown only outside restricted regions.',
+          visibility: 'geo-restricted',
         },
         { type: 'section', id: 'performance', ref: 'onchainMetrics' },
       ],

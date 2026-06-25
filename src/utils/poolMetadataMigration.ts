@@ -20,7 +20,7 @@ import {
   type PoolMetadataV2,
   type SectionRef,
   type TableBlock,
-  type Visibility,
+  type VisibilityGate,
 } from '../types/poolMetadata.js'
 
 /* ================================================================================================
@@ -399,7 +399,8 @@ function upgradeLegacyV2(doc: PoolMetadataV2): PoolMetadataV2 {
 // (see centrifuge/apps-invest#200), but the SDK is the alignment point: an unknown key is rejected
 // on WRITE so the management app, SDK, and invest app stay in sync (adding a key ships in an SDK
 // release). The read path does not validate, so a newer document never breaks an older reader.
-const VISIBILITIES = new Set<Visibility>(['public', 'whitelisted', 'geo-blocked', 'hidden'])
+const VISIBILITY_SCALARS = new Set(['public', 'hidden', 'whitelisted', 'geo-restricted'])
+const VISIBILITY_GATES = new Set<VisibilityGate>(['whitelisted', 'geo-restricted'])
 const REGION_CODE_RE = /^[A-Za-z]{2}$/
 const CHART_TYPES = new Set<ChartType>(['line', 'area', 'bar', 'donut'])
 const AXIS_FORMATS = new Set<AxisFormat>(['number', 'percent', 'currency'])
@@ -438,9 +439,24 @@ function assertString(value: unknown, where: string): asserts value is string {
 
 function assertVisibility(value: unknown, where: string): void {
   if (value === undefined) return
-  if (typeof value !== 'string' || !VISIBILITIES.has(value as Visibility)) {
-    fail(`${where} has invalid visibility "${String(value)}"`)
+  if (typeof value === 'string') {
+    if (!VISIBILITY_SCALARS.has(value)) fail(`${where} has invalid visibility "${value}"`)
+    return
   }
+  // An array combines gates with AND. `public`/`hidden` are scalars, never array members.
+  if (Array.isArray(value)) {
+    if (value.length === 0) fail(`${where} visibility array must not be empty`)
+    const seen = new Set<string>()
+    value.forEach((gate) => {
+      if (typeof gate !== 'string' || !VISIBILITY_GATES.has(gate as VisibilityGate)) {
+        fail(`${where} has an invalid visibility gate "${String(gate)}"`)
+      }
+      if (seen.has(gate)) fail(`${where} has a duplicate visibility gate "${gate}"`)
+      seen.add(gate)
+    })
+    return
+  }
+  fail(`${where} has invalid visibility "${String(value)}"`)
 }
 
 function isPrimitiveCell(value: unknown): value is string | number {
@@ -751,18 +767,18 @@ export function parsePoolMetadataV2(raw: unknown): PoolMetadataV2 {
   if (raw.version !== 2) fail(`expected version 2, got ${String(raw.version)}`)
   if (!isObject(raw.pool)) fail('`pool` must be an object')
   assertString(raw.pool.name, '`pool.name`')
-  if (raw.pool.geoBlock !== undefined) validateGeoBlock(raw.pool.geoBlock)
+  if (raw.pool.geoRestrictions !== undefined) validateGeoRestrictions(raw.pool.geoRestrictions)
   if (raw.pool.factsheet !== undefined) validateFactsheet(raw.pool.factsheet)
   return raw as PoolMetadataV2
 }
 
-/** Validates `pool.geoBlock.regions` as ISO 3166-1 alpha-2 codes (format only, strict on write). */
-function validateGeoBlock(geoBlock: unknown): void {
-  if (!isObject(geoBlock)) fail('`pool.geoBlock` must be an object')
-  if (!Array.isArray(geoBlock.regions)) fail('`pool.geoBlock.regions` must be an array')
-  geoBlock.regions.forEach((region, index) => {
+/** Validates `pool.geoRestrictions.regions` as ISO 3166-1 alpha-2 codes (format only, strict on write). */
+function validateGeoRestrictions(geoRestrictions: unknown): void {
+  if (!isObject(geoRestrictions)) fail('`pool.geoRestrictions` must be an object')
+  if (!Array.isArray(geoRestrictions.regions)) fail('`pool.geoRestrictions.regions` must be an array')
+  geoRestrictions.regions.forEach((region, index) => {
     if (typeof region !== 'string' || !REGION_CODE_RE.test(region)) {
-      fail(`pool.geoBlock.regions[${index}] must be an ISO 3166-1 alpha-2 code, got "${String(region)}"`)
+      fail(`pool.geoRestrictions.regions[${index}] must be an ISO 3166-1 alpha-2 code, got "${String(region)}"`)
     }
   })
 }

@@ -578,28 +578,46 @@ describe('parsePoolMetadataV2', () => {
     expect(() => parsePoolMetadataV2(bad)).to.throw(/keyFacts\[0\].items must be an array/)
   })
 
-  // --- #482: geo-block, documents/accordion blocks, link targets ---
+  // --- #482: geo-restrictions, documents/accordion blocks, link targets, combined visibility ---
 
-  it('accepts geo-blocked visibility and a valid geoBlock list', () => {
+  it('accepts geo-restricted visibility (single + combined) and a valid geoRestrictions list', () => {
     expect(() => parsePoolMetadataV2(mockPoolMetadataV2)).to.not.throw()
   })
 
-  it('accepts geo-blocked elements even when pool.geoBlock is absent (nothing blocked)', () => {
+  it('accepts geo-restricted elements even when pool.geoRestrictions is absent (nothing restricted)', () => {
     const doc = clone(mockPoolMetadataV2)
-    delete (doc.pool as Record<string, unknown>).geoBlock
+    delete (doc.pool as Record<string, unknown>).geoRestrictions
     expect(() => parsePoolMetadataV2(doc)).to.not.throw()
   })
 
-  it('rejects geoBlock regions that are not ISO 3166-1 alpha-2', () => {
+  it('rejects geoRestrictions regions that are not ISO 3166-1 alpha-2', () => {
     const bad = clone(mockPoolMetadataV2)
-    bad.pool.geoBlock = { regions: ['US', 'USA'] }
-    expect(() => parsePoolMetadataV2(bad)).to.throw(/geoBlock.regions\[1\] must be an ISO 3166-1 alpha-2 code/)
+    bad.pool.geoRestrictions = { regions: ['US', 'USA'] }
+    expect(() => parsePoolMetadataV2(bad)).to.throw(/geoRestrictions.regions\[1\] must be an ISO 3166-1 alpha-2 code/)
   })
 
-  it('rejects an invalid visibility (the union is still closed)', () => {
+  it('rejects an invalid visibility scalar', () => {
     const bad = clone(mockPoolMetadataV2)
     bad.pool.factsheet!.keyFacts[0]!.visibility = 'continent-blocked' as never
     expect(() => parsePoolMetadataV2(bad)).to.throw(/visibility/)
+  })
+
+  it('rejects a visibility array containing a non-gate (public/hidden or unknown)', () => {
+    const bad = clone(mockPoolMetadataV2)
+    bad.pool.factsheet!.keyFacts[0]!.visibility = ['whitelisted', 'public'] as never
+    expect(() => parsePoolMetadataV2(bad)).to.throw(/invalid visibility gate/)
+  })
+
+  it('rejects a visibility array with duplicate gates', () => {
+    const bad = clone(mockPoolMetadataV2)
+    bad.pool.factsheet!.keyFacts[0]!.visibility = ['whitelisted', 'whitelisted'] as never
+    expect(() => parsePoolMetadataV2(bad)).to.throw(/duplicate visibility gate/)
+  })
+
+  it('rejects an empty visibility array', () => {
+    const bad = clone(mockPoolMetadataV2)
+    bad.pool.factsheet!.keyFacts[0]!.visibility = [] as never
+    expect(() => parsePoolMetadataV2(bad)).to.throw(/visibility array must not be empty/)
   })
 
   it('rejects a link target with an unknown kind', () => {

@@ -265,18 +265,25 @@ export type WithdrawManager = {
  * ---------------------------------------------------------------------------------------------- */
 
 /**
- * Access gating for any block, key fact, column, or kpi item. Default `'public'`. Resolved app-side
- * against the connected wallet's share-class (transfer-hook) membership. Presentational only — never
- * a substitute for on-chain access control.
- * - `public`      — rendered for everyone.
- * - `whitelisted` — full content only for a whitelisted wallet; otherwise blurred behind an
- *                   app-owned overlay that keeps its layout footprint (no reflow on connect).
- * - `geo-blocked` — gated when the user's region is in `pool.geoBlock.regions`. Like `whitelisted`,
- *                   presentational only and resolved app-side. With no `pool.geoBlock` list, nothing
- *                   is blocked (effectively `public`).
- * - `hidden`      — never rendered, for anyone (not laid out).
+ * A single audience gate applied to an element. Presentational only, resolved app-side; never a
+ * substitute for on-chain / compliance access control.
+ * - `whitelisted`    — passes only for a wallet in the share class's transfer-hook allowlist;
+ *                      otherwise blurred behind an app-owned overlay that keeps its layout footprint.
+ * - `geo-restricted` — passes only when the user's region is NOT in `pool.geoRestrictions.regions`
+ *                      (with no such list, nothing is restricted).
  */
-export type Visibility = 'public' | 'whitelisted' | 'geo-blocked' | 'hidden'
+export type VisibilityGate = 'whitelisted' | 'geo-restricted'
+
+/**
+ * Access gating for any block, key fact, column, or kpi item. Default `'public'`.
+ * - `'public'` (or absent) — rendered for everyone.
+ * - `'hidden'`             — never rendered, for anyone (not laid out).
+ * - a single {@link VisibilityGate} or an **array of gates** — rendered only when ALL listed gates
+ *   pass (AND). e.g. `['whitelisted', 'geo-restricted']` = a whitelisted wallet in an allowed
+ *   region. `'public'`/`'hidden'` may not appear inside the array. When several gates fail, the app
+ *   shows the most restrictive overlay (geo before whitelist).
+ */
+export type Visibility = 'public' | 'hidden' | VisibilityGate | VisibilityGate[]
 
 /**
  * Constrained Markdown subset (paragraphs, hard newlines, `-`/`*` and `1.` lists, `**bold**`,
@@ -549,10 +556,10 @@ export type PoolMetadataV2 = {
     poolRatings?: PoolRatingV2[]
     factsheet?: Factsheet
     /**
-     * Single pool-level blocked-regions list (ISO 3166-1 alpha-2 codes, e.g. `'US'`). Every
-     * `geo-blocked` element is gated against it. Presentational only; not compliance/access control.
+     * Single pool-level restricted-regions list (ISO 3166-1 alpha-2 codes, e.g. `'US'`). Every
+     * `geo-restricted` element is gated against it. Presentational only; not compliance/access control.
      */
-    geoBlock?: { regions: string[] }
+    geoRestrictions?: { regions: string[] }
   }
   shareClasses: PoolMetadataV1['shareClasses']
   merkleProofManager?: PoolMetadataV1['merkleProofManager']
