@@ -163,8 +163,44 @@ describe('migratePoolMetadataToV2', () => {
     expect(documents).to.equal(undefined)
   })
 
-  it('omits sections so the app renders defaults', () => {
+  it('omits sections (app renders defaults) when there is no holdings blob', () => {
     expect(migratePoolMetadataToV2(legacyFixture()).pool.factsheet!.sections).to.equal(undefined)
+  })
+
+  it('folds the legacy holdings blob into a table section, faithfully, dropping no column', () => {
+    const legacy = legacyFixture()
+    legacy.holdings = {
+      headers: ['Asset', 'ISIN', 'Amount'],
+      data: [
+        { Asset: 'T-Bill 2026', ISIN: 'US912796RW0', Amount: 1_000_000 },
+        { Asset: 'T-Bill 2027', ISIN: null, Amount: '2500000' },
+      ],
+    }
+    const v2 = migratePoolMetadataToV2(legacy)
+    expect(v2.pool.factsheet!.sections).to.deep.equal([
+      {
+        type: 'table',
+        id: 'holdings',
+        title: 'Holdings',
+        headers: ['Asset', 'ISIN', 'Amount'],
+        rows: [
+          ['T-Bill 2026', 'US912796RW0', 1_000_000], // number stays a number
+          ['T-Bill 2027', '', '2500000'], // null -> '', numeric string stays a string
+        ],
+      },
+    ])
+    // holdings is no longer a top-level field on the v2 document.
+    expect(v2).to.not.have.property('holdings')
+  })
+
+  it('skips the holdings table when headers are empty or data is missing', () => {
+    const emptyHeaders = legacyFixture()
+    emptyHeaders.holdings = { headers: [], data: [{ x: 1 }] }
+    expect(migratePoolMetadataToV2(emptyHeaders).pool.factsheet!.sections).to.equal(undefined)
+
+    const missingData = legacyFixture()
+    missingData.holdings = { headers: ['A'] } as unknown as PoolMetadataV1['holdings']
+    expect(migratePoolMetadataToV2(missingData).pool.factsheet!.sections).to.equal(undefined)
   })
 
   it('is idempotent and returns v2 input unchanged', () => {

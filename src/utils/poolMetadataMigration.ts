@@ -61,7 +61,11 @@ function escapeMarkdownText(text: string): string {
  * a migrated pool must render the same content, so legacy fields are projected into ordered key
  * facts + body blocks. The output is a sensible, ops-editable seed, not a frozen contract.
  */
-function buildFactsheet(pool: PoolMetadataV1['pool'], shareClasses: PoolMetadataV1['shareClasses']): Factsheet {
+function buildFactsheet(
+  pool: PoolMetadataV1['pool'],
+  shareClasses: PoolMetadataV1['shareClasses'],
+  holdings: PoolMetadataV1['holdings']
+): Factsheet {
   const { issuer, asset, poolStructure, expenseRatio, details, poolRatings } = pool
   const firstShareClass = Object.values(shareClasses)[0]
 
@@ -111,8 +115,27 @@ function buildFactsheet(pool: PoolMetadataV1['pool'], shareClasses: PoolMetadata
   }
   body.push({ type: 'section', id: 'performance', ref: 'onchainMetrics' })
 
-  // `sections` is omitted so the invest app renders its default sections.
-  return { body, keyFacts }
+  // Legacy off-chain `holdings` ({ headers, data }) is folded into the factsheet as a `table`
+  // section, faithfully (no column dropped). Skipped entirely when there are no headers or no data.
+  const sections: LayoutItem[] = []
+  if (holdings && holdings.headers.length > 0 && holdings.data) {
+    const { headers, data } = holdings
+    sections.push({
+      type: 'table',
+      id: 'holdings',
+      title: 'Holdings',
+      headers,
+      rows: data.map((row) =>
+        headers.map((header) => {
+          const value = row[header]
+          return typeof value === 'number' ? value : value == null ? '' : String(value)
+        })
+      ),
+    })
+  }
+
+  // `sections` is omitted (so the invest app renders its defaults) unless we have a holdings table.
+  return sections.length > 0 ? { body, keyFacts, sections } : { body, keyFacts }
 }
 
 /**
@@ -122,7 +145,8 @@ function buildFactsheet(pool: PoolMetadataV1['pool'], shareClasses: PoolMetadata
  * - Strips fields unused by every consumer (`newInvestmentsStatus`, `reports`, `loanTemplates`,
  *   `issuer.repName/shortDescription`, onboarding extras) and reshapes `issuer`/`poolRatings`.
  * - Maps legacy APY modes across `shareClasses[*].apy`.
- * - Projects the legacy display fields into `pool.factsheet`.
+ * - Projects the legacy display fields into `pool.factsheet`, and folds the off-chain `holdings`
+ *   blob into a `table` section (`id: 'holdings'`); `holdings` is not carried as a top-level field.
  */
 export function migratePoolMetadataToV2(legacy: PoolMetadata): PoolMetadataV2 {
   if (isPoolMetadataV2(legacy)) return legacy
@@ -145,7 +169,8 @@ export function migratePoolMetadataToV2(legacy: PoolMetadata): PoolMetadataV2 {
       ...restPool,
       issuer: { name: issuer.name, email: issuer.email, logo: issuer.logo },
       poolRatings: poolRatings?.map(({ reportFile: _reportFile, ...rating }) => rating),
-      factsheet: buildFactsheet(pool, shareClasses),
+      // Legacy `holdings` is folded into the factsheet here and not carried as a top-level field.
+      factsheet: buildFactsheet(pool, shareClasses, holdings),
     },
     shareClasses: migratedShareClasses,
     ...(merkleProofManager !== undefined ? { merkleProofManager } : {}),
@@ -157,7 +182,6 @@ export function migratePoolMetadataToV2(legacy: PoolMetadata): PoolMetadataV2 {
           },
         }
       : {}),
-    ...(holdings !== undefined ? { holdings } : {}),
     ...(addressLabels !== undefined ? { addressLabels } : {}),
     ...(workflowPolicies !== undefined ? { workflowPolicies } : {}),
   }
@@ -394,7 +418,7 @@ function validateFactsheet(factsheet: unknown): void {
  * Hand-rolled structural validator for v2 pool metadata, in the style of
  * {@link parseMarketplaceCatalog}. Validates the discriminant (`version === 2`), `pool.name`, and
  * the full `pool.factsheet` content model (the layout the SDK is responsible for). Engine fields
- * (`shareClasses`, `workflowPolicies`, `holdings`, `addressLabels`, …) are passed through
+ * (`shareClasses`, `workflowPolicies`, `addressLabels`, …) are passed through
  * unchecked here — they are validated where they are consumed (e.g. workflows via
  * {@link parseMarketplaceCatalog}). Throws `pool metadata v2: …` on the first malformed field;
  * tolerates missing optionals (visibility defaults to `'public'` app-side). Returns the input

@@ -133,7 +133,19 @@ export const mockPoolMetadataV2: PoolMetadataV2 = {
         },
         { type: 'section', id: 'performance', ref: 'onchainMetrics' },
       ],
-      sections: [{ type: 'section', id: 'contracts', ref: 'smartContracts', visibility: 'public' }],
+      sections: [
+        {
+          type: 'table',
+          id: 'holdings',
+          title: 'Holdings',
+          headers: ['Asset', 'ISIN', 'Amount'],
+          rows: [
+            ['T-Bill 2026', 'US912796RW0', 1_000_000],
+            ['T-Bill 2027', '', 2_500_000],
+          ],
+        },
+        { type: 'section', id: 'contracts', ref: 'smartContracts', visibility: 'public' },
+      ],
     },
   },
   shareClasses: {

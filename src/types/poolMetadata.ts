@@ -444,8 +444,9 @@ export type PoolRatingV2 = {
  * Versioned, factsheet-aware pool metadata. Drops fields unused by every consumer
  * (`newInvestmentsStatus`, `loanTemplates`, `reports`, `issuer.repName/shortDescription`, onboarding
  * extras) and folds the legacy display fields (`details`, `issuer.description/categories`,
- * `poolRatings[].reportFile`) into `pool.factsheet`. Engine fields (`shareClasses`,
- * `merkleProofManager`, `holdings`, `addressLabels`, `workflowPolicies`) are preserved verbatim.
+ * `poolRatings[].reportFile`) and the off-chain `holdings` blob (into a `table` section) into
+ * `pool.factsheet`. Engine fields (`shareClasses`, `merkleProofManager`, `addressLabels`,
+ * `workflowPolicies`) are preserved verbatim.
  */
 export type PoolMetadataV2 = {
   version: 2
@@ -460,15 +461,15 @@ export type PoolMetadataV2 = {
     kycRestrictedCountries?: string[]
     kybRestrictedCountries?: string[]
   }
-  holdings?: PoolMetadataV1['holdings']
   addressLabels?: PoolMetadataV1['addressLabels']
   workflowPolicies?: PoolMetadataV1['workflowPolicies']
 }
 
 /**
  * Public alias usable for either shape. Reads of common fields (`pool.name`, `shareClasses`,
- * `addressLabels`, `onboarding`, `holdings`, …) are valid without narrowing; discriminate on
- * `version` (or use {@link isPoolMetadataV2}) before touching v2-only fields like `pool.factsheet`.
+ * `addressLabels`, `onboarding`, …) are valid without narrowing; discriminate on `version` (or use
+ * {@link isPoolMetadataV2}) before touching v2-only fields like `pool.factsheet`. Note `holdings`
+ * exists only on {@link PoolMetadataV1}; in v2 it lives in `pool.factsheet` as a `table` section.
  */
 export type PoolMetadata = PoolMetadataV1 | PoolMetadataV2
 

@@ -67,9 +67,5 @@ export type PoolMetadataInput = {
   underlying?: {
     poolId?: number
   }
-  holdings?: {
-    headers: string[]
-    data: Record<string, unknown>[]
-  }
   listed?: boolean
 }

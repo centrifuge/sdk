@@ -740,7 +740,6 @@ export class Pool extends Entity {
                   poolRatings: [],
                 },
                 shareClasses: {},
-                holdings: { headers: [], data: [] },
               }
 
         const newShareClassesById: PoolMetadata['shareClasses'] = {}
@@ -792,12 +791,6 @@ export class Pool extends Entity {
             factsheet: metadataInput?.factsheet ?? baseMetadata.pool.factsheet,
           },
           shareClasses: { ...baseMetadata.shareClasses, ...newShareClassesById },
-          holdings: {
-            headers: Array.from(
-              new Set([...(baseMetadata.holdings?.headers ?? []), ...(metadataInput?.holdings?.headers ?? [])])
-            ),
-            data: metadataInput?.holdings?.data ?? baseMetadata.holdings?.data ?? [],
-          },
         }
 
         updatedShareClasses.forEach((sc) => {
