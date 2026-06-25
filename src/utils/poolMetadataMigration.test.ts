@@ -115,18 +115,24 @@ describe('migratePoolMetadataToV2', () => {
     ])
   })
 
-  it('projects key facts in order, including valueRef apy and categories', () => {
+  it('projects key facts into one untitled group with discriminated values, in order', () => {
     const { keyFacts } = migratePoolMetadataToV2(legacyFixture()).pool.factsheet!
     expect(keyFacts).to.deep.equal([
-      { label: 'Issuer', value: 'Acme Issuer' },
-      { label: 'Asset type', value: 'Public credit - T-Bills' },
-      { label: 'APY', valueRef: 'apy' },
-      { label: 'Pool structure', value: 'revolving' },
-      { label: 'Average asset maturity', value: '63 days' },
-      { label: 'Expense ratio', value: '0.25%' },
-      { label: 'Min. investment', value: '2,500' },
-      { label: 'Trustee', value: 'Acme Trust' },
-      { label: 'Auditor', value: 'Acme Audit' },
+      {
+        type: 'keyFactGroup',
+        id: 'key-facts',
+        items: [
+          { label: 'Issuer', value: { kind: 'text', text: 'Acme Issuer' } },
+          { label: 'Asset type', value: { kind: 'text', text: 'Public credit - T-Bills' } },
+          { label: 'APY', value: { kind: 'ref', ref: 'apy' } },
+          { label: 'Pool structure', value: { kind: 'text', text: 'revolving' } },
+          { label: 'Average asset maturity', value: { kind: 'text', text: '63 days' } },
+          { label: 'Expense ratio', value: { kind: 'text', text: '0.25%' } },
+          { label: 'Min. investment', value: { kind: 'text', text: '2,500' } },
+          { label: 'Trustee', value: { kind: 'text', text: 'Acme Trust' } },
+          { label: 'Auditor', value: { kind: 'text', text: 'Acme Audit' } },
+        ],
+      },
     ])
   })
 
@@ -234,18 +240,18 @@ describe('parsePoolMetadataV2', () => {
     expect(() => parsePoolMetadataV2({ version: 2, pool: {} })).to.throw(/pool.name/)
   })
 
-  it('rejects a chart with both series and dataRef', () => {
-    const bad = clone(mockPoolMetadataV2)
-    const chart = bad.pool.factsheet!.body.find((b) => b.id === 'live-chart') as Record<string, unknown>
-    chart.series = [{ name: 's', data: [{ label: 'a', value: 1 }] }]
-    expect(() => parsePoolMetadataV2(bad)).to.throw(/exactly one of/)
-  })
-
-  it('rejects a chart with neither series nor dataRef', () => {
+  it('rejects a chart whose data has an invalid kind', () => {
     const bad = clone(mockPoolMetadataV2)
     const chart = bad.pool.factsheet!.body.find((b) => b.id === 'inline-chart') as Record<string, unknown>
-    delete chart.series
-    expect(() => parsePoolMetadataV2(bad)).to.throw(/exactly one of/)
+    chart.data = { kind: 'live' }
+    expect(() => parsePoolMetadataV2(bad)).to.throw(/data has an invalid kind/)
+  })
+
+  it('rejects a chart missing its data object', () => {
+    const bad = clone(mockPoolMetadataV2)
+    const chart = bad.pool.factsheet!.body.find((b) => b.id === 'inline-chart') as Record<string, unknown>
+    delete chart.data
+    expect(() => parsePoolMetadataV2(bad)).to.throw(/data must be an object/)
   })
 
   it('rejects an unknown section ref (closed, SDK-enforced registry)', () => {
@@ -280,11 +286,11 @@ describe('parsePoolMetadataV2', () => {
     expect(() => parsePoolMetadataV2(bad)).to.throw(/unknown block type/)
   })
 
-  it('rejects an unknown chart dataRef (closed, SDK-enforced registry)', () => {
+  it('rejects an unknown chart data.dataRef (closed, SDK-enforced registry)', () => {
     const bad = clone(mockPoolMetadataV2)
     const chart = bad.pool.factsheet!.body.find((b) => b.id === 'live-chart') as Record<string, unknown>
-    chart.dataRef = 'someFutureDataset'
-    expect(() => parsePoolMetadataV2(bad)).to.throw(/dataRef is invalid/)
+    chart.data = { kind: 'ref', dataRef: 'someFutureDataset' }
+    expect(() => parsePoolMetadataV2(bad)).to.throw(/data.dataRef is invalid/)
   })
 
   it('rejects an unknown live-table indexer metric (closed, SDK-enforced registry)', () => {
@@ -301,5 +307,53 @@ describe('parsePoolMetadataV2', () => {
       shareClasses: {},
     }
     expect(() => parsePoolMetadataV2(minimal)).to.not.throw()
+  })
+
+  it('rejects a flat KeyFact[] right column (groups only, no back-compat)', () => {
+    const bad = clone(mockPoolMetadataV2)
+    bad.pool.factsheet!.keyFacts = [{ label: 'Issuer', value: { kind: 'text', text: 'x' } }] as never
+    expect(() => parsePoolMetadataV2(bad)).to.throw(/keyFacts\[0\].type must be 'keyFactGroup'/)
+  })
+
+  it('rejects a key fact whose value has an unknown kind', () => {
+    const bad = clone(mockPoolMetadataV2)
+    bad.pool.factsheet!.keyFacts[0]!.items[0]!.value = { kind: 'live' } as never
+    expect(() => parsePoolMetadataV2(bad)).to.throw(/value has an invalid kind/)
+  })
+
+  it('rejects an unknown KeyFactValue ref (closed, SDK-enforced registry)', () => {
+    const bad = clone(mockPoolMetadataV2)
+    bad.pool.factsheet!.keyFacts[0]!.items[0]!.value = { kind: 'ref', ref: 'someFutureRef' } as never
+    expect(() => parsePoolMetadataV2(bad)).to.throw(/value.ref is invalid/)
+  })
+
+  it('accepts the known KeyFactValue refs apy and availableNetworks', () => {
+    const ok = clone(mockPoolMetadataV2)
+    ok.pool.factsheet!.keyFacts[0]!.items[0]!.value = { kind: 'ref', ref: 'availableNetworks' }
+    expect(() => parsePoolMetadataV2(ok)).to.not.throw()
+  })
+
+  it('rejects an icons key fact with a malformed IconRef', () => {
+    const bad = clone(mockPoolMetadataV2)
+    bad.pool.factsheet!.keyFacts[1]!.items[0]!.value = { kind: 'icons', icons: [{ source: 'nope' }] } as never
+    expect(() => parsePoolMetadataV2(bad)).to.throw(/icons\[0\] has an invalid source/)
+  })
+
+  it('accepts both app and metadata IconRefs (app icon key is shape-validated)', () => {
+    const ok = clone(mockPoolMetadataV2)
+    ok.pool.factsheet!.keyFacts[1]!.items[0]!.value = {
+      kind: 'icons',
+      icons: [
+        { source: 'app', key: 'any-future-icon', label: 'X' },
+        { source: 'metadata', file: { uri: 'ipfs://Qm', mime: 'image/svg+xml' } },
+      ],
+    }
+    expect(() => parsePoolMetadataV2(ok)).to.not.throw()
+  })
+
+  it('rejects a key fact group missing items', () => {
+    const bad = clone(mockPoolMetadataV2)
+    delete (bad.pool.factsheet!.keyFacts[0] as Record<string, unknown>).items
+    expect(() => parsePoolMetadataV2(bad)).to.throw(/keyFacts\[0\].items must be an array/)
   })
 })

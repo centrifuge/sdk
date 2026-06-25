@@ -8,6 +8,7 @@ import {
   type Factsheet,
   isPoolMetadataV2,
   type KeyFact,
+  type KeyFactGroup,
   type LayoutItem,
   type LegacyApyMode,
   type LiveDataset,
@@ -69,27 +70,32 @@ function buildFactsheet(
   const { issuer, asset, poolStructure, expenseRatio, details, poolRatings } = pool
   const firstShareClass = Object.values(shareClasses)[0]
 
-  const keyFacts: KeyFact[] = [
-    { label: 'Issuer', value: issuer.name },
-    { label: 'Asset type', value: `${asset.class} - ${asset.subClass}` },
-    { label: 'APY', valueRef: 'apy' },
-    { label: 'Pool structure', value: poolStructure },
+  const text = (value: string): KeyFact['value'] => ({ kind: 'text', text: value })
+
+  const items: KeyFact[] = [
+    { label: 'Issuer', value: text(issuer.name) },
+    { label: 'Asset type', value: text(`${asset.class} - ${asset.subClass}`) },
+    { label: 'APY', value: { kind: 'ref', ref: 'apy' } },
+    { label: 'Pool structure', value: text(poolStructure) },
   ]
 
   const weightedAverageMaturity = firstShareClass?.weightedAverageMaturity
   if (weightedAverageMaturity != null) {
-    keyFacts.push({ label: 'Average asset maturity', value: `${weightedAverageMaturity} days` })
+    items.push({ label: 'Average asset maturity', value: text(`${weightedAverageMaturity} days`) })
   }
   if (expenseRatio != null && expenseRatio !== '') {
-    keyFacts.push({ label: 'Expense ratio', value: `${expenseRatio}%` })
+    items.push({ label: 'Expense ratio', value: text(`${expenseRatio}%`) })
   }
   const minInitialInvestment = firstShareClass?.minInitialInvestment
   if (minInitialInvestment != null) {
-    keyFacts.push({ label: 'Min. investment', value: formatMinInvestment(minInitialInvestment) })
+    items.push({ label: 'Min. investment', value: text(formatMinInvestment(minInitialInvestment)) })
   }
   for (const category of issuer.categories) {
-    keyFacts.push({ label: category.type, value: category.value })
+    items.push({ label: category.type, value: text(category.value) })
   }
+
+  // The right column is groups only; seed one untitled group holding the projected key facts.
+  const keyFacts: KeyFactGroup[] = [{ type: 'keyFactGroup', id: 'key-facts', items }]
 
   const body: LayoutItem[] = []
   if (issuer.description) {
@@ -204,6 +210,7 @@ const DATA_REFS = new Set<DataRef>(['apyVsBenchmarks', 'maturityDistribution'])
 const SECTION_REFS = new Set<SectionRef>(['onchainMetrics', 'smartContracts'])
 const LIVE_METRICS = new Set<LiveMetric>(['tokenPrice', 'nav', 'apy30d', 'navChange', 'monthlyReturn'])
 const LIVE_DATASETS = new Set<LiveDataset>(['monthlySummary'])
+const KEY_FACT_REFS = new Set(['apy', 'availableNetworks'])
 const COLUMN_FORMATS = new Set<ColumnFormat>(['text', 'number', 'percent', 'currency'])
 const CONTENT_BLOCK_TYPES = new Set(['text', 'table', 'chart', 'image', 'kpiGroup', 'tabGroup', 'liveTable'])
 const TAB_BLOCK_TYPES = new Set(['text', 'table', 'chart', 'kpiGroup'])
@@ -238,14 +245,61 @@ function validateFile(value: unknown, where: string): void {
   assertString(value.mime, `${where}.mime`)
 }
 
+function validateIconRef(value: unknown, where: string): void {
+  if (!isObject(value)) fail(`${where} must be an object`)
+  if (value.label !== undefined) assertString(value.label, `${where}.label`)
+  switch (value.source) {
+    case 'metadata':
+      validateFile(value.file, `${where}.file`)
+      if (value.alt !== undefined) assertString(value.alt, `${where}.alt`)
+      break
+    case 'app':
+      // The app-owned icon-key registry is not yet enumerated, so validate shape (string) only.
+      assertString(value.key, `${where}.key`)
+      break
+    default:
+      fail(`${where} has an invalid source "${String(value.source)}"`)
+  }
+}
+
+function validateKeyFactValue(value: unknown, where: string): void {
+  if (!isObject(value)) fail(`${where} must be an object`)
+  switch (value.kind) {
+    case 'text':
+      assertString(value.text, `${where}.text`)
+      break
+    case 'icons':
+      if (!Array.isArray(value.icons)) fail(`${where}.icons must be an array`)
+      value.icons.forEach((icon, index) => validateIconRef(icon, `${where}.icons[${index}]`))
+      break
+    case 'ref':
+      // Closed, SDK-enforced registry (extended via a coordinated SDK release).
+      if (typeof value.ref !== 'string' || !KEY_FACT_REFS.has(value.ref)) {
+        fail(`${where}.ref is invalid (unknown ref "${String(value.ref)}")`)
+      }
+      break
+    default:
+      fail(`${where} has an invalid kind "${String(value.kind)}"`)
+  }
+}
+
 function validateKeyFact(value: unknown, where: string): void {
   if (!isObject(value)) fail(`${where} must be an object`)
   assertString(value.label, `${where}.label`)
-  if (value.value !== undefined) assertString(value.value, `${where}.value`)
-  if (value.valueRef !== undefined && value.valueRef !== 'apy') fail(`${where}.valueRef must be 'apy'`)
+  validateKeyFactValue(value.value, `${where}.value`)
   if (value.tooltip !== undefined) assertString(value.tooltip, `${where}.tooltip`)
   if (value.href !== undefined) assertString(value.href, `${where}.href`)
   assertVisibility(value.visibility, where)
+}
+
+function validateKeyFactGroup(value: unknown, where: string): void {
+  if (!isObject(value)) fail(`${where} must be an object`)
+  if (value.type !== 'keyFactGroup') fail(`${where}.type must be 'keyFactGroup'`)
+  assertString(value.id, `${where}.id`)
+  if (value.title !== undefined) assertString(value.title, `${where}.title`)
+  assertVisibility(value.visibility, where)
+  if (!Array.isArray(value.items)) fail(`${where}.items must be an array`)
+  value.items.forEach((item, index) => validateKeyFact(item, `${where}.items[${index}]`))
 }
 
 function validateChartSeries(value: unknown, where: string): void {
@@ -315,15 +369,21 @@ function validateContentBlock(block: Record<string, unknown>, type: string, wher
       if (typeof block.chartType !== 'string' || !CHART_TYPES.has(block.chartType as ChartType)) {
         fail(`${where}.chartType is invalid`)
       }
-      const hasSeries = block.series !== undefined
-      const hasDataRef = block.dataRef !== undefined
-      if (hasSeries === hasDataRef) fail(`${where} must set exactly one of \`series\` or \`dataRef\``)
-      if (hasSeries) {
-        if (!Array.isArray(block.series)) fail(`${where}.series must be an array`)
-        block.series.forEach((s, index) => validateChartSeries(s, `${where}.series[${index}]`))
-      }
-      if (hasDataRef && (typeof block.dataRef !== 'string' || !DATA_REFS.has(block.dataRef as DataRef))) {
-        fail(`${where}.dataRef is invalid (unknown key "${String(block.dataRef)}")`)
+      // Data source is a single discriminated `data` (inline series XOR app/indexer dataRef).
+      if (!isObject(block.data)) fail(`${where}.data must be an object`)
+      switch (block.data.kind) {
+        case 'inline':
+          if (!Array.isArray(block.data.series)) fail(`${where}.data.series must be an array`)
+          block.data.series.forEach((s, index) => validateChartSeries(s, `${where}.data.series[${index}]`))
+          break
+        case 'ref':
+          // Closed, SDK-enforced registry (extended via a coordinated SDK release).
+          if (typeof block.data.dataRef !== 'string' || !DATA_REFS.has(block.data.dataRef as DataRef)) {
+            fail(`${where}.data.dataRef is invalid (unknown key "${String(block.data.dataRef)}")`)
+          }
+          break
+        default:
+          fail(`${where}.data has an invalid kind "${String(block.data.kind)}"`)
       }
       if (isObject(block.xAxis) && block.xAxis.type !== undefined && !XAXIS_TYPES.has(block.xAxis.type as string)) {
         fail(`${where}.xAxis.type is invalid`)
@@ -407,7 +467,7 @@ function validateFactsheet(factsheet: unknown): void {
   if (!Array.isArray(factsheet.body)) fail('`pool.factsheet.body` must be an array')
   factsheet.body.forEach((item, index) => validateLayoutItem(item, `pool.factsheet.body[${index}]`))
   if (!Array.isArray(factsheet.keyFacts)) fail('`pool.factsheet.keyFacts` must be an array')
-  factsheet.keyFacts.forEach((item, index) => validateKeyFact(item, `pool.factsheet.keyFacts[${index}]`))
+  factsheet.keyFacts.forEach((group, index) => validateKeyFactGroup(group, `pool.factsheet.keyFacts[${index}]`))
   if (factsheet.sections !== undefined) {
     if (!Array.isArray(factsheet.sections)) fail('`pool.factsheet.sections` must be an array')
     factsheet.sections.forEach((item, index) => validateLayoutItem(item, `pool.factsheet.sections[${index}]`))

@@ -47,10 +47,34 @@ export const mockPoolMetadataV2: PoolMetadataV2 = {
     poolRatings: [{ agency: 'Fake Agency', value: 'AAA', reportUrl: 'https://example.com/rating' }],
     factsheet: {
       keyFacts: [
-        { label: 'Issuer', value: 'Fake Issuer' },
-        { label: 'Asset type', value: 'Private credit - Fake Subclass' },
-        { label: 'APY', valueRef: 'apy', tooltip: 'Net of fees' },
-        { label: 'Secret fact', value: 'hidden value', visibility: 'whitelisted' },
+        {
+          type: 'keyFactGroup',
+          id: 'overview-facts',
+          title: 'Overview',
+          items: [
+            { label: 'Issuer', value: { kind: 'text', text: 'Fake Issuer' } },
+            { label: 'Asset type', value: { kind: 'text', text: 'Private credit - Fake Subclass' } },
+            { label: 'APY', value: { kind: 'ref', ref: 'apy' }, tooltip: 'Net of fees' },
+            { label: 'Networks', value: { kind: 'ref', ref: 'availableNetworks' } },
+          ],
+        },
+        {
+          type: 'keyFactGroup',
+          id: 'trust-facts',
+          items: [
+            {
+              label: 'Custody',
+              value: {
+                kind: 'icons',
+                icons: [
+                  { source: 'app', key: 'fordefi', label: 'Fordefi' },
+                  { source: 'metadata', file: { uri: 'ipfs://QmRatingIcon', mime: 'image/svg+xml' }, alt: 'Moody’s' },
+                ],
+              },
+            },
+            { label: 'Secret fact', value: { kind: 'text', text: 'hidden value' }, visibility: 'whitelisted' },
+          ],
+        },
       ],
       body: [
         { type: 'text', id: 'overview', title: 'Overview', body: 'Fake **overview** with a [link](https://x.io).' },
@@ -71,15 +95,18 @@ export const mockPoolMetadataV2: PoolMetadataV2 = {
           id: 'inline-chart',
           title: 'Allocation',
           chartType: 'donut',
-          series: [
-            {
-              name: 'Allocation',
-              data: [
-                { label: 'Cash', value: 40 },
-                { label: 'Loans', value: 60 },
-              ],
-            },
-          ],
+          data: {
+            kind: 'inline',
+            series: [
+              {
+                name: 'Allocation',
+                data: [
+                  { label: 'Cash', value: 40 },
+                  { label: 'Loans', value: 60 },
+                ],
+              },
+            ],
+          },
           legend: true,
         },
         {
@@ -87,7 +114,7 @@ export const mockPoolMetadataV2: PoolMetadataV2 = {
           id: 'live-chart',
           title: 'APY vs benchmarks',
           chartType: 'line',
-          dataRef: 'apyVsBenchmarks',
+          data: { kind: 'ref', dataRef: 'apyVsBenchmarks' },
           xAxis: { label: 'Date', type: 'time' },
           yAxis: { label: 'APY', format: 'percent' },
         },
