@@ -271,9 +271,12 @@ export type WithdrawManager = {
  * - `public`      — rendered for everyone.
  * - `whitelisted` — full content only for a whitelisted wallet; otherwise blurred behind an
  *                   app-owned overlay that keeps its layout footprint (no reflow on connect).
+ * - `geo-blocked` — gated when the user's region is in `pool.geoBlock.regions`. Like `whitelisted`,
+ *                   presentational only and resolved app-side. With no `pool.geoBlock` list, nothing
+ *                   is blocked (effectively `public`).
  * - `hidden`      — never rendered, for anyone (not laid out).
  */
-export type Visibility = 'public' | 'whitelisted' | 'hidden'
+export type Visibility = 'public' | 'whitelisted' | 'geo-blocked' | 'hidden'
 
 /**
  * Constrained Markdown subset (paragraphs, hard newlines, `-`/`*` and `1.` lists, `**bold**`,
@@ -379,7 +382,28 @@ export type KeyFactGroup = {
 
 type BlockBase = { id: string; title?: string; visibility?: Visibility }
 
-export type TextBlock = BlockBase & { type: 'text'; body: RichText }
+/**
+ * A single link destination, discriminated by `kind` (no competing-optional ambiguity):
+ * - `file`    — an inline IPFS asset.
+ * - `href`    — an inline URL.
+ * - `linkRef` — a key in the typed `pool.links` (e.g. `'executiveSummary'`, `'website'`), so the
+ *               URL/file has a single source of truth. The app resolves it; an unknown key hides
+ *               the tile/button (graceful read).
+ */
+export type LinkTarget =
+  | { kind: 'file'; file: FileType }
+  | { kind: 'href'; href: string }
+  | { kind: 'linkRef'; linkRef: string }
+
+export type TextBlock = BlockBase & {
+  type: 'text'
+  body: RichText
+  /** Overview-card extras (all optional): a brand logo, a card background, and link buttons. */
+  logo?: FileType
+  /** Theme token or hex color for the card background. */
+  background?: string
+  links?: Array<{ label: string; target: LinkTarget }>
+}
 
 export type TableBlock = BlockBase & {
   type: 'table'
@@ -453,6 +477,18 @@ export type TabGroupBlock = BlockBase & {
   tabs: Array<{ label: string; block: TabBlock }>
 }
 
+/** A tile list (doc icon + title) opening each item's {@link LinkTarget}, e.g. a "Fact Sheet" tile. */
+export type DocumentsBlock = BlockBase & {
+  type: 'documents'
+  items: Array<{ title: string; target: LinkTarget }>
+}
+
+/** A collapsible stack (accordion UX). Each item holds a {@link TabBlock} leaf, like `tabGroup` tabs. */
+export type AccordionBlock = BlockBase & {
+  type: 'accordion'
+  items: Array<{ title: string; block: TabBlock; defaultOpen?: boolean }>
+}
+
 export type ContentBlock =
   | TextBlock
   | TableBlock
@@ -461,6 +497,8 @@ export type ContentBlock =
   | KpiGroupBlock
   | TabGroupBlock
   | LiveTableBlock
+  | DocumentsBlock
+  | AccordionBlock
 
 /** A pointer to one of the closed, app-owned section units. */
 export type SectionRefBlock = {
@@ -510,6 +548,11 @@ export type PoolMetadataV2 = {
     issuer: Pick<PoolMetadataV1['pool']['issuer'], 'name' | 'email' | 'logo'>
     poolRatings?: PoolRatingV2[]
     factsheet?: Factsheet
+    /**
+     * Single pool-level blocked-regions list (ISO 3166-1 alpha-2 codes, e.g. `'US'`). Every
+     * `geo-blocked` element is gated against it. Presentational only; not compliance/access control.
+     */
+    geoBlock?: { regions: string[] }
   }
   shareClasses: PoolMetadataV1['shareClasses']
   merkleProofManager?: PoolMetadataV1['merkleProofManager']

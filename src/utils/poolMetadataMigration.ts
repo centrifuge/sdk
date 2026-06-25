@@ -187,7 +187,19 @@ function buildFactsheet(
 
   const body: LayoutItem[] = []
   if (issuer.description) {
-    body.push({ type: 'text', id: 'overview', title: 'Overview', body: issuer.description })
+    // Overview card: logo and the "Factsheet" link button are added only when their source field
+    // exists, so a missing logo / executiveSummary degrades to a plain card (never a broken one).
+    // The Factsheet link references the typed `links.executiveSummary` rather than copying its URI.
+    body.push({
+      type: 'text',
+      id: 'overview',
+      title: 'Overview',
+      body: issuer.description,
+      ...(issuer.logo?.uri ? { logo: issuer.logo } : {}),
+      ...(pool.links?.executiveSummary?.uri
+        ? { links: [{ label: 'Factsheet', target: { kind: 'linkRef', linkRef: 'executiveSummary' } }] }
+        : {}),
+    })
   }
   asArray(details).forEach((detail, index) => {
     body.push({ type: 'text', id: `detail-${index}`, title: detail.title, body: detail.body })
@@ -387,7 +399,8 @@ function upgradeLegacyV2(doc: PoolMetadataV2): PoolMetadataV2 {
 // (see centrifuge/apps-invest#200), but the SDK is the alignment point: an unknown key is rejected
 // on WRITE so the management app, SDK, and invest app stay in sync (adding a key ships in an SDK
 // release). The read path does not validate, so a newer document never breaks an older reader.
-const VISIBILITIES = new Set<Visibility>(['public', 'whitelisted', 'hidden'])
+const VISIBILITIES = new Set<Visibility>(['public', 'whitelisted', 'geo-blocked', 'hidden'])
+const REGION_CODE_RE = /^[A-Za-z]{2}$/
 const CHART_TYPES = new Set<ChartType>(['line', 'area', 'bar', 'donut'])
 const AXIS_FORMATS = new Set<AxisFormat>(['number', 'percent', 'currency'])
 const XAXIS_TYPES = new Set(['category', 'time', 'number'])
@@ -397,7 +410,17 @@ const LIVE_METRICS = new Set<LiveMetric>(['tokenPrice', 'nav', 'apy30d', 'navCha
 const LIVE_DATASETS = new Set<LiveDataset>(['monthlySummary'])
 const KEY_FACT_REFS = new Set(['apy', 'availableNetworks', 'ratings'])
 const COLUMN_FORMATS = new Set<ColumnFormat>(['text', 'number', 'percent', 'currency'])
-const CONTENT_BLOCK_TYPES = new Set(['text', 'table', 'chart', 'image', 'kpiGroup', 'tabGroup', 'liveTable'])
+const CONTENT_BLOCK_TYPES = new Set([
+  'text',
+  'table',
+  'chart',
+  'image',
+  'kpiGroup',
+  'tabGroup',
+  'liveTable',
+  'documents',
+  'accordion',
+])
 const TAB_BLOCK_TYPES = new Set(['text', 'table', 'chart', 'kpiGroup'])
 const KPI_TRENDS = new Set(['up', 'down', 'neutral'])
 
@@ -428,6 +451,24 @@ function validateFile(value: unknown, where: string): void {
   if (!isObject(value)) fail(`${where} must be a file object`)
   assertString(value.uri, `${where}.uri`)
   assertString(value.mime, `${where}.mime`)
+}
+
+function validateLinkTarget(value: unknown, where: string): void {
+  if (!isObject(value)) fail(`${where} must be an object`)
+  switch (value.kind) {
+    case 'file':
+      validateFile(value.file, `${where}.file`)
+      break
+    case 'href':
+      assertString(value.href, `${where}.href`)
+      break
+    case 'linkRef':
+      // Resolved app-side against the typed `pool.links`; an unknown key hides the link (lenient).
+      assertString(value.linkRef, `${where}.linkRef`)
+      break
+    default:
+      fail(`${where} has an invalid kind "${String(value.kind)}"`)
+  }
 }
 
 function validateIconRef(value: unknown, where: string): void {
@@ -533,6 +574,17 @@ function validateContentBlock(block: Record<string, unknown>, type: string, wher
   switch (type) {
     case 'text':
       assertString(block.body, `${where}.body`)
+      // Optional Overview-card extras.
+      if (block.logo !== undefined) validateFile(block.logo, `${where}.logo`)
+      if (block.background !== undefined) assertString(block.background, `${where}.background`)
+      if (block.links !== undefined) {
+        if (!Array.isArray(block.links)) fail(`${where}.links must be an array`)
+        block.links.forEach((link, index) => {
+          if (!isObject(link)) fail(`${where}.links[${index}] must be an object`)
+          assertString(link.label, `${where}.links[${index}].label`)
+          validateLinkTarget(link.target, `${where}.links[${index}].target`)
+        })
+      }
       break
     case 'table': {
       if (!Array.isArray(block.headers) || !block.headers.every((h) => typeof h === 'string')) {
@@ -606,13 +658,7 @@ function validateContentBlock(block: Record<string, unknown>, type: string, wher
       block.tabs.forEach((tab, index) => {
         if (!isObject(tab)) fail(`${where}.tabs[${index}] must be an object`)
         assertString(tab.label, `${where}.tabs[${index}].label`)
-        if (!isObject(tab.block)) fail(`${where}.tabs[${index}].block must be an object`)
-        const tabBlock = tab.block
-        if (typeof tabBlock.type !== 'string' || !TAB_BLOCK_TYPES.has(tabBlock.type)) {
-          fail(`${where}.tabs[${index}].block has an invalid type "${String(tabBlock.type)}"`)
-        }
-        assertString(tabBlock.id, `${where}.tabs[${index}].block.id`)
-        validateContentBlock(tabBlock, tabBlock.type, `${where}.tabs[${index}].block`)
+        validateTabBlock(tab.block, `${where}.tabs[${index}].block`)
       })
       break
     }
@@ -624,9 +670,40 @@ function validateContentBlock(block: Record<string, unknown>, type: string, wher
       block.columns.forEach((column, index) => validateLiveColumn(column, `${where}.columns[${index}]`))
       break
     }
+    case 'documents': {
+      if (!Array.isArray(block.items)) fail(`${where}.items must be an array`)
+      block.items.forEach((item, index) => {
+        if (!isObject(item)) fail(`${where}.items[${index}] must be an object`)
+        assertString(item.title, `${where}.items[${index}].title`)
+        validateLinkTarget(item.target, `${where}.items[${index}].target`)
+      })
+      break
+    }
+    case 'accordion': {
+      if (!Array.isArray(block.items)) fail(`${where}.items must be an array`)
+      block.items.forEach((item, index) => {
+        if (!isObject(item)) fail(`${where}.items[${index}] must be an object`)
+        assertString(item.title, `${where}.items[${index}].title`)
+        if (item.defaultOpen !== undefined && typeof item.defaultOpen !== 'boolean') {
+          fail(`${where}.items[${index}].defaultOpen must be a boolean`)
+        }
+        validateTabBlock(item.block, `${where}.items[${index}].block`)
+      })
+      break
+    }
     default:
       fail(`${where} has an unknown block type "${type}"`)
   }
+}
+
+/** Validates a leaf block nested in a `tabGroup` tab or `accordion` item (the {@link TabBlock} set). */
+function validateTabBlock(value: unknown, where: string): void {
+  if (!isObject(value)) fail(`${where} must be an object`)
+  if (typeof value.type !== 'string' || !TAB_BLOCK_TYPES.has(value.type)) {
+    fail(`${where} has an invalid type "${String(value.type)}"`)
+  }
+  assertString(value.id, `${where}.id`)
+  validateContentBlock(value, value.type, where)
 }
 
 function validateLayoutItem(item: unknown, where: string): void {
@@ -674,6 +751,18 @@ export function parsePoolMetadataV2(raw: unknown): PoolMetadataV2 {
   if (raw.version !== 2) fail(`expected version 2, got ${String(raw.version)}`)
   if (!isObject(raw.pool)) fail('`pool` must be an object')
   assertString(raw.pool.name, '`pool.name`')
+  if (raw.pool.geoBlock !== undefined) validateGeoBlock(raw.pool.geoBlock)
   if (raw.pool.factsheet !== undefined) validateFactsheet(raw.pool.factsheet)
   return raw as PoolMetadataV2
+}
+
+/** Validates `pool.geoBlock.regions` as ISO 3166-1 alpha-2 codes (format only, strict on write). */
+function validateGeoBlock(geoBlock: unknown): void {
+  if (!isObject(geoBlock)) fail('`pool.geoBlock` must be an object')
+  if (!Array.isArray(geoBlock.regions)) fail('`pool.geoBlock.regions` must be an array')
+  geoBlock.regions.forEach((region, index) => {
+    if (typeof region !== 'string' || !REGION_CODE_RE.test(region)) {
+      fail(`pool.geoBlock.regions[${index}] must be an ISO 3166-1 alpha-2 code, got "${String(region)}"`)
+    }
+  })
 }

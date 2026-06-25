@@ -241,6 +241,34 @@ describe('migratePoolMetadataToV2', () => {
     ])
   })
 
+  it('builds the Overview card with logo and a Factsheet linkRef when those source fields exist', () => {
+    const legacy = legacyFixture()
+    legacy.pool.issuer.logo = { uri: 'ipfs://QmLogo', mime: 'image/png' }
+    legacy.pool.links = { executiveSummary: { uri: 'ipfs://QmFactsheet', mime: 'application/pdf' } }
+    const overview = migratePoolMetadataToV2(legacy).pool.factsheet!.body.find((b) => b.id === 'overview')
+    expect(overview).to.deep.equal({
+      type: 'text',
+      id: 'overview',
+      title: 'Overview',
+      body: 'A long issuer description.',
+      logo: { uri: 'ipfs://QmLogo', mime: 'image/png' },
+      links: [{ label: 'Factsheet', target: { kind: 'linkRef', linkRef: 'executiveSummary' } }],
+    })
+  })
+
+  it('omits the Overview logo and Factsheet link when their source fields are absent/empty', () => {
+    const legacy = legacyFixture()
+    legacy.pool.issuer.logo = { uri: '', mime: 'image/png' } // empty uri => treated as absent
+    legacy.pool.links = { executiveSummary: null }
+    const overview = migratePoolMetadataToV2(legacy).pool.factsheet!.body.find((b) => b.id === 'overview')
+    expect(overview).to.deep.equal({
+      type: 'text',
+      id: 'overview',
+      title: 'Overview',
+      body: 'A long issuer description.',
+    })
+  })
+
   it('drops unsafe document URI schemes and escapes the rating label', () => {
     const legacy = legacyFixture()
     legacy.pool.poolRatings = [
@@ -536,5 +564,70 @@ describe('parsePoolMetadataV2', () => {
     const bad = clone(mockPoolMetadataV2)
     delete (bad.pool.factsheet!.keyFacts[0] as Record<string, unknown>).items
     expect(() => parsePoolMetadataV2(bad)).to.throw(/keyFacts\[0\].items must be an array/)
+  })
+
+  // --- #482: geo-block, documents/accordion blocks, link targets ---
+
+  it('accepts geo-blocked visibility and a valid geoBlock list', () => {
+    expect(() => parsePoolMetadataV2(mockPoolMetadataV2)).to.not.throw()
+  })
+
+  it('accepts geo-blocked elements even when pool.geoBlock is absent (nothing blocked)', () => {
+    const doc = clone(mockPoolMetadataV2)
+    delete (doc.pool as Record<string, unknown>).geoBlock
+    expect(() => parsePoolMetadataV2(doc)).to.not.throw()
+  })
+
+  it('rejects geoBlock regions that are not ISO 3166-1 alpha-2', () => {
+    const bad = clone(mockPoolMetadataV2)
+    bad.pool.geoBlock = { regions: ['US', 'USA'] }
+    expect(() => parsePoolMetadataV2(bad)).to.throw(/geoBlock.regions\[1\] must be an ISO 3166-1 alpha-2 code/)
+  })
+
+  it('rejects an invalid visibility (the union is still closed)', () => {
+    const bad = clone(mockPoolMetadataV2)
+    bad.pool.factsheet!.keyFacts[0]!.visibility = 'continent-blocked' as never
+    expect(() => parsePoolMetadataV2(bad)).to.throw(/visibility/)
+  })
+
+  it('rejects a link target with an unknown kind', () => {
+    const bad = clone(mockPoolMetadataV2)
+    const docs = bad.pool.factsheet!.body.find((b) => b.id === 'docs') as { items: Record<string, unknown>[] }
+    docs.items[0]!.target = { kind: 'mailto', mailto: 'x@y.z' }
+    expect(() => parsePoolMetadataV2(bad)).to.throw(/target has an invalid kind/)
+  })
+
+  it('rejects a documents item missing its target', () => {
+    const bad = clone(mockPoolMetadataV2)
+    const docs = bad.pool.factsheet!.body.find((b) => b.id === 'docs') as { items: Record<string, unknown>[] }
+    delete docs.items[0]!.target
+    expect(() => parsePoolMetadataV2(bad)).to.throw(/items\[0\].target must be an object/)
+  })
+
+  it('rejects an accordion item whose inner block is not a leaf type', () => {
+    const bad = clone(mockPoolMetadataV2)
+    const accordion = bad.pool.factsheet!.body.find((b) => b.id === 'details-accordion') as {
+      items: { block: Record<string, unknown> }[]
+    }
+    accordion.items[0]!.block = { type: 'documents', id: 'nope', items: [] }
+    expect(() => parsePoolMetadataV2(bad)).to.throw(/block has an invalid type/)
+  })
+
+  it('rejects an accordion item with a non-boolean defaultOpen', () => {
+    const bad = clone(mockPoolMetadataV2)
+    const accordion = bad.pool.factsheet!.body.find((b) => b.id === 'details-accordion') as {
+      items: Record<string, unknown>[]
+    }
+    accordion.items[0]!.defaultOpen = 'yes'
+    expect(() => parsePoolMetadataV2(bad)).to.throw(/defaultOpen must be a boolean/)
+  })
+
+  it('rejects an overview text-block link with a malformed target', () => {
+    const bad = clone(mockPoolMetadataV2)
+    const overview = bad.pool.factsheet!.body.find((b) => b.id === 'overview') as {
+      links: { target: unknown }[]
+    }
+    overview.links[0]!.target = { kind: 'linkRef' } // missing linkRef string
+    expect(() => parsePoolMetadataV2(bad)).to.throw(/linkRef must be a string/)
   })
 })
