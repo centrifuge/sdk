@@ -30,7 +30,7 @@ function legacyFixture(): PoolMetadataV1 {
           { type: 'Investment Manager', value: 'Anemoy Asset Management Ltd.' }, // absorbed by Issuer (dropped)
           { type: 'Sub-Investment Manager', value: 'Janus Henderson Investors' }, // -> Portfolio Manager (SP)
           { type: 'Fund Administrator', value: 'Trident Trust Company (Cayman) Ltd' }, // -> Service providers
-          { type: 'Auditor', value: 'MHA Cayman' }, // -> Service providers
+          { type: 'Auditor', value: 'MHA Cayman ' }, // -> Service providers (trailing space, trimmed on migrate)
         ],
       },
       links: { executiveSummary: null },
@@ -69,6 +69,11 @@ function legacyFixture(): PoolMetadataV1 {
     loanTemplates: [{ id: 'tpl', createdAt: '2024-01-01' }],
     addressLabels: { '0xabc': 'Treasury' },
     workflowPolicies: [],
+    withdrawManagers: {
+      '0x6756e091ae798a8e51e12e27ee8facdf': [
+        { assetAddress: '0xa0b8', chainId: '1', manager: '0x1a3b', label: 'C-AC' },
+      ],
+    },
   }
 }
 
@@ -103,10 +108,31 @@ describe('migratePoolMetadataToV2', () => {
     expect(v2.shareClasses['0xda64aae939e4d3a981004619f1709d8f']!.apy).to.equal('90d365')
   })
 
-  it('preserves engine fields verbatim', () => {
+  it('preserves engine fields verbatim (incl. withdrawManagers)', () => {
     const v2 = migratePoolMetadataToV2(legacyFixture())
     expect(v2.addressLabels).to.deep.equal({ '0xabc': 'Treasury' })
     expect(v2.workflowPolicies).to.deep.equal([])
+    expect(v2.withdrawManagers).to.deep.equal({
+      '0x6756e091ae798a8e51e12e27ee8facdf': [
+        { assetAddress: '0xa0b8', chainId: '1', manager: '0x1a3b', label: 'C-AC' },
+      ],
+    })
+  })
+
+  it('drops a stray pool.report (singular) non-schema field', () => {
+    const legacy = legacyFixture()
+    ;(legacy.pool as Record<string, unknown>).report = { author: { name: '', title: '', avatar: null }, url: '' }
+    const v2 = migratePoolMetadataToV2(legacy)
+    expect(v2.pool).to.not.have.property('report')
+  })
+
+  it('trims whitespace from migrated text values', () => {
+    // legacyFixture's Auditor value carries a trailing space.
+    const serviceProviders = migratePoolMetadataToV2(legacyFixture()).pool.factsheet!.keyFacts.find(
+      (g) => g.id === 'service-providers'
+    )
+    const auditor = serviceProviders!.items.find((i) => i.label === 'Auditor')!
+    expect(auditor.value).to.deep.equal({ kind: 'text', text: 'MHA Cayman' })
   })
 
   it('preserves poolRatings verbatim as a typed field (incl. reportFile)', () => {

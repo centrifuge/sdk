@@ -96,7 +96,8 @@ function buildFactsheet(
   const { issuer, asset, poolStructure, expenseRatio, details, poolRatings } = pool
   const firstShareClass = Object.values(shareClasses)[0]
 
-  const text = (value: string): KeyFact['value'] => ({ kind: 'text', text: value })
+  // Trim text key-fact values (issuer/category strings sometimes carry stray whitespace).
+  const text = (value: string): KeyFact['value'] => ({ kind: 'text', text: value.trim() })
 
   const keyFactItems: KeyFact[] = [
     { label: 'Issuer', value: text(issuer.name) },
@@ -197,7 +198,7 @@ function buildFactsheet(
       rows: data.map((row) =>
         headers.map((header) => {
           const value = row[header]
-          return typeof value === 'number' ? value : value == null ? '' : String(value)
+          return typeof value === 'number' ? value : value == null ? '' : String(value).trim()
         })
       ),
     })
@@ -221,12 +222,23 @@ function buildFactsheet(
 export function migratePoolMetadataToV2(legacy: PoolMetadata): PoolMetadataV2 {
   if (isPoolMetadataV2(legacy)) return legacy
 
-  const { pool, shareClasses, onboarding, merkleProofManager, holdings, addressLabels, workflowPolicies } = legacy
+  const {
+    pool,
+    shareClasses,
+    onboarding,
+    merkleProofManager,
+    holdings,
+    addressLabels,
+    workflowPolicies,
+    withdrawManagers,
+  } = legacy
   const { issuer, poolRatings, ...restPool } = pool
-  // Explicitly drop fields that v2 does not carry.
+  // Explicitly drop fields that v2 does not carry. `report` (singular) is a stray non-schema field
+  // seen in some legacy documents (the real reports array is `reports`, dropped above).
   delete (restPool as Record<string, unknown>).newInvestmentsStatus
   delete (restPool as Record<string, unknown>).reports
   delete (restPool as Record<string, unknown>).details
+  delete (restPool as Record<string, unknown>).report
 
   const migratedShareClasses: PoolMetadataV2['shareClasses'] = {}
   for (const [scId, shareClass] of Object.entries(shareClasses)) {
@@ -255,6 +267,7 @@ export function migratePoolMetadataToV2(legacy: PoolMetadata): PoolMetadataV2 {
       : {}),
     ...(addressLabels !== undefined ? { addressLabels } : {}),
     ...(workflowPolicies !== undefined ? { workflowPolicies } : {}),
+    ...(withdrawManagers !== undefined ? { withdrawManagers } : {}),
   }
 }
 

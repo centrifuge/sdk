@@ -243,6 +243,16 @@ export type PoolMetadataV1 = {
   }
   addressLabels?: Record<string, string>
   workflowPolicies?: WorkflowPolicy[]
+  /** Per-share-class withdraw addresses, keyed by share class id. Engine config, carried verbatim. */
+  withdrawManagers?: Record<HexString, WithdrawManager[]>
+}
+
+/** A configured withdraw destination for a share class on a given chain/asset. */
+export type WithdrawManager = {
+  assetAddress: HexString
+  chainId: string
+  manager: HexString
+  label?: string
 }
 
 /* ------------------------------------------------------------------------------------------------
@@ -491,7 +501,8 @@ export type PoolRatingV2 = {
  * extras) and folds the legacy display fields (`details`, `issuer.description/categories`) and the
  * off-chain `holdings` blob (into a `table` section) into `pool.factsheet`. `poolRatings` stays a
  * typed field (surfaced via the `ratings` key-fact ref). Engine fields (`shareClasses`,
- * `merkleProofManager`, `addressLabels`, `workflowPolicies`) are preserved verbatim.
+ * `merkleProofManager`, `addressLabels`, `workflowPolicies`, `withdrawManagers`) are preserved
+ * verbatim.
  */
 export type PoolMetadataV2 = {
   version: 2
@@ -508,6 +519,7 @@ export type PoolMetadataV2 = {
   }
   addressLabels?: PoolMetadataV1['addressLabels']
   workflowPolicies?: PoolMetadataV1['workflowPolicies']
+  withdrawManagers?: PoolMetadataV1['withdrawManagers']
 }
 
 /**
