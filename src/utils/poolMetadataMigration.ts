@@ -8,6 +8,8 @@ import {
   type Factsheet,
   isPoolMetadataV2,
   type KeyFact,
+  type KeyFactGroup,
+  type KeyFactValue,
   type LayoutItem,
   type LegacyApyMode,
   type LiveDataset,
@@ -16,6 +18,7 @@ import {
   type PoolMetadataV1,
   type PoolMetadataV2,
   type SectionRef,
+  type TableBlock,
   type Visibility,
 } from '../types/poolMetadata.js'
 
@@ -45,6 +48,61 @@ function formatMinInvestment(value: number): string {
   return value.toLocaleString('en-US')
 }
 
+/** Tolerates legacy docs that omit (or malform) an array field by treating it as empty. */
+function asArray<T>(value: T[] | undefined): T[] {
+  return Array.isArray(value) ? value : []
+}
+
+/**
+ * Folds a legacy off-chain `{ headers, data }` holdings blob into a `table` section, preserving
+ * every column verbatim (numbers stay numbers, null/undefined -> '', other values stringified +
+ * trimmed). Returns null when there are no headers or no data.
+ */
+function holdingsTableBlock(holdings: PoolMetadataV1['holdings']): TableBlock | null {
+  if (!holdings || !Array.isArray(holdings.headers) || holdings.headers.length === 0 || !Array.isArray(holdings.data)) {
+    return null
+  }
+  const { headers, data } = holdings
+  return {
+    type: 'table',
+    id: 'holdings',
+    title: 'Holdings',
+    headers,
+    rows: data.map((row) =>
+      headers.map((header) => {
+        const value = row[header]
+        return typeof value === 'number' ? value : value == null ? '' : String(value).trim()
+      })
+    ),
+  }
+}
+
+/** Normalizes an issuer category `type` for matching (case- and separator-insensitive). */
+function normalizeCategoryType(type: string): string {
+  return type.toLowerCase().replace(/[\s_-]/g, '')
+}
+
+/**
+ * Issuer-category `type` values (normalized) that migrate into the "Service providers" group, mapped
+ * to their v2 display label (the v1 vocabulary differs from v2, e.g. "Sub-Investment Manager" is the
+ * v2 "Portfolio Manager"). Anything not listed stays in "Key facts" with its raw label (the seed is
+ * ops-editable, so an unmatched type is low-cost). `administrator` is an alias of Fund Administrator.
+ */
+const SERVICE_PROVIDER_CATEGORIES = new Map<string, string>([
+  ['subinvestmentmanager', 'Portfolio Manager'],
+  ['custodian', 'Custodian'],
+  ['fundadministrator', 'Fund Administrator'],
+  ['administrator', 'Fund Administrator'],
+  ['auditor', 'Auditor'],
+])
+
+/**
+ * Issuer-category `type` values (normalized) dropped from the factsheet because they are already
+ * represented elsewhere: "Investment Manager" is absorbed by the `Issuer` key fact (from
+ * `issuer.name`), so it is not rendered as its own row.
+ */
+const ABSORBED_CATEGORY_TYPES = new Set(['investmentmanager'])
+
 /** Document links only carry web/IPFS URIs; anything else (e.g. `javascript:`) is dropped. */
 function isSafeDocumentUri(uri: string): boolean {
   const scheme = uri.trim().toLowerCase()
@@ -61,40 +119,82 @@ function escapeMarkdownText(text: string): string {
  * a migrated pool must render the same content, so legacy fields are projected into ordered key
  * facts + body blocks. The output is a sensible, ops-editable seed, not a frozen contract.
  */
-function buildFactsheet(pool: PoolMetadataV1['pool'], shareClasses: PoolMetadataV1['shareClasses']): Factsheet {
+function buildFactsheet(
+  pool: PoolMetadataV1['pool'],
+  shareClasses: PoolMetadataV1['shareClasses'],
+  holdings: PoolMetadataV1['holdings']
+): Factsheet {
   const { issuer, asset, poolStructure, expenseRatio, details, poolRatings } = pool
   const firstShareClass = Object.values(shareClasses)[0]
 
-  const keyFacts: KeyFact[] = [
-    { label: 'Issuer', value: issuer.name },
-    { label: 'Asset type', value: `${asset.class} - ${asset.subClass}` },
-    { label: 'APY', valueRef: 'apy' },
-    { label: 'Pool structure', value: poolStructure },
+  // Trim text key-fact values (issuer/category strings sometimes carry stray whitespace).
+  const text = (value: string): KeyFact['value'] => ({ kind: 'text', text: value.trim() })
+
+  const keyFactItems: KeyFact[] = [
+    { label: 'Issuer', value: text(issuer.name) },
+    { label: 'Asset type', value: text(`${asset.class} - ${asset.subClass}`) },
+    { label: 'APY', value: { kind: 'ref', ref: 'apy' } },
+    { label: 'Pool structure', value: text(poolStructure) },
   ]
 
   const weightedAverageMaturity = firstShareClass?.weightedAverageMaturity
   if (weightedAverageMaturity != null) {
-    keyFacts.push({ label: 'Average asset maturity', value: `${weightedAverageMaturity} days` })
+    keyFactItems.push({ label: 'Average asset maturity', value: text(`${weightedAverageMaturity} days`) })
   }
   if (expenseRatio != null && expenseRatio !== '') {
-    keyFacts.push({ label: 'Expense ratio', value: `${expenseRatio}%` })
+    keyFactItems.push({ label: 'Expense ratio', value: text(`${expenseRatio}%`) })
   }
   const minInitialInvestment = firstShareClass?.minInitialInvestment
   if (minInitialInvestment != null) {
-    keyFacts.push({ label: 'Min. investment', value: formatMinInvestment(minInitialInvestment) })
+    keyFactItems.push({ label: 'Min. investment', value: text(formatMinInvestment(minInitialInvestment)) })
   }
-  for (const category of issuer.categories) {
-    keyFacts.push({ label: category.type, value: category.value })
+
+  const serviceProviderItems: KeyFact[] = []
+  for (const category of asArray(issuer.categories)) {
+    const key = normalizeCategoryType(category.type)
+    if (ABSORBED_CATEGORY_TYPES.has(key)) continue
+    const label = SERVICE_PROVIDER_CATEGORIES.get(key)
+    if (label) {
+      serviceProviderItems.push({ label, value: text(category.value) })
+    } else {
+      keyFactItems.push({ label: category.type, value: text(category.value) })
+    }
+  }
+
+  // Seeded unconditionally because v1 has no source field for either: the app derives the deployed
+  // chains, and wallet infrastructure is currently Fordefi for all pools. Ops can edit/remove after.
+  keyFactItems.push({
+    label: 'Wallet infrastructure',
+    value: { kind: 'icons', icons: [{ source: 'app', key: 'fordefi' }] },
+  })
+  keyFactItems.push({ label: 'Available networks', value: { kind: 'ref', ref: 'availableNetworks' } })
+
+  if (asArray(poolRatings).length > 0) {
+    keyFactItems.push({ label: 'Ratings', value: { kind: 'ref', ref: 'ratings' } })
+  }
+
+  // Right column is groups only (no bare key facts). The "Service providers" group is added only
+  // when at least one category mapped to it.
+  const keyFacts: KeyFactGroup[] = [{ type: 'keyFactGroup', id: 'key-facts', title: 'Key facts', items: keyFactItems }]
+  if (serviceProviderItems.length > 0) {
+    keyFacts.push({
+      type: 'keyFactGroup',
+      id: 'service-providers',
+      title: 'Service providers',
+      items: serviceProviderItems,
+    })
   }
 
   const body: LayoutItem[] = []
   if (issuer.description) {
     body.push({ type: 'text', id: 'overview', title: 'Overview', body: issuer.description })
   }
-  ;(details ?? []).forEach((detail, index) => {
+  asArray(details).forEach((detail, index) => {
     body.push({ type: 'text', id: `detail-${index}`, title: detail.title, body: detail.body })
   })
-  const ratingsWithReports = (poolRatings ?? []).filter(
+  // Ratings reports are surfaced two ways: a Documents body block (markdown links to the report
+  // PDFs) and the `ratings` key-fact ref pill above. Both read the same typed `poolRatings` field.
+  const ratingsWithReports = asArray(poolRatings).filter(
     (rating) => rating.reportFile?.uri && isSafeDocumentUri(rating.reportFile.uri)
   )
   if (ratingsWithReports.length > 0) {
@@ -111,28 +211,44 @@ function buildFactsheet(pool: PoolMetadataV1['pool'], shareClasses: PoolMetadata
   }
   body.push({ type: 'section', id: 'performance', ref: 'onchainMetrics' })
 
-  // `sections` is omitted so the invest app renders its default sections.
-  return { body, keyFacts }
+  const holdingsBlock = holdingsTableBlock(holdings)
+  // `sections` is omitted (so the invest app renders its defaults) unless we have a holdings table.
+  return holdingsBlock ? { body, keyFacts, sections: [holdingsBlock] } : { body, keyFacts }
 }
 
 /**
  * Pure, idempotent legacy -> v2 migration. Performs no IPFS/network access so it stays
- * unit-testable. Returns the input unchanged when it is already v2.
+ * unit-testable. A document already at the current v2 shape is returned unchanged; a v2 document
+ * written by an earlier SDK is normalized forward via {@link upgradeLegacyV2}.
  *
  * - Strips fields unused by every consumer (`newInvestmentsStatus`, `reports`, `loanTemplates`,
- *   `issuer.repName/shortDescription`, onboarding extras) and reshapes `issuer`/`poolRatings`.
+ *   `issuer.repName/shortDescription`, onboarding extras) and reshapes `issuer`. `poolRatings` is
+ *   preserved verbatim as a typed field (surfaced via the `ratings` key-fact ref).
  * - Maps legacy APY modes across `shareClasses[*].apy`.
- * - Projects the legacy display fields into `pool.factsheet`.
+ * - Projects the legacy display fields into `pool.factsheet`, and folds the off-chain `holdings`
+ *   blob into a `table` section (`id: 'holdings'`); `holdings` is not carried as a top-level field.
  */
 export function migratePoolMetadataToV2(legacy: PoolMetadata): PoolMetadataV2 {
-  if (isPoolMetadataV2(legacy)) return legacy
+  if (isPoolMetadataV2(legacy)) return upgradeLegacyV2(legacy)
 
-  const { pool, shareClasses, onboarding, merkleProofManager, holdings, addressLabels, workflowPolicies } = legacy
+  const {
+    pool,
+    shareClasses,
+    onboarding,
+    merkleProofManager,
+    holdings,
+    addressLabels,
+    workflowPolicies,
+    withdrawManagers,
+  } = legacy
   const { issuer, poolRatings, ...restPool } = pool
-  // Explicitly drop fields that v2 does not carry.
+  // Explicitly drop fields that v2 does not carry. `report` (singular) and `poolStatus` are stray
+  // non-schema fields seen in some legacy documents (the real fields are `reports` and `status`).
   delete (restPool as Record<string, unknown>).newInvestmentsStatus
   delete (restPool as Record<string, unknown>).reports
   delete (restPool as Record<string, unknown>).details
+  delete (restPool as Record<string, unknown>).report
+  delete (restPool as Record<string, unknown>).poolStatus
 
   const migratedShareClasses: PoolMetadataV2['shareClasses'] = {}
   for (const [scId, shareClass] of Object.entries(shareClasses)) {
@@ -144,8 +260,10 @@ export function migratePoolMetadataToV2(legacy: PoolMetadata): PoolMetadataV2 {
     pool: {
       ...restPool,
       issuer: { name: issuer.name, email: issuer.email, logo: issuer.logo },
-      poolRatings: poolRatings?.map(({ reportFile: _reportFile, ...rating }) => rating),
-      factsheet: buildFactsheet(pool, shareClasses),
+      // `poolRatings` stays a typed field verbatim (incl. reportFile); surfaced via the `ratings`
+      // key-fact ref. `holdings` is folded into the factsheet and not carried as a top-level field.
+      poolRatings,
+      factsheet: buildFactsheet(pool, shareClasses, holdings),
     },
     shareClasses: migratedShareClasses,
     ...(merkleProofManager !== undefined ? { merkleProofManager } : {}),
@@ -157,10 +275,107 @@ export function migratePoolMetadataToV2(legacy: PoolMetadata): PoolMetadataV2 {
           },
         }
       : {}),
-    ...(holdings !== undefined ? { holdings } : {}),
     ...(addressLabels !== undefined ? { addressLabels } : {}),
     ...(workflowPolicies !== undefined ? { workflowPolicies } : {}),
+    ...(withdrawManagers !== undefined ? { withdrawManagers } : {}),
   }
+}
+
+/* ================================================================================================
+ * Intra-v2 upgrade: normalize a v2 document written by an earlier SDK to the current v2 shape
+ * ============================================================================================== */
+
+function isKeyFactGroup(value: unknown): boolean {
+  return typeof value === 'object' && value !== null && (value as Record<string, unknown>).type === 'keyFactGroup'
+}
+
+/** Converts an earlier-SDK flat KeyFact (`{ value?: string; valueRef?: 'apy' }`) to the discriminated shape. */
+function upgradeKeyFact(old: Record<string, unknown>): KeyFact {
+  const { value, valueRef, ...rest } = old
+  let next: KeyFactValue
+  if (valueRef === 'apy') next = { kind: 'ref', ref: 'apy' }
+  else if (value !== null && typeof value === 'object' && 'kind' in (value as object)) next = value as KeyFactValue
+  else next = { kind: 'text', text: typeof value === 'string' ? value : '' }
+  return { ...(rest as Omit<KeyFact, 'value'>), value: next }
+}
+
+/** True if `item` is (or, for a tabGroup, contains) a chart still using the `series`/`dataRef` shape. */
+function hasLegacyChart(item: unknown): boolean {
+  if (typeof item !== 'object' || item === null) return false
+  const block = item as Record<string, unknown>
+  if (block.type === 'chart') {
+    return block.data === undefined && (block.series !== undefined || block.dataRef !== undefined)
+  }
+  if (block.type === 'tabGroup' && Array.isArray(block.tabs)) {
+    return block.tabs.some((tab) => hasLegacyChart((tab as Record<string, unknown>)?.block))
+  }
+  return false
+}
+
+/** Converts an earlier-SDK chart block (`series?`/`dataRef?`) to the discriminated `data` field, in place. */
+function upgradeChartBlockInPlace(block: Record<string, unknown>): void {
+  if (block.type === 'chart' && block.data === undefined) {
+    if (Array.isArray(block.series)) block.data = { kind: 'inline', series: block.series }
+    else if (typeof block.dataRef === 'string') block.data = { kind: 'ref', dataRef: block.dataRef }
+    delete block.series
+    delete block.dataRef
+  }
+  if (block.type === 'tabGroup' && Array.isArray(block.tabs)) {
+    for (const tab of block.tabs) {
+      const inner = (tab as Record<string, unknown>)?.block
+      if (inner && typeof inner === 'object') upgradeChartBlockInPlace(inner as Record<string, unknown>)
+    }
+  }
+}
+
+/**
+ * Normalizes a document already at `version: 2` but written by an earlier SDK whose v2 shape differs:
+ * a flat `keyFacts: KeyFact[]` (now `KeyFactGroup[]`), chart blocks with `series`/`dataRef` (now a
+ * discriminated `data`), and a top-level `holdings` blob (now a factsheet `table` section). Without
+ * this, `update()` would re-validate such a document against the current validator and throw, with no
+ * upgrade path. Returns the input unchanged (same reference) when it is already the current shape.
+ */
+function upgradeLegacyV2(doc: PoolMetadataV2): PoolMetadataV2 {
+  const raw = doc as unknown as Record<string, unknown>
+  const pool = (raw.pool ?? {}) as Record<string, unknown>
+  const factsheet = pool.factsheet as Record<string, unknown> | undefined
+  const keyFacts = factsheet?.keyFacts
+  const layoutItems = [...asArray(factsheet?.body as unknown[]), ...asArray(factsheet?.sections as unknown[])]
+
+  const needsKeyFactUpgrade = Array.isArray(keyFacts) && keyFacts.some((item) => !isKeyFactGroup(item))
+  const needsHoldingsFold = raw.holdings != null
+  const needsChartUpgrade = layoutItems.some(hasLegacyChart)
+  if (!needsKeyFactUpgrade && !needsHoldingsFold && !needsChartUpgrade) return doc
+
+  const next = JSON.parse(JSON.stringify(doc)) as Record<string, unknown>
+  const nextPool = next.pool as Record<string, unknown>
+  const nextFactsheet = nextPool.factsheet as Record<string, unknown> | undefined
+
+  if (nextFactsheet) {
+    if (needsKeyFactUpgrade) {
+      // Wrap the flat list into one titled "Key facts" group, converting each item's value.
+      const items = (nextFactsheet.keyFacts as Record<string, unknown>[]).map(upgradeKeyFact)
+      nextFactsheet.keyFacts = [{ type: 'keyFactGroup', id: 'key-facts', title: 'Key facts', items }]
+    }
+    if (needsChartUpgrade) {
+      for (const item of [
+        ...asArray(nextFactsheet.body as unknown[]),
+        ...asArray(nextFactsheet.sections as unknown[]),
+      ]) {
+        if (item && typeof item === 'object') upgradeChartBlockInPlace(item as Record<string, unknown>)
+      }
+    }
+  }
+
+  if (needsHoldingsFold) {
+    const holdingsBlock = holdingsTableBlock(raw.holdings as PoolMetadataV1['holdings'])
+    delete next.holdings
+    if (holdingsBlock && nextFactsheet) {
+      nextFactsheet.sections = [...asArray(nextFactsheet.sections as LayoutItem[]), holdingsBlock]
+    }
+  }
+
+  return next as unknown as PoolMetadataV2
 }
 
 /* ================================================================================================
@@ -180,6 +395,7 @@ const DATA_REFS = new Set<DataRef>(['apyVsBenchmarks', 'maturityDistribution'])
 const SECTION_REFS = new Set<SectionRef>(['onchainMetrics', 'smartContracts'])
 const LIVE_METRICS = new Set<LiveMetric>(['tokenPrice', 'nav', 'apy30d', 'navChange', 'monthlyReturn'])
 const LIVE_DATASETS = new Set<LiveDataset>(['monthlySummary'])
+const KEY_FACT_REFS = new Set(['apy', 'availableNetworks', 'ratings'])
 const COLUMN_FORMATS = new Set<ColumnFormat>(['text', 'number', 'percent', 'currency'])
 const CONTENT_BLOCK_TYPES = new Set(['text', 'table', 'chart', 'image', 'kpiGroup', 'tabGroup', 'liveTable'])
 const TAB_BLOCK_TYPES = new Set(['text', 'table', 'chart', 'kpiGroup'])
@@ -214,14 +430,61 @@ function validateFile(value: unknown, where: string): void {
   assertString(value.mime, `${where}.mime`)
 }
 
+function validateIconRef(value: unknown, where: string): void {
+  if (!isObject(value)) fail(`${where} must be an object`)
+  if (value.label !== undefined) assertString(value.label, `${where}.label`)
+  switch (value.source) {
+    case 'metadata':
+      validateFile(value.file, `${where}.file`)
+      if (value.alt !== undefined) assertString(value.alt, `${where}.alt`)
+      break
+    case 'app':
+      // The app-owned icon-key registry is not yet enumerated, so validate shape (string) only.
+      assertString(value.key, `${where}.key`)
+      break
+    default:
+      fail(`${where} has an invalid source "${String(value.source)}"`)
+  }
+}
+
+function validateKeyFactValue(value: unknown, where: string): void {
+  if (!isObject(value)) fail(`${where} must be an object`)
+  switch (value.kind) {
+    case 'text':
+      assertString(value.text, `${where}.text`)
+      break
+    case 'icons':
+      if (!Array.isArray(value.icons)) fail(`${where}.icons must be an array`)
+      value.icons.forEach((icon, index) => validateIconRef(icon, `${where}.icons[${index}]`))
+      break
+    case 'ref':
+      // Closed, SDK-enforced registry (extended via a coordinated SDK release).
+      if (typeof value.ref !== 'string' || !KEY_FACT_REFS.has(value.ref)) {
+        fail(`${where}.ref is invalid (unknown ref "${String(value.ref)}")`)
+      }
+      break
+    default:
+      fail(`${where} has an invalid kind "${String(value.kind)}"`)
+  }
+}
+
 function validateKeyFact(value: unknown, where: string): void {
   if (!isObject(value)) fail(`${where} must be an object`)
   assertString(value.label, `${where}.label`)
-  if (value.value !== undefined) assertString(value.value, `${where}.value`)
-  if (value.valueRef !== undefined && value.valueRef !== 'apy') fail(`${where}.valueRef must be 'apy'`)
+  validateKeyFactValue(value.value, `${where}.value`)
   if (value.tooltip !== undefined) assertString(value.tooltip, `${where}.tooltip`)
   if (value.href !== undefined) assertString(value.href, `${where}.href`)
   assertVisibility(value.visibility, where)
+}
+
+function validateKeyFactGroup(value: unknown, where: string): void {
+  if (!isObject(value)) fail(`${where} must be an object`)
+  if (value.type !== 'keyFactGroup') fail(`${where}.type must be 'keyFactGroup'`)
+  assertString(value.id, `${where}.id`)
+  if (value.title !== undefined) assertString(value.title, `${where}.title`)
+  assertVisibility(value.visibility, where)
+  if (!Array.isArray(value.items)) fail(`${where}.items must be an array`)
+  value.items.forEach((item, index) => validateKeyFact(item, `${where}.items[${index}]`))
 }
 
 function validateChartSeries(value: unknown, where: string): void {
@@ -291,15 +554,21 @@ function validateContentBlock(block: Record<string, unknown>, type: string, wher
       if (typeof block.chartType !== 'string' || !CHART_TYPES.has(block.chartType as ChartType)) {
         fail(`${where}.chartType is invalid`)
       }
-      const hasSeries = block.series !== undefined
-      const hasDataRef = block.dataRef !== undefined
-      if (hasSeries === hasDataRef) fail(`${where} must set exactly one of \`series\` or \`dataRef\``)
-      if (hasSeries) {
-        if (!Array.isArray(block.series)) fail(`${where}.series must be an array`)
-        block.series.forEach((s, index) => validateChartSeries(s, `${where}.series[${index}]`))
-      }
-      if (hasDataRef && (typeof block.dataRef !== 'string' || !DATA_REFS.has(block.dataRef as DataRef))) {
-        fail(`${where}.dataRef is invalid (unknown key "${String(block.dataRef)}")`)
+      // Data source is a single discriminated `data` (inline series XOR app/indexer dataRef).
+      if (!isObject(block.data)) fail(`${where}.data must be an object`)
+      switch (block.data.kind) {
+        case 'inline':
+          if (!Array.isArray(block.data.series)) fail(`${where}.data.series must be an array`)
+          block.data.series.forEach((s, index) => validateChartSeries(s, `${where}.data.series[${index}]`))
+          break
+        case 'ref':
+          // Closed, SDK-enforced registry (extended via a coordinated SDK release).
+          if (typeof block.data.dataRef !== 'string' || !DATA_REFS.has(block.data.dataRef as DataRef)) {
+            fail(`${where}.data.dataRef is invalid (unknown key "${String(block.data.dataRef)}")`)
+          }
+          break
+        default:
+          fail(`${where}.data has an invalid kind "${String(block.data.kind)}"`)
       }
       if (isObject(block.xAxis) && block.xAxis.type !== undefined && !XAXIS_TYPES.has(block.xAxis.type as string)) {
         fail(`${where}.xAxis.type is invalid`)
@@ -383,7 +652,7 @@ function validateFactsheet(factsheet: unknown): void {
   if (!Array.isArray(factsheet.body)) fail('`pool.factsheet.body` must be an array')
   factsheet.body.forEach((item, index) => validateLayoutItem(item, `pool.factsheet.body[${index}]`))
   if (!Array.isArray(factsheet.keyFacts)) fail('`pool.factsheet.keyFacts` must be an array')
-  factsheet.keyFacts.forEach((item, index) => validateKeyFact(item, `pool.factsheet.keyFacts[${index}]`))
+  factsheet.keyFacts.forEach((group, index) => validateKeyFactGroup(group, `pool.factsheet.keyFacts[${index}]`))
   if (factsheet.sections !== undefined) {
     if (!Array.isArray(factsheet.sections)) fail('`pool.factsheet.sections` must be an array')
     factsheet.sections.forEach((item, index) => validateLayoutItem(item, `pool.factsheet.sections[${index}]`))
@@ -394,7 +663,7 @@ function validateFactsheet(factsheet: unknown): void {
  * Hand-rolled structural validator for v2 pool metadata, in the style of
  * {@link parseMarketplaceCatalog}. Validates the discriminant (`version === 2`), `pool.name`, and
  * the full `pool.factsheet` content model (the layout the SDK is responsible for). Engine fields
- * (`shareClasses`, `workflowPolicies`, `holdings`, `addressLabels`, …) are passed through
+ * (`shareClasses`, `workflowPolicies`, `addressLabels`, …) are passed through
  * unchecked here — they are validated where they are consumed (e.g. workflows via
  * {@link parseMarketplaceCatalog}). Throws `pool metadata v2: …` on the first malformed field;
  * tolerates missing optionals (visibility defaults to `'public'` app-side). Returns the input

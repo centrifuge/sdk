@@ -44,13 +44,45 @@ export const mockPoolMetadataV2: PoolMetadataV2 = {
     ],
     investorType: 'Fake Investor Type',
     poolStructure: 'Fake Structure',
-    poolRatings: [{ agency: 'Fake Agency', value: 'AAA', reportUrl: 'https://example.com/rating' }],
+    poolRatings: [
+      {
+        agency: 'Fake Agency',
+        value: 'AAA',
+        reportUrl: 'https://example.com/rating',
+        reportFile: { uri: 'ipfs://QmRatingReport', mime: 'application/pdf' },
+      },
+    ],
     factsheet: {
       keyFacts: [
-        { label: 'Issuer', value: 'Fake Issuer' },
-        { label: 'Asset type', value: 'Private credit - Fake Subclass' },
-        { label: 'APY', valueRef: 'apy', tooltip: 'Net of fees' },
-        { label: 'Secret fact', value: 'hidden value', visibility: 'whitelisted' },
+        {
+          type: 'keyFactGroup',
+          id: 'overview-facts',
+          title: 'Overview',
+          items: [
+            { label: 'Issuer', value: { kind: 'text', text: 'Fake Issuer' } },
+            { label: 'Asset type', value: { kind: 'text', text: 'Private credit - Fake Subclass' } },
+            { label: 'APY', value: { kind: 'ref', ref: 'apy' }, tooltip: 'Net of fees' },
+            { label: 'Networks', value: { kind: 'ref', ref: 'availableNetworks' } },
+            { label: 'Ratings', value: { kind: 'ref', ref: 'ratings' } },
+          ],
+        },
+        {
+          type: 'keyFactGroup',
+          id: 'trust-facts',
+          items: [
+            {
+              label: 'Custody',
+              value: {
+                kind: 'icons',
+                icons: [
+                  { source: 'app', key: 'fordefi', label: 'Fordefi' },
+                  { source: 'metadata', file: { uri: 'ipfs://QmRatingIcon', mime: 'image/svg+xml' }, alt: 'Moody’s' },
+                ],
+              },
+            },
+            { label: 'Secret fact', value: { kind: 'text', text: 'hidden value' }, visibility: 'whitelisted' },
+          ],
+        },
       ],
       body: [
         { type: 'text', id: 'overview', title: 'Overview', body: 'Fake **overview** with a [link](https://x.io).' },
@@ -71,15 +103,18 @@ export const mockPoolMetadataV2: PoolMetadataV2 = {
           id: 'inline-chart',
           title: 'Allocation',
           chartType: 'donut',
-          series: [
-            {
-              name: 'Allocation',
-              data: [
-                { label: 'Cash', value: 40 },
-                { label: 'Loans', value: 60 },
-              ],
-            },
-          ],
+          data: {
+            kind: 'inline',
+            series: [
+              {
+                name: 'Allocation',
+                data: [
+                  { label: 'Cash', value: 40 },
+                  { label: 'Loans', value: 60 },
+                ],
+              },
+            ],
+          },
           legend: true,
         },
         {
@@ -87,7 +122,7 @@ export const mockPoolMetadataV2: PoolMetadataV2 = {
           id: 'live-chart',
           title: 'APY vs benchmarks',
           chartType: 'line',
-          dataRef: 'apyVsBenchmarks',
+          data: { kind: 'ref', dataRef: 'apyVsBenchmarks' },
           xAxis: { label: 'Date', type: 'time' },
           yAxis: { label: 'APY', format: 'percent' },
         },
@@ -133,7 +168,19 @@ export const mockPoolMetadataV2: PoolMetadataV2 = {
         },
         { type: 'section', id: 'performance', ref: 'onchainMetrics' },
       ],
-      sections: [{ type: 'section', id: 'contracts', ref: 'smartContracts', visibility: 'public' }],
+      sections: [
+        {
+          type: 'table',
+          id: 'holdings',
+          title: 'Holdings',
+          headers: ['Asset', 'ISIN', 'Amount'],
+          rows: [
+            ['T-Bill 2026', 'US912796RW0', 1_000_000],
+            ['T-Bill 2027', '', 2_500_000],
+          ],
+        },
+        { type: 'section', id: 'contracts', ref: 'smartContracts', visibility: 'public' },
+      ],
     },
   },
   shareClasses: {

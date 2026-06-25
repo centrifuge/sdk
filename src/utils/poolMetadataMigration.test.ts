@@ -27,8 +27,10 @@ function legacyFixture(): PoolMetadataV1 {
         logo: null,
         shortDescription: 'Acme',
         categories: [
-          { type: 'Trustee', value: 'Acme Trust' },
-          { type: 'Auditor', value: 'Acme Audit' },
+          { type: 'Investment Manager', value: 'Anemoy Asset Management Ltd.' }, // absorbed by Issuer (dropped)
+          { type: 'Sub-Investment Manager', value: 'Janus Henderson Investors' }, // -> Portfolio Manager (SP)
+          { type: 'Fund Administrator', value: 'Trident Trust Company (Cayman) Ltd' }, // -> Service providers
+          { type: 'Auditor', value: 'MHA Cayman ' }, // -> Service providers (trailing space, trimmed on migrate)
         ],
       },
       links: { executiveSummary: null },
@@ -67,6 +69,11 @@ function legacyFixture(): PoolMetadataV1 {
     loanTemplates: [{ id: 'tpl', createdAt: '2024-01-01' }],
     addressLabels: { '0xabc': 'Treasury' },
     workflowPolicies: [],
+    withdrawManagers: {
+      '0x6756e091ae798a8e51e12e27ee8facdf': [
+        { assetAddress: '0xa0b8', chainId: '1', manager: '0x1a3b', label: 'C-AC' },
+      ],
+    },
   }
 }
 
@@ -101,32 +108,125 @@ describe('migratePoolMetadataToV2', () => {
     expect(v2.shareClasses['0xda64aae939e4d3a981004619f1709d8f']!.apy).to.equal('90d365')
   })
 
-  it('preserves engine fields verbatim', () => {
+  it('preserves engine fields verbatim (incl. withdrawManagers)', () => {
     const v2 = migratePoolMetadataToV2(legacyFixture())
     expect(v2.addressLabels).to.deep.equal({ '0xabc': 'Treasury' })
     expect(v2.workflowPolicies).to.deep.equal([])
+    expect(v2.withdrawManagers).to.deep.equal({
+      '0x6756e091ae798a8e51e12e27ee8facdf': [
+        { assetAddress: '0xa0b8', chainId: '1', manager: '0x1a3b', label: 'C-AC' },
+      ],
+    })
   })
 
-  it('strips reportFile from kept poolRatings', () => {
+  it('drops a stray pool.report (singular) non-schema field', () => {
+    const legacy = legacyFixture()
+    ;(legacy.pool as Record<string, unknown>).report = { author: { name: '', title: '', avatar: null }, url: '' }
+    const v2 = migratePoolMetadataToV2(legacy)
+    expect(v2.pool).to.not.have.property('report')
+  })
+
+  it('trims whitespace from migrated text values', () => {
+    // legacyFixture's Auditor value carries a trailing space.
+    const serviceProviders = migratePoolMetadataToV2(legacyFixture()).pool.factsheet!.keyFacts.find(
+      (g) => g.id === 'service-providers'
+    )
+    const auditor = serviceProviders!.items.find((i) => i.label === 'Auditor')!
+    expect(auditor.value).to.deep.equal({ kind: 'text', text: 'MHA Cayman' })
+  })
+
+  it('preserves poolRatings verbatim as a typed field (incl. reportFile)', () => {
     const v2 = migratePoolMetadataToV2(legacyFixture())
     expect(v2.pool.poolRatings).to.deep.equal([
-      { agency: 'Moodys', value: 'Aaa', reportUrl: 'https://x.io/r1' },
+      {
+        agency: 'Moodys',
+        value: 'Aaa',
+        reportUrl: 'https://x.io/r1',
+        reportFile: { uri: 'ipfs://Qm1', mime: 'application/pdf' },
+      },
       { agency: 'S&P', value: 'AAA' },
     ])
   })
 
-  it('projects key facts in order, including valueRef apy and categories', () => {
+  it('projects a titled "Key facts" group (incl. seeded wallet infra + networks) and a "Service providers" group', () => {
     const { keyFacts } = migratePoolMetadataToV2(legacyFixture()).pool.factsheet!
     expect(keyFacts).to.deep.equal([
-      { label: 'Issuer', value: 'Acme Issuer' },
-      { label: 'Asset type', value: 'Public credit - T-Bills' },
-      { label: 'APY', valueRef: 'apy' },
-      { label: 'Pool structure', value: 'revolving' },
-      { label: 'Average asset maturity', value: '63 days' },
-      { label: 'Expense ratio', value: '0.25%' },
-      { label: 'Min. investment', value: '2,500' },
-      { label: 'Trustee', value: 'Acme Trust' },
-      { label: 'Auditor', value: 'Acme Audit' },
+      {
+        type: 'keyFactGroup',
+        id: 'key-facts',
+        title: 'Key facts',
+        items: [
+          { label: 'Issuer', value: { kind: 'text', text: 'Acme Issuer' } },
+          { label: 'Asset type', value: { kind: 'text', text: 'Public credit - T-Bills' } },
+          { label: 'APY', value: { kind: 'ref', ref: 'apy' } },
+          { label: 'Pool structure', value: { kind: 'text', text: 'revolving' } },
+          { label: 'Average asset maturity', value: { kind: 'text', text: '63 days' } },
+          { label: 'Expense ratio', value: { kind: 'text', text: '0.25%' } },
+          { label: 'Min. investment', value: { kind: 'text', text: '2,500' } },
+          // Investment Manager is absorbed into Issuer (no row); the other three are service providers.
+          { label: 'Wallet infrastructure', value: { kind: 'icons', icons: [{ source: 'app', key: 'fordefi' }] } },
+          { label: 'Available networks', value: { kind: 'ref', ref: 'availableNetworks' } },
+          { label: 'Ratings', value: { kind: 'ref', ref: 'ratings' } },
+        ],
+      },
+      {
+        type: 'keyFactGroup',
+        id: 'service-providers',
+        title: 'Service providers',
+        items: [
+          { label: 'Portfolio Manager', value: { kind: 'text', text: 'Janus Henderson Investors' } },
+          { label: 'Fund Administrator', value: { kind: 'text', text: 'Trident Trust Company (Cayman) Ltd' } },
+          { label: 'Auditor', value: { kind: 'text', text: 'MHA Cayman' } },
+        ],
+      },
+    ])
+  })
+
+  it('absorbs the Investment Manager category into the Issuer key fact (drops its own row)', () => {
+    const { keyFacts } = migratePoolMetadataToV2(legacyFixture()).pool.factsheet!
+    const allItems = keyFacts.flatMap((g) => g.items)
+    expect(allItems.filter((i) => i.label === 'Issuer')).to.have.length(1)
+    expect(allItems.some((i) => i.value.kind === 'text' && i.value.text === 'Anemoy Asset Management Ltd.')).to.equal(
+      false
+    )
+  })
+
+  it('seeds wallet infrastructure + available networks even with no categories or ratings', () => {
+    const legacy = legacyFixture()
+    legacy.pool.issuer.categories = []
+    legacy.pool.poolRatings = []
+    const { keyFacts } = migratePoolMetadataToV2(legacy).pool.factsheet!
+    expect(keyFacts).to.have.length(1) // no Service providers group
+    const labels = keyFacts[0]!.items.map((i) => i.label)
+    expect(labels).to.include('Wallet infrastructure')
+    expect(labels).to.include('Available networks')
+    expect(labels).to.not.include('Ratings')
+  })
+
+  it('migrates cleanly when issuer.categories is absent (real legacy docs omit it)', () => {
+    const legacy = legacyFixture()
+    delete (legacy.pool.issuer as Record<string, unknown>).categories
+    expect(() => migratePoolMetadataToV2(legacy)).to.not.throw()
+    const { keyFacts } = migratePoolMetadataToV2(legacy).pool.factsheet!
+    expect(keyFacts).to.have.length(1) // Key facts only, no Service providers group
+  })
+
+  it('keeps unknown categories in "Key facts" and omits the Service providers group when none match', () => {
+    const legacy = legacyFixture()
+    legacy.pool.issuer.categories = [{ type: 'Historical default rate', value: '0%' }]
+    const { keyFacts } = migratePoolMetadataToV2(legacy).pool.factsheet!
+    expect(keyFacts).to.have.length(1)
+    expect(keyFacts[0]!.title).to.equal('Key facts')
+    expect(keyFacts[0]!.items.some((i) => i.label === 'Historical default rate')).to.equal(true)
+  })
+
+  it('matches service-provider category types case- and separator-insensitively', () => {
+    const legacy = legacyFixture()
+    legacy.pool.issuer.categories = [{ type: 'Fund_Administrator', value: 'Trident Trust' }]
+    const groups = migratePoolMetadataToV2(legacy).pool.factsheet!.keyFacts
+    const serviceProviders = groups.find((g) => g.id === 'service-providers')
+    expect(serviceProviders?.items).to.deep.equal([
+      { label: 'Fund Administrator', value: { kind: 'text', text: 'Trident Trust' } },
     ])
   })
 
@@ -163,8 +263,44 @@ describe('migratePoolMetadataToV2', () => {
     expect(documents).to.equal(undefined)
   })
 
-  it('omits sections so the app renders defaults', () => {
+  it('omits sections (app renders defaults) when there is no holdings blob', () => {
     expect(migratePoolMetadataToV2(legacyFixture()).pool.factsheet!.sections).to.equal(undefined)
+  })
+
+  it('folds the legacy holdings blob into a table section, faithfully, dropping no column', () => {
+    const legacy = legacyFixture()
+    legacy.holdings = {
+      headers: ['Asset', 'ISIN', 'Amount'],
+      data: [
+        { Asset: 'T-Bill 2026', ISIN: 'US912796RW0', Amount: 1_000_000 },
+        { Asset: 'T-Bill 2027', ISIN: null, Amount: '2500000' },
+      ],
+    }
+    const v2 = migratePoolMetadataToV2(legacy)
+    expect(v2.pool.factsheet!.sections).to.deep.equal([
+      {
+        type: 'table',
+        id: 'holdings',
+        title: 'Holdings',
+        headers: ['Asset', 'ISIN', 'Amount'],
+        rows: [
+          ['T-Bill 2026', 'US912796RW0', 1_000_000], // number stays a number
+          ['T-Bill 2027', '', '2500000'], // null -> '', numeric string stays a string
+        ],
+      },
+    ])
+    // holdings is no longer a top-level field on the v2 document.
+    expect(v2).to.not.have.property('holdings')
+  })
+
+  it('skips the holdings table when headers are empty or data is missing', () => {
+    const emptyHeaders = legacyFixture()
+    emptyHeaders.holdings = { headers: [], data: [{ x: 1 }] }
+    expect(migratePoolMetadataToV2(emptyHeaders).pool.factsheet!.sections).to.equal(undefined)
+
+    const missingData = legacyFixture()
+    missingData.holdings = { headers: ['A'] } as unknown as PoolMetadataV1['holdings']
+    expect(migratePoolMetadataToV2(missingData).pool.factsheet!.sections).to.equal(undefined)
   })
 
   it('is idempotent and returns v2 input unchanged', () => {
@@ -178,6 +314,93 @@ describe('migratePoolMetadataToV2', () => {
     const v2 = migratePoolMetadataToV2(mockPoolMetadata)
     expect(isPoolMetadataV2(v2)).to.equal(true)
     expect(() => parsePoolMetadataV2(v2)).to.not.throw()
+  })
+
+  describe('intra-v2 upgrade (documents written by an earlier SDK)', () => {
+    // The shape an SDK <= 1.16.0 produced: flat keyFacts, chart series/dataRef, top-level holdings.
+    const oldV2 = () =>
+      ({
+        version: 2,
+        pool: {
+          name: 'Old V2 Pool',
+          factsheet: {
+            keyFacts: [
+              { label: 'Issuer', value: 'Acme' },
+              { label: 'APY', valueRef: 'apy' },
+            ],
+            body: [
+              { type: 'chart', id: 'c1', chartType: 'line', series: [{ name: 's', data: [{ x: 1, y: 2 }] }] },
+              { type: 'chart', id: 'c2', chartType: 'donut', dataRef: 'apyVsBenchmarks' },
+              {
+                type: 'tabGroup',
+                id: 'tg',
+                tabs: [
+                  {
+                    label: 'T',
+                    block: {
+                      type: 'chart',
+                      id: 'c3',
+                      chartType: 'bar',
+                      series: [{ name: 's', data: [{ label: 'a', value: 1 }] }],
+                    },
+                  },
+                ],
+              },
+            ],
+          },
+        },
+        shareClasses: {},
+        holdings: { headers: ['A'], data: [{ A: 'x' }] },
+      }) as unknown as PoolMetadataV2
+
+    it('upgrades flat keyFacts into a single Key facts group with discriminated values', () => {
+      const { keyFacts } = migratePoolMetadataToV2(oldV2()).pool.factsheet!
+      expect(keyFacts).to.deep.equal([
+        {
+          type: 'keyFactGroup',
+          id: 'key-facts',
+          title: 'Key facts',
+          items: [
+            { label: 'Issuer', value: { kind: 'text', text: 'Acme' } },
+            { label: 'APY', value: { kind: 'ref', ref: 'apy' } },
+          ],
+        },
+      ])
+    })
+
+    it('upgrades chart series/dataRef into discriminated data (incl. inside tab groups)', () => {
+      const body = migratePoolMetadataToV2(oldV2()).pool.factsheet!.body
+      const c1 = body.find((b) => b.id === 'c1') as Record<string, unknown>
+      expect(c1.data).to.deep.equal({ kind: 'inline', series: [{ name: 's', data: [{ x: 1, y: 2 }] }] })
+      expect(c1).to.not.have.property('series')
+      const c2 = body.find((b) => b.id === 'c2') as Record<string, unknown>
+      expect(c2.data).to.deep.equal({ kind: 'ref', dataRef: 'apyVsBenchmarks' })
+      const tg = body.find((b) => b.id === 'tg') as { tabs: { block: Record<string, unknown> }[] }
+      expect(tg.tabs[0]!.block.data).to.deep.equal({
+        kind: 'inline',
+        series: [{ name: 's', data: [{ label: 'a', value: 1 }] }],
+      })
+    })
+
+    it('folds a top-level holdings blob into a factsheet table section and removes the top-level field', () => {
+      const v2 = migratePoolMetadataToV2(oldV2())
+      expect(v2).to.not.have.property('holdings')
+      const holdings = v2.pool.factsheet!.sections!.find((s) => s.id === 'holdings')
+      expect(holdings).to.deep.equal({
+        type: 'table',
+        id: 'holdings',
+        title: 'Holdings',
+        headers: ['A'],
+        rows: [['x']],
+      })
+    })
+
+    it('produces a document that passes the current validator, and is then idempotent', () => {
+      const upgraded = migratePoolMetadataToV2(oldV2())
+      expect(() => parsePoolMetadataV2(upgraded)).to.not.throw()
+      // Already current shape -> returned unchanged (same reference).
+      expect(migratePoolMetadataToV2(upgraded)).to.equal(upgraded)
+    })
   })
 })
 
@@ -198,18 +421,18 @@ describe('parsePoolMetadataV2', () => {
     expect(() => parsePoolMetadataV2({ version: 2, pool: {} })).to.throw(/pool.name/)
   })
 
-  it('rejects a chart with both series and dataRef', () => {
-    const bad = clone(mockPoolMetadataV2)
-    const chart = bad.pool.factsheet!.body.find((b) => b.id === 'live-chart') as Record<string, unknown>
-    chart.series = [{ name: 's', data: [{ label: 'a', value: 1 }] }]
-    expect(() => parsePoolMetadataV2(bad)).to.throw(/exactly one of/)
-  })
-
-  it('rejects a chart with neither series nor dataRef', () => {
+  it('rejects a chart whose data has an invalid kind', () => {
     const bad = clone(mockPoolMetadataV2)
     const chart = bad.pool.factsheet!.body.find((b) => b.id === 'inline-chart') as Record<string, unknown>
-    delete chart.series
-    expect(() => parsePoolMetadataV2(bad)).to.throw(/exactly one of/)
+    chart.data = { kind: 'live' }
+    expect(() => parsePoolMetadataV2(bad)).to.throw(/data has an invalid kind/)
+  })
+
+  it('rejects a chart missing its data object', () => {
+    const bad = clone(mockPoolMetadataV2)
+    const chart = bad.pool.factsheet!.body.find((b) => b.id === 'inline-chart') as Record<string, unknown>
+    delete chart.data
+    expect(() => parsePoolMetadataV2(bad)).to.throw(/data must be an object/)
   })
 
   it('rejects an unknown section ref (closed, SDK-enforced registry)', () => {
@@ -244,11 +467,11 @@ describe('parsePoolMetadataV2', () => {
     expect(() => parsePoolMetadataV2(bad)).to.throw(/unknown block type/)
   })
 
-  it('rejects an unknown chart dataRef (closed, SDK-enforced registry)', () => {
+  it('rejects an unknown chart data.dataRef (closed, SDK-enforced registry)', () => {
     const bad = clone(mockPoolMetadataV2)
     const chart = bad.pool.factsheet!.body.find((b) => b.id === 'live-chart') as Record<string, unknown>
-    chart.dataRef = 'someFutureDataset'
-    expect(() => parsePoolMetadataV2(bad)).to.throw(/dataRef is invalid/)
+    chart.data = { kind: 'ref', dataRef: 'someFutureDataset' }
+    expect(() => parsePoolMetadataV2(bad)).to.throw(/data.dataRef is invalid/)
   })
 
   it('rejects an unknown live-table indexer metric (closed, SDK-enforced registry)', () => {
@@ -265,5 +488,53 @@ describe('parsePoolMetadataV2', () => {
       shareClasses: {},
     }
     expect(() => parsePoolMetadataV2(minimal)).to.not.throw()
+  })
+
+  it('rejects a flat KeyFact[] right column (groups only, no back-compat)', () => {
+    const bad = clone(mockPoolMetadataV2)
+    bad.pool.factsheet!.keyFacts = [{ label: 'Issuer', value: { kind: 'text', text: 'x' } }] as never
+    expect(() => parsePoolMetadataV2(bad)).to.throw(/keyFacts\[0\].type must be 'keyFactGroup'/)
+  })
+
+  it('rejects a key fact whose value has an unknown kind', () => {
+    const bad = clone(mockPoolMetadataV2)
+    bad.pool.factsheet!.keyFacts[0]!.items[0]!.value = { kind: 'live' } as never
+    expect(() => parsePoolMetadataV2(bad)).to.throw(/value has an invalid kind/)
+  })
+
+  it('rejects an unknown KeyFactValue ref (closed, SDK-enforced registry)', () => {
+    const bad = clone(mockPoolMetadataV2)
+    bad.pool.factsheet!.keyFacts[0]!.items[0]!.value = { kind: 'ref', ref: 'someFutureRef' } as never
+    expect(() => parsePoolMetadataV2(bad)).to.throw(/value.ref is invalid/)
+  })
+
+  it('accepts the known KeyFactValue refs apy and availableNetworks', () => {
+    const ok = clone(mockPoolMetadataV2)
+    ok.pool.factsheet!.keyFacts[0]!.items[0]!.value = { kind: 'ref', ref: 'availableNetworks' }
+    expect(() => parsePoolMetadataV2(ok)).to.not.throw()
+  })
+
+  it('rejects an icons key fact with a malformed IconRef', () => {
+    const bad = clone(mockPoolMetadataV2)
+    bad.pool.factsheet!.keyFacts[1]!.items[0]!.value = { kind: 'icons', icons: [{ source: 'nope' }] } as never
+    expect(() => parsePoolMetadataV2(bad)).to.throw(/icons\[0\] has an invalid source/)
+  })
+
+  it('accepts both app and metadata IconRefs (app icon key is shape-validated)', () => {
+    const ok = clone(mockPoolMetadataV2)
+    ok.pool.factsheet!.keyFacts[1]!.items[0]!.value = {
+      kind: 'icons',
+      icons: [
+        { source: 'app', key: 'any-future-icon', label: 'X' },
+        { source: 'metadata', file: { uri: 'ipfs://Qm', mime: 'image/svg+xml' } },
+      ],
+    }
+    expect(() => parsePoolMetadataV2(ok)).to.not.throw()
+  })
+
+  it('rejects a key fact group missing items', () => {
+    const bad = clone(mockPoolMetadataV2)
+    delete (bad.pool.factsheet!.keyFacts[0] as Record<string, unknown>).items
+    expect(() => parsePoolMetadataV2(bad)).to.throw(/keyFacts\[0\].items must be an array/)
   })
 })

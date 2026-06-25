@@ -243,6 +243,16 @@ export type PoolMetadataV1 = {
   }
   addressLabels?: Record<string, string>
   workflowPolicies?: WorkflowPolicy[]
+  /** Per-share-class withdraw addresses, keyed by share class id. Engine config, carried verbatim. */
+  withdrawManagers?: Record<HexString, WithdrawManager[]>
+}
+
+/** A configured withdraw destination for a share class on a given chain/asset. */
+export type WithdrawManager = {
+  assetAddress: HexString
+  chainId: string
+  manager: HexString
+  label?: string
 }
 
 /* ------------------------------------------------------------------------------------------------
@@ -319,16 +329,52 @@ export type ChartSeries = {
 }
 
 /**
- * A right-column key fact. `value` is static text; `valueRef: 'apy'` instead resolves live from
- * `shareClasses[scId].apy` (+ `apyTooltip`). The `valueRef` set is closed and grows additively.
+ * An icon, optionally with a label (renders as an icon, or an icon+text pill when `label` is set).
+ * - `source: 'metadata'` carries the image inline (issuer-supplied).
+ * - `source: 'app'` references an app-owned icon by `key` (e.g. `'fordefi'`, `'moodys'`). The icon
+ *   `key` registry is app-owned; it is not yet enumerated, so the SDK validates it as a string only.
  */
+export type IconRef =
+  | { source: 'metadata'; file: FileType; alt?: string; label?: string }
+  | { source: 'app'; key: string; label?: string }
+
+/**
+ * A key fact's value, discriminated by `kind` so there is no value/valueRef/icons precedence
+ * ambiguity. Exactly one kind applies:
+ * - `text`  — static text.
+ * - `icons` — author-chosen icons (each may carry a label).
+ * - `ref`   — app-owned widget that reads existing data (an indexer query or a typed metadata
+ *             field) and renders it. The `ref` set is closed and SDK-validated on write (extended
+ *             via a coordinated SDK release, see {@link DataRef}). `'apy'` renders formatted APY
+ *             (via the app's `usePoolApy`); `'availableNetworks'` renders the token's deployed
+ *             chains with the app's built-in network icons; `'ratings'` renders the typed
+ *             `pool.poolRatings` field as icon+text pills with per-rating links (`agency` → icon,
+ *             `value` → label, `reportUrl`/`reportFile` → link). None of these produce `IconRef[]`.
+ */
+export type KeyFactValue =
+  | { kind: 'text'; text: string }
+  | { kind: 'icons'; icons: IconRef[] }
+  | { kind: 'ref'; ref: 'apy' | 'availableNetworks' | 'ratings' }
+
+/** A right-column key fact. Its value is a single discriminated {@link KeyFactValue}. */
 export type KeyFact = {
   label: string
-  value?: string
-  valueRef?: 'apy'
+  value: KeyFactValue
   tooltip?: string
   href?: string
   visibility?: Visibility
+}
+
+/**
+ * A titled right-column group of key facts. Every key fact lives inside a group; there are no
+ * top-level bare key facts. An untitled group renders as ungrouped rows.
+ */
+export type KeyFactGroup = {
+  type: 'keyFactGroup'
+  id: string
+  title?: string
+  visibility?: Visibility
+  items: KeyFact[]
 }
 
 type BlockBase = { id: string; title?: string; visibility?: Visibility }
@@ -345,13 +391,17 @@ export type TableBlock = BlockBase & {
   asOf?: string
 }
 
+/**
+ * A chart's data source, discriminated by `kind` (no inline-vs-live ambiguity):
+ * - `inline` — metadata-supplied series.
+ * - `ref`    — an app/indexer-computed dataset, referenced by a closed, SDK-validated {@link DataRef}.
+ */
+export type ChartData = { kind: 'inline'; series: ChartSeries[] } | { kind: 'ref'; dataRef: DataRef }
+
 export type ChartBlock = BlockBase & {
   type: 'chart'
   chartType: ChartType
-  /** Inline metadata-supplied data ... */
-  series?: ChartSeries[]
-  /** ... or an app/indexer-computed dataset (mutually exclusive with `series`). */
-  dataRef?: DataRef
+  data: ChartData
   stacked?: boolean
   legend?: boolean
   xAxis?: { label?: string; type?: 'category' | 'time' | 'number' }
@@ -427,25 +477,32 @@ export type LayoutItem = ContentBlock | SectionRefBlock
 export type Factsheet = {
   /** Top region, left column, ordered (authored blocks + app section refs e.g. `onchainMetrics`). */
   body: LayoutItem[]
-  /** Top region, right column, ordered. */
-  keyFacts: KeyFact[]
+  /** Top region, right column, ordered groups of key facts (groups only, no bare key facts). */
+  keyFacts: KeyFactGroup[]
   /** Full-width region below, ordered. Omit to let the app render its default sections. */
   sections?: LayoutItem[]
 }
 
-/** A pool rating without the unused `reportFile` PDF (migrated into a Documents block in v2). */
+/**
+ * A pool rating, kept as a typed field in v2 (the single source of truth for ratings). The
+ * `ratings` {@link KeyFactValue} `ref` widget renders this verbatim: `agency` → icon, `value` →
+ * label, `reportUrl`/`reportFile` → the per-rating link.
+ */
 export type PoolRatingV2 = {
   agency?: string
   value?: string
   reportUrl?: string
+  reportFile?: FileType | null
 }
 
 /**
  * Versioned, factsheet-aware pool metadata. Drops fields unused by every consumer
  * (`newInvestmentsStatus`, `loanTemplates`, `reports`, `issuer.repName/shortDescription`, onboarding
- * extras) and folds the legacy display fields (`details`, `issuer.description/categories`,
- * `poolRatings[].reportFile`) into `pool.factsheet`. Engine fields (`shareClasses`,
- * `merkleProofManager`, `holdings`, `addressLabels`, `workflowPolicies`) are preserved verbatim.
+ * extras) and folds the legacy display fields (`details`, `issuer.description/categories`) and the
+ * off-chain `holdings` blob (into a `table` section) into `pool.factsheet`. `poolRatings` stays a
+ * typed field (surfaced via the `ratings` key-fact ref). Engine fields (`shareClasses`,
+ * `merkleProofManager`, `addressLabels`, `workflowPolicies`, `withdrawManagers`) are preserved
+ * verbatim.
  */
 export type PoolMetadataV2 = {
   version: 2
@@ -460,15 +517,16 @@ export type PoolMetadataV2 = {
     kycRestrictedCountries?: string[]
     kybRestrictedCountries?: string[]
   }
-  holdings?: PoolMetadataV1['holdings']
   addressLabels?: PoolMetadataV1['addressLabels']
   workflowPolicies?: PoolMetadataV1['workflowPolicies']
+  withdrawManagers?: PoolMetadataV1['withdrawManagers']
 }
 
 /**
  * Public alias usable for either shape. Reads of common fields (`pool.name`, `shareClasses`,
- * `addressLabels`, `onboarding`, `holdings`, …) are valid without narrowing; discriminate on
- * `version` (or use {@link isPoolMetadataV2}) before touching v2-only fields like `pool.factsheet`.
+ * `addressLabels`, `onboarding`, …) are valid without narrowing; discriminate on `version` (or use
+ * {@link isPoolMetadataV2}) before touching v2-only fields like `pool.factsheet`. Note `holdings`
+ * exists only on {@link PoolMetadataV1}; in v2 it lives in `pool.factsheet` as a `table` section.
  */
 export type PoolMetadata = PoolMetadataV1 | PoolMetadataV2
 
