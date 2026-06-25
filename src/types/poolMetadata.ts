@@ -333,15 +333,18 @@ export type IconRef =
  * ambiguity. Exactly one kind applies:
  * - `text`  — static text.
  * - `icons` — author-chosen icons (each may carry a label).
- * - `ref`   — app-owned LIVE data + rendering. The `ref` set is closed and SDK-validated on write
- *             (extended via a coordinated SDK release, see {@link DataRef}). `'apy'` renders
- *             formatted APY (via the app's `usePoolApy`); `'availableNetworks'` renders the token's
- *             deployed chains with the app's built-in network icons (it does NOT produce `IconRef[]`).
+ * - `ref`   — app-owned widget that reads existing data (an indexer query or a typed metadata
+ *             field) and renders it. The `ref` set is closed and SDK-validated on write (extended
+ *             via a coordinated SDK release, see {@link DataRef}). `'apy'` renders formatted APY
+ *             (via the app's `usePoolApy`); `'availableNetworks'` renders the token's deployed
+ *             chains with the app's built-in network icons; `'ratings'` renders the typed
+ *             `pool.poolRatings` field as icon+text pills with per-rating links (`agency` → icon,
+ *             `value` → label, `reportUrl`/`reportFile` → link). None of these produce `IconRef[]`.
  */
 export type KeyFactValue =
   | { kind: 'text'; text: string }
   | { kind: 'icons'; icons: IconRef[] }
-  | { kind: 'ref'; ref: 'apy' | 'availableNetworks' }
+  | { kind: 'ref'; ref: 'apy' | 'availableNetworks' | 'ratings' }
 
 /** A right-column key fact. Its value is a single discriminated {@link KeyFactValue}. */
 export type KeyFact = {
@@ -470,20 +473,25 @@ export type Factsheet = {
   sections?: LayoutItem[]
 }
 
-/** A pool rating without the unused `reportFile` PDF (migrated into a Documents block in v2). */
+/**
+ * A pool rating, kept as a typed field in v2 (the single source of truth for ratings). The
+ * `ratings` {@link KeyFactValue} `ref` widget renders this verbatim: `agency` → icon, `value` →
+ * label, `reportUrl`/`reportFile` → the per-rating link.
+ */
 export type PoolRatingV2 = {
   agency?: string
   value?: string
   reportUrl?: string
+  reportFile?: FileType | null
 }
 
 /**
  * Versioned, factsheet-aware pool metadata. Drops fields unused by every consumer
  * (`newInvestmentsStatus`, `loanTemplates`, `reports`, `issuer.repName/shortDescription`, onboarding
- * extras) and folds the legacy display fields (`details`, `issuer.description/categories`,
- * `poolRatings[].reportFile`) and the off-chain `holdings` blob (into a `table` section) into
- * `pool.factsheet`. Engine fields (`shareClasses`, `merkleProofManager`, `addressLabels`,
- * `workflowPolicies`) are preserved verbatim.
+ * extras) and folds the legacy display fields (`details`, `issuer.description/categories`) and the
+ * off-chain `holdings` blob (into a `table` section) into `pool.factsheet`. `poolRatings` stays a
+ * typed field (surfaced via the `ratings` key-fact ref). Engine fields (`shareClasses`,
+ * `merkleProofManager`, `addressLabels`, `workflowPolicies`) are preserved verbatim.
  */
 export type PoolMetadataV2 = {
   version: 2

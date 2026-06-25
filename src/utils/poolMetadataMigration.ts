@@ -46,6 +46,34 @@ function formatMinInvestment(value: number): string {
   return value.toLocaleString('en-US')
 }
 
+/** Normalizes an issuer category `type` for matching (case- and separator-insensitive). */
+function normalizeCategoryType(type: string): string {
+  return type.toLowerCase().replace(/[\s_-]/g, '')
+}
+
+/**
+ * Issuer-category `type` values (normalized) that migrate into the "Service providers" key-fact
+ * group, mapped to their display label. Anything not listed stays in "Key facts". This is a seed
+ * heuristic, not a validated registry: an unmatched type is simply left in "Key facts", so the list
+ * is safe to extend. NOTE: confirm/extend this against the production category vocabulary.
+ */
+const SERVICE_PROVIDER_CATEGORIES = new Map<string, string>([
+  ['portfoliomanager', 'Portfolio Manager'],
+  ['investmentmanager', 'Investment Manager'],
+  ['assetmanager', 'Asset Manager'],
+  ['custodian', 'Custodian'],
+  ['subcustodian', 'Sub-Custodian'],
+  ['administrator', 'Administrator'],
+  ['fundadministrator', 'Fund Administrator'],
+  ['auditor', 'Auditor'],
+  ['trustee', 'Trustee'],
+  ['transferagent', 'Transfer Agent'],
+  ['payingagent', 'Paying Agent'],
+  ['legalcounsel', 'Legal Counsel'],
+  ['legaladvisor', 'Legal Advisor'],
+  ['primebroker', 'Prime Broker'],
+])
+
 /** Document links only carry web/IPFS URIs; anything else (e.g. `javascript:`) is dropped. */
 function isSafeDocumentUri(uri: string): boolean {
   const scheme = uri.trim().toLowerCase()
@@ -72,7 +100,7 @@ function buildFactsheet(
 
   const text = (value: string): KeyFact['value'] => ({ kind: 'text', text: value })
 
-  const items: KeyFact[] = [
+  const keyFactItems: KeyFact[] = [
     { label: 'Issuer', value: text(issuer.name) },
     { label: 'Asset type', value: text(`${asset.class} - ${asset.subClass}`) },
     { label: 'APY', value: { kind: 'ref', ref: 'apy' } },
@@ -81,21 +109,46 @@ function buildFactsheet(
 
   const weightedAverageMaturity = firstShareClass?.weightedAverageMaturity
   if (weightedAverageMaturity != null) {
-    items.push({ label: 'Average asset maturity', value: text(`${weightedAverageMaturity} days`) })
+    keyFactItems.push({ label: 'Average asset maturity', value: text(`${weightedAverageMaturity} days`) })
   }
   if (expenseRatio != null && expenseRatio !== '') {
-    items.push({ label: 'Expense ratio', value: text(`${expenseRatio}%`) })
+    keyFactItems.push({ label: 'Expense ratio', value: text(`${expenseRatio}%`) })
   }
   const minInitialInvestment = firstShareClass?.minInitialInvestment
   if (minInitialInvestment != null) {
-    items.push({ label: 'Min. investment', value: text(formatMinInvestment(minInitialInvestment)) })
-  }
-  for (const category of issuer.categories) {
-    items.push({ label: category.type, value: text(category.value) })
+    keyFactItems.push({ label: 'Min. investment', value: text(formatMinInvestment(minInitialInvestment)) })
   }
 
-  // The right column is groups only; seed one untitled group holding the projected key facts.
-  const keyFacts: KeyFactGroup[] = [{ type: 'keyFactGroup', id: 'key-facts', items }]
+  // Issuer categories are split: known service-provider roles go into a "Service providers" group,
+  // everything else stays in "Key facts". Matching is case/separator-insensitive; an unknown type
+  // falls back to "Key facts" (the seed is ops-editable, so a miss is low-cost).
+  const serviceProviderItems: KeyFact[] = []
+  for (const category of issuer.categories) {
+    const label = SERVICE_PROVIDER_CATEGORIES.get(normalizeCategoryType(category.type))
+    if (label) {
+      serviceProviderItems.push({ label, value: text(category.value) })
+    } else {
+      keyFactItems.push({ label: category.type, value: text(category.value) })
+    }
+  }
+
+  // Ratings render via the `ratings` ref widget, reading the typed `poolRatings` field verbatim
+  // (agency/value/reportUrl/reportFile). The data is not duplicated into the key fact.
+  if ((poolRatings ?? []).length > 0) {
+    keyFactItems.push({ label: 'Ratings', value: { kind: 'ref', ref: 'ratings' } })
+  }
+
+  // The right column is groups only. Seed a titled "Key facts" group, plus a "Service providers"
+  // group when any category matched.
+  const keyFacts: KeyFactGroup[] = [{ type: 'keyFactGroup', id: 'key-facts', title: 'Key facts', items: keyFactItems }]
+  if (serviceProviderItems.length > 0) {
+    keyFacts.push({
+      type: 'keyFactGroup',
+      id: 'service-providers',
+      title: 'Service providers',
+      items: serviceProviderItems,
+    })
+  }
 
   const body: LayoutItem[] = []
   if (issuer.description) {
@@ -104,6 +157,8 @@ function buildFactsheet(
   ;(details ?? []).forEach((detail, index) => {
     body.push({ type: 'text', id: `detail-${index}`, title: detail.title, body: detail.body })
   })
+  // Ratings reports are surfaced two ways: a Documents body block (markdown links to the report
+  // PDFs) and the `ratings` key-fact ref pill above. Both read the same typed `poolRatings` field.
   const ratingsWithReports = (poolRatings ?? []).filter(
     (rating) => rating.reportFile?.uri && isSafeDocumentUri(rating.reportFile.uri)
   )
@@ -149,7 +204,8 @@ function buildFactsheet(
  * unit-testable. Returns the input unchanged when it is already v2.
  *
  * - Strips fields unused by every consumer (`newInvestmentsStatus`, `reports`, `loanTemplates`,
- *   `issuer.repName/shortDescription`, onboarding extras) and reshapes `issuer`/`poolRatings`.
+ *   `issuer.repName/shortDescription`, onboarding extras) and reshapes `issuer`. `poolRatings` is
+ *   preserved verbatim as a typed field (surfaced via the `ratings` key-fact ref).
  * - Maps legacy APY modes across `shareClasses[*].apy`.
  * - Projects the legacy display fields into `pool.factsheet`, and folds the off-chain `holdings`
  *   blob into a `table` section (`id: 'holdings'`); `holdings` is not carried as a top-level field.
@@ -174,8 +230,9 @@ export function migratePoolMetadataToV2(legacy: PoolMetadata): PoolMetadataV2 {
     pool: {
       ...restPool,
       issuer: { name: issuer.name, email: issuer.email, logo: issuer.logo },
-      poolRatings: poolRatings?.map(({ reportFile: _reportFile, ...rating }) => rating),
-      // Legacy `holdings` is folded into the factsheet here and not carried as a top-level field.
+      // `poolRatings` stays a typed field verbatim (incl. reportFile); surfaced via the `ratings`
+      // key-fact ref. `holdings` is folded into the factsheet and not carried as a top-level field.
+      poolRatings,
       factsheet: buildFactsheet(pool, shareClasses, holdings),
     },
     shareClasses: migratedShareClasses,
@@ -210,7 +267,7 @@ const DATA_REFS = new Set<DataRef>(['apyVsBenchmarks', 'maturityDistribution'])
 const SECTION_REFS = new Set<SectionRef>(['onchainMetrics', 'smartContracts'])
 const LIVE_METRICS = new Set<LiveMetric>(['tokenPrice', 'nav', 'apy30d', 'navChange', 'monthlyReturn'])
 const LIVE_DATASETS = new Set<LiveDataset>(['monthlySummary'])
-const KEY_FACT_REFS = new Set(['apy', 'availableNetworks'])
+const KEY_FACT_REFS = new Set(['apy', 'availableNetworks', 'ratings'])
 const COLUMN_FORMATS = new Set<ColumnFormat>(['text', 'number', 'percent', 'currency'])
 const CONTENT_BLOCK_TYPES = new Set(['text', 'table', 'chart', 'image', 'kpiGroup', 'tabGroup', 'liveTable'])
 const TAB_BLOCK_TYPES = new Set(['text', 'table', 'chart', 'kpiGroup'])

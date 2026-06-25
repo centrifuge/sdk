@@ -44,7 +44,14 @@ export const mockPoolMetadataV2: PoolMetadataV2 = {
     ],
     investorType: 'Fake Investor Type',
     poolStructure: 'Fake Structure',
-    poolRatings: [{ agency: 'Fake Agency', value: 'AAA', reportUrl: 'https://example.com/rating' }],
+    poolRatings: [
+      {
+        agency: 'Fake Agency',
+        value: 'AAA',
+        reportUrl: 'https://example.com/rating',
+        reportFile: { uri: 'ipfs://QmRatingReport', mime: 'application/pdf' },
+      },
+    ],
     factsheet: {
       keyFacts: [
         {
@@ -56,6 +63,7 @@ export const mockPoolMetadataV2: PoolMetadataV2 = {
             { label: 'Asset type', value: { kind: 'text', text: 'Private credit - Fake Subclass' } },
             { label: 'APY', value: { kind: 'ref', ref: 'apy' }, tooltip: 'Net of fees' },
             { label: 'Networks', value: { kind: 'ref', ref: 'availableNetworks' } },
+            { label: 'Ratings', value: { kind: 'ref', ref: 'ratings' } },
           ],
         },
         {

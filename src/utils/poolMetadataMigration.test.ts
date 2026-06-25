@@ -107,20 +107,26 @@ describe('migratePoolMetadataToV2', () => {
     expect(v2.workflowPolicies).to.deep.equal([])
   })
 
-  it('strips reportFile from kept poolRatings', () => {
+  it('preserves poolRatings verbatim as a typed field (incl. reportFile)', () => {
     const v2 = migratePoolMetadataToV2(legacyFixture())
     expect(v2.pool.poolRatings).to.deep.equal([
-      { agency: 'Moodys', value: 'Aaa', reportUrl: 'https://x.io/r1' },
+      {
+        agency: 'Moodys',
+        value: 'Aaa',
+        reportUrl: 'https://x.io/r1',
+        reportFile: { uri: 'ipfs://Qm1', mime: 'application/pdf' },
+      },
       { agency: 'S&P', value: 'AAA' },
     ])
   })
 
-  it('projects key facts into one untitled group with discriminated values, in order', () => {
+  it('projects a titled "Key facts" group and splits service-provider categories into "Service providers"', () => {
     const { keyFacts } = migratePoolMetadataToV2(legacyFixture()).pool.factsheet!
     expect(keyFacts).to.deep.equal([
       {
         type: 'keyFactGroup',
         id: 'key-facts',
+        title: 'Key facts',
         items: [
           { label: 'Issuer', value: { kind: 'text', text: 'Acme Issuer' } },
           { label: 'Asset type', value: { kind: 'text', text: 'Public credit - T-Bills' } },
@@ -129,10 +135,38 @@ describe('migratePoolMetadataToV2', () => {
           { label: 'Average asset maturity', value: { kind: 'text', text: '63 days' } },
           { label: 'Expense ratio', value: { kind: 'text', text: '0.25%' } },
           { label: 'Min. investment', value: { kind: 'text', text: '2,500' } },
+          { label: 'Ratings', value: { kind: 'ref', ref: 'ratings' } },
+        ],
+      },
+      {
+        type: 'keyFactGroup',
+        id: 'service-providers',
+        title: 'Service providers',
+        // 'Trustee' and 'Auditor' are known service-provider category types.
+        items: [
           { label: 'Trustee', value: { kind: 'text', text: 'Acme Trust' } },
           { label: 'Auditor', value: { kind: 'text', text: 'Acme Audit' } },
         ],
       },
+    ])
+  })
+
+  it('keeps unknown categories in "Key facts" and omits the Service providers group when none match', () => {
+    const legacy = legacyFixture()
+    legacy.pool.issuer.categories = [{ type: 'Historical default rate', value: '0%' }]
+    const { keyFacts } = migratePoolMetadataToV2(legacy).pool.factsheet!
+    expect(keyFacts).to.have.length(1)
+    expect(keyFacts[0]!.title).to.equal('Key facts')
+    expect(keyFacts[0]!.items.some((i) => i.label === 'Historical default rate')).to.equal(true)
+  })
+
+  it('matches service-provider category types case- and separator-insensitively', () => {
+    const legacy = legacyFixture()
+    legacy.pool.issuer.categories = [{ type: 'portfolio_Manager', value: 'Janus Henderson Investors' }]
+    const groups = migratePoolMetadataToV2(legacy).pool.factsheet!.keyFacts
+    const serviceProviders = groups.find((g) => g.id === 'service-providers')
+    expect(serviceProviders?.items).to.deep.equal([
+      { label: 'Portfolio Manager', value: { kind: 'text', text: 'Janus Henderson Investors' } },
     ])
   })
 
