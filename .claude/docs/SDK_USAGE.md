@@ -50,6 +50,81 @@ const account = privateKeyToAccount('0x...')
 centrifuge.setSigner(account)
 ```
 
+### Build-only / custodial signing
+
+When you sign somewhere other than an in-process EOA/EIP-1193 wallet — custodial
+or MPC signers (Fordefi, Fireblocks), Safe proposal flows, offline/air-gapped
+signing, or a "review the calldata before you sign" UX — use `buildOnly` to get
+the **unsigned calldata** a transaction method would send, without a signer and
+without broadcasting:
+
+```typescript
+const centrifuge = new Centrifuge({ environment, rpcUrls })
+const pool = await centrifuge.pool(poolId)
+
+// No setSigner() call needed.
+const built = await centrifuge.buildOnly(pool.updateMetadata(metadata))
+// built: { centrifugeId, chainId, to, data, value, calls, messages? }
+
+// Hand built.data to your custodial signer (Fordefi, Safe, MPC) entirely
+// outside the SDK, then broadcast it yourself.
+```
+
+`buildOnly` runs the full construction logic — encoding, merkle-tree
+construction, weiroll, IPFS pinning, address resolution — because that work _is_
+what produces the bytes. It only skips the signer-dependent steps (wallet-client
+creation, address resolution, chain switching, broadcast). Because the signing
+path and `buildOnly` share the same calldata encoder, `built.data` is
+byte-for-byte identical to what the signing path would send for the same inputs.
+
+It returns a plain `Promise<BuiltTransaction>` (not an Observable) — there is no
+transaction lifecycle to subscribe to, only the resulting bytes.
+
+```typescript
+interface BuiltCall {
+  to: HexString
+  data: HexString
+  value: bigint
+}
+interface BuiltTransaction {
+  centrifugeId: number
+  chainId: number
+  to: HexString // target contract
+  data: HexString // calldata (multicall(bytes[]) when batched)
+  value: bigint // wei to send
+  calls: BuiltCall[] // decoded inner calls (one per wrapped call)
+  messages?: Record<number, MessageTypeWithSubType[]> // cross-chain msgs, for fee estimation
+}
+```
+
+Some methods read the sender address at build time (e.g. permit flows). Pass it
+via `options.fromAddress` — it is validated as an address and **never used to
+sign**; when omitted, the zero address is used:
+
+```typescript
+const built = await centrifuge.buildOnly(tx, { fromAddress: '0xYourSender...' })
+```
+
+> **Note on the default.** When `fromAddress` is omitted, `buildOnly` does **not**
+> error — it silently embeds the zero address as `signingAddress`. For a method
+> whose construction bakes the sender into the calldata (permit flows, anything
+> that records `ctx.signingAddress` on-chain), that produces valid-looking bytes
+> with the wrong sender. **Always pass `fromAddress` for sender-dependent
+> methods.** Methods that genuinely need to _sign_ at build time (off-chain
+> permit signatures) cannot be built at all and will throw a descriptive error if
+> their build callback dereferences `walletClient`/`signer`.
+
+Notes and limitations:
+
+- **No signing, custody, policy, or broadcast.** `buildOnly` returns bytes and
+  nothing about how they get signed. Those belong to the consumer.
+- **Works only for methods that route through `wrapTransaction`** (the same
+  constraint as `batchTransactions`). Methods that broadcast via `doTransaction`
+  directly cannot be built without a signer.
+- `batchTransactions([oneTx])` is **not** the supported way to obtain unsigned
+  calldata — use `buildOnly`. `batchTransactions` remains for composing a genuine
+  multi-call batch.
+
 ## Entity Reference
 
 ### Pool - Pool management and configuration

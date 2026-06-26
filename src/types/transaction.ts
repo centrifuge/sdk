@@ -140,8 +140,56 @@ export type Signer = EIP1193ProviderLike | LocalAccount
 
 export type Transaction = Query<OperationStatus> & { centrifugeId: number }
 
+/** A single decoded inner call within a {@link BuiltTransaction}. */
+export type BuiltCall = {
+  to: HexString
+  data: HexString
+  value: bigint
+}
+
+/**
+ * The unsigned transaction envelope produced by `Centrifuge.buildOnly`. It is
+ * the calldata a transaction method *would* send, with no signing or broadcast.
+ *
+ * - `data` is the single call's calldata, or `multicall(bytes[])` calldata when
+ *   more than one inner call is wrapped — byte-equal to what the signing path
+ *   would send for the same inputs.
+ * - `calls` exposes each inner call so consumers can inspect a batch without
+ *   re-parsing the multicall.
+ * - `messages` carries the cross-chain messages (if any) so consumers can run
+ *   the same fee estimation the signing path does.
+ */
+export type BuiltTransaction = {
+  centrifugeId: number
+  chainId: number
+  to: HexString
+  data: HexString
+  value: bigint
+  calls: BuiltCall[]
+  messages?: Record<number, MessageTypeWithSubType[]>
+}
+
+export type BuildOnlyOptions = {
+  /**
+   * Address to use as the build-time `signingAddress` for methods whose
+   * construction reads it (e.g. permit flows). Defaults to the zero address.
+   * No signing is performed with it — it is validated as an address and never
+   * used to sign.
+   */
+  fromAddress?: HexString
+}
+
 export type TransactionContext = {
   isBatching?: boolean
+  /**
+   * Build-only mode. When true, the transaction is run to produce unsigned
+   * calldata (via the `wrapTransaction` batching branch) and no signing,
+   * broadcasting, chain switching, or wallet-client interaction happens.
+   * In this mode `signer`/`walletClient` are not backed by a real signer and
+   * must not be used; build callbacks may read `signingAddress` (defaults to
+   * the zero address unless a `fromAddress` is supplied to `buildOnly`).
+   */
+  isBuilding?: boolean
   signingAddress: HexString
   chain: Chain
   centrifugeId: number

@@ -14,6 +14,7 @@ import HubRegistryAbi from './HubRegistry.abi.js'
 import MerkleProofManagerAbi from './MerkleProofManager.abi.js'
 import MerkleProofManagerFactoryAbi from './MerkleProofManagerFactory.abi.js'
 import MessageDispatcherAbi from './MessageDispatcher.abi.js'
+import MulticallAbi from './Multicall.abi.js'
 import OnchainPMAbi from './OnchainPM.abi.js'
 import OnchainPMFactoryAbi from './OnchainPMFactory.abi.js'
 import OracleValuationAbi from './OracleValuation.abi.js'
@@ -63,4 +64,5 @@ export const ABI = {
   OnchainPMFactory: parseAbi(OnchainPMFactoryAbi),
   OracleValuation: parseAbi(OracleValuationAbi),
   ScriptHelpers: parseAbi(ScriptHelpersAbi),
+  Multicall: parseAbi(MulticallAbi),
 }

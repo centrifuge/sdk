@@ -3,6 +3,7 @@ import {
   defer,
   filter,
   first,
+  firstValueFrom,
   identity,
   isObservable,
   map,
@@ -20,11 +21,14 @@ import {
   custom,
   encodeFunctionData,
   fallback,
+  getAddress,
   getContract,
   http,
+  isAddress,
   keccak256,
   parseAbi,
   toHex,
+  zeroAddress,
   type Account,
   type Chain,
   type WalletClient,
@@ -62,6 +66,9 @@ import {
   emptyMessage,
   MessageType,
   MessageTypeWithSubType,
+  type BuildOnlyOptions,
+  type BuiltCall,
+  type BuiltTransaction,
   type OperationStatus,
   type Signer,
   type Transaction,
@@ -78,6 +85,7 @@ import { makeThenable, repeatOnEvents, shareReplayWithDelayedReset } from './uti
 import {
   BatchTransactionData,
   doTransaction,
+  encodeBatchCalldata,
   isLocalAccount,
   parseEventLogs,
   wrapTransaction,
@@ -174,6 +182,11 @@ export class Centrifuge {
   }
 
   #isBatching = new WeakSet<Transaction>()
+  // Transactions flagged for build-only mode, with the optional build-time
+  // `fromAddress` used as `ctx.signingAddress` (see `buildOnly`). Build mode
+  // reuses `wrapTransaction`'s batching branch to emit unsigned calldata, so a
+  // build-flagged tx is also treated as batching internally.
+  #buildOnly = new WeakMap<Transaction, { fromAddress: HexString }>()
 
   constructor(config: UserProvidedConfig = {}) {
     const defaultConfigForEnv = envConfig[config?.environment || 'mainnet']
@@ -1245,6 +1258,52 @@ export class Centrifuge {
   ): Transaction {
     const self = this
     async function* transact() {
+      const buildOnly = self.#buildOnly.get($tx)
+      // Build-only mode: produce unsigned calldata via wrapTransaction's batching
+      // branch. No signer, wallet client, address resolution, chain switching, or
+      // broadcast — only the I/O the construction itself needs (addresses, IPFS,
+      // public reads). `signingAddress` comes from `fromAddress` (defaults to the
+      // zero address); build callbacks must not assume a real signer.
+      if (buildOnly) {
+        const [chain, publicClient] = await Promise.all([
+          self.getChainConfig(centrifugeId),
+          self.getClient(centrifugeId),
+        ])
+        // `walletClient`/`signer` are never available in build mode (no signer is
+        // set). Rather than hand out `undefined` casts that surface as opaque
+        // TypeErrors, expose throwing getters so any accidental dereference fails
+        // with a descriptive message that points at the cause.
+        const throwInBuildMode = (field: 'walletClient' | 'signer'): never => {
+          throw new Error(
+            `Cannot access \`${field}\` in build-only mode: buildOnly() runs without a signer. ` +
+              `This method needs to sign and cannot be built. Use a method that routes through wrapTransaction.`
+          )
+        }
+        const transaction = transactionCallback({
+          isBatching: true,
+          isBuilding: true,
+          signingAddress: buildOnly.fromAddress,
+          chain,
+          centrifugeId,
+          publicClient,
+          get walletClient(): WalletClient<any, Chain, Account> {
+            return throwInBuildMode('walletClient')
+          },
+          get signer(): Signer {
+            return throwInBuildMode('signer')
+          },
+          root: self,
+        })
+        if (Symbol.asyncIterator in transaction) {
+          yield* transaction
+        } else if (isObservable(transaction)) {
+          yield transaction
+        } else {
+          throw new Error('Invalid arguments')
+        }
+        return
+      }
+
       let isBatching = false
       if (self.#isBatching.has($tx)) {
         isBatching = true
@@ -1366,6 +1425,78 @@ export class Centrifuge {
    */
   batchTransactions(title: string, transactions: Transaction[]): Transaction {
     return this._experimental_batch(title, transactions)
+  }
+
+  /**
+   * Build the unsigned calldata a transaction would send, without a signer and
+   * without broadcasting. Runs the full construction logic (encoding, merkle,
+   * weiroll, IPFS pinning, address resolution) but performs no signing step —
+   * no `setSigner` is required and no nonce is consumed.
+   *
+   * Returns a plain `Promise<BuiltTransaction>` (not an Observable): there is no
+   * transaction lifecycle to subscribe to, only the resulting bytes.
+   *
+   * Building does real I/O (protocol addresses, IPFS pinning), so it is async.
+   * Only signer-dependent steps are skipped. Methods whose construction reads
+   * the sender address (e.g. permit flows) read `options.fromAddress`; when it
+   * is omitted the zero address is used.
+   *
+   * Works only for methods that route through `wrapTransaction` (the same
+   * constraint as `batchTransactions`); methods that call `doTransaction`
+   * directly cannot be built without a signer.
+   *
+   * @example
+   * ```ts
+   * const centrifuge = new Centrifuge({ environment, rpcUrls })
+   * const pool = await centrifuge.pool(poolId)
+   * const built = await centrifuge.buildOnly(pool.updateMetadata(metadata))
+   * // hand built.data to a custodial signer (Fordefi, Safe, MPC) outside the SDK
+   * ```
+   */
+  async buildOnly(tx: Transaction, options?: BuildOnlyOptions): Promise<BuiltTransaction> {
+    const fromAddress = options?.fromAddress ?? zeroAddress
+    if (!isAddress(fromAddress)) {
+      throw new Error(`buildOnly: invalid fromAddress "${fromAddress}"`)
+    }
+    // Checksum so the build-time signingAddress matches what a real wallet would
+    // produce (relevant for any method that embeds the address in calldata).
+    this.#buildOnly.set(tx, { fromAddress: getAddress(fromAddress) })
+
+    // The flag is consumed on first use and always removed afterwards. `$tx` is
+    // `defer(transact)`, so every subscription re-runs the generator and re-reads
+    // this WeakMap; leaving the flag set would make a later subscription (e.g.
+    // `await tx` to actually sign) silently re-enter build mode and yield
+    // `BatchTransactionData` where `OperationStatus` is expected. `finally`
+    // guarantees cleanup even when the build callback throws.
+    let built: BatchTransactionData
+    try {
+      built = (await firstValueFrom(tx)) as unknown as BatchTransactionData
+    } finally {
+      this.#buildOnly.delete(tx)
+    }
+    if (!built || !built.contract || !built.data) {
+      throw new Error('buildOnly: transaction did not produce build-only calldata (does it use wrapTransaction?)')
+    }
+
+    const chainId = await this._idToChain(tx.centrifugeId)
+    const value = built.value ?? 0n
+    const calls: BuiltCall[] = built.data.map((data) => ({
+      to: built.contract,
+      data,
+      // The protocol's multicall is non-payable per inner call; the whole-tx
+      // `value` rides on the outer call, so per-call value is 0.
+      value: 0n,
+    }))
+
+    return {
+      centrifugeId: tx.centrifugeId,
+      chainId,
+      to: built.contract,
+      data: encodeBatchCalldata(built.data),
+      value,
+      calls,
+      ...(built.messages ? { messages: built.messages } : {}),
+    }
   }
 
   /** @internal */
