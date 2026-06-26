@@ -1,5 +1,5 @@
 import { HexString } from './index.js'
-import type { ApyMode, Factsheet, LegacyApyMode, PoolMetadata } from './poolMetadata.js'
+import type { ApyMode, Factsheet, LegacyApyMode, LinkDocument, PoolMetadata } from './poolMetadata.js'
 
 export type FileType = { uri: string; mime: string }
 
@@ -46,6 +46,8 @@ export type PoolMetadataInput = {
   forum: string
   email: string
   executiveSummary: FileType | null
+  /** Reusable named documents written to `pool.links.documents` (referenceable via `linkRef`). */
+  linkDocuments?: LinkDocument[]
   /**
    * @deprecated v2 has no flat `details`; author them via `factsheet` `text` blocks. Ignored by
    * `createPool`/`update`.

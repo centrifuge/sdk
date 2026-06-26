@@ -31,6 +31,10 @@ export const mockPoolMetadataV2: PoolMetadataV2 = {
       },
       forum: 'https://gov.centrifuge.io/tag/newsilver',
       website: 'https://newsilver.com',
+      documents: [
+        { key: 'prospectus', label: 'Prospectus', file: { uri: 'ipfs://QmProspectusDoc', mime: 'application/pdf' } },
+        { key: 'termsOfService', label: 'Terms of Service', href: 'https://example.com/tos' },
+      ],
     },
     status: 'open',
     listed: true,
@@ -52,6 +56,7 @@ export const mockPoolMetadataV2: PoolMetadataV2 = {
         reportFile: { uri: 'ipfs://QmRatingReport', mime: 'application/pdf' },
       },
     ],
+    geoRestrictions: { regions: ['US', 'KP'] },
     factsheet: {
       keyFacts: [
         {
@@ -81,11 +86,28 @@ export const mockPoolMetadataV2: PoolMetadataV2 = {
               },
             },
             { label: 'Secret fact', value: { kind: 'text', text: 'hidden value' }, visibility: 'whitelisted' },
+            // Combined gates: shown only to a whitelisted wallet in an allowed region.
+            {
+              label: 'Restricted yield',
+              value: { kind: 'text', text: '12%' },
+              visibility: ['whitelisted', 'geo-restricted'],
+            },
           ],
         },
       ],
       body: [
-        { type: 'text', id: 'overview', title: 'Overview', body: 'Fake **overview** with a [link](https://x.io).' },
+        {
+          type: 'text',
+          id: 'overview',
+          title: 'Overview',
+          body: 'Fake **overview** with a [link](https://x.io).',
+          logo: { uri: 'ipfs://QmBrandLogo', mime: 'image/svg+xml' },
+          background: '#0b1f3a',
+          links: [
+            { label: 'Factsheet', target: { kind: 'linkRef', linkRef: 'executiveSummary' } },
+            { label: 'Website', target: { kind: 'href', href: 'https://newsilver.com' } },
+          ],
+        },
         {
           type: 'table',
           id: 'fees',
@@ -165,6 +187,42 @@ export const mockPoolMetadataV2: PoolMetadataV2 = {
             { header: 'Note', source: 'hardcoded', key: 'note' },
           ],
           caption: 'Recent months',
+        },
+        {
+          type: 'documents',
+          id: 'docs',
+          title: 'Documents',
+          items: [
+            { title: 'Fact Sheet', target: { kind: 'linkRef', linkRef: 'executiveSummary' } },
+            {
+              title: 'Prospectus',
+              target: { kind: 'file', file: { uri: 'ipfs://QmProspectus', mime: 'application/pdf' } },
+            },
+            { title: 'Terms', target: { kind: 'href', href: 'https://example.com/terms' } },
+          ],
+        },
+        {
+          type: 'accordion',
+          id: 'details-accordion',
+          title: 'Details',
+          items: [
+            {
+              title: 'Overview',
+              defaultOpen: true,
+              block: { type: 'text', id: 'acc-overview', body: 'Accordion text.' },
+            },
+            {
+              title: 'Characteristics',
+              block: { type: 'kpiGroup', id: 'acc-kpis', items: [{ label: 'Duration', value: '0.2y' }] },
+            },
+          ],
+        },
+        {
+          type: 'text',
+          id: 'geo-note',
+          title: 'Regional note',
+          body: 'Shown only outside restricted regions.',
+          visibility: 'geo-restricted',
         },
         { type: 'section', id: 'performance', ref: 'onchainMetrics' },
       ],

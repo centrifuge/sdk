@@ -162,6 +162,11 @@ export type PoolMetadataV1 = {
       executiveSummary: FileType | null
       forum?: string
       website?: string
+      /**
+       * Reusable named documents authored once and referenced anywhere in the factsheet via a
+       * {@link LinkTarget} `{ kind: 'linkRef', linkRef: key }`. See {@link LinkDocument}.
+       */
+      documents?: LinkDocument[]
     }
     details?: {
       title: string
@@ -265,15 +270,25 @@ export type WithdrawManager = {
  * ---------------------------------------------------------------------------------------------- */
 
 /**
- * Access gating for any block, key fact, column, or kpi item. Default `'public'`. Resolved app-side
- * against the connected wallet's share-class (transfer-hook) membership. Presentational only — never
- * a substitute for on-chain access control.
- * - `public`      — rendered for everyone.
- * - `whitelisted` — full content only for a whitelisted wallet; otherwise blurred behind an
- *                   app-owned overlay that keeps its layout footprint (no reflow on connect).
- * - `hidden`      — never rendered, for anyone (not laid out).
+ * A single audience gate applied to an element. Presentational only, resolved app-side; never a
+ * substitute for on-chain / compliance access control.
+ * - `whitelisted`    — passes only for a wallet in the share class's transfer-hook allowlist;
+ *                      otherwise blurred behind an app-owned overlay that keeps its layout footprint.
+ * - `geo-restricted` — passes only when the user's region is NOT in `pool.geoRestrictions.regions`
+ *                      (with no such list, nothing is restricted).
  */
-export type Visibility = 'public' | 'whitelisted' | 'hidden'
+export type VisibilityGate = 'whitelisted' | 'geo-restricted'
+
+/**
+ * Access gating for any block, key fact, column, or kpi item. Default `'public'`.
+ * - `'public'` (or absent) — rendered for everyone.
+ * - `'hidden'`             — never rendered, for anyone (not laid out).
+ * - a single {@link VisibilityGate} or an **array of gates** — rendered only when ALL listed gates
+ *   pass (AND). e.g. `['whitelisted', 'geo-restricted']` = a whitelisted wallet in an allowed
+ *   region. `'public'`/`'hidden'` may not appear inside the array. When several gates fail, the app
+ *   shows the most restrictive overlay (geo before whitelist).
+ */
+export type Visibility = 'public' | 'hidden' | VisibilityGate | VisibilityGate[]
 
 /**
  * Constrained Markdown subset (paragraphs, hard newlines, `-`/`*` and `1.` lists, `**bold**`,
@@ -379,7 +394,40 @@ export type KeyFactGroup = {
 
 type BlockBase = { id: string; title?: string; visibility?: Visibility }
 
-export type TextBlock = BlockBase & { type: 'text'; body: RichText }
+/**
+ * A single link destination, discriminated by `kind` (no competing-optional ambiguity):
+ * - `file`    — an inline IPFS asset.
+ * - `href`    — an inline URL.
+ * - `linkRef` — a key in the typed `pool.links` (e.g. `'executiveSummary'`, `'website'`), so the
+ *               URL/file has a single source of truth. The app resolves it; an unknown key hides
+ *               the tile/button (graceful read).
+ */
+export type LinkTarget =
+  | { kind: 'file'; file: FileType }
+  | { kind: 'href'; href: string }
+  | { kind: 'linkRef'; linkRef: string }
+
+/**
+ * A reusable named document on `pool.links.documents`, referenced from a {@link LinkTarget} via
+ * `{ kind: 'linkRef', linkRef: key }`. Carries exactly one of `file` or `href`.
+ */
+export type LinkDocument = {
+  /** Unique slug a `linkRef` points at; must not collide with `executiveSummary`/`website`/`forum`. */
+  key: string
+  label: string
+  file?: FileType | null
+  href?: string
+}
+
+export type TextBlock = BlockBase & {
+  type: 'text'
+  body: RichText
+  /** Overview-card extras (all optional): a brand logo, a card background, and link buttons. */
+  logo?: FileType
+  /** Theme token or hex color for the card background. */
+  background?: string
+  links?: Array<{ label: string; target: LinkTarget }>
+}
 
 export type TableBlock = BlockBase & {
   type: 'table'
@@ -453,6 +501,18 @@ export type TabGroupBlock = BlockBase & {
   tabs: Array<{ label: string; block: TabBlock }>
 }
 
+/** A tile list (doc icon + title) opening each item's {@link LinkTarget}, e.g. a "Fact Sheet" tile. */
+export type DocumentsBlock = BlockBase & {
+  type: 'documents'
+  items: Array<{ title: string; target: LinkTarget }>
+}
+
+/** A collapsible stack (accordion UX). Each item holds a {@link TabBlock} leaf, like `tabGroup` tabs. */
+export type AccordionBlock = BlockBase & {
+  type: 'accordion'
+  items: Array<{ title: string; block: TabBlock; defaultOpen?: boolean }>
+}
+
 export type ContentBlock =
   | TextBlock
   | TableBlock
@@ -461,6 +521,8 @@ export type ContentBlock =
   | KpiGroupBlock
   | TabGroupBlock
   | LiveTableBlock
+  | DocumentsBlock
+  | AccordionBlock
 
 /** A pointer to one of the closed, app-owned section units. */
 export type SectionRefBlock = {
@@ -510,6 +572,11 @@ export type PoolMetadataV2 = {
     issuer: Pick<PoolMetadataV1['pool']['issuer'], 'name' | 'email' | 'logo'>
     poolRatings?: PoolRatingV2[]
     factsheet?: Factsheet
+    /**
+     * Single pool-level restricted-regions list (ISO 3166-1 alpha-2 codes, e.g. `'US'`). Every
+     * `geo-restricted` element is gated against it. Presentational only; not compliance/access control.
+     */
+    geoRestrictions?: { regions: string[] }
   }
   shareClasses: PoolMetadataV1['shareClasses']
   merkleProofManager?: PoolMetadataV1['merkleProofManager']

@@ -3,7 +3,7 @@ import { mockPoolMetadata } from '../tests/mocks/mockPoolMetadata.js'
 import { mockPoolMetadataV2 } from '../tests/mocks/mockPoolMetadataV2.js'
 import type { PoolMetadataV1, PoolMetadataV2 } from '../types/poolMetadata.js'
 import { isPoolMetadataV2 } from '../types/poolMetadata.js'
-import { migratePoolMetadataToV2, parsePoolMetadataV2 } from './poolMetadataMigration.js'
+import { migratePoolMetadataToV2, parsePoolMetadataV2, resolveLinkTarget } from './poolMetadataMigration.js'
 
 const clone = <T>(value: T): T => JSON.parse(JSON.stringify(value)) as T
 
@@ -119,6 +119,16 @@ describe('migratePoolMetadataToV2', () => {
     })
   })
 
+  it('carries pool.links.documents through migration', () => {
+    const legacy = legacyFixture()
+    legacy.pool.links = {
+      executiveSummary: null,
+      documents: [{ key: 'tos', label: 'Terms', href: 'https://x.io/tos' }],
+    }
+    const v2 = migratePoolMetadataToV2(legacy)
+    expect(v2.pool.links.documents).to.deep.equal([{ key: 'tos', label: 'Terms', href: 'https://x.io/tos' }])
+  })
+
   it('drops a stray pool.report (singular) non-schema field', () => {
     const legacy = legacyFixture()
     ;(legacy.pool as Record<string, unknown>).report = { author: { name: '', title: '', avatar: null }, url: '' }
@@ -230,45 +240,83 @@ describe('migratePoolMetadataToV2', () => {
     ])
   })
 
-  it('projects description, details and rating reports into body blocks', () => {
+  it('projects description and details into body blocks (no Documents block in body)', () => {
     const { body } = migratePoolMetadataToV2(legacyFixture()).pool.factsheet!
     expect(body).to.deep.equal([
       { type: 'text', id: 'overview', title: 'Overview', body: 'A long issuer description.' },
       { type: 'text', id: 'detail-0', title: 'Strategy', body: 'We do things.' },
       { type: 'text', id: 'detail-1', title: 'Risks', body: 'Things can go wrong.' },
-      { type: 'text', id: 'documents', title: 'Documents', body: '- [Moodys rating report](ipfs://Qm1)' },
       { type: 'section', id: 'performance', ref: 'onchainMetrics' },
     ])
   })
 
-  it('drops unsafe document URI schemes and escapes the rating label', () => {
+  it('builds the Overview card with logo and a Factsheet linkRef when those source fields exist', () => {
     const legacy = legacyFixture()
-    legacy.pool.poolRatings = [
-      { agency: 'Evil [x](javascript:alert(1))', reportFile: { uri: 'javascript:alert(1)', mime: 'text/html' } },
-      { agency: 'Fitch', reportFile: { uri: 'https://x.io/r2', mime: 'application/pdf' } },
-    ]
-    const documents = migratePoolMetadataToV2(legacy).pool.factsheet!.body.find((b) => b.id === 'documents')
-    expect(documents).to.deep.equal({
+    legacy.pool.issuer.logo = { uri: 'ipfs://QmLogo', mime: 'image/png' }
+    legacy.pool.links = { executiveSummary: { uri: 'ipfs://QmFactsheet', mime: 'application/pdf' } }
+    const overview = migratePoolMetadataToV2(legacy).pool.factsheet!.body.find((b) => b.id === 'overview')
+    expect(overview).to.deep.equal({
       type: 'text',
-      id: 'documents',
-      title: 'Documents',
-      body: '- [Fitch rating report](https://x.io/r2)',
+      id: 'overview',
+      title: 'Overview',
+      body: 'A long issuer description.',
+      logo: { uri: 'ipfs://QmLogo', mime: 'image/png' },
+      links: [{ label: 'Factsheet', target: { kind: 'linkRef', linkRef: 'executiveSummary' } }],
     })
   })
 
-  it('omits the Documents block entirely when no rating has a safe URI', () => {
+  it('omits the Overview logo and Factsheet link when their source fields are absent/empty', () => {
     const legacy = legacyFixture()
-    legacy.pool.poolRatings = [{ agency: 'X', reportFile: { uri: 'javascript:alert(1)', mime: 'text/html' } }]
-    const documents = migratePoolMetadataToV2(legacy).pool.factsheet!.body.find((b) => b.id === 'documents')
-    expect(documents).to.equal(undefined)
+    legacy.pool.issuer.logo = { uri: '', mime: 'image/png' } // empty uri => treated as absent
+    legacy.pool.links = { executiveSummary: null }
+    const overview = migratePoolMetadataToV2(legacy).pool.factsheet!.body.find((b) => b.id === 'overview')
+    expect(overview).to.deep.equal({
+      type: 'text',
+      id: 'overview',
+      title: 'Overview',
+      body: 'A long issuer description.',
+    })
   })
 
-  it('omits sections (app renders defaults) when there is no holdings blob', () => {
-    expect(migratePoolMetadataToV2(legacyFixture()).pool.factsheet!.sections).to.equal(undefined)
+  it('builds a Documents tile section (full-width) from rating reports, dropping unsafe URIs', () => {
+    const legacy = legacyFixture()
+    legacy.pool.poolRatings = [
+      { agency: 'Evil', reportFile: { uri: 'javascript:alert(1)', mime: 'text/html' } },
+      { agency: 'Fitch', reportFile: { uri: 'https://x.io/r2', mime: 'application/pdf' } },
+    ]
+    const { body, sections } = migratePoolMetadataToV2(legacy).pool.factsheet!
+    expect(body.some((b) => b.id === 'documents')).to.equal(false) // not in the header region
+    const documents = sections!.find((s) => s.id === 'documents')
+    expect(documents).to.deep.equal({
+      type: 'documents',
+      id: 'documents',
+      title: 'Documents',
+      items: [
+        {
+          title: 'Fitch rating report',
+          target: { kind: 'file', file: { uri: 'https://x.io/r2', mime: 'application/pdf' } },
+        },
+      ],
+    })
+  })
+
+  it('omits the Documents block entirely when no rating has a safe report URI', () => {
+    const legacy = legacyFixture()
+    legacy.pool.poolRatings = [{ agency: 'X', reportFile: { uri: 'javascript:alert(1)', mime: 'text/html' } }]
+    const { body, sections } = migratePoolMetadataToV2(legacy).pool.factsheet!
+    expect(body.some((b) => b.id === 'documents')).to.equal(false)
+    expect((sections ?? []).some((s) => s.id === 'documents')).to.equal(false)
+  })
+
+  it('omits sections (app renders defaults) when there is no documents block or holdings blob', () => {
+    const legacy = legacyFixture()
+    legacy.pool.poolRatings = [] // no rating reports => no Documents section
+    expect(migratePoolMetadataToV2(legacy).pool.factsheet!.sections).to.equal(undefined)
   })
 
   it('folds the legacy holdings blob into a table section, faithfully, dropping no column', () => {
     const legacy = legacyFixture()
+    legacy.pool.poolRatings = [] // isolate the holdings section
     legacy.holdings = {
       headers: ['Asset', 'ISIN', 'Amount'],
       data: [
@@ -295,10 +343,12 @@ describe('migratePoolMetadataToV2', () => {
 
   it('skips the holdings table when headers are empty or data is missing', () => {
     const emptyHeaders = legacyFixture()
+    emptyHeaders.pool.poolRatings = []
     emptyHeaders.holdings = { headers: [], data: [{ x: 1 }] }
     expect(migratePoolMetadataToV2(emptyHeaders).pool.factsheet!.sections).to.equal(undefined)
 
     const missingData = legacyFixture()
+    missingData.pool.poolRatings = []
     missingData.holdings = { headers: ['A'] } as unknown as PoolMetadataV1['holdings']
     expect(migratePoolMetadataToV2(missingData).pool.factsheet!.sections).to.equal(undefined)
   })
@@ -536,5 +586,168 @@ describe('parsePoolMetadataV2', () => {
     const bad = clone(mockPoolMetadataV2)
     delete (bad.pool.factsheet!.keyFacts[0] as Record<string, unknown>).items
     expect(() => parsePoolMetadataV2(bad)).to.throw(/keyFacts\[0\].items must be an array/)
+  })
+
+  // --- #482: geo-restrictions, documents/accordion blocks, link targets, combined visibility ---
+
+  it('accepts geo-restricted visibility (single + combined) and a valid geoRestrictions list', () => {
+    expect(() => parsePoolMetadataV2(mockPoolMetadataV2)).to.not.throw()
+  })
+
+  it('accepts geo-restricted elements even when pool.geoRestrictions is absent (nothing restricted)', () => {
+    const doc = clone(mockPoolMetadataV2)
+    delete (doc.pool as Record<string, unknown>).geoRestrictions
+    expect(() => parsePoolMetadataV2(doc)).to.not.throw()
+  })
+
+  it('rejects geoRestrictions regions that are not ISO 3166-1 alpha-2', () => {
+    const bad = clone(mockPoolMetadataV2)
+    bad.pool.geoRestrictions = { regions: ['US', 'USA'] }
+    expect(() => parsePoolMetadataV2(bad)).to.throw(/geoRestrictions.regions\[1\] must be an ISO 3166-1 alpha-2 code/)
+  })
+
+  it('rejects an invalid visibility scalar', () => {
+    const bad = clone(mockPoolMetadataV2)
+    bad.pool.factsheet!.keyFacts[0]!.visibility = 'continent-blocked' as never
+    expect(() => parsePoolMetadataV2(bad)).to.throw(/visibility/)
+  })
+
+  it('rejects a visibility array containing a non-gate (public/hidden or unknown)', () => {
+    const bad = clone(mockPoolMetadataV2)
+    bad.pool.factsheet!.keyFacts[0]!.visibility = ['whitelisted', 'public'] as never
+    expect(() => parsePoolMetadataV2(bad)).to.throw(/invalid visibility gate/)
+  })
+
+  it('rejects a visibility array with duplicate gates', () => {
+    const bad = clone(mockPoolMetadataV2)
+    bad.pool.factsheet!.keyFacts[0]!.visibility = ['whitelisted', 'whitelisted'] as never
+    expect(() => parsePoolMetadataV2(bad)).to.throw(/duplicate visibility gate/)
+  })
+
+  it('rejects an empty visibility array', () => {
+    const bad = clone(mockPoolMetadataV2)
+    bad.pool.factsheet!.keyFacts[0]!.visibility = [] as never
+    expect(() => parsePoolMetadataV2(bad)).to.throw(/visibility array must not be empty/)
+  })
+
+  it('rejects a link target with an unknown kind', () => {
+    const bad = clone(mockPoolMetadataV2)
+    const docs = bad.pool.factsheet!.body.find((b) => b.id === 'docs') as { items: Record<string, unknown>[] }
+    docs.items[0]!.target = { kind: 'mailto', mailto: 'x@y.z' }
+    expect(() => parsePoolMetadataV2(bad)).to.throw(/target has an invalid kind/)
+  })
+
+  it('rejects a documents item missing its target', () => {
+    const bad = clone(mockPoolMetadataV2)
+    const docs = bad.pool.factsheet!.body.find((b) => b.id === 'docs') as { items: Record<string, unknown>[] }
+    delete docs.items[0]!.target
+    expect(() => parsePoolMetadataV2(bad)).to.throw(/items\[0\].target must be an object/)
+  })
+
+  it('rejects an accordion item whose inner block is not a leaf type', () => {
+    const bad = clone(mockPoolMetadataV2)
+    const accordion = bad.pool.factsheet!.body.find((b) => b.id === 'details-accordion') as {
+      items: { block: Record<string, unknown> }[]
+    }
+    accordion.items[0]!.block = { type: 'documents', id: 'nope', items: [] }
+    expect(() => parsePoolMetadataV2(bad)).to.throw(/block has an invalid type/)
+  })
+
+  it('rejects an accordion item with a non-boolean defaultOpen', () => {
+    const bad = clone(mockPoolMetadataV2)
+    const accordion = bad.pool.factsheet!.body.find((b) => b.id === 'details-accordion') as {
+      items: Record<string, unknown>[]
+    }
+    accordion.items[0]!.defaultOpen = 'yes'
+    expect(() => parsePoolMetadataV2(bad)).to.throw(/defaultOpen must be a boolean/)
+  })
+
+  it('rejects an overview text-block link with a malformed target', () => {
+    const bad = clone(mockPoolMetadataV2)
+    const overview = bad.pool.factsheet!.body.find((b) => b.id === 'overview') as {
+      links: { target: unknown }[]
+    }
+    overview.links[0]!.target = { kind: 'linkRef' } // missing linkRef string
+    expect(() => parsePoolMetadataV2(bad)).to.throw(/linkRef must be a string/)
+  })
+
+  // --- pool.links.documents (reusable named documents) ---
+
+  it('accepts pool.links.documents (file and href docs)', () => {
+    expect(() => parsePoolMetadataV2(mockPoolMetadataV2)).to.not.throw()
+  })
+
+  it('rejects a link document setting both file and href', () => {
+    const bad = clone(mockPoolMetadataV2)
+    bad.pool.links!.documents = [
+      { key: 'x', label: 'X', file: { uri: 'ipfs://Q', mime: 'application/pdf' }, href: 'https://x.io' },
+    ]
+    expect(() => parsePoolMetadataV2(bad)).to.throw(/exactly one of `file` or `href`/)
+  })
+
+  it('rejects a link document setting neither file nor href', () => {
+    const bad = clone(mockPoolMetadataV2)
+    bad.pool.links!.documents = [{ key: 'x', label: 'X' } as never]
+    expect(() => parsePoolMetadataV2(bad)).to.throw(/exactly one of `file` or `href`/)
+  })
+
+  it('rejects duplicate link-document keys', () => {
+    const bad = clone(mockPoolMetadataV2)
+    bad.pool.links!.documents = [
+      { key: 'dup', label: 'A', href: 'https://a.io' },
+      { key: 'dup', label: 'B', href: 'https://b.io' },
+    ]
+    expect(() => parsePoolMetadataV2(bad)).to.throw(/is duplicated/)
+  })
+
+  it('rejects a link-document key colliding with a built-in', () => {
+    const bad = clone(mockPoolMetadataV2)
+    bad.pool.links!.documents = [{ key: 'website', label: 'W', href: 'https://w.io' }]
+    expect(() => parsePoolMetadataV2(bad)).to.throw(/collides with a built-in/)
+  })
+
+  it('rejects a link document with an empty key', () => {
+    const bad = clone(mockPoolMetadataV2)
+    bad.pool.links!.documents = [{ key: '', label: 'X', href: 'https://x.io' }]
+    expect(() => parsePoolMetadataV2(bad)).to.throw(/key must be a non-empty string/)
+  })
+})
+
+describe('resolveLinkTarget', () => {
+  const links = mockPoolMetadataV2.pool.links
+
+  it('resolves inline file and href targets', () => {
+    expect(
+      resolveLinkTarget(links, { kind: 'file', file: { uri: 'ipfs://Q', mime: 'application/pdf' } })
+    ).to.deep.equal({
+      file: { uri: 'ipfs://Q', mime: 'application/pdf' },
+    })
+    expect(resolveLinkTarget(links, { kind: 'href', href: 'https://x.io' })).to.deep.equal({ href: 'https://x.io' })
+  })
+
+  it('resolves built-in linkRefs (executiveSummary -> file, website/forum -> url)', () => {
+    expect(resolveLinkTarget(links, { kind: 'linkRef', linkRef: 'executiveSummary' })).to.deep.equal({
+      file: links.executiveSummary,
+    })
+    expect(resolveLinkTarget(links, { kind: 'linkRef', linkRef: 'website' })).to.deep.equal({
+      href: 'https://newsilver.com',
+    })
+    expect(resolveLinkTarget(links, { kind: 'linkRef', linkRef: 'forum' })).to.deep.equal({
+      href: 'https://gov.centrifuge.io/tag/newsilver',
+    })
+  })
+
+  it('resolves named documents by key (file or href)', () => {
+    expect(resolveLinkTarget(links, { kind: 'linkRef', linkRef: 'prospectus' })).to.deep.equal({
+      file: { uri: 'ipfs://QmProspectusDoc', mime: 'application/pdf' },
+    })
+    expect(resolveLinkTarget(links, { kind: 'linkRef', linkRef: 'termsOfService' })).to.deep.equal({
+      href: 'https://example.com/tos',
+    })
+  })
+
+  it('returns null for an unknown linkRef or missing links', () => {
+    expect(resolveLinkTarget(links, { kind: 'linkRef', linkRef: 'nope' })).to.equal(null)
+    expect(resolveLinkTarget(undefined, { kind: 'linkRef', linkRef: 'website' })).to.equal(null)
   })
 })

@@ -271,6 +271,7 @@ export class Centrifuge {
             executiveSummary: metadataInput.executiveSummary,
             forum: metadataInput.forum,
             website: metadataInput.website,
+            ...(metadataInput.linkDocuments ? { documents: metadataInput.linkDocuments } : {}),
           },
           status: 'open',
           listed: metadataInput.listed ?? true,

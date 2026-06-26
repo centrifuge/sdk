@@ -5,13 +5,16 @@ import {
   type ChartType,
   type ColumnFormat,
   type DataRef,
+  type DocumentsBlock,
   type Factsheet,
+  type FileType,
   isPoolMetadataV2,
   type KeyFact,
   type KeyFactGroup,
   type KeyFactValue,
   type LayoutItem,
   type LegacyApyMode,
+  type LinkTarget,
   type LiveDataset,
   type LiveMetric,
   type PoolMetadata,
@@ -19,7 +22,7 @@ import {
   type PoolMetadataV2,
   type SectionRef,
   type TableBlock,
-  type Visibility,
+  type VisibilityGate,
 } from '../types/poolMetadata.js'
 
 /* ================================================================================================
@@ -109,9 +112,18 @@ function isSafeDocumentUri(uri: string): boolean {
   return scheme.startsWith('https://') || scheme.startsWith('ipfs://')
 }
 
-/** Escapes markdown link-breaking characters so an issuer-supplied label can't alter the link. */
-function escapeMarkdownText(text: string): string {
-  return text.replace(/[\\[\]()]/g, '\\$&').replace(/\s+/g, ' ')
+/**
+ * Builds a `documents` section from the rating report files (a tile per safe-URI report), or null
+ * when none have a usable report. Each tile targets the report file directly (`kind: 'file'`).
+ */
+function ratingDocumentsBlock(poolRatings: PoolMetadataV1['pool']['poolRatings']): DocumentsBlock | null {
+  const items = asArray(poolRatings)
+    .filter((rating) => rating.reportFile?.uri && isSafeDocumentUri(rating.reportFile.uri))
+    .map((rating) => ({
+      title: `${rating.agency ?? 'Rating'} rating report`,
+      target: { kind: 'file' as const, file: rating.reportFile! },
+    }))
+  return items.length > 0 ? { type: 'documents', id: 'documents', title: 'Documents', items } : null
 }
 
 /**
@@ -187,33 +199,35 @@ function buildFactsheet(
 
   const body: LayoutItem[] = []
   if (issuer.description) {
-    body.push({ type: 'text', id: 'overview', title: 'Overview', body: issuer.description })
+    // Overview card: logo and the "Factsheet" link button are added only when their source field
+    // exists, so a missing logo / executiveSummary degrades to a plain card (never a broken one).
+    // The Factsheet link references the typed `links.executiveSummary` rather than copying its URI.
+    body.push({
+      type: 'text',
+      id: 'overview',
+      title: 'Overview',
+      body: issuer.description,
+      ...(issuer.logo?.uri ? { logo: issuer.logo } : {}),
+      ...(pool.links?.executiveSummary?.uri
+        ? { links: [{ label: 'Factsheet', target: { kind: 'linkRef', linkRef: 'executiveSummary' } }] }
+        : {}),
+    })
   }
   asArray(details).forEach((detail, index) => {
     body.push({ type: 'text', id: `detail-${index}`, title: detail.title, body: detail.body })
   })
-  // Ratings reports are surfaced two ways: a Documents body block (markdown links to the report
-  // PDFs) and the `ratings` key-fact ref pill above. Both read the same typed `poolRatings` field.
-  const ratingsWithReports = asArray(poolRatings).filter(
-    (rating) => rating.reportFile?.uri && isSafeDocumentUri(rating.reportFile.uri)
-  )
-  if (ratingsWithReports.length > 0) {
-    body.push({
-      type: 'text',
-      id: 'documents',
-      title: 'Documents',
-      body: ratingsWithReports
-        .map(
-          (rating) => `- [${escapeMarkdownText(rating.agency ?? 'Rating')} rating report](${rating.reportFile!.uri})`
-        )
-        .join('\n'),
-    })
-  }
   body.push({ type: 'section', id: 'performance', ref: 'onchainMetrics' })
 
+  // Full-width region. Rating reports become a `documents` tile block (ratings are also surfaced
+  // as the `ratings` key-fact ref pill above; both read the same typed `poolRatings`). `sections` is
+  // omitted (so the invest app renders its defaults) only when there is neither a documents block
+  // nor a holdings table.
+  const sections: LayoutItem[] = []
+  const documentsBlock = ratingDocumentsBlock(poolRatings)
+  if (documentsBlock) sections.push(documentsBlock)
   const holdingsBlock = holdingsTableBlock(holdings)
-  // `sections` is omitted (so the invest app renders its defaults) unless we have a holdings table.
-  return holdingsBlock ? { body, keyFacts, sections: [holdingsBlock] } : { body, keyFacts }
+  if (holdingsBlock) sections.push(holdingsBlock)
+  return sections.length > 0 ? { body, keyFacts, sections } : { body, keyFacts }
 }
 
 /**
@@ -387,7 +401,9 @@ function upgradeLegacyV2(doc: PoolMetadataV2): PoolMetadataV2 {
 // (see centrifuge/apps-invest#200), but the SDK is the alignment point: an unknown key is rejected
 // on WRITE so the management app, SDK, and invest app stay in sync (adding a key ships in an SDK
 // release). The read path does not validate, so a newer document never breaks an older reader.
-const VISIBILITIES = new Set<Visibility>(['public', 'whitelisted', 'hidden'])
+const VISIBILITY_SCALARS = new Set(['public', 'hidden', 'whitelisted', 'geo-restricted'])
+const VISIBILITY_GATES = new Set<VisibilityGate>(['whitelisted', 'geo-restricted'])
+const REGION_CODE_RE = /^[A-Za-z]{2}$/
 const CHART_TYPES = new Set<ChartType>(['line', 'area', 'bar', 'donut'])
 const AXIS_FORMATS = new Set<AxisFormat>(['number', 'percent', 'currency'])
 const XAXIS_TYPES = new Set(['category', 'time', 'number'])
@@ -397,7 +413,17 @@ const LIVE_METRICS = new Set<LiveMetric>(['tokenPrice', 'nav', 'apy30d', 'navCha
 const LIVE_DATASETS = new Set<LiveDataset>(['monthlySummary'])
 const KEY_FACT_REFS = new Set(['apy', 'availableNetworks', 'ratings'])
 const COLUMN_FORMATS = new Set<ColumnFormat>(['text', 'number', 'percent', 'currency'])
-const CONTENT_BLOCK_TYPES = new Set(['text', 'table', 'chart', 'image', 'kpiGroup', 'tabGroup', 'liveTable'])
+const CONTENT_BLOCK_TYPES = new Set([
+  'text',
+  'table',
+  'chart',
+  'image',
+  'kpiGroup',
+  'tabGroup',
+  'liveTable',
+  'documents',
+  'accordion',
+])
 const TAB_BLOCK_TYPES = new Set(['text', 'table', 'chart', 'kpiGroup'])
 const KPI_TRENDS = new Set(['up', 'down', 'neutral'])
 
@@ -415,9 +441,24 @@ function assertString(value: unknown, where: string): asserts value is string {
 
 function assertVisibility(value: unknown, where: string): void {
   if (value === undefined) return
-  if (typeof value !== 'string' || !VISIBILITIES.has(value as Visibility)) {
-    fail(`${where} has invalid visibility "${String(value)}"`)
+  if (typeof value === 'string') {
+    if (!VISIBILITY_SCALARS.has(value)) fail(`${where} has invalid visibility "${value}"`)
+    return
   }
+  // An array combines gates with AND. `public`/`hidden` are scalars, never array members.
+  if (Array.isArray(value)) {
+    if (value.length === 0) fail(`${where} visibility array must not be empty`)
+    const seen = new Set<string>()
+    value.forEach((gate) => {
+      if (typeof gate !== 'string' || !VISIBILITY_GATES.has(gate as VisibilityGate)) {
+        fail(`${where} has an invalid visibility gate "${String(gate)}"`)
+      }
+      if (seen.has(gate)) fail(`${where} has a duplicate visibility gate "${gate}"`)
+      seen.add(gate)
+    })
+    return
+  }
+  fail(`${where} has invalid visibility "${String(value)}"`)
 }
 
 function isPrimitiveCell(value: unknown): value is string | number {
@@ -428,6 +469,46 @@ function validateFile(value: unknown, where: string): void {
   if (!isObject(value)) fail(`${where} must be a file object`)
   assertString(value.uri, `${where}.uri`)
   assertString(value.mime, `${where}.mime`)
+}
+
+const BUILTIN_LINK_KEYS = new Set(['executiveSummary', 'website', 'forum'])
+
+function validateLinkDocuments(documents: unknown): void {
+  if (!Array.isArray(documents)) fail('`pool.links.documents` must be an array')
+  const seen = new Set<string>()
+  documents.forEach((doc, index) => {
+    const where = `pool.links.documents[${index}]`
+    if (!isObject(doc)) fail(`${where} must be an object`)
+    if (typeof doc.key !== 'string' || doc.key.length === 0) fail(`${where}.key must be a non-empty string`)
+    if (typeof doc.label !== 'string' || doc.label.length === 0) fail(`${where}.label must be a non-empty string`)
+    // Exactly one of file (object) or non-empty href. A null file counts as absent.
+    const hasFile = isObject(doc.file)
+    const hasHref = typeof doc.href === 'string' && doc.href.length > 0
+    if (hasFile === hasHref) fail(`${where} must set exactly one of \`file\` or \`href\``)
+    if (hasFile) validateFile(doc.file, `${where}.file`)
+    // Built-ins resolve first, so a colliding key would be ambiguous (unreachable).
+    if (BUILTIN_LINK_KEYS.has(doc.key)) fail(`${where}.key "${doc.key}" collides with a built-in link key`)
+    if (seen.has(doc.key)) fail(`${where}.key "${doc.key}" is duplicated`)
+    seen.add(doc.key)
+  })
+}
+
+function validateLinkTarget(value: unknown, where: string): void {
+  if (!isObject(value)) fail(`${where} must be an object`)
+  switch (value.kind) {
+    case 'file':
+      validateFile(value.file, `${where}.file`)
+      break
+    case 'href':
+      assertString(value.href, `${where}.href`)
+      break
+    case 'linkRef':
+      // Resolved app-side against the typed `pool.links`; an unknown key hides the link (lenient).
+      assertString(value.linkRef, `${where}.linkRef`)
+      break
+    default:
+      fail(`${where} has an invalid kind "${String(value.kind)}"`)
+  }
 }
 
 function validateIconRef(value: unknown, where: string): void {
@@ -533,6 +614,17 @@ function validateContentBlock(block: Record<string, unknown>, type: string, wher
   switch (type) {
     case 'text':
       assertString(block.body, `${where}.body`)
+      // Optional Overview-card extras.
+      if (block.logo !== undefined) validateFile(block.logo, `${where}.logo`)
+      if (block.background !== undefined) assertString(block.background, `${where}.background`)
+      if (block.links !== undefined) {
+        if (!Array.isArray(block.links)) fail(`${where}.links must be an array`)
+        block.links.forEach((link, index) => {
+          if (!isObject(link)) fail(`${where}.links[${index}] must be an object`)
+          assertString(link.label, `${where}.links[${index}].label`)
+          validateLinkTarget(link.target, `${where}.links[${index}].target`)
+        })
+      }
       break
     case 'table': {
       if (!Array.isArray(block.headers) || !block.headers.every((h) => typeof h === 'string')) {
@@ -606,13 +698,7 @@ function validateContentBlock(block: Record<string, unknown>, type: string, wher
       block.tabs.forEach((tab, index) => {
         if (!isObject(tab)) fail(`${where}.tabs[${index}] must be an object`)
         assertString(tab.label, `${where}.tabs[${index}].label`)
-        if (!isObject(tab.block)) fail(`${where}.tabs[${index}].block must be an object`)
-        const tabBlock = tab.block
-        if (typeof tabBlock.type !== 'string' || !TAB_BLOCK_TYPES.has(tabBlock.type)) {
-          fail(`${where}.tabs[${index}].block has an invalid type "${String(tabBlock.type)}"`)
-        }
-        assertString(tabBlock.id, `${where}.tabs[${index}].block.id`)
-        validateContentBlock(tabBlock, tabBlock.type, `${where}.tabs[${index}].block`)
+        validateTabBlock(tab.block, `${where}.tabs[${index}].block`)
       })
       break
     }
@@ -624,9 +710,40 @@ function validateContentBlock(block: Record<string, unknown>, type: string, wher
       block.columns.forEach((column, index) => validateLiveColumn(column, `${where}.columns[${index}]`))
       break
     }
+    case 'documents': {
+      if (!Array.isArray(block.items)) fail(`${where}.items must be an array`)
+      block.items.forEach((item, index) => {
+        if (!isObject(item)) fail(`${where}.items[${index}] must be an object`)
+        assertString(item.title, `${where}.items[${index}].title`)
+        validateLinkTarget(item.target, `${where}.items[${index}].target`)
+      })
+      break
+    }
+    case 'accordion': {
+      if (!Array.isArray(block.items)) fail(`${where}.items must be an array`)
+      block.items.forEach((item, index) => {
+        if (!isObject(item)) fail(`${where}.items[${index}] must be an object`)
+        assertString(item.title, `${where}.items[${index}].title`)
+        if (item.defaultOpen !== undefined && typeof item.defaultOpen !== 'boolean') {
+          fail(`${where}.items[${index}].defaultOpen must be a boolean`)
+        }
+        validateTabBlock(item.block, `${where}.items[${index}].block`)
+      })
+      break
+    }
     default:
       fail(`${where} has an unknown block type "${type}"`)
   }
+}
+
+/** Validates a leaf block nested in a `tabGroup` tab or `accordion` item (the {@link TabBlock} set). */
+function validateTabBlock(value: unknown, where: string): void {
+  if (!isObject(value)) fail(`${where} must be an object`)
+  if (typeof value.type !== 'string' || !TAB_BLOCK_TYPES.has(value.type)) {
+    fail(`${where} has an invalid type "${String(value.type)}"`)
+  }
+  assertString(value.id, `${where}.id`)
+  validateContentBlock(value, value.type, where)
 }
 
 function validateLayoutItem(item: unknown, where: string): void {
@@ -674,6 +791,52 @@ export function parsePoolMetadataV2(raw: unknown): PoolMetadataV2 {
   if (raw.version !== 2) fail(`expected version 2, got ${String(raw.version)}`)
   if (!isObject(raw.pool)) fail('`pool` must be an object')
   assertString(raw.pool.name, '`pool.name`')
+  if (raw.pool.geoRestrictions !== undefined) validateGeoRestrictions(raw.pool.geoRestrictions)
+  if (isObject(raw.pool.links) && raw.pool.links.documents !== undefined) {
+    validateLinkDocuments(raw.pool.links.documents)
+  }
   if (raw.pool.factsheet !== undefined) validateFactsheet(raw.pool.factsheet)
   return raw as PoolMetadataV2
+}
+
+/**
+ * Resolves a {@link LinkTarget} to a `{ href }` or `{ file }` against a pool's `links`. `linkRef`
+ * checks the built-in keys first (`executiveSummary` -> file, `website`/`forum` -> url), then
+ * `links.documents` by `key`. Returns `null` on no match (callers self-blank; never throw). Shared
+ * so the SDK and the invest app resolve references identically.
+ */
+export function resolveLinkTarget(
+  links: PoolMetadataV1['pool']['links'] | undefined,
+  target: LinkTarget
+): { href?: string; file?: FileType } | null {
+  switch (target.kind) {
+    case 'file':
+      return { file: target.file }
+    case 'href':
+      return { href: target.href }
+    case 'linkRef': {
+      const key = target.linkRef
+      if (key === 'executiveSummary') return links?.executiveSummary ? { file: links.executiveSummary } : null
+      if (key === 'website') return links?.website ? { href: links.website } : null
+      if (key === 'forum') return links?.forum ? { href: links.forum } : null
+      const doc = links?.documents?.find((d) => d.key === key)
+      if (!doc) return null
+      if (doc.file) return { file: doc.file }
+      if (doc.href) return { href: doc.href }
+      return null
+    }
+    default:
+      return null
+  }
+}
+
+/** Validates `pool.geoRestrictions.regions` as ISO 3166-1 alpha-2 codes (format only, strict on write). */
+function validateGeoRestrictions(geoRestrictions: unknown): void {
+  if (!isObject(geoRestrictions)) fail('`pool.geoRestrictions` must be an object')
+  if (!Array.isArray(geoRestrictions.regions)) fail('`pool.geoRestrictions.regions` must be an array')
+  geoRestrictions.regions.forEach((region, index) => {
+    if (typeof region !== 'string' || !REGION_CODE_RE.test(region)) {
+      fail(`pool.geoRestrictions.regions[${index}] must be an ISO 3166-1 alpha-2 code, got "${String(region)}"`)
+    }
+  })
 }
