@@ -63,6 +63,7 @@ export const mockPoolMetadataV2: PoolMetadataV2 = {
           type: 'keyFactGroup',
           id: 'overview-facts',
           title: 'Overview',
+          subtitle: 'Fund-level summary',
           items: [
             { label: 'Issuer', value: { kind: 'text', text: 'Fake Issuer' } },
             { label: 'Asset type', value: { kind: 'text', text: 'Private credit - Fake Subclass' } },
@@ -100,6 +101,7 @@ export const mockPoolMetadataV2: PoolMetadataV2 = {
           type: 'text',
           id: 'overview',
           title: 'Overview',
+          subtitle: 'Underlying fund (CGUHY I)',
           body: 'Fake **overview** with a [link](https://x.io).',
           logo: { uri: 'ipfs://QmBrandLogo', mime: 'image/svg+xml' },
           background: '#0b1f3a',
@@ -168,7 +170,10 @@ export const mockPoolMetadataV2: PoolMetadataV2 = {
           type: 'tabGroup',
           id: 'tabs',
           tabs: [
-            { label: 'Summary', block: { type: 'text', id: 'tab-summary', body: 'Tab body text.' } },
+            {
+              label: 'Summary',
+              block: { type: 'text', id: 'tab-summary', title: 'Summary', subtitle: 'Tab sub-heading', body: 'Tab body text.' },
+            },
             {
               label: 'Numbers',
               block: { type: 'kpiGroup', id: 'tab-kpis', items: [{ label: 'NAV', value: '$1.02' }] },
