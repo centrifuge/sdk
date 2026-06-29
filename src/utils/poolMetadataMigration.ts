@@ -755,6 +755,14 @@ function validateContentBlock(block: Record<string, unknown>, type: string, wher
   }
 }
 
+/** Validates the envelope every layout/column block shares: id, optional title/subtitle, visibility. */
+function validateBlockEnvelope(value: Record<string, unknown>, where: string): void {
+  assertString(value.id, `${where}.id`)
+  if (value.title !== undefined) assertString(value.title, `${where}.title`)
+  if (value.subtitle !== undefined) assertString(value.subtitle, `${where}.subtitle`)
+  assertVisibility(value.visibility, where)
+}
+
 /**
  * Validates a child of a {@link ColumnsBlock} column: any content block except a nested `columns`,
  * plus `keyFactGroup`. App-owned `section` refs are not allowed (they stay full-width).
@@ -769,10 +777,7 @@ function validateColumnChild(value: unknown, where: string): void {
   if (value.type === 'section') fail(`${where}: app-owned section refs are not allowed inside a column`)
   if (value.type === 'columns') fail(`${where}: columns cannot be nested`)
   if (!CONTENT_BLOCK_TYPES.has(value.type)) fail(`${where} has an unknown block type "${String(value.type)}"`)
-  assertString(value.id, `${where}.id`)
-  if (value.title !== undefined) assertString(value.title, `${where}.title`)
-  if (value.subtitle !== undefined) assertString(value.subtitle, `${where}.subtitle`)
-  assertVisibility(value.visibility, where)
+  validateBlockEnvelope(value, where)
   validateContentBlock(value, value.type, where)
 }
 
@@ -795,10 +800,7 @@ function validateTabBlock(value: unknown, where: string): void {
 function validateLayoutItem(item: unknown, where: string, allowColumns = false): void {
   if (!isObject(item)) fail(`${where} must be an object`)
   if (typeof item.type !== 'string') fail(`${where} is missing a string \`type\``)
-  assertString(item.id, `${where}.id`)
-  if (item.title !== undefined) assertString(item.title, `${where}.title`)
-  if (item.subtitle !== undefined) assertString(item.subtitle, `${where}.subtitle`)
-  assertVisibility(item.visibility, where)
+  validateBlockEnvelope(item, where)
 
   if (item.type === 'section') {
     if (typeof item.ref !== 'string' || !SECTION_REFS.has(item.ref as SectionRef)) {
