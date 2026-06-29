@@ -120,12 +120,12 @@ const TESTNET_ACCOUNTING_TOKEN_BY_CENTRIFUGE_ID: Record<number, HexString> = {
 const envConfig = {
   mainnet: {
     indexerUrl: 'https://api.centrifuge.io',
-    ipfsUrl: 'https://ipfs.centrifuge.io',
+    ipfsUrl: 'https://centrifuge-files.mypinata.cloud',
     ...createPinning(PINNING_API),
   },
   testnet: {
     indexerUrl: 'https://api-v3-test.cfg.embrio.tech/graphql',
-    ipfsUrl: 'https://ipfs.centrifuge.io',
+    ipfsUrl: 'https://centrifuge-files.mypinata.cloud',
     ...createPinning(PINNING_API),
   },
 } satisfies Record<string, EnvConfig>
