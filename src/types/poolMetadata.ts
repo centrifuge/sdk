@@ -388,11 +388,18 @@ export type KeyFactGroup = {
   type: 'keyFactGroup'
   id: string
   title?: string
+  /** Optional secondary header rendered under {@link KeyFactGroup.title} (muted sub-heading). */
+  subtitle?: string
   visibility?: Visibility
   items: KeyFact[]
 }
 
-type BlockBase = { id: string; title?: string; visibility?: Visibility }
+/**
+ * Common fields on every content block. `title` is the primary header; `subtitle` is an optional
+ * secondary header rendered directly under it (muted sub-heading), e.g. title "Exposure breakdowns"
+ * with subtitle "Underlying fund (CGUHY I)".
+ */
+type BlockBase = { id: string; title?: string; subtitle?: string; visibility?: Visibility }
 
 /**
  * A single link destination, discriminated by `kind` (no competing-optional ambiguity):
@@ -531,6 +538,8 @@ export type SectionRefBlock = {
   ref: SectionRef
   /** Optional label override; the app supplies a sensible default. */
   title?: string
+  /** Optional secondary header rendered under {@link SectionRefBlock.title} (muted sub-heading). */
+  subtitle?: string
   visibility?: Visibility
 }
 
