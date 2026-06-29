@@ -160,9 +160,11 @@ export const mockPoolMetadataV2: PoolMetadataV2 = {
           type: 'kpiGroup',
           id: 'kpis',
           columns: 3,
+          variant: 'cards',
           items: [
             { label: 'TVL', value: '$10M' },
             { label: 'Investors', value: '120', trend: 'up' },
+            { label: 'Yield to worst', value: '6.49%', delta: '-0.47%', trend: 'up', secondary: 'vs 6.96%' },
             { label: 'Hidden KPI', value: 'secret', visibility: 'hidden' },
           ],
         },
@@ -240,6 +242,36 @@ export const mockPoolMetadataV2: PoolMetadataV2 = {
           rows: [
             ['T-Bill 2026', 'US912796RW0', 1_000_000],
             ['T-Bill 2027', '', 2_500_000],
+          ],
+        },
+        {
+          type: 'columns',
+          id: 'risk',
+          ratio: '3:2',
+          left: [
+            {
+              type: 'kpiGroup',
+              id: 'risk-drawdown',
+              title: 'Risk & drawdown',
+              subtitle: 'Underlying fund',
+              columns: 4,
+              items: [
+                { label: 'Max drawdown', value: '-19.3%' },
+                { label: 'Recovery to prior peak', value: '162 days', trend: 'up' },
+              ],
+            },
+            { type: 'text', id: 'risks', title: 'Risks', body: '**Market risk** — value can fall.' },
+          ],
+          right: [
+            {
+              type: 'keyFactGroup',
+              id: 'risk-liquidity',
+              title: 'Risk & liquidity profile',
+              items: [
+                { label: 'Portfolio manager', value: { kind: 'text', text: 'MacKay Shields LLC' } },
+                { label: 'Liquidity', value: { kind: 'text', text: 'Daily' }, visibility: 'whitelisted' },
+              ],
+            },
           ],
         },
         { type: 'section', id: 'contracts', ref: 'smartContracts', visibility: 'public' },

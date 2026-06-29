@@ -565,6 +565,61 @@ describe('parsePoolMetadataV2', () => {
     expect(() => parsePoolMetadataV2(bad)).to.throw(/indexer metric/)
   })
 
+  it('rejects a columns block in the body region (sections-only)', () => {
+    const bad = clone(mockPoolMetadataV2)
+    bad.pool.factsheet!.body.push({ type: 'columns', id: 'cols-in-body', left: [], right: [] } as never)
+    expect(() => parsePoolMetadataV2(bad)).to.throw(/sections region/)
+  })
+
+  it('rejects a nested columns block inside a column', () => {
+    const bad = clone(mockPoolMetadataV2)
+    const cols = bad.pool.factsheet!.sections!.find((b) => b.id === 'risk') as { left: Record<string, unknown>[] }
+    cols.left.push({ type: 'columns', id: 'nested', left: [], right: [] })
+    expect(() => parsePoolMetadataV2(bad)).to.throw(/nested/)
+  })
+
+  it('rejects an app-owned section ref inside a column', () => {
+    const bad = clone(mockPoolMetadataV2)
+    const cols = bad.pool.factsheet!.sections!.find((b) => b.id === 'risk') as { right: Record<string, unknown>[] }
+    cols.right.push({ type: 'section', id: 'sc', ref: 'smartContracts' })
+    expect(() => parsePoolMetadataV2(bad)).to.throw(/section refs are not allowed inside a column/)
+  })
+
+  it('rejects an invalid columns ratio', () => {
+    const bad = clone(mockPoolMetadataV2)
+    const cols = bad.pool.factsheet!.sections!.find((b) => b.id === 'risk') as Record<string, unknown>
+    cols.ratio = '5:1'
+    expect(() => parsePoolMetadataV2(bad)).to.throw(/ratio/)
+  })
+
+  it('rejects a columns block with a non-array left/right', () => {
+    const bad = clone(mockPoolMetadataV2)
+    const cols = bad.pool.factsheet!.sections!.find((b) => b.id === 'risk') as Record<string, unknown>
+    cols.left = 'not-an-array'
+    expect(() => parsePoolMetadataV2(bad)).to.throw(/left must be an array/)
+  })
+
+  it('rejects an invalid kpiGroup variant', () => {
+    const bad = clone(mockPoolMetadataV2)
+    const kpi = bad.pool.factsheet!.body.find((b) => b.id === 'kpis') as Record<string, unknown>
+    kpi.variant = 'fancy'
+    expect(() => parsePoolMetadataV2(bad)).to.throw(/variant/)
+  })
+
+  it('rejects a non-string kpiGroup item delta', () => {
+    const bad = clone(mockPoolMetadataV2)
+    const kpi = bad.pool.factsheet!.body.find((b) => b.id === 'kpis') as { items: Record<string, unknown>[] }
+    kpi.items[0]!.delta = 123
+    expect(() => parsePoolMetadataV2(bad)).to.throw(/delta/)
+  })
+
+  it('rejects a non-string kpiGroup item secondary', () => {
+    const bad = clone(mockPoolMetadataV2)
+    const kpi = bad.pool.factsheet!.body.find((b) => b.id === 'kpis') as { items: Record<string, unknown>[] }
+    kpi.items[0]!.secondary = 123
+    expect(() => parsePoolMetadataV2(bad)).to.throw(/secondary/)
+  })
+
   it('tolerates a pool with no factsheet', () => {
     const minimal: PoolMetadataV2 = {
       version: 2,
