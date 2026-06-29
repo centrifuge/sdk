@@ -592,6 +592,13 @@ describe('parsePoolMetadataV2', () => {
     expect(() => parsePoolMetadataV2(bad)).to.throw(/ratio/)
   })
 
+  it('rejects a columns block with a non-array left/right', () => {
+    const bad = clone(mockPoolMetadataV2)
+    const cols = bad.pool.factsheet!.sections!.find((b) => b.id === 'risk') as Record<string, unknown>
+    cols.left = 'not-an-array'
+    expect(() => parsePoolMetadataV2(bad)).to.throw(/left must be an array/)
+  })
+
   it('rejects an invalid kpiGroup variant', () => {
     const bad = clone(mockPoolMetadataV2)
     const kpi = bad.pool.factsheet!.body.find((b) => b.id === 'kpis') as Record<string, unknown>
