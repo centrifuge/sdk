@@ -423,9 +423,12 @@ const CONTENT_BLOCK_TYPES = new Set([
   'liveTable',
   'documents',
   'accordion',
+  'columns',
 ])
 const TAB_BLOCK_TYPES = new Set(['text', 'table', 'chart', 'kpiGroup'])
 const KPI_TRENDS = new Set(['up', 'down', 'neutral'])
+const KPI_VARIANTS = new Set(['plain', 'boxed', 'cards'])
+const COLUMN_RATIOS = new Set(['1:1', '3:2', '2:1', '2:3', '1:2'])
 
 function fail(message: string): never {
   throw new Error(`pool metadata v2: ${message}`)
@@ -682,11 +685,16 @@ function validateContentBlock(block: Record<string, unknown>, type: string, wher
       if (block.columns !== undefined && ![1, 2, 3, 4].includes(block.columns as number)) {
         fail(`${where}.columns must be 1, 2, 3 or 4`)
       }
+      if (block.variant !== undefined && !KPI_VARIANTS.has(block.variant as string)) {
+        fail(`${where}.variant must be one of plain, boxed, cards`)
+      }
       if (!Array.isArray(block.items)) fail(`${where}.items must be an array`)
       block.items.forEach((item, index) => {
         if (!isObject(item)) fail(`${where}.items[${index}] must be an object`)
         assertString(item.label, `${where}.items[${index}].label`)
         assertString(item.value, `${where}.items[${index}].value`)
+        if (item.delta !== undefined) assertString(item.delta, `${where}.items[${index}].delta`)
+        if (item.secondary !== undefined) assertString(item.secondary, `${where}.items[${index}].secondary`)
         if (item.trend !== undefined && !KPI_TRENDS.has(item.trend as string)) {
           fail(`${where}.items[${index}].trend is invalid`)
         }
@@ -732,9 +740,40 @@ function validateContentBlock(block: Record<string, unknown>, type: string, wher
       })
       break
     }
+    case 'columns': {
+      if (block.ratio !== undefined && !COLUMN_RATIOS.has(block.ratio as string)) {
+        fail(`${where}.ratio is invalid (expected one of 1:1, 3:2, 2:1, 2:3, 1:2)`)
+      }
+      for (const side of ['left', 'right'] as const) {
+        if (!Array.isArray(block[side])) fail(`${where}.${side} must be an array`)
+        ;(block[side] as unknown[]).forEach((child, index) => validateColumnChild(child, `${where}.${side}[${index}]`))
+      }
+      break
+    }
     default:
       fail(`${where} has an unknown block type "${type}"`)
   }
+}
+
+/**
+ * Validates a child of a {@link ColumnsBlock} column: any content block except a nested `columns`,
+ * plus `keyFactGroup`. App-owned `section` refs are not allowed (they stay full-width).
+ */
+function validateColumnChild(value: unknown, where: string): void {
+  if (!isObject(value)) fail(`${where} must be an object`)
+  if (typeof value.type !== 'string') fail(`${where} is missing a string \`type\``)
+  if (value.type === 'keyFactGroup') {
+    validateKeyFactGroup(value, where)
+    return
+  }
+  if (value.type === 'section') fail(`${where}: app-owned section refs are not allowed inside a column`)
+  if (value.type === 'columns') fail(`${where}: columns cannot be nested`)
+  if (!CONTENT_BLOCK_TYPES.has(value.type)) fail(`${where} has an unknown block type "${String(value.type)}"`)
+  assertString(value.id, `${where}.id`)
+  if (value.title !== undefined) assertString(value.title, `${where}.title`)
+  if (value.subtitle !== undefined) assertString(value.subtitle, `${where}.subtitle`)
+  assertVisibility(value.visibility, where)
+  validateContentBlock(value, value.type, where)
 }
 
 /** Validates a leaf block nested in a `tabGroup` tab or `accordion` item (the {@link TabBlock} set). */
@@ -749,7 +788,11 @@ function validateTabBlock(value: unknown, where: string): void {
   validateContentBlock(value, value.type, where)
 }
 
-function validateLayoutItem(item: unknown, where: string): void {
+/**
+ * `allowColumns` is true only for the full-width `sections` region. The top `body` is already a
+ * two-column layout, so a `columns` block there is rejected.
+ */
+function validateLayoutItem(item: unknown, where: string, allowColumns = false): void {
   if (!isObject(item)) fail(`${where} must be an object`)
   if (typeof item.type !== 'string') fail(`${where} is missing a string \`type\``)
   assertString(item.id, `${where}.id`)
@@ -762,6 +805,9 @@ function validateLayoutItem(item: unknown, where: string): void {
       fail(`${where} has an invalid section ref "${String(item.ref)}"`)
     }
     return
+  }
+  if (item.type === 'columns' && !allowColumns) {
+    fail(`${where}: a 'columns' block is only allowed in the full-width sections region`)
   }
   if (!CONTENT_BLOCK_TYPES.has(item.type)) {
     fail(`${where} has an unknown block type "${item.type}"`)
@@ -777,7 +823,7 @@ function validateFactsheet(factsheet: unknown): void {
   factsheet.keyFacts.forEach((group, index) => validateKeyFactGroup(group, `pool.factsheet.keyFacts[${index}]`))
   if (factsheet.sections !== undefined) {
     if (!Array.isArray(factsheet.sections)) fail('`pool.factsheet.sections` must be an array')
-    factsheet.sections.forEach((item, index) => validateLayoutItem(item, `pool.factsheet.sections[${index}]`))
+    factsheet.sections.forEach((item, index) => validateLayoutItem(item, `pool.factsheet.sections[${index}]`, true))
   }
 }
 

@@ -467,12 +467,26 @@ export type ChartBlock = BlockBase & {
 
 export type ImageBlock = BlockBase & { type: 'image'; file: FileType; alt?: string; caption?: string }
 
+/**
+ * Issuer-chosen framing for a KPI group. Omit to use the app default.
+ * - `boxed` — one bordered container around the whole group.
+ * - `cards` — each item in its own bordered tile.
+ * - `plain` — no framing.
+ */
+export type KpiVariant = 'plain' | 'boxed' | 'cards'
+
 export type KpiGroupBlock = BlockBase & {
   type: 'kpiGroup'
   columns?: 1 | 2 | 3 | 4
+  /** Issuer-chosen framing; the app picks a sensible default when omitted. */
+  variant?: KpiVariant
   items: Array<{
     label: string
     value: string
+    /** Optional change badge, e.g. '-0.47%'; colored by `trend`. */
+    delta?: string
+    /** Optional comparison subline rendered under the value, e.g. 'vs 6.96%'. */
+    secondary?: string
     tooltip?: string
     trend?: 'up' | 'down' | 'neutral'
     visibility?: Visibility
@@ -520,6 +534,41 @@ export type AccordionBlock = BlockBase & {
   items: Array<{ title: string; block: TabBlock; defaultOpen?: boolean }>
 }
 
+/**
+ * Left:right width ratio for a {@link ColumnsBlock}; default '1:1'. Closed set, SDK-validated.
+ */
+export type ColumnRatio = '1:1' | '3:2' | '2:1' | '2:3' | '1:2'
+
+/**
+ * A two-column section container for the full-width `sections` region (not `body`, which is already
+ * two-column). One level deep: no nested `columns`, and no app-owned `section` refs inside a column.
+ * `keyFactGroup` is allowed inside a column (e.g. a right-hand "Risk & liquidity profile" fact list).
+ * Stacks to a single column on mobile (left then right) — app-owned responsive behavior.
+ */
+export type ColumnsBlock = BlockBase & {
+  type: 'columns'
+  ratio?: ColumnRatio
+  left: ColumnChild[]
+  right: ColumnChild[]
+}
+
+/**
+ * Allowed inside a column: any content block except a nested `columns` (and no app-owned `section`
+ * refs), plus `keyFactGroup`. Listed explicitly rather than `Exclude<ContentBlock, ColumnsBlock>` to
+ * avoid a recursive type-alias cycle (`ContentBlock` includes `ColumnsBlock`).
+ */
+export type ColumnChild =
+  | TextBlock
+  | TableBlock
+  | ChartBlock
+  | ImageBlock
+  | KpiGroupBlock
+  | TabGroupBlock
+  | LiveTableBlock
+  | DocumentsBlock
+  | AccordionBlock
+  | KeyFactGroup
+
 export type ContentBlock =
   | TextBlock
   | TableBlock
@@ -530,6 +579,7 @@ export type ContentBlock =
   | LiveTableBlock
   | DocumentsBlock
   | AccordionBlock
+  | ColumnsBlock
 
 /** A pointer to one of the closed, app-owned section units. */
 export type SectionRefBlock = {
