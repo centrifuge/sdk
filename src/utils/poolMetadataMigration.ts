@@ -563,6 +563,7 @@ function validateKeyFactGroup(value: unknown, where: string): void {
   if (value.type !== 'keyFactGroup') fail(`${where}.type must be 'keyFactGroup'`)
   assertString(value.id, `${where}.id`)
   if (value.title !== undefined) assertString(value.title, `${where}.title`)
+  if (value.subtitle !== undefined) assertString(value.subtitle, `${where}.subtitle`)
   assertVisibility(value.visibility, where)
   if (!Array.isArray(value.items)) fail(`${where}.items must be an array`)
   value.items.forEach((item, index) => validateKeyFact(item, `${where}.items[${index}]`))
@@ -743,6 +744,8 @@ function validateTabBlock(value: unknown, where: string): void {
     fail(`${where} has an invalid type "${String(value.type)}"`)
   }
   assertString(value.id, `${where}.id`)
+  if (value.title !== undefined) assertString(value.title, `${where}.title`)
+  if (value.subtitle !== undefined) assertString(value.subtitle, `${where}.subtitle`)
   validateContentBlock(value, value.type, where)
 }
 
@@ -750,6 +753,8 @@ function validateLayoutItem(item: unknown, where: string): void {
   if (!isObject(item)) fail(`${where} must be an object`)
   if (typeof item.type !== 'string') fail(`${where} is missing a string \`type\``)
   assertString(item.id, `${where}.id`)
+  if (item.title !== undefined) assertString(item.title, `${where}.title`)
+  if (item.subtitle !== undefined) assertString(item.subtitle, `${where}.subtitle`)
   assertVisibility(item.visibility, where)
 
   if (item.type === 'section') {
