@@ -197,7 +197,7 @@ function buildFactsheet(
     })
   }
 
-  const body: LayoutItem[] = []
+  const body: Factsheet['body'] = []
   if (issuer.description) {
     // Overview card: logo and the "Factsheet" link button are added only when their source field
     // exists, so a missing logo / executiveSummary degrades to a plain card (never a broken one).

@@ -606,6 +606,13 @@ describe('parsePoolMetadataV2', () => {
     expect(() => parsePoolMetadataV2(bad)).to.throw(/delta/)
   })
 
+  it('rejects a non-string kpiGroup item secondary', () => {
+    const bad = clone(mockPoolMetadataV2)
+    const kpi = bad.pool.factsheet!.body.find((b) => b.id === 'kpis') as { items: Record<string, unknown>[] }
+    kpi.items[0]!.secondary = 123
+    expect(() => parsePoolMetadataV2(bad)).to.throw(/secondary/)
+  })
+
   it('tolerates a pool with no factsheet', () => {
     const minimal: PoolMetadataV2 = {
       version: 2,

@@ -596,8 +596,12 @@ export type SectionRefBlock = {
 export type LayoutItem = ContentBlock | SectionRefBlock
 
 export type Factsheet = {
-  /** Top region, left column, ordered (authored blocks + app section refs e.g. `onchainMetrics`). */
-  body: LayoutItem[]
+  /**
+   * Top region, left column, ordered (authored blocks + app section refs e.g. `onchainMetrics`).
+   * Excludes `ColumnsBlock` (already a two-column layout); `columns` is `sections`-only, enforced
+   * here at compile time and in {@link parsePoolMetadataV2} at runtime.
+   */
+  body: Array<Exclude<LayoutItem, ColumnsBlock>>
   /** Top region, right column, ordered groups of key facts (groups only, no bare key facts). */
   keyFacts: KeyFactGroup[]
   /** Full-width region below, ordered. Omit to let the app render its default sections. */
