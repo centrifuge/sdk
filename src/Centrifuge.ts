@@ -207,17 +207,23 @@ export class Centrifuge {
           chain.id,
           createPublicClient<any, Chain>({
             chain,
-            transport: Array.isArray(rpcUrl)
-              ? fallback(
-                  rpcUrl.map((url) => http(url)),
-                  {
-                    rank: {
-                      interval: 30_000,
-                      sampleCount: 5,
-                    },
-                  }
-                )
-              : http(rpcUrl),
+            // Only build a ranked fallback when there are multiple URLs to choose between. viem's
+            // fallback `rank` health-checks each transport with `net_listening`, which some RPC
+            // providers (e.g. Alchemy's Pharos endpoint) reject with HTTP 400 — that marks the
+            // single transport as degraded and stalls every query on that chain. A lone URL needs
+            // neither failover nor ranking, so use a plain `http()` transport.
+            transport:
+              Array.isArray(rpcUrl) && rpcUrl.length > 1
+                ? fallback(
+                    rpcUrl.map((url) => http(url)),
+                    {
+                      rank: {
+                        interval: 30_000,
+                        sampleCount: 5,
+                      },
+                    }
+                  )
+                : http(Array.isArray(rpcUrl) ? rpcUrl[0] : rpcUrl),
             batch: { multicall: true },
             pollingInterval: this.#config.pollingInterval,
             cacheTime: 100,
