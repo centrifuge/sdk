@@ -142,7 +142,7 @@ export class Centrifuge {
   }
 
   #clients = new Map<number, Client>()
-  getClient(centrifugeId: CentrifugeId) {
+  getClient(centrifugeId: CentrifugeId): Query<Client> {
     return this._query(['client', centrifugeId], () =>
       this._idToChain(centrifugeId).pipe(
         map((chainId) => {
