@@ -704,11 +704,21 @@ export class Pool extends Entity {
         ShareClassId.from(poolDetails.id, existingShareClassesCount + index + 1)
       )
 
-      // Determine if we need to update metadata
+      // Determine if we need to re-pin metadata. A share-class rename (tokenName/symbolName) is
+      // on-chain only (updateShareClassMetadata) and is NOT part of the pinned JSON, so it must not
+      // trigger a re-pin on its own. Only re-pin when metadata content actually changes: pool-level
+      // input, a new share class, or a share-class metadata field (minInvestment/apyPercentage/apy/
+      // defaultAccounts) is provided on an updated share class.
       const hasMetadataInput = metadataInput !== null && Object.keys(metadataInput).length > 0
       const hasNewShareClasses = addedShareClasses.length > 0
-      const hasUpdatedShareClasses = updatedShareClasses.length > 0
-      const shouldUpdateMetadata = hasMetadataInput || hasNewShareClasses || hasUpdatedShareClasses
+      const hasUpdatedShareClassMetadata = updatedShareClasses.some(
+        (sc) =>
+          sc.minInvestment !== undefined ||
+          sc.apyPercentage !== undefined ||
+          sc.apy !== undefined ||
+          sc.defaultAccounts !== undefined
+      )
+      const shouldUpdateMetadata = hasMetadataInput || hasNewShareClasses || hasUpdatedShareClassMetadata
 
       let cid: string | null = null
 
@@ -794,15 +804,17 @@ export class Pool extends Entity {
           shareClasses: { ...baseMetadata.shareClasses, ...newShareClassesById },
         }
 
+        // Partial merge: only override keys that were actually provided, so omitting a field
+        // preserves the stored value instead of dropping it (callers need not echo existing values).
         updatedShareClasses.forEach((sc) => {
           const id = sc.id.toString()
 
           formattedMetadata.shareClasses[id] = {
             ...formattedMetadata.shareClasses[id],
-            minInitialInvestment: sc.minInvestment,
-            apyPercentage: sc.apyPercentage,
-            apy: sc.apy,
-            defaultAccounts: sc.defaultAccounts,
+            ...(sc.minInvestment !== undefined ? { minInitialInvestment: sc.minInvestment } : {}),
+            ...(sc.apyPercentage !== undefined ? { apyPercentage: sc.apyPercentage } : {}),
+            ...(sc.apy !== undefined ? { apy: sc.apy } : {}),
+            ...(sc.defaultAccounts !== undefined ? { defaultAccounts: sc.defaultAccounts } : {}),
           }
         })
 
