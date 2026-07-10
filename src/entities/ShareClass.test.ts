@@ -899,6 +899,9 @@ describe('ShareClass', () => {
         shareClass.closedRedemptions({ onlyUnclaimed: true }),
       ])
 
+      // Data-dependent: only assert when the fork actually has closed redemptions.
+      if (unclaimed.length === 0) return
+
       unclaimed.forEach((redemption) => {
         expect(redemption.claimedAt).to.be.null
         expect(redemption.isClaimed).to.equal(false)
