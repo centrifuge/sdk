@@ -2066,29 +2066,16 @@ export class ShareClass extends Entity {
   closedRedemptions(filter: ClosedRedemptionsFilter = {}) {
     const { assetId, epochIndex, onlyUnclaimed = false } = filter
 
-    const epochVarDecls = ['$scId: String!']
-    const epochWhere = ['tokenId: $scId']
-    const epochVars: Record<string, any> = { scId: this.id.raw }
-    if (assetId !== undefined) {
-      epochVarDecls.push('$assetId: BigInt!')
-      epochWhere.push('assetId: $assetId')
-      // AssetId.raw is a bigint, which is not JSON-serializable; the indexer expects a string.
-      epochVars.assetId = assetId.toString()
-    }
-    if (epochIndex !== undefined) {
-      epochVarDecls.push('$epochIndex: Int!')
-      epochWhere.push('index: $epochIndex')
-      epochVars.epochIndex = epochIndex
-    } else {
-      epochWhere.push('index_gte: 0')
-    }
-    const orderClaimedFilter = onlyUnclaimed ? ', claimedAt: null' : ''
+    // AssetId.raw is a bigint (not JSON-serializable); the indexer's BigInt scalar takes a string.
+    const epochFilter: Record<string, any> = { tokenId: this.id.raw }
+    if (assetId !== undefined) epochFilter.assetId = assetId.toString()
+    if (epochIndex !== undefined) epochFilter.index = epochIndex
 
     return this._query(['closedRedemptions', assetId?.toString(), epochIndex, onlyUnclaimed], () =>
       this._root
         ._queryIndexer(
-          `query (${epochVarDecls.join(', ')}) {
-            epochRedeemOrders(where: {${epochWhere.join(', ')}}, limit: 1000) {
+          `query ($filter: EpochRedeemOrderFilter) {
+            epochRedeemOrders(where: $filter, limit: 1000) {
               items {
                 assetId
                 index
@@ -2111,7 +2098,7 @@ export class ShareClass extends Entity {
               }
             }
           }`,
-          epochVars,
+          { filter: epochFilter },
           (data: any) => data.epochRedeemOrders.items
         )
         .pipe(
@@ -2119,15 +2106,18 @@ export class ShareClass extends Entity {
             if (epochs.length === 0) return of([])
 
             return combineLatest(
-              epochs.map((epochData: any) =>
-                this._root._queryIndexer(
-                  `query ($scId: String!, $assetId: BigInt!, $index: Int!) {
-                    redeemOrders(where: {
-                      tokenId: $scId,
-                      assetId: $assetId,
-                      index: $index,
-                      revokedAt_not: null${orderClaimedFilter}
-                    }, limit: 1000) {
+              epochs.map((epochData: any) => {
+                const orderFilter: Record<string, any> = {
+                  tokenId: this.id.raw,
+                  assetId: epochData.assetId,
+                  index: epochData.index,
+                  revokedAt_not: null,
+                }
+                if (onlyUnclaimed) orderFilter.claimedAt = null
+
+                return this._root._queryIndexer(
+                  `query ($filter: RedeemOrderFilter) {
+                    redeemOrders(where: $filter, limit: 1000) {
                       items {
                         account
                         index
@@ -2153,10 +2143,10 @@ export class ShareClass extends Entity {
                       }
                     }
                   }`,
-                  { scId: this.id.raw, assetId: epochData.assetId, index: epochData.index },
+                  { filter: orderFilter },
                   (orderData: any) => ({ epochData, orders: orderData.redeemOrders.items })
                 )
-              )
+              })
             )
           }),
           map((results: any[]) => {
@@ -2186,7 +2176,8 @@ export class ShareClass extends Entity {
                     name: epochData.asset.name,
                     decimals: epochData.asset.decimals,
                   },
-                  centrifugeId: epochData.asset.centrifugeId,
+                  // The indexer returns centrifugeId as a string; CentrifugeId is a number.
+                  centrifugeId: Number(epochData.asset.centrifugeId),
                   token: {
                     decimals: epochData.token.decimals,
                   },
@@ -2210,7 +2201,7 @@ export class ShareClass extends Entity {
                       name: order.asset.name,
                       decimals: order.asset.decimals,
                     },
-                    centrifugeId: order.asset.centrifugeId,
+                    centrifugeId: Number(order.asset.centrifugeId),
                     token: {
                       decimals: order.token.decimals,
                     },
