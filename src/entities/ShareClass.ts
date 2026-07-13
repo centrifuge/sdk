@@ -39,6 +39,46 @@ import { Vault } from './Vault.js'
 const GAS_LIMIT = 30_000_000n
 
 /**
+ * A closed redemption order, i.e. an epoch for which shares have been revoked.
+ * `investor` is null for the epoch-level aggregate returned when no per-investor
+ * orders are indexed for a revoked epoch.
+ */
+export interface ClosedRedemption {
+  investor: HexString | null
+  index: number
+  assetId: AssetId
+  approvedAmount: Balance
+  approvedAt: string | null
+  payoutAmount: Balance
+  revokedAt: string | null
+  priceAsset: Price
+  pricePerShare: Price
+  claimedAt: string | null
+  isClaimed: boolean
+  asset: {
+    symbol: string
+    name: string
+    decimals: number
+  }
+  centrifugeId: CentrifugeId
+  token: {
+    decimals: number
+  }
+}
+
+/**
+ * Filter for {@link ShareClass.closedRedemptions}.
+ */
+export interface ClosedRedemptionsFilter {
+  /** Restrict to a single payout asset. */
+  assetId?: AssetId
+  /** Restrict to a single epoch (the `epochId` passed to approve/revoke). */
+  epochIndex?: number
+  /** Only return orders not yet claimed/notified on the hub (`claimedAt` is null). */
+  onlyUnclaimed?: boolean
+}
+
+/**
  * Query and interact with a share class, which allows querying total issuance, NAV per share,
  * and allows interactions related to asynchronous deposits and redemptions.
  */
@@ -2008,15 +2048,34 @@ export class ShareClass extends Entity {
   }
 
   /**
-   * Get closed redemption orders
+   * Get closed redemption orders, i.e. epochs for which shares have been revoked.
+   *
+   * Without a filter this returns every closed order across the share class' entire
+   * redemption history (one indexer request per epoch). Pass a `filter` to scope it:
+   *
+   * - `assetId` / `epochIndex` narrow to a single asset and/or epoch, so the cost
+   *   scales with the investors in that epoch rather than all history. `epochIndex`
+   *   is the `epochId` passed to `approveRedeems`/`revokeShares`.
+   * - `onlyUnclaimed` drops orders already claimed/notified on the hub. Because each
+   *   `notifyRedeem` stamps `claimedAt`, this is safe to poll: an operator bot can
+   *   re-run it to get exactly the investors of an epoch still awaiting a
+   *   `notifyRedeem`.
+   *
    * @returns Closed redemption orders where shares have been revoked
    */
-  closedRedemptions() {
-    return this._query(['closedRedemptions'], () =>
+  closedRedemptions(filter: ClosedRedemptionsFilter = {}) {
+    const { assetId, epochIndex, onlyUnclaimed = false } = filter
+
+    // AssetId.raw is a bigint (not JSON-serializable); the indexer's BigInt scalar takes a string.
+    const epochFilter: Record<string, any> = { tokenId: this.id.raw }
+    if (assetId !== undefined) epochFilter.assetId = assetId.toString()
+    if (epochIndex !== undefined) epochFilter.index = epochIndex
+
+    return this._query(['closedRedemptions', assetId?.toString(), epochIndex, onlyUnclaimed], () =>
       this._root
         ._queryIndexer(
-          `query ($scId: String!) {
-            epochRedeemOrders(where: {tokenId: $scId, index_gte: 0}, limit: 1000) {
+          `query ($filter: EpochRedeemOrderFilter) {
+            epochRedeemOrders(where: $filter, limit: 1000) {
               items {
                 assetId
                 index
@@ -2039,7 +2098,7 @@ export class ShareClass extends Entity {
               }
             }
           }`,
-          { scId: this.id.raw },
+          { filter: epochFilter },
           (data: any) => data.epochRedeemOrders.items
         )
         .pipe(
@@ -2047,15 +2106,18 @@ export class ShareClass extends Entity {
             if (epochs.length === 0) return of([])
 
             return combineLatest(
-              epochs.map((epochData: any) =>
-                this._root._queryIndexer(
-                  `query ($scId: String!, $assetId: BigInt!, $index: Int!) {
-                    redeemOrders(where: {
-                      tokenId: $scId,
-                      assetId: $assetId,
-                      index: $index,
-                      revokedAt_not: null
-                    }, limit: 1000) {
+              epochs.map((epochData: any) => {
+                const orderFilter: Record<string, any> = {
+                  tokenId: this.id.raw,
+                  assetId: epochData.assetId,
+                  index: epochData.index,
+                  revokedAt_not: null,
+                }
+                if (onlyUnclaimed) orderFilter.claimedAt = null
+
+                return this._root._queryIndexer(
+                  `query ($filter: RedeemOrderFilter) {
+                    redeemOrders(where: $filter, limit: 1000) {
                       items {
                         account
                         index
@@ -2081,19 +2143,22 @@ export class ShareClass extends Entity {
                       }
                     }
                   }`,
-                  { scId: this.id.raw, assetId: epochData.assetId, index: epochData.index },
+                  { filter: orderFilter },
                   (orderData: any) => ({ epochData, orders: orderData.redeemOrders.items })
                 )
-              )
+              })
             )
           }),
           map((results: any[]) => {
-            const allOrders: any[] = []
+            const allOrders: ClosedRedemption[] = []
 
             results.forEach((result: any) => {
               const { epochData, orders } = result
 
-              if (orders.length === 0 && epochData.revokedAt) {
+              // The epoch-level aggregate is a fallback for revoked epochs with no
+              // indexed per-investor orders; skip it when filtering to unclaimed, where
+              // an empty result legitimately means everyone has been notified.
+              if (orders.length === 0 && epochData.revokedAt && !onlyUnclaimed) {
                 allOrders.push({
                   investor: null,
                   index: epochData.index,
@@ -2111,7 +2176,8 @@ export class ShareClass extends Entity {
                     name: epochData.asset.name,
                     decimals: epochData.asset.decimals,
                   },
-                  centrifugeId: epochData.asset.centrifugeId,
+                  // The indexer returns centrifugeId as a string; CentrifugeId is a number.
+                  centrifugeId: Number(epochData.asset.centrifugeId),
                   token: {
                     decimals: epochData.token.decimals,
                   },
@@ -2135,7 +2201,7 @@ export class ShareClass extends Entity {
                       name: order.asset.name,
                       decimals: order.asset.decimals,
                     },
-                    centrifugeId: order.asset.centrifugeId,
+                    centrifugeId: Number(order.asset.centrifugeId),
                     token: {
                       decimals: order.token.decimals,
                     },

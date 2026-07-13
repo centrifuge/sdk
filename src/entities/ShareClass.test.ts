@@ -284,7 +284,6 @@ describe('ShareClass', () => {
     // expect approvedAt values once they are available, right now we pendingIssuances and pendingRevocations return as empty list
   })
 
-
   it('gets investor orders', async () => {
     const investorOrders = await shareClass.investorOrders()
 
@@ -849,9 +848,9 @@ describe('ShareClass', () => {
 
       expect(closedRedemptions).to.be.an('array')
 
-      if (closedRedemptions.length > 0) {
-        const redemption = closedRedemptions[0]!
-
+      // Assert against a per-investor row; the epoch-level aggregate has a null investor.
+      const redemption = closedRedemptions.find((r) => r.investor !== null)
+      if (redemption) {
         expect(redemption).to.have.keys([
           'investor',
           'index',
@@ -865,10 +864,12 @@ describe('ShareClass', () => {
           'claimedAt',
           'isClaimed',
           'asset',
+          'centrifugeId',
+          'token',
         ])
 
         expect(redemption.investor).to.be.a('string')
-        expect(redemption.investor.toLowerCase()).to.equal(redemption.investor)
+        expect(redemption.investor!.toLowerCase()).to.equal(redemption.investor)
         expect(redemption.index).to.be.a('number')
         expect(redemption.assetId).to.be.instanceOf(AssetId)
         expect(redemption.approvedAmount).to.be.instanceOf(Balance)
@@ -889,6 +890,45 @@ describe('ShareClass', () => {
       closedRedemptions.forEach((redemption) => {
         expect(redemption.revokedAt).to.not.be.null
         expect(redemption.revokedAt).to.be.string
+      })
+    })
+
+    it('filters to unclaimed orders', async () => {
+      const [all, unclaimed] = await Promise.all([
+        shareClass.closedRedemptions(),
+        shareClass.closedRedemptions({ onlyUnclaimed: true }),
+      ])
+
+      // Data-dependent: only assert when the fork actually has closed redemptions.
+      if (unclaimed.length === 0) return
+
+      unclaimed.forEach((redemption) => {
+        expect(redemption.claimedAt).to.be.null
+        expect(redemption.isClaimed).to.equal(false)
+      })
+
+      // The filter must drop exactly the already-claimed orders, no more. Epoch-level
+      // aggregate rows (null investor) are excluded from the unclaimed result by design,
+      // so compare against the per-investor unclaimed orders in the unfiltered set.
+      const unclaimedInAll = all.filter((r) => r.investor !== null && r.claimedAt === null)
+      expect(unclaimed.length).to.equal(unclaimedInAll.length)
+    })
+
+    it('filters to a single epoch', async () => {
+      const all = await shareClass.closedRedemptions()
+      const withInvestor = all.find((r) => r.investor !== null)
+      // Data-dependent: only assert when there is a closed order to scope to.
+      if (!withInvestor) return
+
+      const scoped = await shareClass.closedRedemptions({
+        assetId: withInvestor.assetId,
+        epochIndex: withInvestor.index,
+      })
+
+      expect(scoped.length).to.be.greaterThan(0)
+      scoped.forEach((redemption) => {
+        expect(redemption.index).to.equal(withInvestor.index)
+        expect(redemption.assetId.equals(withInvestor.assetId)).to.equal(true)
       })
     })
   })
