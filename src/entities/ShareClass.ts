@@ -1905,7 +1905,7 @@ export class ShareClass extends Entity {
       this._root
         ._queryIndexer(
           `query ($scId: String!) {
-            epochInvestOrders(where: {tokenId: $scId, index_gte: 0}, limit: 1000) {
+            epochInvestOrders(where: {tokenId: $scId}, limit: 1000) {
               items {
                 assetId
                 index
@@ -1937,13 +1937,24 @@ export class ShareClass extends Entity {
             if (epochs.length === 0) return of([])
 
             return combineLatest(
-              epochs.map((epochData: any) =>
-                this._root._queryIndexer(
-                  `query ($scId: String!, $assetId: BigInt!, $index: Int!) {
+              epochs.map((epochData: any) => {
+                // Without an approvedAtTxHash we can't join to per-investor orders; fall
+                // through to the epoch-level aggregate/empty handling in the map below.
+                if (!epochData.approvedAtTxHash) return of({ epochData, orders: [] })
+
+                return this._root._queryIndexer(
+                  // Join per-investor orders to their epoch by approvedAtTxHash, NOT index:
+                  // investOrders.index and epochInvestOrders.index use different numbering
+                  // (instant/sync investments all carry investOrders.index 0 regardless of
+                  // which epoch they belong to), so joining on index collapses distinct
+                  // epochs together. approvedAtTxHash maps each epoch to its investors 1:1 —
+                  // approvals are per-epoch (never batched across epochs the way issues are,
+                  // where a single issuedAtTxHash can cover multiple epochs of the same asset).
+                  `query ($scId: String!, $assetId: BigInt!, $approvedAtTxHash: String!) {
                     investOrders(where: {
                       tokenId: $scId,
                       assetId: $assetId,
-                      index: $index,
+                      approvedAtTxHash: $approvedAtTxHash,
                       issuedAt_not: null
                     }, limit: 1000) {
                       items {
@@ -1974,10 +1985,10 @@ export class ShareClass extends Entity {
                       }
                     }
                   }`,
-                  { scId: this.id.raw, assetId: epochData.assetId, index: epochData.index },
+                  { scId: this.id.raw, assetId: epochData.assetId, approvedAtTxHash: epochData.approvedAtTxHash },
                   (orderData: any) => ({ epochData, orders: orderData.investOrders.items })
                 )
-              )
+              })
             )
           }),
           map((results: any[]) => {
@@ -2015,7 +2026,10 @@ export class ShareClass extends Entity {
                 orders.forEach((order: any) => {
                   allOrders.push({
                     investor: order.account.toLowerCase() as HexString,
-                    index: order.index,
+                    // Use the epoch's index, not order.index: per-investor investOrders.index
+                    // is on a different numbering scheme (see the join comment above), and the
+                    // app keys/filters closed investments by epoch index.
+                    index: epochData.index,
                     assetId: new AssetId(order.assetId),
                     approvedAmount: new Balance(order.approvedAssetsAmount || 0n, order.asset.decimals),
                     approvedAt: order.approvedAt ? order.approvedAt : null,
