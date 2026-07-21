@@ -485,6 +485,16 @@ describe('parsePoolMetadataV2', () => {
     expect(() => parsePoolMetadataV2(bad)).to.throw(/data must be an object/)
   })
 
+  it('accepts monthlySummary as a section ref', () => {
+    const ok = clone(mockPoolMetadataV2)
+    ok.pool.factsheet!.body.push({
+      type: 'section',
+      id: 'monthly-summary',
+      ref: 'monthlySummary',
+    })
+    expect(() => parsePoolMetadataV2(ok)).to.not.throw()
+  })
+
   it('rejects an unknown section ref (closed, SDK-enforced registry)', () => {
     const bad = clone(mockPoolMetadataV2)
     const section = bad.pool.factsheet!.body.find((b) => b.id === 'performance') as Record<string, unknown>
