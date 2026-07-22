@@ -785,7 +785,7 @@ export class Centrifuge {
           address: addresses.spoke,
           abi: ABI.Spoke,
           functionName: 'registerAsset',
-          args: [originCentrifugeId, assetAddress, BigInt(tokenId), ctx.signingAddress],
+          args: [registerOnCentrifugeId, assetAddress, BigInt(tokenId), ctx.signingAddress],
           value: estimate,
         })
       )
