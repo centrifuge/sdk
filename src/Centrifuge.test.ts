@@ -8,6 +8,7 @@ import { Pool } from './entities/Pool.js'
 import { context } from './tests/setup.js'
 import { randomAddress } from './tests/utils.js'
 import { ProtocolContracts } from './types/index.js'
+import type { HexString } from './types/index.js'
 import { MessageType } from './types/transaction.js'
 import { doSignMessage, doTransaction } from './utils/transaction.js'
 import { AssetId, PoolId } from './utils/types.js'
@@ -387,9 +388,9 @@ describe('Centrifuge', () => {
 
     it('centrifuge.crosschainMessages encodes `createdAtTxHash` filter and is not pool-scoped', async () => {
       const centrifuge = new Centrifuge({ environment: 'testnet' })
-      const queryIndexer = sinon.stub(centrifuge as any, '_queryIndexer').returns(
-        of({ crosschainPayloads: { totalCount: 0, pageInfo: samplePageInfo, items: [] } })
-      )
+      const queryIndexer = sinon
+        .stub(centrifuge as any, '_queryIndexer')
+        .returns(of({ crosschainPayloads: { totalCount: 0, pageInfo: samplePageInfo, items: [] } }))
 
       await centrifuge.crosschainMessages({ createdAtTxHash: '0xbatchtx' })
 
@@ -868,6 +869,77 @@ describe('Centrifuge', () => {
 
       const result = await centrifuge.registerAsset(centId, centId, assetAddress)
       expect(result.type).to.equal('TransactionConfirmed')
+    })
+
+    describe('registerAsset destination', () => {
+      const signingAddress = randomAddress()
+
+      // Stubs the plumbing around `registerAsset` so we can inspect the actual
+      // `writeContract` call without a fork. `_transact` is stubbed to drain the
+      // async generator, which is what triggers the underlying write.
+      function stubRegisterAsset(centrifuge: Centrifuge, spoke: HexString, estimate: bigint) {
+        const writeContract = sinon.stub().resolves('0x1')
+        sinon.stub(centrifuge as any, '_protocolAddresses').resolves({ spoke })
+        sinon.stub(centrifuge as any, '_estimate').resolves(estimate)
+        const transact = sinon.stub(centrifuge as any, '_transact').callsFake(async (cb: any) => {
+          const gen = cb({
+            signingAddress,
+            walletClient: { writeContract },
+            publicClient: {
+              getCode: async () => undefined,
+              waitForTransactionReceipt: async () => ({ status: 'success' }),
+            },
+          })
+          // Drain the generator so the write action runs to completion.
+          while (!(await gen.next()).done) {
+            /* consume statuses */
+          }
+        })
+        return { writeContract, transact }
+      }
+
+      it('passes the target chain as the on-chain destination for a cross-chain registration', async () => {
+        const centrifuge = new Centrifuge({ environment: 'testnet' })
+        const spoke = randomAddress()
+        const origin = 1
+        const registerOn = 2
+        const { writeContract, transact } = stubRegisterAsset(centrifuge, spoke, 999n)
+
+        await centrifuge.registerAsset(origin, registerOn, someErc20)
+
+        // Executes on the origin chain (where the asset lives) using the origin spoke,
+        // and estimates the origin -> target fee.
+        expect((centrifuge as any)._protocolAddresses.calledWith(origin)).to.equal(true)
+        expect((centrifuge as any)._estimate.calledWith(origin, registerOn, MessageType.RegisterAsset)).to.equal(true)
+        expect(transact.lastCall.args[1]).to.equal(origin)
+
+        // The Spoke's `centrifugeId` argument is the destination hub, so it must be the
+        // target chain, not the origin. Passing origin here silently keeps registration local.
+        expect(
+          writeContract.calledWithMatch({
+            address: spoke,
+            functionName: 'registerAsset',
+            args: [registerOn, someErc20, 0n, signingAddress],
+            value: 999n,
+          })
+        ).to.equal(true)
+      })
+
+      it('registers locally when origin and target are the same chain', async () => {
+        const centrifuge = new Centrifuge({ environment: 'testnet' })
+        const spoke = randomAddress()
+        const { writeContract } = stubRegisterAsset(centrifuge, spoke, 0n)
+
+        await centrifuge.registerAsset(centId, centId, someErc20)
+
+        expect(
+          writeContract.calledWithMatch({
+            address: spoke,
+            functionName: 'registerAsset',
+            args: [centId, someErc20, 0n, signingAddress],
+          })
+        ).to.equal(true)
+      })
     })
 
     it('should create a pool', async () => {
