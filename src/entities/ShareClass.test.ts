@@ -1,10 +1,13 @@
 import { expect } from 'chai'
 import { firstValueFrom, lastValueFrom, skip, skipWhile, toArray } from 'rxjs'
-import { parseAbi } from 'viem'
+import sinon from 'sinon'
+import { decodeFunctionData, parseAbi } from 'viem'
 import { ABI } from '../abi/index.js'
+import { Centrifuge } from '../Centrifuge.js'
 import { context } from '../tests/setup.js'
 import { randomAddress } from '../tests/utils.js'
 import { AccountType } from '../types/holdings.js'
+import { MessageType } from '../types/transaction.js'
 import { Balance, Price } from '../utils/BigInt.js'
 import { doTransaction } from '../utils/transaction.js'
 import { AssetId, PoolId, ShareClassId } from '../utils/types.js'
@@ -930,6 +933,85 @@ describe('ShareClass', () => {
         expect(redemption.index).to.equal(withInvestor.index)
         expect(redemption.assetId.equals(withInvestor.assetId)).to.equal(true)
       })
+    })
+  })
+
+  describe('crosschainTransferShares fee lane', () => {
+    const signingAddress = randomAddress()
+    const hubPoolId = PoolId.from(1, 1)
+    const hubScId = ShareClassId.from(hubPoolId, 1)
+
+    // Stubs the plumbing around `crosschainTransferShares` so we can inspect
+    // the fee estimate and the broadcast call without a fork. `_transact` is
+    // stubbed to drain the async generator with a fake context, which is what
+    // triggers `wrapTransaction`'s estimate + send.
+    function stubTransfer(fee: bigint) {
+      const centrifuge = new Centrifuge({ environment: 'testnet' })
+      const spoke = randomAddress()
+      const estimate = sinon.stub().resolves(fee)
+      const sendTransaction = sinon.stub().resolves('0x1')
+      sinon.stub(centrifuge as any, '_protocolAddresses').resolves({ spoke })
+      sinon.stub(centrifuge as any, '_transact').callsFake(async (cb: any, centrifugeId: any) => {
+        const gen = cb({
+          centrifugeId,
+          signingAddress,
+          isBatching: false,
+          root: { _estimate: estimate, _idToChain: async () => chainId },
+          walletClient: { sendTransaction, getChainId: async () => chainId },
+          publicClient: {
+            getCode: async () => undefined,
+            waitForTransactionReceipt: async () => ({ status: 'success' }),
+          },
+        })
+        while (!(await gen.next()).done) {
+          /* consume statuses */
+        }
+      })
+      const pool = new Pool(centrifuge, hubPoolId.raw)
+      const sc = new ShareClass(centrifuge, pool, hubScId.raw)
+      return { sc, spoke, estimate, sendTransaction }
+    }
+
+    it('estimates the source -> hub lane when bridging between two spoke chains', async () => {
+      const { sc, spoke, estimate, sendTransaction } = stubTransfer(999n)
+
+      await sc.crosschainTransferShares(2, 6, investor, 100n)
+
+      // InitiateTransferShares is routed by MessageDispatcher to the pool's hub
+      // chain (poolId.centrifugeId()), not to the destination.
+      expect(estimate.callCount).to.equal(1)
+      const [from, to, msgs] = estimate.firstCall.args
+      expect(from).to.equal(2)
+      expect(to).to.equal(1)
+      expect(msgs).to.have.length(1)
+      expect(msgs[0].type).to.equal(MessageType.InitiateTransferShares)
+      expect(msgs[0].poolId.equals(hubPoolId)).to.equal(true)
+
+      // The on-chain destination stays the actual destination chain, with the fee attached.
+      const tx = sendTransaction.firstCall.args[0]
+      expect(tx.to).to.equal(spoke)
+      expect(tx.value).to.equal(999n)
+      const decoded = decodeFunctionData({ abi: ABI.Spoke, data: tx.data })
+      expect(decoded.functionName).to.equal('crosschainTransferShares')
+      expect(decoded.args![0]).to.equal(6)
+    })
+
+    it('estimates the hub -> destination lane when the source is the hub chain', async () => {
+      const { sc, estimate, sendTransaction } = stubTransfer(555n)
+
+      await sc.crosschainTransferShares(1, 6, investor, 100n)
+
+      // From the hub, MessageDispatcher executes locally via HubHandler, which
+      // forwards ExecuteTransferShares to the destination with the same msg.value.
+      expect(estimate.callCount).to.equal(1)
+      const [from, to, msgs] = estimate.firstCall.args
+      expect(from).to.equal(1)
+      expect(to).to.equal(6)
+      expect(msgs).to.have.length(1)
+      expect(msgs[0].type).to.equal(MessageType.ExecuteTransferShares)
+      expect(msgs[0].poolId.equals(hubPoolId)).to.equal(true)
+
+      expect(sendTransaction.firstCall.args[0].value).to.equal(555n)
     })
   })
 })

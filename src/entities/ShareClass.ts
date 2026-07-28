@@ -2704,6 +2704,7 @@ export class ShareClass extends Entity {
       assertCrosschainMessagingEnabled(destinationCentrifugeId)
 
       const { spoke } = await self._root._protocolAddresses(sourceCentrifugeId)
+      const hubCentrifugeId = self.pool.id.centrifugeId
 
       yield* wrapTransaction('Cross chain transfer shares', ctx, {
         contract: spoke,
@@ -2721,9 +2722,14 @@ export class ShareClass extends Entity {
             ctx.signingAddress,
           ],
         }),
-        messages: {
-          [destinationCentrifugeId]: [{ type: MessageType.InitiateTransferShares, poolId: self.pool.id }],
-        },
+        messages:
+          sourceCentrifugeId === hubCentrifugeId
+            ? {
+                [destinationCentrifugeId]: [{ type: MessageType.ExecuteTransferShares, poolId: self.pool.id }],
+              }
+            : {
+                [hubCentrifugeId]: [{ type: MessageType.InitiateTransferShares, poolId: self.pool.id }],
+              },
       })
     }, sourceCentrifugeId)
   }
