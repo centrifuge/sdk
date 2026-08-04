@@ -38,6 +38,12 @@ import { Vault } from './Vault.js'
 
 const GAS_LIMIT = 30_000_000n
 
+// The Hub rejects a share price timestamp that isn't strictly before the on-chain block
+// timestamp. Defaulting to `new Date()` can land at or after `block.timestamp` (clock skew,
+// network latency), reverting with `CannotSetFuturePrice`. Back the default off by a small
+// buffer so callers that don't pass `updatedAt` explicitly stay safely in the past.
+const SHARE_PRICE_TIMESTAMP_SAFETY_BUFFER_SECONDS = 60
+
 /**
  * A closed redemption order, i.e. an epoch for which shares have been revoked.
  * `investor` is null for the epoch-level aggregate returned when no per-investor
@@ -690,7 +696,10 @@ export class ShareClass extends Entity {
     }, this.pool.centrifugeId)
   }
 
-  updateSharePrice(pricePerShare: Price, updatedAt = new Date()) {
+  updateSharePrice(
+    pricePerShare: Price,
+    updatedAt = new Date(Date.now() - SHARE_PRICE_TIMESTAMP_SAFETY_BUFFER_SECONDS * 1000)
+  ) {
     const self = this
     return this._transact(async function* (ctx) {
       const [{ hub }, activeNetworks] = await Promise.all([
