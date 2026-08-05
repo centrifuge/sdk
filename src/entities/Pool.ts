@@ -33,6 +33,32 @@ import { queryCrosschainMessages, type CrosschainMessagesFilter } from './crossc
  */
 export type AdapterProgress = 'Enabled' | 'Disabled' | null
 
+/**
+ * In-flight state of a cross-chain balance sheet manager grant/revoke.
+ * `'CanManage'` / `'CanNotManage'` is the target state triggered on the hub but
+ * not yet confirmed on the spoke; `null` means settled (no change in transit).
+ */
+export type ManagerProgress = 'CanManage' | 'CanNotManage' | null
+
+/** Per-manager live + in-flight state for a pool, as returned by {@link Pool.balanceSheetManagerStatus}. */
+export type BalanceSheetManagerStatus = {
+  address: HexString
+  centrifugeId: number
+  type: 'AsyncRequestManager' | 'SyncManager' | 'Custom'
+  /** The live, confirmed state on the spoke chain. */
+  isBalancesheetManager: boolean
+  crosschainInProgress: ManagerProgress
+}
+
+/** Per-deployed-address live + in-flight balance sheet manager state, as returned by {@link PoolNetwork.onOfframpManagerStatus}. */
+export type OnOfframpManagerStatus = {
+  address: HexString
+  centrifugeId: number
+  /** The live, confirmed state on the spoke chain. */
+  isBalancesheetManager: boolean
+  crosschainInProgress: ManagerProgress
+}
+
 /** Per-adapter live + in-flight state for a pool, as returned by {@link Pool.adapterStatus}. */
 export type AdapterStatus = {
   address: HexString
@@ -1323,6 +1349,7 @@ export class Pool extends Entity {
             items: {
               isHubManager: boolean
               isBalancesheetManager: boolean
+              crosschainInProgress: ManagerProgress
               address: HexString
               centrifugeId: string
               poolId: string
@@ -1334,6 +1361,7 @@ export class Pool extends Entity {
               items {
                 isHubManager
                 isBalancesheetManager
+                crosschainInProgress
                 address
                 centrifugeId
                 poolId
@@ -1351,11 +1379,49 @@ export class Pool extends Entity {
                 address: manager.address.toLowerCase() as HexString,
                 isHubManager: manager.isHubManager,
                 isBalancesheetManager: manager.isBalancesheetManager,
+                crosschainInProgress: manager.crosschainInProgress,
                 centrifugeId: Number(manager.centrifugeId),
               }
             })
           })
         )
     )
+  }
+
+  /**
+   * Per-manager live + in-flight state for the Balance Sheet, from the indexer.
+   * `isBalancesheetManager` is the set confirmed live on the spoke;
+   * `crosschainInProgress` flags a grant/revoke that was triggered on the hub
+   * but has not yet been confirmed on the spoke (`null` once settled).
+   *
+   * Unlike `balanceSheetManagers()` — which only returns the confirmed set, and
+   * is what actual authorization checks (`isBalanceSheetManager()`) rely on —
+   * this also surfaces managers still in transit, for display purposes.
+   */
+  balanceSheetManagerStatus(): Query<BalanceSheetManagerStatus[]> {
+    return this._query(['balanceSheetManagerStatus', this.id.toString()], () => {
+      return combineLatest([this._managers(), this._root._protocolAddresses(this.centrifugeId)]).pipe(
+        map(([managers, { asyncRequestManager, syncManager }]) => {
+          return managers
+            .filter((manager) => manager.isBalancesheetManager || manager.crosschainInProgress != null)
+            .map((manager) => {
+              let type: BalanceSheetManagerStatus['type'] = 'Custom'
+              if (manager.address.toLowerCase() === asyncRequestManager.toLowerCase()) {
+                type = 'AsyncRequestManager'
+              } else if (manager.address.toLowerCase() === syncManager.toLowerCase()) {
+                type = 'SyncManager'
+              }
+
+              return {
+                address: manager.address,
+                centrifugeId: manager.centrifugeId,
+                type,
+                isBalancesheetManager: manager.isBalancesheetManager,
+                crosschainInProgress: manager.crosschainInProgress,
+              }
+            })
+        })
+      )
+    })
   }
 }

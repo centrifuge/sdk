@@ -9,13 +9,14 @@ import { assertCrosschainMessagingEnabled } from '../utils/crosschainHotfix.js'
 import { addressToBytes32, encode } from '../utils/index.js'
 import { makeThenable, repeatOnEvents } from '../utils/rx.js'
 import { doTransaction, parseEventLogs, wrapTransaction } from '../utils/transaction.js'
+import type { Query } from '../types/query.js'
 import { AssetId, CentrifugeId, ShareClassId } from '../utils/types.js'
 import { BalanceSheet } from './BalanceSheet.js'
 import { Entity } from './Entity.js'
 import { MerkleProofManager } from './MerkleProofManager.js'
 import { OnchainPM } from './OnchainPM.js'
 import { OnOffRampManager } from './OnOffRampManager.js'
-import type { Pool } from './Pool.js'
+import type { OnOfframpManagerStatus, Pool } from './Pool.js'
 import { ShareClass } from './ShareClass.js'
 
 export enum VaultManagerTrustedCall {
@@ -455,6 +456,38 @@ export class PoolNetwork extends Entity {
             new ShareClass(this._root, this.pool, scId.raw),
             verifiedManager.address
           )
+        })
+      )
+    )
+  }
+
+  /**
+   * Per-deployed-address live + in-flight balance sheet manager state for
+   * OnOffRampManagers on this network, from the indexer. Unlike
+   * `onOfframpManager()` — which only resolves once a manager is confirmed live,
+   * for use in transactions — this also surfaces a manager whose grant/revoke is
+   * still in transit, for display purposes. Returns `[]` if none are deployed.
+   * @param scId - The share class ID
+   */
+  onOfframpManagerStatus(scId: ShareClassId): Query<OnOfframpManagerStatus[]> {
+    return this._query(['onOfframpManagerStatus', scId.toString()], () =>
+      combineLatest([this._deployedOnOffRampManagers(scId), this.pool.balanceSheetManagerStatus()]).pipe(
+        map(([deployedOnOffRampManagers, managerStatus]) => {
+          const statusByAddress = new Map(
+            managerStatus
+              .filter((manager) => manager.centrifugeId === this.centrifugeId)
+              .map((manager) => [manager.address.toLowerCase(), manager])
+          )
+
+          return deployedOnOffRampManagers.map((deployed) => {
+            const status = statusByAddress.get(deployed.address.toLowerCase())
+            return {
+              address: deployed.address,
+              centrifugeId: this.centrifugeId,
+              isBalancesheetManager: status?.isBalancesheetManager ?? false,
+              crosschainInProgress: status?.crosschainInProgress ?? null,
+            }
+          })
         })
       )
     )
