@@ -50,6 +50,15 @@ export type BalanceSheetManagerStatus = {
   crosschainInProgress: ManagerProgress
 }
 
+/** Per-deployed-address live + in-flight balance sheet manager state, as returned by {@link PoolNetwork.onOfframpManagerStatus}. */
+export type OnOfframpManagerStatus = {
+  address: HexString
+  centrifugeId: number
+  /** The live, confirmed state on the spoke chain. */
+  isBalancesheetManager: boolean
+  crosschainInProgress: ManagerProgress
+}
+
 /** Per-adapter live + in-flight state for a pool, as returned by {@link Pool.adapterStatus}. */
 export type AdapterStatus = {
   address: HexString

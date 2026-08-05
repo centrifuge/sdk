@@ -461,15 +461,52 @@ describe('PoolNetwork manager deployment flows', () => {
       ])
     ).to.equal(true)
   })
+
+  it('onOfframpManagerStatus enriches deployed managers with balance-sheet status, including in-transit state', async () => {
+    const confirmedManager = '0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'
+    const pendingManager = '0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb'
+    const undeployedManager = '0xcccccccccccccccccccccccccccccccccccccccc'
+
+    const { poolNetwork } = createManagerDeploymentTestSubject({
+      onOffRampManagers: [{ address: confirmedManager }, { address: pendingManager }],
+      poolManagers: [
+        { address: confirmedManager, centrifugeId: String(centId), isBalancesheetManager: true },
+        { address: pendingManager, centrifugeId: String(centId), crosschainInProgress: 'CanManage' },
+        // A manager on a different network shouldn't leak into this network's status.
+        { address: undeployedManager, centrifugeId: '99', isBalancesheetManager: true },
+      ],
+    })
+
+    const status = await lastValueFrom(poolNetwork.onOfframpManagerStatus(scId))
+
+    expect(status).to.have.length(2)
+
+    const confirmed = status.find((s) => s.address === confirmedManager)
+    expect(confirmed?.centrifugeId).to.equal(centId)
+    expect(confirmed?.isBalancesheetManager).to.equal(true)
+    expect(confirmed?.crosschainInProgress).to.equal(null)
+
+    const pending = status.find((s) => s.address === pendingManager)
+    expect(pending?.isBalancesheetManager).to.equal(false)
+    expect(pending?.crosschainInProgress).to.equal('CanManage')
+  })
 })
 
 function createManagerDeploymentTestSubject({
   onOffRampManagers = [],
   merkleProofManagers = [],
+  poolManagers = [],
   receipt = { status: 'success', logs: [] } as any as TransactionReceipt,
 }: {
   onOffRampManagers?: { address: `0x${string}` }[]
   merkleProofManagers?: { address: `0x${string}` }[]
+  poolManagers?: {
+    address: `0x${string}`
+    centrifugeId: string
+    isHubManager?: boolean
+    isBalancesheetManager?: boolean
+    crosschainInProgress?: 'CanManage' | 'CanNotManage' | null
+  }[]
   receipt?: TransactionReceipt
 }) {
   const publicClient = {
@@ -491,11 +528,29 @@ function createManagerDeploymentTestSubject({
         return of(transform({ merkleProofManagers: { items: merkleProofManagers } }))
       }
 
+      if (query.includes('poolManagers')) {
+        // Unlike the other indexer queries above, Pool._managers() calls _queryIndexer
+        // without a transform callback and maps the raw response itself.
+        return of({
+          poolManagers: {
+            items: poolManagers.map((m) => ({
+              isHubManager: false,
+              isBalancesheetManager: false,
+              crosschainInProgress: null,
+              poolId: poolId.toString(),
+              ...m,
+            })),
+          },
+        })
+      }
+
       throw new Error(`Unexpected indexer query: ${query}`)
     },
     _protocolAddresses: sinon.stub().resolves({
       onOfframpManagerFactory: onOffRampFactory,
       merkleProofManagerFactory: merkleFactory,
+      asyncRequestManager: '0x8888888888888888888888888888888888888888',
+      syncManager: '0x9999999999999999999999999999999999999999',
     }),
     getClient: sinon.stub().resolves(publicClient),
     _transact: (callback: (ctx: any) => AsyncGenerator<unknown> | Observable<unknown>, centrifugeId: number) => {

@@ -87,6 +87,28 @@ describe.skip('Pool', () => {
     expect(protocolManagers).to.have.length.greaterThan(0)
   })
 
+  it('gets balance sheet manager status, including in-progress managers', async () => {
+    const status = await pool.balanceSheetManagerStatus()
+
+    expect(status).to.have.length.greaterThan(0)
+
+    for (const manager of status) {
+      expect(manager).to.have.property('address').that.is.a('string')
+      expect(manager).to.have.property('centrifugeId').that.is.a('number')
+      expect(manager).to.have.property('type').that.is.oneOf(['AsyncRequestManager', 'SyncManager', 'Custom'])
+      expect(manager).to.have.property('isBalancesheetManager').that.is.a('boolean')
+      expect(manager.crosschainInProgress).to.be.oneOf(['CanManage', 'CanNotManage', null])
+    }
+
+    // Every confirmed manager reported by balanceSheetManagers() must also show up here.
+    const confirmed = await pool.balanceSheetManagers()
+    for (const manager of confirmed) {
+      expect(
+        status.some((s) => s.address === manager.address && s.centrifugeId === manager.centrifugeId && s.isBalancesheetManager)
+      ).to.be.true
+    }
+  })
+
   it('updates pool managers', async () => {
     context.tenderlyFork.impersonateAddress = poolManager
     context.centrifuge.setSigner(context.tenderlyFork.signer)
