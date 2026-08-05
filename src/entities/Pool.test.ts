@@ -1,5 +1,6 @@
 import { expect } from 'chai'
-import { firstValueFrom, lastValueFrom, skipWhile } from 'rxjs'
+import { firstValueFrom, lastValueFrom, of, skipWhile } from 'rxjs'
+import sinon from 'sinon'
 import { getContract } from 'viem'
 import { ABI } from '../abi/index.js'
 import { Centrifuge } from '../Centrifuge.js'
@@ -85,28 +86,6 @@ describe.skip('Pool', () => {
 
     const protocolManagers = managers.filter((m) => m.type === 'AsyncRequestManager' || m.type === 'SyncManager')
     expect(protocolManagers).to.have.length.greaterThan(0)
-  })
-
-  it('gets balance sheet manager status, including in-progress managers', async () => {
-    const status = await pool.balanceSheetManagerStatus()
-
-    expect(status).to.have.length.greaterThan(0)
-
-    for (const manager of status) {
-      expect(manager).to.have.property('address').that.is.a('string')
-      expect(manager).to.have.property('centrifugeId').that.is.a('number')
-      expect(manager).to.have.property('type').that.is.oneOf(['AsyncRequestManager', 'SyncManager', 'Custom'])
-      expect(manager).to.have.property('isBalancesheetManager').that.is.a('boolean')
-      expect(manager.crosschainInProgress).to.be.oneOf(['CanManage', 'CanNotManage', null])
-    }
-
-    // Every confirmed manager reported by balanceSheetManagers() must also show up here.
-    const confirmed = await pool.balanceSheetManagers()
-    for (const manager of confirmed) {
-      expect(
-        status.some((s) => s.address === manager.address && s.centrifugeId === manager.centrifugeId && s.isBalancesheetManager)
-      ).to.be.true
-    }
   })
 
   it('updates pool managers', async () => {
@@ -417,5 +396,86 @@ describe.skip('Pool', () => {
 
     expect(result.type).to.equal('TransactionConfirmed')
     expect(pinned?.version).to.equal(2)
+  })
+})
+
+describe('Pool.balanceSheetManagerStatus', () => {
+  afterEach(() => {
+    sinon.restore()
+  })
+
+  const asyncRequestManager = '0x8888888888888888888888888888888888888888'
+  const syncManager = '0x9999999999999999999999999999999999999999'
+
+  function createPoolWithManagers(
+    poolManagers: {
+      address: `0x${string}`
+      centrifugeId: string
+      isHubManager?: boolean
+      isBalancesheetManager?: boolean
+      crosschainInProgress?: 'CanManage' | 'CanNotManage' | null
+    }[]
+  ) {
+    const root = {
+      _query: (_keys: unknown, callback: () => unknown) => callback(),
+      _queryIndexer: (query: string) => {
+        if (query.includes('poolManagers')) {
+          return of({
+            poolManagers: {
+              items: poolManagers.map((m) => ({
+                isHubManager: false,
+                isBalancesheetManager: false,
+                crosschainInProgress: null,
+                poolId: poolId.toString(),
+                ...m,
+              })),
+            },
+          })
+        }
+
+        throw new Error(`Unexpected indexer query: ${query}`)
+      },
+      _protocolAddresses: sinon.stub().resolves({ asyncRequestManager, syncManager }),
+      _transact: sinon.stub(),
+    }
+
+    return new Pool(root as any, poolId.raw)
+  }
+
+  it('reports confirmed and in-transit managers, tagged by protocol type', async () => {
+    const confirmedCustom = '0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'
+    const pendingGrant = '0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb'
+
+    const pool = createPoolWithManagers([
+      { address: confirmedCustom, centrifugeId: String(centId), isBalancesheetManager: true },
+      { address: asyncRequestManager, centrifugeId: String(centId), isBalancesheetManager: true },
+      { address: pendingGrant, centrifugeId: String(centId), crosschainInProgress: 'CanManage' },
+    ])
+
+    const status = await lastValueFrom(pool.balanceSheetManagerStatus())
+
+    expect(status).to.have.length(3)
+
+    const custom = status.find((s) => s.address === confirmedCustom)
+    expect(custom?.type).to.equal('Custom')
+    expect(custom?.isBalancesheetManager).to.equal(true)
+    expect(custom?.crosschainInProgress).to.equal(null)
+
+    const protocolManager = status.find((s) => s.address === asyncRequestManager)
+    expect(protocolManager?.type).to.equal('AsyncRequestManager')
+
+    const pending = status.find((s) => s.address === pendingGrant)
+    expect(pending?.isBalancesheetManager).to.equal(false)
+    expect(pending?.crosschainInProgress).to.equal('CanManage')
+  })
+
+  it('excludes managers that are neither confirmed nor in transit', async () => {
+    const settledNonManager = '0xcccccccccccccccccccccccccccccccccccccccc'
+
+    const pool = createPoolWithManagers([{ address: settledNonManager, centrifugeId: String(centId) }])
+
+    const status = await lastValueFrom(pool.balanceSheetManagerStatus())
+
+    expect(status).to.have.length(0)
   })
 })

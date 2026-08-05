@@ -44,7 +44,7 @@ export type ManagerProgress = 'CanManage' | 'CanNotManage' | null
 export type BalanceSheetManagerStatus = {
   address: HexString
   centrifugeId: number
-  type: string
+  type: 'AsyncRequestManager' | 'SyncManager' | 'Custom'
   /** The live, confirmed state on the spoke chain. */
   isBalancesheetManager: boolean
   crosschainInProgress: ManagerProgress
@@ -1399,13 +1399,13 @@ export class Pool extends Entity {
    * this also surfaces managers still in transit, for display purposes.
    */
   balanceSheetManagerStatus(): Query<BalanceSheetManagerStatus[]> {
-    return this._query(null, () => {
+    return this._query(['balanceSheetManagerStatus', this.id.toString()], () => {
       return combineLatest([this._managers(), this._root._protocolAddresses(this.centrifugeId)]).pipe(
         map(([managers, { asyncRequestManager, syncManager }]) => {
           return managers
             .filter((manager) => manager.isBalancesheetManager || manager.crosschainInProgress != null)
             .map((manager) => {
-              let type = 'Custom'
+              let type: BalanceSheetManagerStatus['type'] = 'Custom'
               if (manager.address.toLowerCase() === asyncRequestManager.toLowerCase()) {
                 type = 'AsyncRequestManager'
               } else if (manager.address.toLowerCase() === syncManager.toLowerCase()) {

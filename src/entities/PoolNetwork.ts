@@ -470,7 +470,7 @@ export class PoolNetwork extends Entity {
    * @param scId - The share class ID
    */
   onOfframpManagerStatus(scId: ShareClassId): Query<OnOfframpManagerStatus[]> {
-    return this._query(null, () =>
+    return this._query(['onOfframpManagerStatus', scId.toString()], () =>
       combineLatest([this._deployedOnOffRampManagers(scId), this.pool.balanceSheetManagerStatus()]).pipe(
         map(([deployedOnOffRampManagers, managerStatus]) => {
           const statusByAddress = new Map(
