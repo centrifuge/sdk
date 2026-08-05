@@ -240,7 +240,7 @@ const cent = new Centrifuge({
   rpcUrls: {
     1: 'http://127.0.0.1:8545',
   },
-  inexerPollingInterval: 2000,
+  indexerPollingInterval: 2000,
   indexerUrl: 'http://localhost:8000',
 })
 
