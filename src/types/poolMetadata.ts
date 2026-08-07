@@ -315,9 +315,10 @@ export type DataRef = 'apyVsBenchmarks' | 'maturityDistribution'
  * App-owned section units rendered by the invest app (structure + content + data). Closed and
  * SDK-validated on write; expected to grow additively via coordinated SDK releases (see
  * {@link DataRef}). Current mapping: `onchainMetrics` = performance charts, `smartContracts` =
- * addresses & smart contracts.
+ * addresses & smart contracts, `monthlySummary` = monthly return table (last 6 months + annualized
+ * summary periods; rendering is an app concern).
  */
-export type SectionRef = 'onchainMetrics' | 'smartContracts'
+export type SectionRef = 'onchainMetrics' | 'smartContracts' | 'monthlySummary'
 
 /**
  * App-owned indexer query/aggregation registry referenced by `liveTable` columns. Closed and
