@@ -514,14 +514,6 @@ export const KNOWN_DEPLOYMENTS: Record<number, KnownDeployment> = {
     vaultRegistry: '0xd9531AC47928c3386346f82d9A2478960bf2CA7B' as HexString,
     vaultRouter: '0xF684014771C01e50B8B526968B3a1e33acDA63f6' as HexString,
   },
-  // Hand-authored exception to the auto-generation note above: the protocol repo
-  // has not yet published env/xlayer.json, so this entry cannot be regenerated.
-  // Every address is the deterministic-deploy value already vouched for by the
-  // pharos/monad entries (39 identical fields; circleDecoder,
-  // merkleProofManagerFactory, onOfframpManagerFactory and vaultDecoder are not
-  // deployed on X Layer), except oracleValuation — a newer build, verified
-  // byte-identical on-chain between X Layer and Optimism at the same address.
-  // Replace via `pnpm gen:deployments` once the protocol repo ships env/xlayer.json.
   13: {
     name: 'xlayer',
     chainId: 196,
