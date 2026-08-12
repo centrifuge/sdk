@@ -3860,7 +3860,7 @@ export class ShareClass extends Entity {
                   }
                   totalCount
                 }
-                assets {
+                assets(limit: 1000) {
                   items {
                     decimals
                     id
@@ -3937,7 +3937,7 @@ export class ShareClass extends Entity {
               }
               totalCount
             }
-            assets {
+            assets(limit: 1000) {
               items {
                 id
                 decimals

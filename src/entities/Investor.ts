@@ -27,13 +27,13 @@ export class Investor extends Entity {
           tokenInstances: { items: { address: HexString; centrifugeId: string }[] }
         }>(
           `{
-            vaults {
+            vaults(limit: 1000) {
               items {
                 assetAddress
                 centrifugeId
               }
             }
-            tokenInstances {
+            tokenInstances(limit: 1000) {
               items {
                 address
                 centrifugeId

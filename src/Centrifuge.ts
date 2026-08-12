@@ -373,7 +373,7 @@ export class Centrifuge {
   blockchains() {
     return this._queryIndexer(
       `{
-        blockchains {
+        blockchains(limit: 1000) {
           items {
             explorer
             chainId
@@ -415,7 +415,7 @@ export class Centrifuge {
   pools() {
     return this._queryIndexer(
       `{
-        pools {
+        pools(limit: 1000) {
           items {
             id
             blockchain {
@@ -1599,13 +1599,13 @@ export class Centrifuge {
         deployments: { items: (ProtocolContracts & { chainId?: string; centrifugeId?: string })[] }
       }>(
         `{
-            blockchains {
+            blockchains(limit: 1000) {
               items {
                 centrifugeId
                 id
               }
             }
-            deployments {
+            deployments(limit: 1000) {
               items {
                 accounting
                 asyncRequestManager
