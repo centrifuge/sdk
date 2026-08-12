@@ -13,6 +13,7 @@ import {
   optimism,
   plumeMainnet,
   sepolia,
+  xLayer,
 } from 'viem/chains'
 import { defineChain } from 'viem'
 
@@ -54,4 +55,5 @@ export const chains = [
   pharos,
   plumeMainnet,
   sepolia,
+  xLayer,
 ]
