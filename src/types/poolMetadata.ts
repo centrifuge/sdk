@@ -134,7 +134,8 @@ export type PoolMetadataV1 = {
     name: string
     icon: FileType | null
     asset: {
-      class: 'Public credit' | 'Private credit'
+      /** Free text — 'Public credit' and 'Private credit' are the conventional values, but pools exist with others (e.g. 'Equity Index Fund'). */
+      class: string
       subClass: string
     }
     underlying?: {
