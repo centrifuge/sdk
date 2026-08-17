@@ -134,7 +134,7 @@ export type PoolMetadataV1 = {
     name: string
     icon: FileType | null
     asset: {
-      class: 'Public credit' | 'Private credit'
+      class?: 'Public credit' | 'Private credit'
       subClass: string
     }
     underlying?: {

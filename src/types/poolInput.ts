@@ -28,7 +28,7 @@ export type IssuerDetail = {
 
 export type PoolMetadataInput = {
   poolStructure: 'revolving'
-  assetClass: 'Public credit' | 'Private credit'
+  assetClass?: 'Public credit' | 'Private credit'
   subAssetClass: string
   shareClasses: ShareClassInput[]
   poolName: string
