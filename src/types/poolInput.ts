@@ -28,7 +28,6 @@ export type IssuerDetail = {
 
 export type PoolMetadataInput = {
   poolStructure: 'revolving'
-  /** Free text — 'Public credit' and 'Private credit' are the conventional values. */
   assetClass: string
   subAssetClass: string
   shareClasses: ShareClassInput[]
