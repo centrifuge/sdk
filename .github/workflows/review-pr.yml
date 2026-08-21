@@ -45,7 +45,7 @@ jobs:
         uses: anthropics/claude-code-action@be7b93b1907a4abad570368f3c74b6fe3807510b # v1.0.183
         with:
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
-          allowed_bots: 'github-actions'
+          model: claude-sonnet-4-6
           track_progress: false
           claude_args: |
             --allowedTools "Read,Glob,Grep,Write,Bash(gh pr diff:*),Bash(gh pr view:*)" --model claude-sonnet-4-6
@@ -67,7 +67,7 @@ jobs:
         uses: anthropics/claude-code-action@be7b93b1907a4abad570368f3c74b6fe3807510b # v1.0.183
         with:
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
-          allowed_bots: 'github-actions'
+          model: claude-sonnet-4-6
           track_progress: false
           claude_args: |
             --allowedTools "Read,Glob,Grep,Write,Bash(gh pr diff:*),Bash(gh pr view:*)" --model claude-sonnet-4-6
@@ -89,7 +89,7 @@ jobs:
         uses: anthropics/claude-code-action@be7b93b1907a4abad570368f3c74b6fe3807510b # v1.0.183
         with:
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
-          allowed_bots: 'github-actions'
+          model: claude-sonnet-4-6
           track_progress: false
           claude_args: |
             --allowedTools "Read,Glob,Grep,Write,Bash(gh pr diff:*),Bash(gh pr view:*)" --model claude-sonnet-4-6
@@ -112,7 +112,7 @@ jobs:
         uses: anthropics/claude-code-action@be7b93b1907a4abad570368f3c74b6fe3807510b # v1.0.183
         with:
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
-          allowed_bots: 'github-actions'
+          model: claude-haiku-4-5
           track_progress: false
           claude_args: |
             --allowedTools "Read,Glob,Grep,Write,Bash(gh pr diff:*),Bash(gh pr view:*)" --model claude-haiku-4-5
