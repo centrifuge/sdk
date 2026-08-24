@@ -638,6 +638,28 @@ describe('PoolNetwork.onchainPM', () => {
     const result = await lastValueFrom(pn.onchainPM() as unknown as Observable<OnchainPM | null>)
     expect(result).to.equal(null)
   })
+
+  it('returns null without touching the chain when the network has no OnchainPMFactory', async () => {
+    // Chains without an OnchainPM deployment return no factory from the indexer.
+    // A readContract against an undefined address would be sent as an eth_call
+    // without `to` and fail with an opaque EVM StackUnderflow.
+    const publicClient = {
+      readContract: sinon.stub(),
+      getCode: sinon.stub(),
+    }
+    const root = {
+      _query: (_keys: unknown, callback: () => unknown) => callback(),
+      _protocolAddresses: sinon.stub().resolves({ onchainPMFactory: null }),
+      getClient: sinon.stub().resolves(publicClient),
+      _transact: sinon.stub(),
+    }
+    const pool = new Pool(root as any, poolId.raw)
+    const pn = new PoolNetwork(root as any, pool, centId)
+
+    const result = await lastValueFrom(pn.onchainPM() as unknown as Observable<OnchainPM | null>)
+    expect(result).to.equal(null)
+    expect(publicClient.readContract.called).to.be.false
+  })
 })
 
 describe('PoolNetwork.deployOnchainPM', () => {
@@ -698,6 +720,62 @@ describe('PoolNetwork.deployOnchainPM', () => {
     expect(result).to.deep.equal({ type: 'DeployedOnchainPM', address: deployedPMAddress })
     expect(updateBalanceSheetManagers.called).to.be.false
   })
+
+  it('fails with a clear error when the network has no OnchainPMFactory', async () => {
+    const publicClient = {
+      readContract: sinon.stub(),
+      getCode: sinon.stub(),
+    }
+
+    const root = {
+      _protocolAddresses: sinon.stub().resolves({ onchainPMFactory: null }),
+      _transact: (callback: (ctx: any) => AsyncGenerator<unknown> | Observable<unknown>, centrifugeId: number) => {
+        const tx = new Observable<unknown>((subscriber) => {
+          ;(async () => {
+            try {
+              const result = callback({
+                publicClient,
+                walletClient: { writeContract: sinon.stub() },
+                signingAddress,
+                chain: {} as any,
+                centrifugeId,
+                signer: {} as any,
+                root,
+              })
+
+              if (Symbol.asyncIterator in result) {
+                for await (const item of result) {
+                  subscriber.next(item)
+                }
+              } else {
+                result.subscribe(subscriber)
+                return
+              }
+
+              subscriber.complete()
+            } catch (error) {
+              subscriber.error(error)
+            }
+          })()
+        })
+
+        return Object.assign(tx, { centrifugeId })
+      },
+    }
+
+    const pool = new Pool(root as any, poolId.raw)
+    const pn = new PoolNetwork(root as any, pool, centId)
+
+    let error: Error | null = null
+    try {
+      await lastValueFrom(pn.deployOnchainPM() as unknown as Observable<any>)
+    } catch (e) {
+      error = e as Error
+    }
+    expect(error).to.be.instanceOf(Error)
+    expect(error!.message).to.match(/OnchainPM is not available/)
+    expect(publicClient.readContract.called).to.be.false
+  })
 })
 
 describe('PoolNetwork.authorizeOnchainPM', () => {
@@ -746,6 +824,43 @@ describe('PoolNetwork.authorizeOnchainPM', () => {
     expect(batch.data).to.have.length(2)
     expect(decodeFunctionData({ abi: ABI.Hub, data: batch.data[0]! }).functionName).to.equal('updateBalanceSheetManager')
     expect(decodeFunctionData({ abi: ABI.Hub, data: batch.data[1]! }).functionName).to.equal('updateContract')
+  })
+
+  it('fails with a clear error when the network has no AccountingToken', async () => {
+    const root = {
+      _protocolAddresses: sinon.stub().resolves({ hub, accountingToken: null }),
+      _transact: (callback: (ctx: any) => AsyncGenerator<unknown> | Observable<unknown>, cId: number) => {
+        const tx = new Observable<unknown>((subscriber) => {
+          ;(async () => {
+            try {
+              const result = callback({ isBatching: true, signingAddress, centrifugeId: cId, root })
+              if (Symbol.asyncIterator in result) {
+                for await (const item of result) subscriber.next(item)
+              } else {
+                result.subscribe(subscriber)
+                return
+              }
+              subscriber.complete()
+            } catch (error) {
+              subscriber.error(error)
+            }
+          })()
+        })
+        return Object.assign(tx, { centrifugeId: cId })
+      },
+    }
+
+    const pool = new Pool(root as any, poolId.raw)
+    const pn = new PoolNetwork(root as any, pool, centId)
+
+    let error: Error | null = null
+    try {
+      await lastValueFrom(pn.authorizeOnchainPM(managerAddress) as unknown as Observable<any>)
+    } catch (e) {
+      error = e as Error
+    }
+    expect(error).to.be.instanceOf(Error)
+    expect(error!.message).to.match(/OnchainPM cannot be authorized/)
   })
 })
 

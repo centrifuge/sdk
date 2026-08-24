@@ -188,6 +188,10 @@ export class PoolNetwork extends Entity {
       combineLatest([this._root._protocolAddresses(this.centrifugeId), this._root.getClient(this.centrifugeId)]).pipe(
         switchMap(([{ onchainPMFactory }, client]) =>
           defer(async () => {
+            // Chains without an OnchainPM deployment return no factory from the indexer.
+            // Bail out early — a readContract without address is sent as an eth_call
+            // without `to` and fails with an opaque EVM StackUnderflow.
+            if (!onchainPMFactory) return null
             const address = await client.readContract({
               address: onchainPMFactory,
               abi: ABI.OnchainPMFactory,
@@ -217,6 +221,11 @@ export class PoolNetwork extends Entity {
 
     return this._transact(async function* (ctx) {
       const { onchainPMFactory } = await self._root._protocolAddresses(self.centrifugeId)
+      if (!onchainPMFactory) {
+        throw new Error(
+          `OnchainPM is not available on centrifugeId ${self.centrifugeId} — no OnchainPMFactory is deployed on this network`
+        )
+      }
 
       // factory.getAddress() is a pure CREATE2 calculation — it returns the predicted
       // address whether or not the contract was actually deployed. We must also check
@@ -284,6 +293,11 @@ export class PoolNetwork extends Entity {
 
       const { hub } = await self._root._protocolAddresses(self.pool.centrifugeId)
       const { accountingToken } = await self._root._protocolAddresses(self.centrifugeId)
+      if (!accountingToken) {
+        throw new Error(
+          `OnchainPM cannot be authorized on centrifugeId ${self.centrifugeId} — no AccountingToken is deployed on this network`
+        )
+      }
 
       const resolvedScId = scId ?? (await firstValueFrom(self.pool.shareClasses()))[0]?.id.raw
       if (!resolvedScId) {
