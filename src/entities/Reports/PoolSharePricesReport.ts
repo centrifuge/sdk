@@ -53,8 +53,9 @@ export class PoolSharePricesReport extends Entity {
    * @returns The share prices report.
    */
   report(filter: SharePricesReportFilter = {}) {
-    const { from, to, groupBy } = filter
-    return this._query(['report', from?.toString(), to?.toString(), groupBy?.toString()], () =>
+    const { from, to, groupBy, shareClassId } = filter
+    const queryKey = ['report', from?.toString(), to?.toString(), groupBy?.toString(), shareClassId?.toString()]
+    return this._query(queryKey, () =>
       combineLatest([this.pool._shareClassIds(), this.pool.decimals()]).pipe(
         switchMap(([shareClassIds, poolDecimals]) =>
           this._root
@@ -78,7 +79,7 @@ export class PoolSharePricesReport extends Entity {
               {
                 filter: {
                   tokenId_in: shareClassIds
-                    .filter((id) => !filter.shareClassId || filter.shareClassId.equals(id))
+                    .filter((id) => !shareClassId || shareClassId.equals(id))
                     .map((id) => id.toString()),
                   trigger_ends_with: 'NewPeriod',
                   // TODO from/to

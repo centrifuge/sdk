@@ -131,8 +131,8 @@ export class PoolShareYieldsReport extends Entity {
    * `(date, shareClassId)` dedupe keeps the latest snapshot per day.
    */
   report(filter: ShareYieldsReportFilter = {}) {
-    const { groupBy } = filter
-    return this._query(['report', groupBy?.toString()], () =>
+    const { groupBy, shareClassId } = filter
+    return this._query(['report', groupBy?.toString(), shareClassId?.toString()], () =>
       this.pool._shareClassIds().pipe(
         switchMap((shareClassIds) =>
           this._root
@@ -154,7 +154,7 @@ export class PoolShareYieldsReport extends Entity {
               {
                 filter: {
                   id_in: shareClassIds
-                    .filter((id) => !filter.shareClassId || filter.shareClassId.equals(id))
+                    .filter((id) => !shareClassId || shareClassId.equals(id))
                     .map((id) => id.toString()),
                 } satisfies TokenSnapshotFilter,
               },
