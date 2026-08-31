@@ -97,8 +97,8 @@ const PINNING_API = 'https://pinning.centrifugelabs.io'
 // Update when centrifuge/workflows cuts a new release.
 // CIDs are in the GitHub release notes: https://github.com/centrifuge/workflows/releases
 const WORKFLOW_MARKETPLACE_CID: Record<string, string> = {
-  mainnet: 'QmQp1KEDPGpKQ7tVzqq92sAJ61tjfSi58FHCTjCEnvePQ7',
-  testnet: 'bafybeieomozw5bmwpgasa66czt3npcwol6fe3hw2esavfwtntyyjvfsnma',
+  mainnet: 'QmXeT1GeuHPu7SE7pzPwRKePJLCfsHfzdXqDSVx9FW4Cc8',
+  testnet: 'QmeU777tCRH46MCWbdtrb6RdNoL8yaZBhS8FnjXA4V6vqY',
 }
 
 const envConfig = {
