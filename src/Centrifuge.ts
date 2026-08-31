@@ -94,7 +94,7 @@ import { AssetId, CentrifugeId, PoolId, ShareClassId } from './utils/types.js'
 
 const PINNING_API = 'https://pinning.centrifugelabs.io'
 
-// Update when centrifuge/workflows cuts a new release.
+// Update when centrifuge/workflows cuts a new release
 // CIDs are in the GitHub release notes: https://github.com/centrifuge/workflows/releases
 const WORKFLOW_MARKETPLACE_CID: Record<string, string> = {
   mainnet: 'QmXeT1GeuHPu7SE7pzPwRKePJLCfsHfzdXqDSVx9FW4Cc8',
