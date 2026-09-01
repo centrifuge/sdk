@@ -4,6 +4,7 @@ import { ABI } from '../abi/index.js'
 import type { Centrifuge } from '../Centrifuge.js'
 import type { HexString } from '../types/index.js'
 import { MessageType } from '../types/transaction.js'
+import { addressesEqual } from '../utils/addresses.js'
 import { Balance } from '../utils/BigInt.js'
 import { assertCrosschainMessagingEnabled } from '../utils/crosschainHotfix.js'
 import { addressToBytes32, encode } from '../utils/index.js'
@@ -559,13 +560,13 @@ export class Vault extends Entity {
   claim(receiver?: HexString, controller?: HexString) {
     const self = this
     return this._transact(async function* (ctx) {
-      const [investment, { vaultRouter }, isOperator] = await Promise.all([
-        self.investment(ctx.signingAddress),
-        self._root._protocolAddresses(self.centrifugeId),
-        self._isOperator(ctx.signingAddress),
-      ])
       const receiverAddress = receiver || ctx.signingAddress
       const controllerAddress = controller || ctx.signingAddress
+      const [investment, { vaultRouter }, isOperator] = await Promise.all([
+        self.investment(controllerAddress),
+        self._root._protocolAddresses(self.centrifugeId),
+        self._isOperator(controllerAddress),
+      ])
 
       let functionName: 'claimCancelDepositRequest' | 'claimCancelRedeemRequest' | 'claimDeposit' | 'claimRedeem'
 
@@ -574,33 +575,40 @@ export class Vault extends Entity {
       } else if (investment.claimableCancelRedeemShares.gt(0n)) {
         functionName = 'claimCancelRedeemRequest'
       } else if (investment.claimableDepositShares.gt(0n)) {
-        if (isOperator) {
-          functionName = 'claimDeposit'
-        } else {
-          const enableData = encodeFunctionData({
-            abi: ABI.VaultRouter,
-            functionName: 'enable',
-            args: [self.address],
-          })
-          const claimData = encodeFunctionData({
-            abi: ABI.VaultRouter,
-            functionName: 'claimDeposit',
-            args: [self.address, receiverAddress, controllerAddress],
-          })
-          yield* doTransaction('Claim', ctx, () =>
-            ctx.walletClient.writeContract({
-              address: vaultRouter,
-              abi: ABI.VaultRouter,
-              functionName: 'multicall',
-              args: [[enableData, claimData]],
-            })
-          )
-          return
-        }
+        functionName = 'claimDeposit'
       } else if (investment.claimableRedeemAssets.gt(0n)) {
         functionName = 'claimRedeem'
       } else {
         throw new Error('No claimable funds')
+      }
+
+      // Every claim on the router ends in a call into the vault with the router as `msg.sender`,
+      // which the vault only accepts if the router is an operator for the controller. Requests made
+      // directly on the vault (a valid ERC-7540 interaction) never enable the router, so bundle
+      // `enable` with the claim. `enable` sets the operator for the sender, so it can only be
+      // bundled when the sender is the controller themselves.
+      const needsEnable = !isOperator && addressesEqual(controllerAddress, ctx.signingAddress)
+
+      if (needsEnable) {
+        const enableData = encodeFunctionData({
+          abi: ABI.VaultRouter,
+          functionName: 'enable',
+          args: [self.address],
+        })
+        const claimData = encodeFunctionData({
+          abi: ABI.VaultRouter,
+          functionName,
+          args: [self.address, receiverAddress, controllerAddress],
+        })
+        yield* doTransaction('Claim', ctx, () =>
+          ctx.walletClient.writeContract({
+            address: vaultRouter,
+            abi: ABI.VaultRouter,
+            functionName: 'multicall',
+            args: [[enableData, claimData]],
+          })
+        )
+        return
       }
 
       yield* doTransaction('Claim', ctx, () =>
