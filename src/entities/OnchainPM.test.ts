@@ -259,6 +259,27 @@ describe('entities/OnchainPM', () => {
       })
     })
 
+    it('does not share cached reads between two OnchainPMs for the same pool and chain', async () => {
+      // The base cache key includes the address. Without it, a second instance — a factory redeploy,
+      // or an address resolved some other way — would serve the first one's policy root.
+      const centrifuge = new Centrifuge({ environment: 'testnet' })
+      const roots: Record<string, HexString> = {
+        [ONCHAIN_PM.toLowerCase()]: ROOT,
+        '0x7777777777777777777777777777777777777777': `0x${'7'.repeat(64)}` as HexString,
+      }
+      const client = {
+        readContract: async (args: any) => roots[(args.address as string).toLowerCase()],
+      }
+      sinon.stub(centrifuge, 'getClient').returns(of(client) as any)
+      const pool = new Pool(centrifuge, poolId.raw)
+      const network = new PoolNetwork(centrifuge, pool, CENTRIFUGE_ID)
+
+      const first = new OnchainPM(centrifuge, network, ONCHAIN_PM)
+      const second = new OnchainPM(centrifuge, network, '0x7777777777777777777777777777777777777777')
+      expect(await firstValueFrom(first.policy(STRATEGIST))).to.equal(ROOT)
+      expect(await firstValueFrom(second.policy(STRATEGIST))).to.equal(`0x${'7'.repeat(64)}`)
+    })
+
     it('lower-cases the address it was constructed with', () => {
       const centrifuge = new Centrifuge({ environment: 'testnet' })
       const pool = new Pool(centrifuge, poolId.raw)

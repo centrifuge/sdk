@@ -1,5 +1,5 @@
 import { firstValueFrom, Observable } from 'rxjs'
-import { AbiParameter, decodeAbiParameters, encodeAbiParameters, parseAbi } from 'viem'
+import { AbiParameter, decodeAbiParameters, encodeAbiParameters } from 'viem'
 import type { Centrifuge } from '../Centrifuge.js'
 import type { PoolNetwork } from '../entities/PoolNetwork.js'
 import { generateExecuteProof } from '../entities/OnchainPM.js'
@@ -96,8 +96,6 @@ type WorkflowInputSlot = Extract<WorkflowStateSlot, { type: 'configurable' | 'ru
 
 const UPDATE_CONTRACT_SELECTOR = 'function updateContract(uint64,bytes16,bytes32,bytes,uint128,address)'
 const ASYNC_REQUEST_DEPOSIT_SELECTOR = 'function requestDeposit(uint256,address,address)'
-const SLIPPAGE_GUARD_ABI = parseAbi(['function onchainPMFactory() view returns (address)'])
-const ACCOUNTING_TOKEN_MINTER_ABI = parseAbi(['function minters(uint64,address) view returns (bool)'])
 
 function getSelectorFunctionName(selector: string): string {
   const match = selector.match(/^function\s+([^(]+)\(/)
@@ -402,15 +400,6 @@ export async function resolveWorkflowShareClassId(network: PoolNetwork, scId?: H
 
   return shareClasses[0]!.id.raw
 }
-
-const HUB_PRICE_POOL_PER_ASSET_ABI = parseAbi([
-  'function pricePoolPerAsset(uint64,bytes16,uint128) view returns (uint128)',
-])
-const ORACLE_HUB_ABI = parseAbi(['function hub() view returns (address)'])
-const HUB_HOLDINGS_ABI = parseAbi(['function holdings() view returns (address)'])
-
-const ASSET_TO_ID_SELECTOR = 'function assetToId(address,uint256)'
-const HOLDINGS_IS_INITIALIZED_ABI = parseAbi(['function isInitialized(uint64,bytes16,uint128) view returns (bool)'])
 
 export async function estimateWorkflowExecutionValue(options: {
   centrifuge: Centrifuge

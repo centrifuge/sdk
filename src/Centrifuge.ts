@@ -97,6 +97,17 @@ const PINNING_API = 'https://pinning.centrifugelabs.io'
 
 // Update when centrifuge/workflows cuts a new release
 // CIDs are in the GitHub release notes: https://github.com/centrifuge/workflows/releases
+/**
+ * The `uint128` asset-id overload of HubRegistry's three same-arity `decimals` functions. Not
+ * cosmetic: handed the full ABI, viem resolves a `bigint` to the narrowest matching overload
+ * (`uint64`) and then throws `IntegerOutOfRangeError` for every real asset id, which are
+ * 128-bit. Same treatment as `POOL_DECIMALS_ABI` in Pool.ts — narrow the registered ABI rather
+ * than restate the signature inline, so the selector is explicit and the signature has one home.
+ */
+const ASSET_DECIMALS_ABI = ABI.HubRegistry.filter(
+  (item) => item.type === 'function' && item.name === 'decimals' && item.inputs[0]?.type === 'uint128'
+)
+
 const WORKFLOW_MARKETPLACE_CID: Record<string, string> = {
   // Canonical-layout releases from centrifuge/workflows#98. The previous pins predate that PR's
   // publish gate and do not reproduce under canonical UnixFS parameters, so `assertCidMatchesContent`
@@ -849,8 +860,7 @@ export class Centrifuge {
         switchMap(([{ hubRegistry }, client]) =>
           client.readContract({
             address: hubRegistry,
-            // Use inline ABI because of function overload
-            abi: parseAbi(['function decimals(uint128) view returns (uint8)']),
+            abi: ASSET_DECIMALS_ABI,
             functionName: 'decimals',
             args: [assetId.raw],
           })

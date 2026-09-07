@@ -26,7 +26,10 @@ export class OnchainPM extends Entity {
     public network: PoolNetwork,
     address: HexString
   ) {
-    super(_root, ['onchainPM', network.centrifugeId, network.pool.id.toString()])
+    // The address is part of the key: a pool's OnchainPM is a CREATE2 address, but a factory
+    // redeploy (or an address resolved some other way) gives a second instance for the same
+    // pool and chain, and without it the newer instance would serve the older one's cached root.
+    super(_root, ['onchainPM', network.centrifugeId, network.pool.id.toString(), address.toLowerCase()])
     this.address = address.toLowerCase() as HexString
   }
 

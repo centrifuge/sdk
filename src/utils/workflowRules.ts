@@ -243,6 +243,7 @@ export function checkRawCalldataTaint(
  * manager-pinned `configurable` value after the Merkle proof was built over the benign
  * pre-state, and later actions read something the manager never approved.
  */
+/** @internal Composed by `checkTemplateTaintRules`; not part of the published API. */
 export function checkReturnsDoNotShadow(template: TaintTemplate, describe: (index: number) => string): RuleViolation[] {
   const declared = new Set((template.variables ?? []).map((variable) => variable.name))
   const violations: RuleViolation[] = []
@@ -268,6 +269,7 @@ export function checkReturnsDoNotShadow(template: TaintTemplate, describe: (inde
  * surfaced as a runtime input — invisible in review, still fillable by anyone assembling the
  * execute calldata. The read also precedes the write, so it is broken on its own terms.
  */
+/** @internal Composed by `checkTemplateTaintRules`; not part of the published API. */
 export function checkNoForwardReferences(
   template: TaintTemplate,
   describe: (actionIndex: number, inputIndex: number) => string
@@ -302,6 +304,7 @@ export function checkNoForwardReferences(
  * Whether an action needs FLAG_RAW calldata assembly is derived from its input types, not
  * declared — a catalog carrying the field is reaching for that path deliberately.
  */
+/** @internal Composed by `checkTemplateTaintRules`; not part of the published API. */
 export function checkNoDeclaredRawMode(template: TaintTemplate, describe: (index: number) => string): RuleViolation[] {
   const violations: RuleViolation[] = []
   for (const [index, entry] of (template.actions ?? []).entries()) {

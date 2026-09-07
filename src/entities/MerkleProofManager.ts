@@ -39,7 +39,9 @@ export class MerkleProofManager extends Entity {
     public network: PoolNetwork,
     address: HexString
   ) {
-    super(_root, ['merkleProofManager', network.centrifugeId, network.pool.id.toString()])
+    // Keyed by address too — see the note in OnchainPM: two managers for one pool and chain
+    // must not share cache entries.
+    super(_root, ['merkleProofManager', network.centrifugeId, network.pool.id.toString(), address.toLowerCase()])
     this.pool = network.pool
     this.address = address.toLowerCase() as HexString
   }

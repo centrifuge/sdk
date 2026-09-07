@@ -1,5 +1,5 @@
 import { catchError, combineLatest, defer, firstValueFrom, map, of, switchMap, timeout } from 'rxjs'
-import { encodeFunctionData, fromHex, parseAbi, toHex } from 'viem'
+import { encodeFunctionData, fromHex, toHex } from 'viem'
 import { ABI } from '../abi/index.js'
 import type { Centrifuge } from '../Centrifuge.js'
 import { HexString } from '../types/index.js'
