@@ -151,7 +151,6 @@ function resolveCatalogAddressValue(workflow: MarketplaceWorkflow, value: string
   return resolved && ADDRESS_RE.test(resolved) ? (resolved as HexString) : undefined
 }
 
-
 function resolveWorkflowAssetAddress(workflow: MarketplaceWorkflow): HexString {
   const assetAddress = workflow.variables.asset
   if (!assetAddress || !ADDRESS_RE.test(assetAddress)) {
@@ -237,12 +236,6 @@ function parseAddressAddressArray(rawValue: string): [HexString, HexString][] {
   })
 }
 
-
-
-
-
-
-
 function normalizeExcludedActions(workflow: MarketplaceWorkflow, excludedActions: number[] = []): number[] {
   const normalized = [...excludedActions].sort((a, b) => a - b)
 
@@ -260,37 +253,6 @@ function normalizeExcludedActions(workflow: MarketplaceWorkflow, excludedActions
   }
 
   return normalized
-}
-
-function hasConfigurableInputs(workflow: MarketplaceWorkflow): boolean {
-  // The explicit-input-kinds format (centrifuge/workflows#86) dropped the per-input
-  // `configurable` flag — configurable inputs are now variables of `kind: 'configurable'`,
-  // surfaced as `configurable` state slots in the built definition. Treat a build failure
-  // as "has configurable" so the legacy workflowId fallback isn't used unsafely.
-  try {
-    return buildWorkflowDefinitionFromCatalog(workflow).state.some((slot) => slot.type === 'configurable')
-  } catch {
-    return true
-  }
-}
-
-function canUseLegacyCatalogWorkflowIdFallback(
-  workflow: MarketplaceWorkflow,
-  entry: { configurableValues?: Record<string, HexString>; excludedActions?: number[] }
-): boolean {
-  return (
-    Object.keys(entry.configurableValues ?? {}).length === 0 &&
-    (entry.excludedActions?.length ?? 0) === 0 &&
-    !hasConfigurableInputs(workflow)
-  )
-}
-
-function getCatalogWorkflowIdOrThrow(workflow: MarketplaceWorkflow): HexString {
-  if (!/^0x[0-9a-fA-F]{64}$/.test(workflow.workflowId)) {
-    throw new Error(`Workflow "${workflow.workflowRef}" is missing a valid catalog workflowId`)
-  }
-
-  return workflow.workflowId as HexString
 }
 
 function collectRequiredMagicKeys(workflowDef: WorkflowDefinition): Set<string> {
@@ -390,9 +352,6 @@ async function estimateWorkflowActionValue(options: {
   )
 }
 
-
-
-
 export function applyWorkflowExclusions(
   workflow: MarketplaceWorkflow,
   excludedActions: number[] = []
@@ -444,26 +403,14 @@ export async function resolveWorkflowShareClassId(network: PoolNetwork, scId?: H
   return shareClasses[0]!.id.raw
 }
 
-
-
-
 const HUB_PRICE_POOL_PER_ASSET_ABI = parseAbi([
   'function pricePoolPerAsset(uint64,bytes16,uint128) view returns (uint128)',
 ])
 const ORACLE_HUB_ABI = parseAbi(['function hub() view returns (address)'])
 const HUB_HOLDINGS_ABI = parseAbi(['function holdings() view returns (address)'])
 
-
-
-
-
-
 const ASSET_TO_ID_SELECTOR = 'function assetToId(address,uint256)'
 const HOLDINGS_IS_INITIALIZED_ABI = parseAbi(['function isInitialized(uint64,bytes16,uint128) view returns (bool)'])
-
-
-
-
 
 export async function estimateWorkflowExecutionValue(options: {
   centrifuge: Centrifuge
@@ -766,9 +713,14 @@ export async function computeWorkflowScriptHash(options: {
 
 /**
  * Compute one script hash per policy entry — the leaves of the strategist's on-chain
- * Merkle root. `policy` is already this-chain only (the caller filters by chain). On a
- * build failure for an entry with no configurable/excluded customization, falls back to
- * the catalog's pre-computed `workflowId`.
+ * Merkle root. `policy` is already this-chain only (the caller filters by chain).
+ *
+ * A build failure is fatal. There used to be a fallback here that substituted the catalog's
+ * `workflowId` when an entry had no configurable values or exclusions, for catalogs predating
+ * the tagged format. That value is a 64-hex string read straight out of catalog JSON, and the
+ * leaf it lands in IS the script hash `OnchainPM.execute` checks its proof against — so any
+ * build failure became an authorization for whatever calldata the catalog author chose. Both
+ * shipped catalogs now build cleanly (1336 mainnet, 187 testnet), so nothing needs it.
  */
 export async function computeWorkflowGroupScriptHashes(options: {
   centrifuge: Centrifuge
@@ -782,34 +734,21 @@ export async function computeWorkflowGroupScriptHashes(options: {
 
   return Promise.all(
     policy.map(async (entry) => {
-      try {
-        const { scriptHash } = await computeWorkflowScriptHash({
-          centrifuge,
-          network,
-          workflow: entry.workflow,
-          strategist,
-          poolEscrowAddress,
-          scId,
-          configurableValues: entry.configurableValues ?? {},
-          excludedActions: entry.excludedActions ?? [],
-        })
+      const { scriptHash } = await computeWorkflowScriptHash({
+        centrifuge,
+        network,
+        workflow: entry.workflow,
+        strategist,
+        poolEscrowAddress,
+        scId,
+        configurableValues: entry.configurableValues ?? {},
+        excludedActions: entry.excludedActions ?? [],
+      })
 
-        return scriptHash
-      } catch (error) {
-        if (canUseLegacyCatalogWorkflowIdFallback(entry.workflow, entry)) {
-          return getCatalogWorkflowIdOrThrow(entry.workflow)
-        }
-        throw error
-      }
+      return scriptHash
     })
   )
 }
-
-
-
-
-
-
 
 export function isWorkflowInputOptional(parameter: string): boolean {
   return parameter === ADDRESS_UINT256_ARRAY_TYPE || parameter === ADDRESS_ADDRESS_ARRAY_TYPE
