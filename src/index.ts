@@ -112,6 +112,17 @@ export { MAGIC_VARIABLE_KEYS, resolveMagicVariables, resolveVariableLabel } from
 export type { MagicVariableContext, MagicVariableKey } from './utils/variables.js'
 export { buildWorkflowDefinitionFromCatalog, parseMarketplaceCatalog } from './utils/catalog.js'
 export { assertCidMatchesContent, canonicalCids, cidMatchesContent } from './utils/cid.js'
+export {
+  checkActionSelectorSchema,
+  checkDuplicateWorkflowIds,
+  checkRawCalldataTaint,
+  checkTemplateIsNotUseOnly,
+  checkWorkflowVariableKinds,
+  expectedInputCount,
+  parseSelectorParameters,
+  validateCatalogWorkflow,
+} from './utils/workflowRules.js'
+export type { CatalogWorkflowEntry, RuleViolation } from './utils/workflowRules.js'
 export type { ParsedMarketplaceCatalog } from './utils/catalog.js'
 export {
   applyWorkflowExclusions,

@@ -65,6 +65,12 @@ export interface CatalogActionInput {
     template: string
     map?: Record<string, string>
   }
+  /**
+   * Non-empty text acknowledging that this `bytes` input is intentionally strategist-supplied,
+   * and why the target makes that safe (a CCTP attestation is validated on-chain). Opts the
+   * input out of the raw-calldata taint rule.
+   */
+  runtimeBytesAck?: string
 }
 
 /** A contract call step as represented in the IPFS catalog (human-readable form). */

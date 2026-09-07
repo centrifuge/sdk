@@ -8,6 +8,8 @@ import type {
   MarketplaceWorkflow,
 } from '../types/workflow.js'
 import { MAGIC_VARIABLE_KEYS } from './variables.js'
+import { checkDuplicateWorkflowIds, validateCatalogWorkflow } from './workflowRules.js'
+import type { CatalogWorkflowEntry } from './workflowRules.js'
 import { CALL, MAX_STATE_SLOTS, UNUSED_SLOT, VALUECALL } from './weiroll.js'
 import type { WeirollAction, WorkflowDefinition, WorkflowStateSlot } from './weiroll.js'
 
@@ -304,7 +306,21 @@ export function parseMarketplaceCatalog(raw: unknown): ParsedMarketplaceCatalog 
       }
     }
 
+    // The authoring rules from centrifuge/workflows' validate.ts. That validator only ever
+    // sees catalogs the repo built; this catalog arrived over the network, so re-check the
+    // rules whose violation would let a manager approve a workflow that does not describe
+    // what executes. ~12ms for the 1336-workflow mainnet catalog.
+    const violations = validateCatalogWorkflow(w as CatalogWorkflowEntry, templates)
+    if (violations[0]) {
+      throw new Error(`marketplace catalog: ${violations[0].message}`)
+    }
+
     workflows.push(w)
+  }
+
+  const duplicates = checkDuplicateWorkflowIds(workflows as CatalogWorkflowEntry[])
+  if (duplicates[0]) {
+    throw new Error(`marketplace catalog: ${duplicates[0].message}`)
   }
 
   return { templates, workflows }
