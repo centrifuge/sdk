@@ -98,8 +98,12 @@ const PINNING_API = 'https://pinning.centrifugelabs.io'
 // Update when centrifuge/workflows cuts a new release
 // CIDs are in the GitHub release notes: https://github.com/centrifuge/workflows/releases
 const WORKFLOW_MARKETPLACE_CID: Record<string, string> = {
-  mainnet: 'QmXeT1GeuHPu7SE7pzPwRKePJLCfsHfzdXqDSVx9FW4Cc8',
-  testnet: 'QmeU777tCRH46MCWbdtrb6RdNoL8yaZBhS8FnjXA4V6vqY',
+  // Canonical-layout releases from centrifuge/workflows#98. The previous pins predate that PR's
+  // publish gate and do not reproduce under canonical UnixFS parameters, so `assertCidMatchesContent`
+  // below rejects them — with verification on, a non-canonical pin means the app refuses its own
+  // catalog. Any future bump has to come from a publish run whose `verify:cid` gate passed.
+  mainnet: 'bafybeigarcbuopdukqyxrnjcadgazwinuiamz4rie4tknnxnbsur5wnwdu',
+  testnet: 'bafybeid3yry4qfoqej7y3i52cbw4hqdnl62en6mwzmkxvjahspkodghxmu',
 }
 
 const envConfig = {
