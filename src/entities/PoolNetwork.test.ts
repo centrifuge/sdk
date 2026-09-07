@@ -816,13 +816,17 @@ describe('PoolNetwork.authorizeOnchainPM', () => {
     sinon.stub(pool, 'shareClasses').returns(of([{ id: { raw: scId.raw } }]) as any)
     const pn = new PoolNetwork(root as any, pool, centId)
 
-    const batch = (await lastValueFrom(
-      pn.authorizeOnchainPM(managerAddress) as unknown as Observable<any>
-    )) as { contract: string; data: `0x${string}`[]; messages: Record<number, { type: number }[]> }
+    const batch = (await lastValueFrom(pn.authorizeOnchainPM(managerAddress) as unknown as Observable<any>)) as {
+      contract: string
+      data: `0x${string}`[]
+      messages: Record<number, { type: number }[]>
+    }
 
     expect(batch.contract).to.equal(hub)
     expect(batch.data).to.have.length(2)
-    expect(decodeFunctionData({ abi: ABI.Hub, data: batch.data[0]! }).functionName).to.equal('updateBalanceSheetManager')
+    expect(decodeFunctionData({ abi: ABI.Hub, data: batch.data[0]! }).functionName).to.equal(
+      'updateBalanceSheetManager'
+    )
     expect(decodeFunctionData({ abi: ABI.Hub, data: batch.data[1]! }).functionName).to.equal('updateContract')
   })
 

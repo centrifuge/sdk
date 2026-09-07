@@ -353,7 +353,9 @@ function filterCacheKey(filter: CrosschainMessagesFilter) {
     .join('|')
   return [
     'crosschainMessages',
-    filter.poolId !== undefined ? (typeof filter.poolId === 'bigint' ? filter.poolId : filter.poolId.raw).toString() : '',
+    filter.poolId !== undefined
+      ? (typeof filter.poolId === 'bigint' ? filter.poolId : filter.poolId.raw).toString()
+      : '',
     filter.fromCentrifugeId,
     filter.toCentrifugeId,
     Array.isArray(filter.status) ? filter.status.join(',') : (filter.status ?? ''),

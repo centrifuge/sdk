@@ -31,14 +31,12 @@ describe('validateAddress', () => {
 
 describe('addressesEqual', () => {
   it('returns true for the same address with different cases', () => {
-    expect(
-      addressesEqual('0x423420Ae467df6e90291fd0252c0A8a637C1e03f', '0x423420ae467df6e90291fd0252c0a8a637c1e03f')
-    ).to.be.true
+    expect(addressesEqual('0x423420Ae467df6e90291fd0252c0A8a637C1e03f', '0x423420ae467df6e90291fd0252c0a8a637c1e03f'))
+      .to.be.true
   })
 
   it('returns false for different addresses', () => {
-    expect(
-      addressesEqual('0x1111111111111111111111111111111111111111', '0x2222222222222222222222222222222222222222')
-    ).to.be.false
+    expect(addressesEqual('0x1111111111111111111111111111111111111111', '0x2222222222222222222222222222222222222222'))
+      .to.be.false
   })
 })

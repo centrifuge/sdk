@@ -174,7 +174,13 @@ export const mockPoolMetadataV2: PoolMetadataV2 = {
           tabs: [
             {
               label: 'Summary',
-              block: { type: 'text', id: 'tab-summary', title: 'Summary', subtitle: 'Tab sub-heading', body: 'Tab body text.' },
+              block: {
+                type: 'text',
+                id: 'tab-summary',
+                title: 'Summary',
+                subtitle: 'Tab sub-heading',
+                body: 'Tab body text.',
+              },
             },
             {
               label: 'Numbers',

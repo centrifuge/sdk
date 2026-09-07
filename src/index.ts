@@ -118,11 +118,17 @@ export {
   checkRawCalldataTaint,
   checkTemplateIsNotUseOnly,
   checkWorkflowVariableKinds,
-  expectedInputCount,
   parseSelectorParameters,
   validateCatalogWorkflow,
 } from './utils/workflowRules.js'
-export type { CatalogWorkflowEntry, RuleViolation } from './utils/workflowRules.js'
+export type {
+  CatalogWorkflowEntry,
+  DeclaringTemplate,
+  RuleViolation,
+  SelectorAction,
+  TaintTemplate,
+} from './utils/workflowRules.js'
+export { MAGIC_VARIABLE_NAMES } from './utils/workflowRules.js'
 export type { ParsedMarketplaceCatalog } from './utils/catalog.js'
 export {
   applyWorkflowExclusions,

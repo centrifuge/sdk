@@ -1003,51 +1003,57 @@ describe('MerkleProofManager', () => {
   describe('findWorkflowPolicyIndices', () => {
     it('returns matching policy indices for canonical actions', () => {
       expect(
-        findWorkflowPolicyIndices([mockPolicies[0]!, mockPolicies[1]!], [
-          {
-            policy: {
-              decoder: mockPolicies[1]!.decoder,
-              target: mockPolicies[1]!.target,
-              targetName: mockPolicies[1]!.targetName,
-              name: mockPolicies[1]!.name,
-              selector: mockPolicies[1]!.selector,
-              valueNonZero: mockPolicies[1]!.valueNonZero,
-              inputs: mockPolicies[1]!.inputs,
+        findWorkflowPolicyIndices(
+          [mockPolicies[0]!, mockPolicies[1]!],
+          [
+            {
+              policy: {
+                decoder: mockPolicies[1]!.decoder,
+                target: mockPolicies[1]!.target,
+                targetName: mockPolicies[1]!.targetName,
+                name: mockPolicies[1]!.name,
+                selector: mockPolicies[1]!.selector,
+                valueNonZero: mockPolicies[1]!.valueNonZero,
+                inputs: mockPolicies[1]!.inputs,
+              },
+              defaultValues: [null, randomUser],
             },
-            defaultValues: [null, randomUser],
-          },
-          {
-            policy: {
-              decoder: mockPolicies[0]!.decoder,
-              target: mockPolicies[0]!.target,
-              targetName: mockPolicies[0]!.targetName,
-              name: mockPolicies[0]!.name,
-              selector: mockPolicies[0]!.selector,
-              valueNonZero: mockPolicies[0]!.valueNonZero,
-              inputs: mockPolicies[0]!.inputs,
+            {
+              policy: {
+                decoder: mockPolicies[0]!.decoder,
+                target: mockPolicies[0]!.target,
+                targetName: mockPolicies[0]!.targetName,
+                name: mockPolicies[0]!.name,
+                selector: mockPolicies[0]!.selector,
+                valueNonZero: mockPolicies[0]!.valueNonZero,
+                inputs: mockPolicies[0]!.inputs,
+              },
+              defaultValues: [mockPolicies[0]!.inputs[0]!.input[0]!, null],
             },
-            defaultValues: [mockPolicies[0]!.inputs[0]!.input[0]!, null],
-          },
-        ])
+          ]
+        )
       ).to.deep.equal([1, 0])
     })
 
     it('returns null when one of the canonical actions is missing', () => {
       expect(
-        findWorkflowPolicyIndices([mockPolicies[0]!], [
-          {
-            policy: {
-              decoder: mockPolicies[1]!.decoder,
-              target: mockPolicies[1]!.target,
-              targetName: mockPolicies[1]!.targetName,
-              name: mockPolicies[1]!.name,
-              selector: mockPolicies[1]!.selector,
-              valueNonZero: mockPolicies[1]!.valueNonZero,
-              inputs: mockPolicies[1]!.inputs,
+        findWorkflowPolicyIndices(
+          [mockPolicies[0]!],
+          [
+            {
+              policy: {
+                decoder: mockPolicies[1]!.decoder,
+                target: mockPolicies[1]!.target,
+                targetName: mockPolicies[1]!.targetName,
+                name: mockPolicies[1]!.name,
+                selector: mockPolicies[1]!.selector,
+                valueNonZero: mockPolicies[1]!.valueNonZero,
+                inputs: mockPolicies[1]!.inputs,
+              },
+              defaultValues: [null, randomUser],
             },
-            defaultValues: [null, randomUser],
-          },
-        ])
+          ]
+        )
       ).to.equal(null)
     })
   })

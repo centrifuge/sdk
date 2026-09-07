@@ -41,9 +41,27 @@ describe('PoolSharePricesReport', () => {
     const data = {
       tokenInstanceSnapshots: {
         items: [
-          { tokenId, timestamp: '1777939200000', totalIssuance: '100', tokenPrice: '1000000000000000000', triggerChainId: '1' },
-          { tokenId, timestamp: '1777939200000', totalIssuance: '200', tokenPrice: '1000000000000000000', triggerChainId: '8453' },
-          { tokenId, timestamp: '1777939200000', totalIssuance: '300', tokenPrice: '1000000000000000000', triggerChainId: '42161' },
+          {
+            tokenId,
+            timestamp: '1777939200000',
+            totalIssuance: '100',
+            tokenPrice: '1000000000000000000',
+            triggerChainId: '1',
+          },
+          {
+            tokenId,
+            timestamp: '1777939200000',
+            totalIssuance: '200',
+            tokenPrice: '1000000000000000000',
+            triggerChainId: '8453',
+          },
+          {
+            tokenId,
+            timestamp: '1777939200000',
+            totalIssuance: '300',
+            tokenPrice: '1000000000000000000',
+            triggerChainId: '42161',
+          },
         ],
       },
     }

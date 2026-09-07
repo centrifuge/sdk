@@ -1,3 +1,6 @@
+import { parseAbiItem } from 'viem'
+import type { AbiParameter } from 'viem'
+import { MAGIC_VARIABLE_KEYS } from './variables.js'
 import type { CatalogAction, CatalogTemplate, CatalogVariable } from '../types/workflow.js'
 
 /**
@@ -14,8 +17,32 @@ import type { CatalogAction, CatalogTemplate, CatalogVariable } from '../types/w
  * `centrifuge/workflows` consumes them too rather than keeping a second copy.
  */
 
-/** Implicitly available to every template; resolved by the SDK at policy-creation time. */
-export const MAGIC_VARIABLE_NAMES = new Set(['onchainPM', 'onOffRamp', 'poolEscrow', 'poolId', 'scId'])
+/**
+ * Implicitly available to every template; resolved by the SDK at policy-creation time.
+ *
+ * Derived from the same list `buildWorkflowDefinitionFromCatalog` classifies against, so a
+ * name cannot be magic to the compiler and undeclared to these rules at once.
+ */
+export const MAGIC_VARIABLE_NAMES = new Set(MAGIC_VARIABLE_KEYS.map((key) => key.slice(1)))
+
+/** The action shape the selector rule reads — `selector` is untrusted, so not typed as present. */
+export interface SelectorAction {
+  name?: string
+  selector?: unknown
+  inputs?: { parameter: string }[]
+}
+
+/** The template shape the taint walk reads. Structural, so an authoring template fits too. */
+export interface TaintTemplate {
+  id?: string
+  actions?: unknown[]
+  variables?: CatalogVariable[]
+}
+
+/** The template shape the workflow-level rules read. */
+export interface DeclaringTemplate {
+  variables?: CatalogVariable[]
+}
 
 /** One rule violation. `rule` is a stable slug so callers can filter or group. */
 export interface RuleViolation {
@@ -27,62 +54,25 @@ export interface RuleViolation {
 // Selector parsing
 // ---------------------------------------------------------------------------
 
-/** Splits `a,(b,c),d` into `["a", "(b,c)", "d"]`, ignoring commas inside parentheses. */
-function splitTopLevel(input: string): string[] {
-  const parts: string[] = []
-  let depth = 0
-  let buffer = ''
-  for (const char of input) {
-    if (char === '(') {
-      depth++
-      buffer += char
-    } else if (char === ')') {
-      depth--
-      buffer += char
-    } else if (char === ',' && depth === 0) {
-      parts.push(buffer.trim())
-      buffer = ''
-    } else {
-      buffer += char
-    }
-  }
-  if (buffer.trim()) parts.push(buffer.trim())
-  return parts
+/** Renders a parsed ABI parameter back to its canonical type string. */
+function renderParameter(parameter: AbiParameter): string {
+  if (!parameter.type.startsWith('tuple')) return parameter.type
+  const components = (parameter as { components: readonly AbiParameter[] }).components
+  // `tuple`, `tuple[]`, `tuple[3]` — keep whatever array suffix followed the word.
+  return `(${components.map(renderParameter).join(',')})${parameter.type.slice('tuple'.length)}`
 }
 
 /**
- * The flattened leaf types of one selector parameter.
+ * Flattens one selector parameter to the inputs a template declares for it.
  *
- * Templates flatten tuple *structs* into individual inputs, so `(uint256,address)` is two
- * inputs. Tuple *arrays* stay atomic — `(address,uint256)[]` is a single ABI-encoded value
- * in one slot — as do ordinary arrays.
+ * Templates flatten tuple *structs* into individual inputs, so `(uint256,address)` is two.
+ * Tuple *arrays* stay atomic — `(address,uint256)[]` is a single ABI-encoded value in one
+ * slot — as do ordinary arrays.
  */
-function flattenParameter(parameter: string): string[] {
-  const trimmed = parameter.trim()
-  if (!trimmed.startsWith('(')) return [trimmed]
-
-  let depth = 0
-  let closeIndex = -1
-  for (let i = 0; i < trimmed.length; i++) {
-    if (trimmed[i] === '(') depth++
-    else if (trimmed[i] === ')') {
-      depth--
-      if (depth === 0) {
-        closeIndex = i
-        break
-      }
-    }
-  }
-  if (closeIndex === -1) return [trimmed]
-  if (
-    trimmed
-      .slice(closeIndex + 1)
-      .trim()
-      .startsWith('[')
-  )
-    return [trimmed]
-
-  return splitTopLevel(trimmed.slice(1, closeIndex)).flatMap(flattenParameter)
+function flattenParameter(parameter: AbiParameter): string[] {
+  if (parameter.type !== 'tuple') return [renderParameter(parameter)]
+  const components = (parameter as { components: readonly AbiParameter[] }).components
+  return components.flatMap(flattenParameter)
 }
 
 /**
@@ -92,31 +82,13 @@ function flattenParameter(parameter: string): string[] {
  * sequence must match exactly — same types, same order.
  */
 export function parseSelectorParameters(selector: string): string[] | null {
-  const open = selector.indexOf('(')
-  if (open < 0) return null
-
-  let depth = 0
-  let close = -1
-  for (let i = open; i < selector.length; i++) {
-    if (selector[i] === '(') depth++
-    else if (selector[i] === ')') {
-      depth--
-      if (depth === 0) {
-        close = i
-        break
-      }
-    }
+  try {
+    const item = parseAbiItem(selector)
+    if (item.type !== 'function') return null
+    return item.inputs.flatMap(flattenParameter)
+  } catch {
+    return null
   }
-  if (close < 0) return null
-
-  const inner = selector.slice(open + 1, close).trim()
-  if (inner === '') return []
-  return splitTopLevel(inner).flatMap(flattenParameter)
-}
-
-/** How many inputs a selector expects after tuple flattening, or `null` if malformed. */
-export function expectedInputCount(selector: string): number | null {
-  return parseSelectorParameters(selector)?.length ?? null
 }
 
 // ---------------------------------------------------------------------------
@@ -132,7 +104,7 @@ export function expectedInputCount(selector: string): number | null {
  * that the selected function never consumes, or a field rendered as a `uint256` that lands in
  * an `address` position.
  */
-export function checkActionSelectorSchema(action: CatalogAction, describe: string): RuleViolation[] {
+export function checkActionSelectorSchema(action: SelectorAction, describe: string): RuleViolation[] {
   const selector = action.selector
 
   if (typeof selector !== 'string' || !selector.startsWith('function ')) {
@@ -191,18 +163,18 @@ function normalizeType(parameter: string | undefined): string {
  * templates that taint crosses through a `map`. Compiled catalog templates have those
  * inlined already, so the SDK passes nothing.
  */
-export function checkRawCalldataTaint<T extends { id?: string; actions?: unknown[]; variables?: CatalogVariable[] }>(
-  template: T,
+export function checkRawCalldataTaint(
+  template: TaintTemplate,
   options: {
     describe: (action: CatalogAction) => string
-    resolveUse?: (entry: unknown) => { template: T; map: Record<string, string>; returns?: string } | null
+    resolveUse?: (entry: unknown) => { template: TaintTemplate; map: Record<string, string>; returns?: string } | null
   }
 ): RuleViolation[] {
   const violations: RuleViolation[] = []
   const visiting = new Set<string>()
 
   /** Returns whether this template's final output is tainted. */
-  function walk(current: T, seeded: Set<string>): boolean {
+  function walk(current: TaintTemplate, seeded: Set<string>): boolean {
     const id = current.id ?? ''
     if (id && visiting.has(id)) return false
     if (id) visiting.add(id)
@@ -264,6 +236,87 @@ export function checkRawCalldataTaint<T extends { id?: string; actions?: unknown
   return violations
 }
 
+/**
+ * An action `returns` name must not shadow a declared template variable.
+ *
+ * The output and the declared slot share one weiroll index, so the action overwrites a
+ * manager-pinned `configurable` value after the Merkle proof was built over the benign
+ * pre-state, and later actions read something the manager never approved.
+ */
+export function checkReturnsDoNotShadow(template: TaintTemplate, describe: (index: number) => string): RuleViolation[] {
+  const declared = new Set((template.variables ?? []).map((variable) => variable.name))
+  const violations: RuleViolation[] = []
+
+  for (const [index, entry] of (template.actions ?? []).entries()) {
+    const returns = (entry as CatalogAction).returns
+    if (!returns?.startsWith('$')) continue
+    if (declared.has(returns.slice(1))) {
+      violations.push({
+        rule: 'returns-shadows-variable',
+        message: `${describe(index)} return "${returns}" shadows a declared template variable`,
+      })
+    }
+  }
+
+  return violations
+}
+
+/**
+ * An input must not reference a value some later action returns.
+ *
+ * A forward reference compiles to a slot that is neither pinned in the script hash nor
+ * surfaced as a runtime input — invisible in review, still fillable by anyone assembling the
+ * execute calldata. The read also precedes the write, so it is broken on its own terms.
+ */
+export function checkNoForwardReferences(
+  template: TaintTemplate,
+  describe: (actionIndex: number, inputIndex: number) => string
+): RuleViolation[] {
+  const actions = (template.actions ?? []) as CatalogAction[]
+  const returnedAt = new Map<string, number>()
+  for (const [index, action] of actions.entries()) {
+    if (action.returns?.startsWith('$') && !returnedAt.has(action.returns)) returnedAt.set(action.returns, index)
+  }
+
+  const violations: RuleViolation[] = []
+  for (const [actionIndex, action] of actions.entries()) {
+    for (const [inputIndex, input] of (action.inputs ?? []).entries()) {
+      for (const value of input.input ?? []) {
+        const producedAt = returnedAt.get(value)
+        if (producedAt !== undefined && producedAt >= actionIndex) {
+          violations.push({
+            rule: 'forward-reference',
+            message: `${describe(actionIndex, inputIndex)} references "${value}" before the action that returns it`,
+          })
+        }
+      }
+    }
+  }
+
+  return violations
+}
+
+/**
+ * `rawMode` is not part of the authoring schema in centrifuge/workflows.
+ *
+ * Whether an action needs FLAG_RAW calldata assembly is derived from its input types, not
+ * declared — a catalog carrying the field is reaching for that path deliberately.
+ */
+export function checkNoDeclaredRawMode(template: TaintTemplate, describe: (index: number) => string): RuleViolation[] {
+  const violations: RuleViolation[] = []
+  for (const [index, entry] of (template.actions ?? []).entries()) {
+    // Read off the raw entry, not CatalogAction: `rawMode` is deliberately absent from that
+    // type because the authoring schema has no such field. This rule is what enforces it.
+    if ((entry as Record<string, unknown>).rawMode !== undefined) {
+      violations.push({
+        rule: 'declared-raw-mode',
+        message: `${describe(index)} sets "rawMode" — raw calldata assembly is derived from the input types, not declared`,
+      })
+    }
+  }
+  return violations
+}
+
 // ---------------------------------------------------------------------------
 // Workflow-level rules
 // ---------------------------------------------------------------------------
@@ -292,7 +345,7 @@ function workflowIdOf(workflow: CatalogWorkflowEntry): string {
  */
 export function checkTemplateIsNotUseOnly(
   workflow: CatalogWorkflowEntry,
-  template: CatalogTemplate | undefined
+  template: DeclaringTemplate | undefined
 ): RuleViolation[] {
   if (!template) return []
   const params = (template.variables ?? []).filter((v) => v.kind === 'param').map((v) => v.name)
@@ -315,7 +368,7 @@ export function checkTemplateIsNotUseOnly(
  */
 export function checkWorkflowVariableKinds(
   workflow: CatalogWorkflowEntry,
-  template: CatalogTemplate | undefined
+  template: DeclaringTemplate | undefined
 ): RuleViolation[] {
   if (!template) return []
 
@@ -389,28 +442,67 @@ export function checkDuplicateWorkflowIds(workflows: CatalogWorkflowEntry[]): Ru
  * Returns violations rather than throwing so a caller reporting a whole catalog can collect
  * them all; `parseMarketplaceCatalog` throws on the first.
  */
+/**
+ * Every rule that depends only on the template, keyed so it runs once per template rather
+ * than once per workflow. The mainnet catalog is 1336 workflows over 18 distinct templates.
+ *
+ * Messages name the action, not the workflow — the caller prefixes the workflow it was
+ * reached from, so one cached result serves every workflow sharing the template.
+ */
+function templateViolations(templateName: string, template: CatalogTemplate): RuleViolation[] {
+  const describeAction = (index: number) => {
+    const action = template.actions?.[index]
+    return `template "${templateName}" action ${index} ("${action?.name ?? action?.selector}")`
+  }
+
+  const violations: RuleViolation[] = [
+    ...checkNoDeclaredRawMode(template, describeAction),
+    ...checkReturnsDoNotShadow(template, describeAction),
+    ...checkNoForwardReferences(
+      template,
+      (actionIndex, inputIndex) => `${describeAction(actionIndex)} input ${inputIndex}`
+    ),
+    ...checkRawCalldataTaint(template, {
+      describe: (action) => `template "${templateName}" action "${action.name ?? action.selector}"`,
+    }),
+  ]
+
+  for (const [index, action] of (template.actions ?? []).entries()) {
+    violations.push(...checkActionSelectorSchema(action, describeAction(index)))
+  }
+
+  return violations
+}
+
+/**
+ * Every shared rule, applied to one catalog workflow and the template backing it.
+ *
+ * Returns violations rather than throwing so a caller reporting a whole catalog can collect
+ * them all; `parseMarketplaceCatalog` throws on the first.
+ *
+ * `cache` memoizes the template half across a catalog. Pass one per catalog; omit it for a
+ * one-off check.
+ */
 export function validateCatalogWorkflow(
   workflow: CatalogWorkflowEntry,
-  templates: Record<string, CatalogTemplate>
+  templates: Record<string, CatalogTemplate>,
+  cache?: Map<string, RuleViolation[]>
 ): RuleViolation[] {
-  const template = workflow.template ? templates[workflow.template] : undefined
-  const id = workflowIdOf(workflow)
+  const templateName = workflow.template
+  const template = templateName ? templates[templateName] : undefined
 
   const violations: RuleViolation[] = [
     ...checkTemplateIsNotUseOnly(workflow, template),
     ...checkWorkflowVariableKinds(workflow, template),
   ]
 
-  if (template) {
-    for (const [index, action] of (template.actions ?? []).entries()) {
-      const describe = `workflow "${id}" action ${index} ("${action.name ?? action.selector}")`
-      violations.push(...checkActionSelectorSchema(action, describe))
+  if (template && templateName) {
+    let cached = cache?.get(templateName)
+    if (cached === undefined) {
+      cached = templateViolations(templateName, template)
+      cache?.set(templateName, cached)
     }
-    violations.push(
-      ...checkRawCalldataTaint(template, {
-        describe: (action) => `workflow "${id}" action "${action.name ?? action.selector}"`,
-      })
-    )
+    violations.push(...cached)
   }
 
   return violations

@@ -391,9 +391,7 @@ export class Pool extends Entity {
   }
 
   /** List the workflows whitelisted for a strategist, across chains. */
-  async listWorkflows(opts: {
-    strategist: HexString
-  }): Promise<
+  async listWorkflows(opts: { strategist: HexString }): Promise<
     {
       workflowRef: string
       name: string

@@ -767,7 +767,10 @@ function arePoliciesEquivalent(
   leftPolicy: MerkleProofPolicy | MerkleProofPolicyInput,
   rightPolicy: MerkleProofPolicy | MerkleProofPolicyInput
 ) {
-  return JSON.stringify(normalizePolicyForVerification(leftPolicy)) === JSON.stringify(normalizePolicyForVerification(rightPolicy))
+  return (
+    JSON.stringify(normalizePolicyForVerification(leftPolicy)) ===
+    JSON.stringify(normalizePolicyForVerification(rightPolicy))
+  )
 }
 
 function isDuplicateWorkflow(

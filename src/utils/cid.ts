@@ -113,6 +113,8 @@ function readUvarint(bytes: Uint8Array, offset: number): [value: number, next: n
 /**
  * Parses a CIDv0 (`Qm…`, base58btc, dag-pb implied) or a base32 CIDv1 (`b…`).
  *
+ * @internal
+ *
  * Other multibase prefixes and hash functions are rejected: the publish pipeline emits
  * sha2-256, and silently accepting a shape we cannot reproduce would defeat the check.
  */
@@ -228,7 +230,7 @@ function computeRootCidBytes(content: Uint8Array, rawLeaves: boolean): Uint8Arra
   const chunkCount = Math.max(1, Math.ceil(content.length / CHUNK_SIZE))
   let level: DagNode[] = []
   for (let i = 0; i < chunkCount; i++) {
-    const chunk = content.slice(i * CHUNK_SIZE, (i + 1) * CHUNK_SIZE)
+    const chunk = content.subarray(i * CHUNK_SIZE, (i + 1) * CHUNK_SIZE)
     if (rawLeaves) {
       level.push({ cid: cidBytes(RAW_CODEC, chunk), tsize: chunk.length, filesize: chunk.length })
     } else {
@@ -264,18 +266,13 @@ function computeRootCidBytes(content: Uint8Array, rawLeaves: boolean): Uint8Arra
   return level[0]!.cid
 }
 
-function computeRootCid(content: Uint8Array, rawLeaves: boolean): DecodedCid {
-  const cid = computeRootCidBytes(content, rawLeaves)
-  return { codec: cid[1]!, digest: cid.slice(4) }
-}
-
 /**
  * The canonical CIDs for `content`: CIDv0 (dag-pb leaves) and CIDv1 (raw leaves).
  *
- * These are the two shapes `ipfs add` produces with default settings, and the two
- * {@link cidMatchesContent} accepts. Publishers use this to check that whatever CID a pinning
- * service hands back is one a client can actually reproduce — a service that chunks
- * differently, or builds a trickle DAG, yields a CID no consumer of this SDK can verify.
+ * These are the two shapes `ipfs add` produces with default settings. Publishers use this to
+ * check that whatever CID a pinning service hands back is one a client can actually
+ * reproduce — a service that chunks differently, or builds a trickle DAG, yields a CID no
+ * consumer of this SDK can verify.
  */
 export function canonicalCids(content: Uint8Array): { v0: string; v1: string } {
   return {
@@ -284,16 +281,25 @@ export function canonicalCids(content: Uint8Array): { v0: string; v1: string } {
   }
 }
 
-function sameCid(a: DecodedCid, b: DecodedCid): boolean {
-  if (a.codec !== b.codec) return false
-  if (a.digest.length !== b.digest.length) return false
-  return a.digest.every((byte, index) => byte === b.digest[index])
-}
-
-/** True when `content` reproduces `cid` under either canonical leaf encoding. */
+/**
+ * True when `content` reproduces `cid` under either canonical leaf encoding.
+ *
+ * Both encodings have to be tried: for multi-chunk content the root is dag-pb either way, so
+ * the codec cannot tell them apart, and the same DAG has a valid CIDv0 and CIDv1 spelling.
+ * The version does predict which is likelier — `Qm…` is CIDv0, which only comes with dag-pb
+ * leaves, while `b…` is CIDv1, whose default is raw leaves — so start there and usually pay
+ * one hash pass over the payload instead of two. For single-chunk content the codec is
+ * decisive (a raw leaf IS the root), so a mismatched branch is skipped outright.
+ */
 export function cidMatchesContent(cid: string, content: Uint8Array): boolean {
   const expected = decodeCid(cid)
-  return [false, true].some((rawLeaves) => sameCid(expected, computeRootCid(content, rawLeaves)))
+  const likelyRawLeaves = !cid.startsWith('Qm')
+
+  return [likelyRawLeaves, !likelyRawLeaves].some((rawLeaves) => {
+    if (content.length <= CHUNK_SIZE && expected.codec !== (rawLeaves ? RAW_CODEC : DAG_PB_CODEC)) return false
+    const actual = computeRootCidBytes(content, rawLeaves)
+    return expected.codec === actual[1] && expected.digest.every((byte, index) => byte === actual[index + 4])
+  })
 }
 
 /**

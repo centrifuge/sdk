@@ -166,21 +166,25 @@ export function fillRuntimeSlots(
     if (missing.length > 0) {
       throw new Error(`fillRuntimeSlots: missing runtime values for: ${missing.map((k) => `"${k}"`).join(', ')}`)
     }
+  }
 
-    // Only the declared runtime variables — plus the system slots the SDK fills itself, which
-    // are deliberately kept out of runtimeVariables — may be written. Accepting any other key
-    // would let a caller populate a slot the review surface never showed, which is how a
-    // workflow ends up executing with values nobody approved.
-    const declared = new Set(workflow.runtimeVariables)
-    const systemKeys = new Set(
-      workflow.state
-        .filter((slot) => slot.type === 'runtime' && slot.system !== undefined)
-        .map((slot) => (slot as Extract<WorkflowStateSlot, { type: 'runtime' }>).key)
-    )
-    const unexpected = Object.keys(runtimeValues).filter((key) => !declared.has(key) && !systemKeys.has(key))
-    if (unexpected.length > 0) {
-      throw new Error(`fillRuntimeSlots: unexpected runtime values for: ${unexpected.map((k) => `"${k}"`).join(', ')}`)
-    }
+  // Only the declared runtime variables — plus the system slots the SDK fills itself, which
+  // are deliberately kept out of runtimeVariables — may be written. Accepting any other key
+  // would let a caller populate a slot the review surface never showed, which is how a
+  // workflow ends up executing with values nobody approved. Runs whether or not the
+  // definition declares `runtimeVariables`: a definition assembled outside
+  // buildWorkflowDefinitionFromCatalog is exactly the case worth checking, and it falls back
+  // to the slots that actually exist so a hand-built definition still fills its own state.
+  const runtimeSlots = workflow.state.filter(
+    (slot): slot is Extract<WorkflowStateSlot, { type: 'runtime' }> => slot.type === 'runtime'
+  )
+  const writable = new Set(workflow.runtimeVariables ?? runtimeSlots.map((slot) => slot.key))
+  for (const slot of runtimeSlots) {
+    if (slot.system !== undefined) writable.add(slot.key)
+  }
+  const unexpected = Object.keys(runtimeValues).filter((key) => !writable.has(key))
+  if (unexpected.length > 0) {
+    throw new Error(`fillRuntimeSlots: unexpected runtime values for: ${unexpected.map((k) => `"${k}"`).join(', ')}`)
   }
 
   const nextState = state.map((slot, i) => {

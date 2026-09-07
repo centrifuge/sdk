@@ -80,7 +80,6 @@ export interface CatalogAction {
   name?: string
   selector: string
   valueNonZero?: boolean
-  rawMode?: boolean
   optional?: boolean
   inputs: CatalogActionInput[]
   returns?: string

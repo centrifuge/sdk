@@ -477,60 +477,6 @@ describe('utils/catalog — parseMarketplaceCatalog', () => {
 
 describe('utils/catalog — catalog integrity hardening', () => {
   describe('returns / slot canonicalization', () => {
-    it('rejects a return that shadows a declared configurable variable', () => {
-      // The output and the manager-pinned slot would share one weiroll index: the proof is
-      // built over the configured pre-state, then execution overwrites it before it is read.
-      const workflow = tagged(
-        'shadow',
-        [
-          { name: 'router', kind: 'pinned' },
-          { name: 'minOut', kind: 'configurable' },
-        ],
-        [
-          {
-            target: '$router',
-            selector: 'function quote(uint256)',
-            inputs: [{ parameter: 'uint256', label: 'In', input: ['1'] }],
-            returns: '$minOut',
-          },
-          {
-            target: '$router',
-            selector: 'function swap(uint256)',
-            inputs: [{ parameter: 'uint256', label: 'Min out', input: ['$minOut'] }],
-          },
-        ],
-        { router: ADDRESS_A }
-      )
-
-      expect(() => buildWorkflowDefinitionFromCatalog(workflow)).to.throw(/shadows a declared template variable/)
-    })
-
-    it('rejects a return that shadows a declared runtime variable', () => {
-      const workflow = tagged(
-        'shadow-runtime',
-        [
-          { name: 'router', kind: 'pinned' },
-          { name: 'amount', kind: 'runtime' },
-        ],
-        [
-          {
-            target: '$router',
-            selector: 'function quote(uint256)',
-            inputs: [{ parameter: 'uint256', label: 'In', input: ['1'] }],
-            returns: '$amount',
-          },
-          {
-            target: '$router',
-            selector: 'function swap(uint256)',
-            inputs: [{ parameter: 'uint256', label: 'Amount', input: ['$amount'] }],
-          },
-        ],
-        { router: ADDRESS_A }
-      )
-
-      expect(() => buildWorkflowDefinitionFromCatalog(workflow)).to.throw(/shadows a declared template variable/)
-    })
-
     it('rejects one variable reused under incompatible ABI types', () => {
       // One 32-byte word reviewed as a uint256 and consumed downstream as an address.
       const workflow = tagged(
@@ -584,33 +530,6 @@ describe('utils/catalog — catalog integrity hardening', () => {
       expect(definition.state.filter((slot) => slot.type === 'runtime')).to.have.length(1)
     })
 
-    it('rejects a forward reference to a value returned by a later action', () => {
-      // Compiles to a slot that is neither hashed nor listed in runtimeVariables — invisible
-      // in review, still fillable by anyone assembling the execute calldata directly.
-      const workflow = tagged(
-        'forward',
-        [{ name: 'router', kind: 'pinned' }],
-        [
-          {
-            target: '$router',
-            selector: 'function send(address)',
-            inputs: [{ parameter: 'address', label: 'Recipient', input: ['$recipient'] }],
-          },
-          {
-            target: '$router',
-            selector: 'function resolve()',
-            inputs: [],
-            returns: '$recipient',
-          },
-        ],
-        { router: ADDRESS_A }
-      )
-
-      expect(() => buildWorkflowDefinitionFromCatalog(workflow)).to.throw(
-        /references "\$recipient" before the action that returns it/
-      )
-    })
-
     it('rejects a template variable in the reserved payable-value namespace', () => {
       const workflow = tagged(
         'reserved',
@@ -661,24 +580,6 @@ describe('utils/catalog — catalog integrity hardening', () => {
     it('accepts a configurable source for the same input', () => {
       const definition = buildWorkflowDefinitionFromCatalog(tupleArrayAction('configurable'))
       expect(definition.state.some((slot) => slot.type === 'rawcalldata')).to.equal(true)
-    })
-
-    it('rejects a catalog-declared rawMode', () => {
-      const workflow = tagged(
-        'rawmode',
-        [{ name: 'router', kind: 'pinned' }],
-        [
-          {
-            target: '$router',
-            selector: 'function ping(uint256)',
-            inputs: [{ parameter: 'uint256', label: 'Amount', input: ['1'] }],
-            rawMode: true,
-          } as CatalogTemplate['actions'][number],
-        ],
-        { router: ADDRESS_A }
-      )
-
-      expect(() => buildWorkflowDefinitionFromCatalog(workflow)).to.throw(/sets "rawMode"/)
     })
 
     it('rejects raw calldata assembly combined with valueNonZero', () => {

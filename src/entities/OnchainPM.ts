@@ -6,7 +6,11 @@ import type { Centrifuge } from '../Centrifuge.js'
 import type { HexString } from '../types/index.js'
 import { addressToBytes32, encode } from '../utils/index.js'
 import type { Callback } from '../utils/scriptHash.js'
-import { buildWorkflowExecuteParams, computeWorkflowGroupScriptHashes, type PolicyEntryInput } from '../utils/workflowExecute.js'
+import {
+  buildWorkflowExecuteParams,
+  computeWorkflowGroupScriptHashes,
+  type PolicyEntryInput,
+} from '../utils/workflowExecute.js'
 import { wrapTransaction } from '../utils/transaction.js'
 import { MessageType } from '../types/transaction.js'
 import { Entity } from './Entity.js'
@@ -89,7 +93,13 @@ export class OnchainPM extends Entity {
    * ```
    */
   execute(
-    params: { commands: HexString[]; state: HexString[]; stateBitmap: bigint; callbacks: Callback[]; proof: HexString[] },
+    params: {
+      commands: HexString[]
+      state: HexString[]
+      stateBitmap: bigint
+      callbacks: Callback[]
+      proof: HexString[]
+    },
     options: { simulate?: boolean; value?: bigint } = {}
   ) {
     const self = this
@@ -316,7 +326,9 @@ export class OnchainPM extends Entity {
       yield* wrapTransaction('Update workflow policy', ctx, {
         contract: hub,
         data: calldata,
-        messages: { [self.network.centrifugeId]: [{ type: MessageType.TrustedContractUpdate, poolId: self.network.pool.id }] },
+        messages: {
+          [self.network.centrifugeId]: [{ type: MessageType.TrustedContractUpdate, poolId: self.network.pool.id }],
+        },
       })
     }, this.network.pool.centrifugeId)
   }

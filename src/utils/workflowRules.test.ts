@@ -2,11 +2,13 @@ import { expect } from 'chai'
 import type { CatalogAction, CatalogTemplate } from '../types/workflow.js'
 import {
   checkActionSelectorSchema,
+  checkNoDeclaredRawMode,
+  checkNoForwardReferences,
+  checkReturnsDoNotShadow,
   checkDuplicateWorkflowIds,
   checkRawCalldataTaint,
   checkTemplateIsNotUseOnly,
   checkWorkflowVariableKinds,
-  expectedInputCount,
   parseSelectorParameters,
   validateCatalogWorkflow,
 } from './workflowRules.js'
@@ -57,7 +59,7 @@ describe('utils/workflowRules', () => {
 
     it('returns null for a malformed selector', () => {
       expect(parseSelectorParameters('function broken(uint256')).to.equal(null)
-      expect(expectedInputCount('function broken(uint256')).to.equal(null)
+      expect(parseSelectorParameters('not a function')).to.equal(null)
     })
   })
 
@@ -206,6 +208,96 @@ describe('utils/workflowRules', () => {
           entry?.use ? { template: helper, map: entry.map ?? {}, returns: entry.returns } : null,
       })
       expect(rules(violations)).to.deep.equal(['raw-calldata-taint'])
+    })
+  })
+
+  describe('template action rules', () => {
+    const withActions = (variables: CatalogTemplate['variables'], actions: CatalogAction[]) =>
+      ({ id: 't', variables, actions }) as CatalogTemplate & { id: string }
+
+    it('rejects a return that shadows a declared configurable variable', () => {
+      // The output and the manager-pinned slot would share one weiroll index: the proof is
+      // built over the configured pre-state, then execution overwrites it before it is read.
+      const template = withActions(
+        [
+          { name: 'router', kind: 'pinned' },
+          { name: 'minOut', kind: 'configurable' },
+        ],
+        [action({ selector: 'function quote(uint256)', returns: '$minOut' })]
+      )
+      expect(rules(checkReturnsDoNotShadow(template, (i) => `action ${i}`))).to.deep.equal(['returns-shadows-variable'])
+    })
+
+    it('rejects a return that shadows a declared runtime variable', () => {
+      const template = withActions(
+        [{ name: 'amount', kind: 'runtime' }],
+        [action({ selector: 'function quote(uint256)', returns: '$amount' })]
+      )
+      expect(rules(checkReturnsDoNotShadow(template, (i) => `action ${i}`))).to.deep.equal(['returns-shadows-variable'])
+    })
+
+    it('allows a return name that shadows nothing', () => {
+      const template = withActions(
+        [{ name: 'router', kind: 'pinned' }],
+        [action({ selector: 'function quote(uint256)', returns: '$shares' })]
+      )
+      expect(checkReturnsDoNotShadow(template, (i) => `action ${i}`)).to.deep.equal([])
+    })
+
+    it('rejects a forward reference to a value returned by a later action', () => {
+      // Compiles to a slot neither hashed nor listed in runtimeVariables — invisible in
+      // review, still fillable by anyone assembling the execute calldata directly.
+      const template = withActions(
+        [],
+        [
+          action({
+            selector: 'function send(address)',
+            inputs: [{ parameter: 'address', input: ['$recipient'] }],
+          }),
+          action({ selector: 'function resolve()', returns: '$recipient' }),
+        ]
+      )
+      expect(rules(checkNoForwardReferences(template, (a, i) => `action ${a} input ${i}`))).to.deep.equal([
+        'forward-reference',
+      ])
+    })
+
+    it('allows a backward reference to an earlier return', () => {
+      const template = withActions(
+        [],
+        [
+          action({ selector: 'function resolve()', returns: '$recipient' }),
+          action({
+            selector: 'function send(address)',
+            inputs: [{ parameter: 'address', input: ['$recipient'] }],
+          }),
+        ]
+      )
+      expect(checkNoForwardReferences(template, (a, i) => `action ${a} input ${i}`)).to.deep.equal([])
+    })
+
+    it("rejects an action that reads its own action's return", () => {
+      const template = withActions(
+        [],
+        [
+          action({
+            selector: 'function f(uint256)',
+            inputs: [{ parameter: 'uint256', input: ['$self'] }],
+            returns: '$self',
+          }),
+        ]
+      )
+      expect(rules(checkNoForwardReferences(template, (a, i) => `action ${a} input ${i}`))).to.deep.equal([
+        'forward-reference',
+      ])
+    })
+
+    it('rejects a catalog-declared rawMode', () => {
+      // `rawMode` is not in CatalogAction — that is the point of the rule — so it has to be
+      // attached the way a hostile catalog would, as an extra JSON field.
+      const rogue = { ...action({ selector: 'function ping()' }), rawMode: true }
+      const template = withActions([], [rogue as CatalogAction])
+      expect(rules(checkNoDeclaredRawMode(template, (i) => `action ${i}`))).to.deep.equal(['declared-raw-mode'])
     })
   })
 

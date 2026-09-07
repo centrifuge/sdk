@@ -9,7 +9,7 @@ import type {
 } from '../types/workflow.js'
 import { MAGIC_VARIABLE_KEYS } from './variables.js'
 import { checkDuplicateWorkflowIds, validateCatalogWorkflow } from './workflowRules.js'
-import type { CatalogWorkflowEntry } from './workflowRules.js'
+import type { CatalogWorkflowEntry, RuleViolation } from './workflowRules.js'
 import { CALL, MAX_STATE_SLOTS, UNUSED_SLOT, VALUECALL } from './weiroll.js'
 import type { WeirollAction, WorkflowDefinition, WorkflowStateSlot } from './weiroll.js'
 
@@ -124,25 +124,18 @@ function isDynamicAbiParameter(parameter: string): boolean {
  * `bytes32` as an `address`, is one strategist-controlled word driving two unrelated
  * meanings, which is what makes the reviewed type a poor guide to the executed one.
  *
- * `null` means the type must match exactly (bool, string, bytes, arrays, tuples).
+ * `null` means the type must match exactly (bool, string, bytes, arrays, tuples). The
+ * `[1-9]\d*` width forms reject non-canonical spellings such as `uint08`.
  */
 function parameterFamily(parameter: string): string | null {
-  if (
-    /^uint(8|16|24|32|40|48|56|64|72|80|88|96|104|112|120|128|136|144|152|160|168|176|184|192|200|208|216|224|232|240|248|256)?$/.test(
-      parameter
-    )
-  ) {
-    return 'uint'
+  const numeric = /^(u?int)([1-9]\d*)?$/.exec(parameter)
+  if (numeric) {
+    const bits = numeric[2] ? Number(numeric[2]) : 256
+    return bits % 8 === 0 && bits <= 256 ? numeric[1]! : null
   }
-  if (
-    /^int(8|16|24|32|40|48|56|64|72|80|88|96|104|112|120|128|136|144|152|160|168|176|184|192|200|208|216|224|232|240|248|256)?$/.test(
-      parameter
-    )
-  ) {
-    return 'int'
-  }
-  if (/^bytes([1-9]|1\d|2\d|3[0-2])$/.test(parameter)) return 'bytesN'
-  return null
+
+  const fixedBytes = /^bytes([1-9]\d*)$/.exec(parameter)
+  return fixedBytes && Number(fixedBytes[1]) <= 32 ? 'bytesN' : null
 }
 
 function isCompatibleParameterReuse(a: string, b: string): boolean {
@@ -273,6 +266,7 @@ export function parseMarketplaceCatalog(raw: unknown): ParsedMarketplaceCatalog 
 
   const templates = templatesRaw as Record<string, CatalogTemplate>
   const workflows: Record<string, unknown>[] = []
+  const ruleCache = new Map<string, RuleViolation[]>()
 
   for (let i = 0; i < workflowsRaw.length; i++) {
     const entry = workflowsRaw[i]
@@ -309,8 +303,10 @@ export function parseMarketplaceCatalog(raw: unknown): ParsedMarketplaceCatalog 
     // The authoring rules from centrifuge/workflows' validate.ts. That validator only ever
     // sees catalogs the repo built; this catalog arrived over the network, so re-check the
     // rules whose violation would let a manager approve a workflow that does not describe
-    // what executes. ~12ms for the 1336-workflow mainnet catalog.
-    const violations = validateCatalogWorkflow(w as CatalogWorkflowEntry, templates)
+    // what executes. `ruleCache` keeps the template half to one run per template — the
+    // mainnet catalog is 1336 workflows over 18 templates — which is what keeps this under a
+    // millisecond for the whole catalog.
+    const violations = validateCatalogWorkflow(w as CatalogWorkflowEntry, templates, ruleCache)
     if (violations[0]) {
       throw new Error(`marketplace catalog: ${violations[0].message}`)
     }
@@ -392,17 +388,6 @@ export function buildWorkflowDefinitionFromCatalog(
         `buildWorkflowDefinitionFromCatalog: workflow "${workflow.workflowRef}" action ${index} return "${action.returns}" collides with a workflow variable`
       )
     }
-    // A `returns` name that shadows a DECLARED variable shares its state slot: the action
-    // output overwrites the manager's pinned `configurable` value after the Merkle proof was
-    // built over the benign pre-state, so later actions read a value the manager never
-    // approved. `workflows/src/validate.ts` already rejects this ("shadows a
-    // declared/runtime/magic variable"); enforce it here too, since the SDK ingests catalog
-    // JSON that never has to pass that validator.
-    if (kindByName.has(stripVariablePrefix(action.returns))) {
-      throw new Error(
-        `buildWorkflowDefinitionFromCatalog: workflow "${workflow.workflowRef}" action ${index} return "${action.returns}" shadows a declared template variable`
-      )
-    }
     assertNotReservedVariableName(workflow.workflowRef, stripVariablePrefix(action.returns), `action ${index} return`)
     computedVarSet.add(action.returns)
   }
@@ -410,35 +395,22 @@ export function buildWorkflowDefinitionFromCatalog(
 
   const slotMap = new Map<string, number>()
   const stateSlots: WorkflowStateSlot[] = []
-  /** `returns` names whose producing action has already been compiled. */
-  const producedReturns = new Set<string>()
 
   function getOrAddSlot(canonical: string, slot: WorkflowStateSlot): number {
     const existing = slotMap.get(canonical)
     if (existing !== undefined) {
       const current = stateSlots[existing]!
-      // A weiroll state slot is one untyped 32-byte word, so reuse is only safe when every
-      // use agrees on what that word means. Two uses that disagree on the ABI type let one
-      // strategist-controlled value be reviewed and rendered as a uint256 and consumed
-      // downstream as an address; two that disagree on `system` let a fee quote and an
-      // ordinary argument share a slot. Fail rather than keep whichever was seen first.
-      if (current.type !== slot.type) {
-        throw new Error(
-          `buildWorkflowDefinitionFromCatalog: workflow "${workflow.workflowRef}" slot "${canonical}" is reused as both "${current.type}" and "${slot.type}"`
-        )
-      }
+      // A weiroll state slot is one untyped 32-byte word, so reuse is only safe when every use
+      // agrees on what that word means: one strategist-controlled value must not be reviewed
+      // and rendered as a uint256 and then consumed downstream as an address. Slot type and
+      // `system` need no check here — every canonical key is namespaced by its slot type, and
+      // the only system slots are keyed `runtime:__sdk_payable_value:<action>`, which is unique
+      // per action and which assertNotReservedVariableName keeps catalog data out of.
       const currentParameter = 'parameter' in current ? current.parameter : undefined
       const slotParameter = 'parameter' in slot ? slot.parameter : undefined
       if (currentParameter && slotParameter && !isCompatibleParameterReuse(currentParameter, slotParameter)) {
         throw new Error(
           `buildWorkflowDefinitionFromCatalog: workflow "${workflow.workflowRef}" slot "${canonical}" is reused with incompatible parameter types "${currentParameter}" and "${slotParameter}"`
-        )
-      }
-      const currentSystem = 'system' in current ? current.system : undefined
-      const slotSystem = 'system' in slot ? slot.system : undefined
-      if (currentSystem !== slotSystem) {
-        throw new Error(
-          `buildWorkflowDefinitionFromCatalog: workflow "${workflow.workflowRef}" slot "${canonical}" is reused as both a system and a user-facing slot`
         )
       }
       if ('label' in current && current.label == null && 'label' in slot && slot.label != null) {
@@ -576,15 +548,6 @@ export function buildWorkflowDefinitionFromCatalog(
         isDynamicAbiParameter(input.parameter) && (input.input ?? []).some((value) => computedVarSet.has(value))
     )
     const hasRawCalldataOnlyInput = action.inputs.some((input) => requiresRawCalldataParameter(input.parameter))
-    // `rawMode` is not part of the authoring schema in centrifuge/workflows — a catalog entry
-    // carrying it is either malformed or is reaching for FLAG_RAW assembly deliberately. Raw
-    // mode is the SDK's decision to make, derived from the input types below.
-    if (action.rawMode !== undefined) {
-      throw new Error(
-        `buildWorkflowDefinitionFromCatalog: workflow "${workflow.workflowRef}" action ${actionIndex} sets "rawMode" — raw calldata assembly is derived from the input types, not declared`
-      )
-    }
-
     const rawCalldataAction = action.returns == null && hasDynamicInput && !hasComputedDynamicInput
 
     // A FLAG_RAW action passes one pre-assembled calldata blob, so its 4-byte selector lives in
@@ -594,12 +557,6 @@ export function buildWorkflowDefinitionFromCatalog(
     if (rawCalldataAction && action.valueNonZero === true) {
       throw new Error(
         `buildWorkflowDefinitionFromCatalog: workflow "${workflow.workflowRef}" action ${actionIndex} combines raw calldata assembly with valueNonZero`
-      )
-    }
-
-    if (rawCalldataAction && action.returns != null) {
-      throw new Error(
-        `buildWorkflowDefinitionFromCatalog: workflow "${workflow.workflowRef}" action ${actionIndex} uses raw calldata assembly and cannot return a value`
       )
     }
 
@@ -674,18 +631,7 @@ export function buildWorkflowDefinitionFromCatalog(
         )
       }
 
-      const value = values[0]!
-      // A reference to a value some LATER action returns compiles to a runtime slot that is
-      // neither pinned in the hash nor listed in runtimeVariables — invisible to review, but
-      // still fillable by anyone building the calldata directly. The read also precedes the
-      // write, so the reference is broken on its own terms.
-      if (computedVarSet.has(value) && !producedReturns.has(value)) {
-        throw new Error(
-          `buildWorkflowDefinitionFromCatalog: workflow "${workflow.workflowRef}" action ${actionIndex} input ${inputIndex} references "${value}" before the action that returns it`
-        )
-      }
-
-      return getOrAddVariableSlot(value, inp.label, inp.parameter, slotMetadata)
+      return getOrAddVariableSlot(values[0]!, inp.label, inp.parameter, slotMetadata)
     })
 
     // Claim the output slot now so downstream actions referencing action.returns
@@ -694,7 +640,6 @@ export function buildWorkflowDefinitionFromCatalog(
       action.returns != null
         ? (() => {
             const outputSlot = getOrAddVariableSlot(action.returns)
-            producedReturns.add(action.returns)
             return encodeOutputSpecifier(outputSlot, returnValueModes.get(action.returns) === 'dynamic')
           })()
         : UNUSED_SLOT
@@ -727,23 +672,20 @@ export function buildWorkflowDefinitionFromCatalog(
           })
         : null
 
-    const inputs = rawCalldataAction
-      ? [
-          ...(payableValueSlot != null ? [payableValueSlot] : []),
-          buildRawCalldataSlot(actionIndex, action, selector, inputSlots),
-        ]
-      : [
-          ...(payableValueSlot != null ? [payableValueSlot] : []),
-          ...action.inputs.map((input, index) => encodeInputSpecifier(input.parameter, inputSlots[index]!)),
-        ]
+    const inputs = [
+      ...(payableValueSlot != null ? [payableValueSlot] : []),
+      ...(rawCalldataAction
+        ? [buildRawCalldataSlot(actionIndex, action, selector, inputSlots)]
+        : action.inputs.map((input, index) => encodeInputSpecifier(input.parameter, inputSlots[index]!))),
+    ]
 
     return {
       target,
       selector,
       callType: action.valueNonZero ? VALUECALL : CALL,
       inputs,
-      output: rawCalldataAction ? UNUSED_SLOT : output,
-      rawMode: rawCalldataAction ? true : undefined,
+      output,
+      rawMode: rawCalldataAction || undefined,
     }
   })
 
