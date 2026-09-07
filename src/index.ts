@@ -46,6 +46,8 @@ export type {
   ActionDefinition,
   CatalogAction,
   CatalogActionInput,
+  CatalogTemplate,
+  CatalogVariable,
   InputDefinition,
   MarketplaceWorkflow,
   RuntimeVariable,
