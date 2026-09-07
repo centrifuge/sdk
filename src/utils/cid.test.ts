@@ -1,5 +1,5 @@
 import { expect } from 'chai'
-import { assertCidMatchesContent, cidMatchesContent, decodeCid } from './cid.js'
+import { assertCidMatchesContent, canonicalCids, cidMatchesContent, decodeCid } from './cid.js'
 
 const encode = (text: string) => new TextEncoder().encode(text)
 
@@ -74,6 +74,23 @@ describe('utils/cid', () => {
       expect(() =>
         assertCidMatchesContent('QmT78zSuBmuS4z925WZfrqQ1qHaJ56DQaTfyMUF7F8ff5o', encode('hello world\n'), 'ctx')
       ).to.not.throw()
+    })
+  })
+
+  describe('canonicalCids', () => {
+    it('renders both canonical CIDs for content', () => {
+      // What a publisher checks a pinning service's returned CID against.
+      expect(canonicalCids(encode('hello world\n'))).to.deep.equal({
+        v0: 'QmT78zSuBmuS4z925WZfrqQ1qHaJ56DQaTfyMUF7F8ff5o',
+        v1: 'bafkreifjjcie6lypi6ny7amxnfftagclbuxndqonfipmb64f2km2devei4',
+      })
+    })
+
+    it('renders both canonical CIDs for multi-chunk content', () => {
+      expect(canonicalCids(multiChunkFixture())).to.deep.equal({
+        v0: 'QmS4fQ5xhhzaL55rb6Ly5wAnrx4yVkxVZb6Me8WvvsffuV',
+        v1: 'bafybeihjvesaqmkfuawfe3nmnuvkgidv75q4cmgojqjldtpi4tz2bggqnm',
+      })
     })
   })
 })

@@ -34,6 +34,32 @@ interface DecodedCid {
   digest: Uint8Array
 }
 
+function encodeBase58(bytes: Uint8Array): string {
+  let value = 0n
+  for (const byte of bytes) value = value * 256n + BigInt(byte)
+
+  let out = ''
+  while (value > 0n) {
+    out = BASE58_ALPHABET[Number(value % 58n)] + out
+    value /= 58n
+  }
+  for (const byte of bytes) {
+    if (byte !== 0) break
+    out = '1' + out
+  }
+  return out
+}
+
+function encodeBase32(bytes: Uint8Array): string {
+  let bits = ''
+  for (const byte of bytes) bits += byte.toString(2).padStart(8, '0')
+  while (bits.length % 5 !== 0) bits += '0'
+
+  let out = ''
+  for (let i = 0; i < bits.length; i += 5) out += BASE32_ALPHABET[parseInt(bits.slice(i, i + 5), 2)]
+  return out
+}
+
 function decodeBase58(input: string): Uint8Array {
   let value = 0n
   for (const char of input) {
@@ -198,7 +224,7 @@ interface DagNode {
  * `rawLeaves` selects the two shapes in production use: CIDv0 output wraps each chunk in a
  * UnixFS file node, while `ipfs add --cid-version=1` stores leaves as raw blocks.
  */
-function computeRootCid(content: Uint8Array, rawLeaves: boolean): DecodedCid {
+function computeRootCidBytes(content: Uint8Array, rawLeaves: boolean): Uint8Array {
   const chunkCount = Math.max(1, Math.ceil(content.length / CHUNK_SIZE))
   let level: DagNode[] = []
   for (let i = 0; i < chunkCount; i++) {
@@ -235,8 +261,27 @@ function computeRootCid(content: Uint8Array, rawLeaves: boolean): DecodedCid {
     level = next
   }
 
-  const root = level[0]!
-  return { codec: root.cid[1]!, digest: root.cid.slice(4) }
+  return level[0]!.cid
+}
+
+function computeRootCid(content: Uint8Array, rawLeaves: boolean): DecodedCid {
+  const cid = computeRootCidBytes(content, rawLeaves)
+  return { codec: cid[1]!, digest: cid.slice(4) }
+}
+
+/**
+ * The canonical CIDs for `content`: CIDv0 (dag-pb leaves) and CIDv1 (raw leaves).
+ *
+ * These are the two shapes `ipfs add` produces with default settings, and the two
+ * {@link cidMatchesContent} accepts. Publishers use this to check that whatever CID a pinning
+ * service hands back is one a client can actually reproduce — a service that chunks
+ * differently, or builds a trickle DAG, yields a CID no consumer of this SDK can verify.
+ */
+export function canonicalCids(content: Uint8Array): { v0: string; v1: string } {
+  return {
+    v0: encodeBase58(computeRootCidBytes(content, false).slice(2)),
+    v1: 'b' + encodeBase32(computeRootCidBytes(content, true)),
+  }
 }
 
 function sameCid(a: DecodedCid, b: DecodedCid): boolean {
