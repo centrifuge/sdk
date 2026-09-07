@@ -1,5 +1,6 @@
 import { parseAbi } from 'viem'
 import AccountingAbi from './Accounting.abi.js'
+import AccountingTokenAbi from './AccountingToken.abi.js'
 import AsyncRequestsAbi from './AsyncRequestManager.abi.js'
 import AsyncVaultAbit from './AsyncVault.abi.js'
 import BalanceSheetAbi from './BalanceSheet.abi.js'
@@ -48,6 +49,7 @@ export const ABI = {
   Gateway: parseAbi(GatewayAbi),
   VaultRouter: parseAbi(VaultRouterAbi),
   Accounting: parseAbi(AccountingAbi),
+  AccountingToken: parseAbi(AccountingTokenAbi),
   Holdings: parseAbi(HoldingsAbi),
   Valuation: parseAbi(ValuationAbi),
   SyncManager: parseAbi(SyncManagerAbi),

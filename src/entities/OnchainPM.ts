@@ -1,6 +1,6 @@
 import type { SimpleMerkleTree } from '@openzeppelin/merkle-tree'
 import { combineLatest, firstValueFrom, from, map, switchMap } from 'rxjs'
-import { encodeFunctionData, parseAbi, toHex } from 'viem'
+import { encodeFunctionData, toHex } from 'viem'
 import { ABI } from '../abi/index.js'
 import type { Centrifuge } from '../Centrifuge.js'
 import type { HexString } from '../types/index.js'
@@ -66,7 +66,7 @@ export class OnchainPM extends Entity {
           from(
             client.readContract({
               address: accountingToken,
-              abi: parseAbi(['function minters(uint64, address) view returns (bool)']),
+              abi: ABI.AccountingToken,
               functionName: 'minters',
               args: [self.network.pool.id.raw, self.address],
             })

@@ -27,6 +27,18 @@ import { ShareClass } from './ShareClass.js'
 import { queryCrosschainMessages, type CrosschainMessagesFilter } from './crosschainMessages.js'
 
 /**
+ * HubRegistry declares three same-arity `decimals` overloads (`uint128` asset id, `uint256` asset,
+ * `uint64` pool id), each with its own selector. viem does resolve a `bigint` argument to the
+ * `uint64` overload today — it picks the narrowest matching numeric type, and throws rather than
+ * widening once a value exceeds it — but that is an implicit, value-range-dependent choice for a
+ * call whose selector must not move. Narrow the registered ABI to the pool-id overload instead, so
+ * the selection is explicit and the signature still has one source of truth.
+ */
+const POOL_DECIMALS_ABI = ABI.HubRegistry.filter(
+  (item) => item.type === 'function' && item.name === 'decimals' && item.inputs[0]?.type === 'uint64'
+)
+
+/**
  * In-flight state of a cross-chain adapter change. `'Enabled'` / `'Disabled'`
  * is the target state of a change triggered on the hub but not yet confirmed on
  * the spoke; `null` means the adapter is settled (no change in transit).
@@ -638,8 +650,7 @@ export class Pool extends Entity {
           defer(() =>
             client.readContract({
               address: hubRegistry,
-              // Use inline ABI because of function overload
-              abi: parseAbi(['function decimals(uint64) view returns (uint8)']),
+              abi: POOL_DECIMALS_ABI,
               functionName: 'decimals',
               args: [this.id.raw],
             })

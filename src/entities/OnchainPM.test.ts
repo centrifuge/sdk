@@ -1,8 +1,15 @@
 import { expect } from 'chai'
+import { firstValueFrom, of } from 'rxjs'
+import sinon from 'sinon'
 import { decodeFunctionData } from 'viem'
 import { ABI } from '../abi/index.js'
-import { buildPolicyUpdate, generateExecuteProof } from './OnchainPM.js'
+import { Centrifuge } from '../Centrifuge.js'
+import type { HexString } from '../types/index.js'
+import { PoolId } from '../utils/types.js'
+import { OnchainPM, buildPolicyUpdate, generateExecuteProof } from './OnchainPM.js'
 import type { PolicyUpdateRequest } from './OnchainPM.js'
+import { Pool } from './Pool.js'
+import { PoolNetwork } from './PoolNetwork.js'
 
 // ---------------------------------------------------------------------------
 // Fixtures
@@ -174,6 +181,90 @@ describe('entities/OnchainPM', () => {
       } catch (err: unknown) {
         expect((err as Error).message).to.include('not found in allScriptHashes')
       }
+    })
+  })
+
+  // ── Instance methods ──────────────────────────────────────────────────────
+  //
+  // Stubbed rather than forked: what matters is which contract each read targets and how the
+  // results combine. `policy` is the root `execute` proves against, and `isAuthorized` is the
+  // check a UI uses to decide whether a manager can run anything at all — a wrong target or a
+  // silently-true conjunction is exactly the sort of thing that only shows up on-chain.
+  describe('instance methods', () => {
+    const ACCOUNTING_TOKEN = '0x5555555555555555555555555555555555555555' as HexString
+    const ROOT = '0x6666666666666666666666666666666666666666666666666666666666666666' as HexString
+    const poolId = PoolId.from(CENTRIFUGE_ID, 1)
+
+    /** An OnchainPM whose chain reads are stubbed; `reads` records every readContract call. */
+    function makeOnchainPM(options: { policyRoot?: HexString; isMinter?: boolean; isBsManager?: boolean } = {}) {
+      const centrifuge = new Centrifuge({ environment: 'testnet' })
+      const reads: any[] = []
+      const client = {
+        readContract: async (args: any) => {
+          reads.push(args)
+          if (args.functionName === 'policy') return options.policyRoot ?? ROOT
+          if (args.functionName === 'minters') return options.isMinter ?? true
+          throw new Error(`unexpected read: ${args.functionName}`)
+        },
+      }
+      sinon.stub(centrifuge, 'getClient').returns(of(client) as any)
+      sinon.stub(centrifuge as any, '_protocolAddresses').returns(of({ accountingToken: ACCOUNTING_TOKEN }) as any)
+
+      const pool = new Pool(centrifuge, poolId.raw)
+      sinon.stub(pool, 'isBalanceSheetManager').returns(of(options.isBsManager ?? true) as any)
+      const network = new PoolNetwork(centrifuge, pool, CENTRIFUGE_ID)
+      return { onchainPM: new OnchainPM(centrifuge, network, ONCHAIN_PM), reads }
+    }
+
+    afterEach(() => sinon.restore())
+
+    describe('policy', () => {
+      it('reads the strategist root off this OnchainPM', async () => {
+        const { onchainPM, reads } = makeOnchainPM()
+        expect(await firstValueFrom(onchainPM.policy(STRATEGIST))).to.equal(ROOT)
+        expect(reads).to.have.length(1)
+        expect(reads[0].address).to.equal(ONCHAIN_PM)
+        expect(reads[0].functionName).to.equal('policy')
+        expect(reads[0].args).to.deep.equal([STRATEGIST])
+        expect(reads[0].abi).to.equal(ABI.OnchainPM)
+      })
+
+      it('surfaces bytes32(0) for a strategist with no policy', async () => {
+        // Not an error state: it is how a disabled strategist reads, and callers branch on it.
+        const zero = `0x${'0'.repeat(64)}` as HexString
+        const { onchainPM } = makeOnchainPM({ policyRoot: zero })
+        expect(await firstValueFrom(onchainPM.policy(STRATEGIST))).to.equal(zero)
+      })
+    })
+
+    describe('isAuthorized', () => {
+      it('requires both the balance-sheet grant and the minter right', async () => {
+        const { onchainPM, reads } = makeOnchainPM({ isBsManager: true, isMinter: true })
+        expect(await firstValueFrom(onchainPM.isAuthorized())).to.equal(true)
+        // The minter check has to hit the accounting token, keyed by pool id and this manager.
+        expect(reads[0].address).to.equal(ACCOUNTING_TOKEN)
+        expect(reads[0].functionName).to.equal('minters')
+        expect(reads[0].args).to.deep.equal([poolId.raw, ONCHAIN_PM])
+        expect(reads[0].abi).to.equal(ABI.AccountingToken)
+      })
+
+      it('is false when either half is missing', async () => {
+        // A partial grant is the state this method exists to expose — reporting it as authorized
+        // would send a manager into a workflow that reverts halfway.
+        const noMint = makeOnchainPM({ isBsManager: true, isMinter: false })
+        expect(await firstValueFrom(noMint.onchainPM.isAuthorized())).to.equal(false)
+        sinon.restore()
+        const noGrant = makeOnchainPM({ isBsManager: false, isMinter: true })
+        expect(await firstValueFrom(noGrant.onchainPM.isAuthorized())).to.equal(false)
+      })
+    })
+
+    it('lower-cases the address it was constructed with', () => {
+      const centrifuge = new Centrifuge({ environment: 'testnet' })
+      const pool = new Pool(centrifuge, poolId.raw)
+      const network = new PoolNetwork(centrifuge, pool, CENTRIFUGE_ID)
+      const mixedCase = '0xAbCdEf0123456789AbCdEf0123456789AbCdEf01' as HexString
+      expect(new OnchainPM(centrifuge, network, mixedCase).address).to.equal(mixedCase.toLowerCase())
     })
   })
 })
