@@ -96,6 +96,21 @@ export type MerkleProofPolicyInput = Omit<MerkleProofPolicy, 'inputCombinations'
 
 export interface WorkflowPolicyEntry {
   workflowRef: string
+  /**
+   * CID of the marketplace catalog this entry's `workflowRef` was resolved against, pinned when the
+   * workflow was whitelisted.
+   *
+   * `workflowRef` is a name, not a content address, and the catalog is republished with new ids as
+   * workflows are regenerated — so a ref recorded against one release can be a dangling pointer in
+   * the next. Without the CID the definition that produced the policy's Merkle leaves is no longer
+   * retrievable, and the policy stops being independently verifiable: the on-chain root can be read,
+   * but nothing can be rebuilt to compare it with. With the CID, verification is reproducible for as
+   * long as the catalog is retrievable, which is the point of publishing it content-addressed.
+   *
+   * Optional because entries written before this field existed don't carry it; a reader with no CID
+   * can only try whichever catalog it happens to have.
+   */
+  catalogCid?: string
   /** Per-slot hex values for configurable inputs; keyed by slot key. Empty when no configurable slots. */
   configurableValues: Record<string, HexString>
   /** 0-based indices of catalog actions excluded from the final script. */

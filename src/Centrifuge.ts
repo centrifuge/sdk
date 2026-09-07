@@ -1024,6 +1024,27 @@ export class Centrifuge {
   }
 
   /**
+   * The catalog CID {@link workflowMarketplace} reads for this environment, or the one passed in.
+   *
+   * Callers that record what they resolved — a hub manager whitelisting a workflow writes it to
+   * `WorkflowPolicyEntry.catalogCid` — need the CID the SDK actually used, which is otherwise not
+   * observable: the default moves with SDK releases, so "the current default" is not a stable answer
+   * after the fact.
+   *
+   * @throws if no CID is configured for the environment and none is passed.
+   */
+  workflowMarketplaceCid(cid?: string): string {
+    const resolvedCid = cid ?? WORKFLOW_MARKETPLACE_CID[this.#config.environment] ?? ''
+    if (!resolvedCid) {
+      throw new Error(
+        `workflowMarketplace: no CID configured for environment "${this.#config.environment}". ` +
+          `Pass a CID explicitly or update WORKFLOW_MARKETPLACE_CID in Centrifuge.ts.`
+      )
+    }
+    return resolvedCid
+  }
+
+  /**
    * Fetches the centrifuge/workflows marketplace catalog from IPFS and returns
    * all non-callback workflows for the current environment.
    *
@@ -1034,13 +1055,7 @@ export class Centrifuge {
    * Callback workflows (`useTemplate` present) are filtered out automatically.
    */
   workflowMarketplace(cid?: string): Query<MarketplaceWorkflow[]> {
-    const resolvedCid = cid ?? WORKFLOW_MARKETPLACE_CID[this.#config.environment] ?? ''
-    if (!resolvedCid) {
-      throw new Error(
-        `workflowMarketplace: no CID configured for environment "${this.#config.environment}". ` +
-          `Pass a CID explicitly or update WORKFLOW_MARKETPLACE_CID in Centrifuge.ts.`
-      )
-    }
+    const resolvedCid = this.workflowMarketplaceCid(cid)
     return this._query(['workflowMarketplace', resolvedCid], () =>
       defer(async () => {
         const url = getUrlFromHash(resolvedCid, this.#config.ipfsUrl)
