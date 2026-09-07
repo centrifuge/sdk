@@ -76,6 +76,7 @@ import {
 } from './types/transaction.js'
 import { Balance } from './utils/BigInt.js'
 import { parseMarketplaceCatalog } from './utils/catalog.js'
+import { assertCidMatchesContent } from './utils/cid.js'
 import { assertCrosschainMessagingEnabled } from './utils/crosschainHotfix.js'
 import { addEstimateBuffer, estimateBatchBridgeFee } from './utils/gas.js'
 import { generateShareClassSalt, randomUint } from './utils/index.js'
@@ -1046,7 +1047,13 @@ export class Centrifuge {
         if (!url) throw new Error(`workflowMarketplace: invalid CID "${resolvedCid}"`)
         const res = await fetch(url)
         if (!res.ok) throw new Error(`workflowMarketplace: IPFS fetch failed — ${res.status} ${res.statusText}`)
-        const catalog = await res.json()
+        // An IPFS gateway fetch is a plain HTTP GET: content addressing buys nothing unless the
+        // client checks it. This catalog is what strategist policy roots are derived from, so an
+        // unverified response makes a gateway compromise equivalent to choosing which scripts a
+        // manager whitelists. Verify the bytes hash to the CID before parsing or trusting them.
+        const body = new Uint8Array(await res.arrayBuffer())
+        assertCidMatchesContent(resolvedCid, body, 'workflowMarketplace')
+        const catalog = JSON.parse(new TextDecoder().decode(body))
         // Validate the untrusted catalog shape before mapping. Throws on structural /
         // integrity problems (unknown template ref, malformed variables/workflowId)
         // instead of silently coercing them through `as any`.

@@ -79,6 +79,22 @@ function buildPayableValueRuntimeKey(actionIndex: number): string {
   return `${PAYABLE_VALUE_RUNTIME_KEY_PREFIX}${actionIndex}`
 }
 
+/**
+ * Rejects catalog-supplied names in the SDK's own reserved namespace.
+ *
+ * `__sdk_payable_value:<i>` keys back the implicit `msg.value` slot of a `valueNonZero`
+ * action and are filled from a fee quote rather than by the user. A catalog variable with
+ * the same name would canonicalize onto that slot, so a quote would silently land in an
+ * ordinary argument — on a path whose proof still validates.
+ */
+function assertNotReservedVariableName(workflowRef: string, name: string, description: string): void {
+  if (name.startsWith(PAYABLE_VALUE_RUNTIME_KEY_PREFIX)) {
+    throw new Error(
+      `buildWorkflowDefinitionFromCatalog: workflow "${workflowRef}" ${description} "${name}" uses the reserved "${PAYABLE_VALUE_RUNTIME_KEY_PREFIX}" prefix`
+    )
+  }
+}
+
 function isVariableLengthParameter(parameter: string): boolean {
   return VARIABLE_LENGTH_PARAMETER_SET.has(parameter)
 }
@@ -94,6 +110,43 @@ function isDynamicAbiParameter(parameter: string): boolean {
     isDynamicArrayParameter(parameter) ||
     RAW_CALLDATA_PARAMETER_SET.has(parameter)
   )
+}
+
+/**
+ * Groups ABI types that may share one weiroll state slot.
+ *
+ * A slot is a single left-padded 32-byte word, so differing widths within one family read
+ * back consistently — `$amount` declared `uint128` at one call site and `uint256` at another
+ * is the same number, and a `bytes16` share-class id read as `bytes32` is the same
+ * high-order bytes. Crossing families is not: an `address` reinterpreted as a `uint256`, or a
+ * `bytes32` as an `address`, is one strategist-controlled word driving two unrelated
+ * meanings, which is what makes the reviewed type a poor guide to the executed one.
+ *
+ * `null` means the type must match exactly (bool, string, bytes, arrays, tuples).
+ */
+function parameterFamily(parameter: string): string | null {
+  if (
+    /^uint(8|16|24|32|40|48|56|64|72|80|88|96|104|112|120|128|136|144|152|160|168|176|184|192|200|208|216|224|232|240|248|256)?$/.test(
+      parameter
+    )
+  ) {
+    return 'uint'
+  }
+  if (
+    /^int(8|16|24|32|40|48|56|64|72|80|88|96|104|112|120|128|136|144|152|160|168|176|184|192|200|208|216|224|232|240|248|256)?$/.test(
+      parameter
+    )
+  ) {
+    return 'int'
+  }
+  if (/^bytes([1-9]|1\d|2\d|3[0-2])$/.test(parameter)) return 'bytesN'
+  return null
+}
+
+function isCompatibleParameterReuse(a: string, b: string): boolean {
+  if (a === b) return true
+  const familyA = parameterFamily(a)
+  return familyA !== null && familyA === parameterFamily(b)
 }
 
 function requiresRawCalldataParameter(parameter: string): boolean {
@@ -285,6 +338,18 @@ export function buildWorkflowDefinitionFromCatalog(
 ): WorkflowDefinition {
   const templates = options.templates ?? workflow.templates ?? {}
 
+  // Tagged variable kinds (explicit-input-kinds format): every $variable an input references
+  // is declared with a kind. pinned values come in via workflow.variables; configurable/runtime
+  // are classified from the kind here. Magic and `returns` names are implicit (not declared).
+  const kindByName = new Map<string, CatalogVariable['kind']>()
+  for (const v of templates[workflow.template]?.variables ?? []) {
+    assertNotReservedVariableName(workflow.workflowRef, v.name, `template "${workflow.template}" variable`)
+    kindByName.set(v.name, v.kind)
+  }
+  for (const key of Object.keys(workflow.variables)) {
+    assertNotReservedVariableName(workflow.workflowRef, key, 'workflow variable')
+  }
+
   // Pre-scan: variables that are return values of some action are computed by
   // the weiroll VM — they must NOT appear as user-filled inputs.
   const computedVarSet = new Set<string>()
@@ -311,24 +376,56 @@ export function buildWorkflowDefinitionFromCatalog(
         `buildWorkflowDefinitionFromCatalog: workflow "${workflow.workflowRef}" action ${index} return "${action.returns}" collides with a workflow variable`
       )
     }
+    // A `returns` name that shadows a DECLARED variable shares its state slot: the action
+    // output overwrites the manager's pinned `configurable` value after the Merkle proof was
+    // built over the benign pre-state, so later actions read a value the manager never
+    // approved. `workflows/src/validate.ts` already rejects this ("shadows a
+    // declared/runtime/magic variable"); enforce it here too, since the SDK ingests catalog
+    // JSON that never has to pass that validator.
+    if (kindByName.has(stripVariablePrefix(action.returns))) {
+      throw new Error(
+        `buildWorkflowDefinitionFromCatalog: workflow "${workflow.workflowRef}" action ${index} return "${action.returns}" shadows a declared template variable`
+      )
+    }
+    assertNotReservedVariableName(workflow.workflowRef, stripVariablePrefix(action.returns), `action ${index} return`)
     computedVarSet.add(action.returns)
   }
   const computedRuntimeKeys = new Set([...computedVarSet].map(stripVariablePrefix))
 
-  // Tagged variable kinds (explicit-input-kinds format): every $variable an input references
-  // is declared with a kind. pinned values come in via workflow.variables; configurable/runtime
-  // are classified from the kind here. Magic and `returns` names are implicit (not declared).
-  const kindByName = new Map<string, CatalogVariable['kind']>()
-  for (const v of templates[workflow.template]?.variables ?? []) kindByName.set(v.name, v.kind)
-
   const slotMap = new Map<string, number>()
   const stateSlots: WorkflowStateSlot[] = []
+  /** `returns` names whose producing action has already been compiled. */
+  const producedReturns = new Set<string>()
 
   function getOrAddSlot(canonical: string, slot: WorkflowStateSlot): number {
     const existing = slotMap.get(canonical)
     if (existing !== undefined) {
-      const current = stateSlots[existing]
-      if (current && 'label' in current && current.label == null && 'label' in slot && slot.label != null) {
+      const current = stateSlots[existing]!
+      // A weiroll state slot is one untyped 32-byte word, so reuse is only safe when every
+      // use agrees on what that word means. Two uses that disagree on the ABI type let one
+      // strategist-controlled value be reviewed and rendered as a uint256 and consumed
+      // downstream as an address; two that disagree on `system` let a fee quote and an
+      // ordinary argument share a slot. Fail rather than keep whichever was seen first.
+      if (current.type !== slot.type) {
+        throw new Error(
+          `buildWorkflowDefinitionFromCatalog: workflow "${workflow.workflowRef}" slot "${canonical}" is reused as both "${current.type}" and "${slot.type}"`
+        )
+      }
+      const currentParameter = 'parameter' in current ? current.parameter : undefined
+      const slotParameter = 'parameter' in slot ? slot.parameter : undefined
+      if (currentParameter && slotParameter && !isCompatibleParameterReuse(currentParameter, slotParameter)) {
+        throw new Error(
+          `buildWorkflowDefinitionFromCatalog: workflow "${workflow.workflowRef}" slot "${canonical}" is reused with incompatible parameter types "${currentParameter}" and "${slotParameter}"`
+        )
+      }
+      const currentSystem = 'system' in current ? current.system : undefined
+      const slotSystem = 'system' in slot ? slot.system : undefined
+      if (currentSystem !== slotSystem) {
+        throw new Error(
+          `buildWorkflowDefinitionFromCatalog: workflow "${workflow.workflowRef}" slot "${canonical}" is reused as both a system and a user-facing slot`
+        )
+      }
+      if ('label' in current && current.label == null && 'label' in slot && slot.label != null) {
         stateSlots[existing] = { ...current, label: slot.label } as WorkflowStateSlot
       }
       return existing
@@ -394,6 +491,43 @@ export function buildWorkflowDefinitionFromCatalog(
     return getOrAddSlot(canonical, slot)
   }
 
+  /**
+   * Allocates the single `rawcalldata` state slot a FLAG_RAW action reads its calldata from.
+   *
+   * The slot holds the whole call — 4-byte selector included — so it is only safe when every
+   * source is known at whitelist time and the assembled blob is therefore pinned in the state
+   * bitmap. A `runtime` source leaves the slot unpinned and empty at build time (see
+   * `buildScript`), which hands whoever assembles the execute calldata an arbitrary selector
+   * against the pinned target while the Merkle proof still verifies. `bytes`/`string` inputs
+   * avoid this entirely by going through the VM's 0x80 variable-length specifier, which keeps
+   * the selector in the hashed command word; only non-variable-length dynamic types (tuple
+   * arrays) reach FLAG_RAW, and those must be pinned or configurable.
+   */
+  function buildRawCalldataSlot(
+    actionIndex: number,
+    action: CatalogAction,
+    selector: HexString,
+    inputSlots: number[]
+  ): number {
+    for (const [index, sourceIndex] of inputSlots.entries()) {
+      const sourceType = stateSlots[sourceIndex]?.type
+      if (sourceType === 'runtime' || sourceType === 'rawcalldata') {
+        throw new Error(
+          `buildWorkflowDefinitionFromCatalog: workflow "${workflow.workflowRef}" action ${actionIndex} input ${index} ("${action.inputs[index]?.parameter}") is a ${sourceType} source for raw calldata assembly — the assembled slot would carry an unhashed selector; make it pinned or configurable`
+        )
+      }
+    }
+
+    return getOrAddSlot(`rawcalldata:${actionIndex}`, {
+      type: 'rawcalldata',
+      selector,
+      parameterTypes: action.inputs.map((input) => input.parameter),
+      sourceSlots: inputSlots,
+      actionName: action.name ?? action.selector,
+      actionIndex,
+    })
+  }
+
   const actions: WeirollAction[] = workflow.actions.map((action, actionIndex) => {
     if (action.optional && action.returns != null) {
       throw new Error(
@@ -426,8 +560,26 @@ export function buildWorkflowDefinitionFromCatalog(
         isDynamicAbiParameter(input.parameter) && (input.input ?? []).some((value) => computedVarSet.has(value))
     )
     const hasRawCalldataOnlyInput = action.inputs.some((input) => requiresRawCalldataParameter(input.parameter))
-    const rawCalldataAction =
-      action.rawMode === true || (action.returns == null && hasDynamicInput && !hasComputedDynamicInput)
+    // `rawMode` is not part of the authoring schema in centrifuge/workflows — a catalog entry
+    // carrying it is either malformed or is reaching for FLAG_RAW assembly deliberately. Raw
+    // mode is the SDK's decision to make, derived from the input types below.
+    if (action.rawMode !== undefined) {
+      throw new Error(
+        `buildWorkflowDefinitionFromCatalog: workflow "${workflow.workflowRef}" action ${actionIndex} sets "rawMode" — raw calldata assembly is derived from the input types, not declared`
+      )
+    }
+
+    const rawCalldataAction = action.returns == null && hasDynamicInput && !hasComputedDynamicInput
+
+    // A FLAG_RAW action passes one pre-assembled calldata blob, so its 4-byte selector lives in
+    // the state slot rather than in the (hashed) command word. Pairing that with `valueNonZero`
+    // puts the forwarded ETH in a second unpinned slot: one proof would then authorize both an
+    // arbitrary selector and an arbitrary value against the pinned target.
+    if (rawCalldataAction && action.valueNonZero === true) {
+      throw new Error(
+        `buildWorkflowDefinitionFromCatalog: workflow "${workflow.workflowRef}" action ${actionIndex} combines raw calldata assembly with valueNonZero`
+      )
+    }
 
     if (rawCalldataAction && action.returns != null) {
       throw new Error(
@@ -506,7 +658,18 @@ export function buildWorkflowDefinitionFromCatalog(
         )
       }
 
-      return getOrAddVariableSlot(values[0]!, inp.label, inp.parameter, slotMetadata)
+      const value = values[0]!
+      // A reference to a value some LATER action returns compiles to a runtime slot that is
+      // neither pinned in the hash nor listed in runtimeVariables — invisible to review, but
+      // still fillable by anyone building the calldata directly. The read also precedes the
+      // write, so the reference is broken on its own terms.
+      if (computedVarSet.has(value) && !producedReturns.has(value)) {
+        throw new Error(
+          `buildWorkflowDefinitionFromCatalog: workflow "${workflow.workflowRef}" action ${actionIndex} input ${inputIndex} references "${value}" before the action that returns it`
+        )
+      }
+
+      return getOrAddVariableSlot(value, inp.label, inp.parameter, slotMetadata)
     })
 
     // Claim the output slot now so downstream actions referencing action.returns
@@ -515,6 +678,7 @@ export function buildWorkflowDefinitionFromCatalog(
       action.returns != null
         ? (() => {
             const outputSlot = getOrAddVariableSlot(action.returns)
+            producedReturns.add(action.returns)
             return encodeOutputSpecifier(outputSlot, returnValueModes.get(action.returns) === 'dynamic')
           })()
         : UNUSED_SLOT
@@ -550,14 +714,7 @@ export function buildWorkflowDefinitionFromCatalog(
     const inputs = rawCalldataAction
       ? [
           ...(payableValueSlot != null ? [payableValueSlot] : []),
-          getOrAddSlot(`rawcalldata:${actionIndex}`, {
-            type: 'rawcalldata',
-            selector,
-            parameterTypes: action.inputs.map((input) => input.parameter),
-            sourceSlots: inputSlots,
-            actionName: action.name ?? action.selector,
-            actionIndex,
-          }),
+          buildRawCalldataSlot(actionIndex, action, selector, inputSlots),
         ]
       : [
           ...(payableValueSlot != null ? [payableValueSlot] : []),
@@ -570,7 +727,7 @@ export function buildWorkflowDefinitionFromCatalog(
       callType: action.valueNonZero ? VALUECALL : CALL,
       inputs,
       output: rawCalldataAction ? UNUSED_SLOT : output,
-      rawMode: rawCalldataAction || action.rawMode,
+      rawMode: rawCalldataAction ? true : undefined,
     }
   })
 

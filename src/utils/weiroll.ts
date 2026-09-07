@@ -166,6 +166,21 @@ export function fillRuntimeSlots(
     if (missing.length > 0) {
       throw new Error(`fillRuntimeSlots: missing runtime values for: ${missing.map((k) => `"${k}"`).join(', ')}`)
     }
+
+    // Only the declared runtime variables — plus the system slots the SDK fills itself, which
+    // are deliberately kept out of runtimeVariables — may be written. Accepting any other key
+    // would let a caller populate a slot the review surface never showed, which is how a
+    // workflow ends up executing with values nobody approved.
+    const declared = new Set(workflow.runtimeVariables)
+    const systemKeys = new Set(
+      workflow.state
+        .filter((slot) => slot.type === 'runtime' && slot.system !== undefined)
+        .map((slot) => (slot as Extract<WorkflowStateSlot, { type: 'runtime' }>).key)
+    )
+    const unexpected = Object.keys(runtimeValues).filter((key) => !declared.has(key) && !systemKeys.has(key))
+    if (unexpected.length > 0) {
+      throw new Error(`fillRuntimeSlots: unexpected runtime values for: ${unexpected.map((k) => `"${k}"`).join(', ')}`)
+    }
   }
 
   const nextState = state.map((slot, i) => {
@@ -521,12 +536,17 @@ export function buildScript(
       state.push(value)
       stateBitmap |= 1n << BigInt(i)
     } else if (slot.type === 'rawcalldata') {
-      if (canAssembleRawCalldataAtBuildTime(workflow, slot.sourceSlots)) {
-        state.push(assembleRawCalldataSlot(state, workflow, slot))
-        stateBitmap |= 1n << BigInt(i)
-      } else {
-        state.push(EMPTY_BYTES)
+      // A raw-calldata slot that cannot be assembled now stays unpinned, which means the caller
+      // supplies the entire call — selector included — against a pinned target, with the Merkle
+      // proof still valid. buildWorkflowDefinitionFromCatalog rejects runtime sources for these
+      // slots; fail here too so a definition assembled by any other route cannot reach execute.
+      if (!canAssembleRawCalldataAtBuildTime(workflow, slot.sourceSlots)) {
+        throw new Error(
+          `buildScript: workflow "${workflow.workflowRef}" raw calldata slot ${i} (action ${slot.actionIndex ?? '?'}) depends on a runtime value — the assembled calldata could not be pinned in the state bitmap`
+        )
       }
+      state.push(assembleRawCalldataSlot(state, workflow, slot))
+      stateBitmap |= 1n << BigInt(i)
     } else if (slot.type === 'template') {
       state.push(buildTemplateSlot(workflow, slot, context))
       stateBitmap |= 1n << BigInt(i)
