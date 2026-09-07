@@ -636,6 +636,9 @@ async function getEncodedArgs(
         },
       ]
 
+      // The ABI is built at runtime from `policy.selector` — the decoder exposes one function per
+      // whitelisted call, so there is no fixed ABI to register. The outputs are overridden above because
+      // the decoder returns the packed addresses rather than the target's own return type.
       const encoded = await client.readContract({
         address: policy.decoder,
         abi: [abi],

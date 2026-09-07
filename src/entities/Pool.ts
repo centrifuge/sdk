@@ -214,6 +214,11 @@ export class Pool extends Entity {
    * These managers can transfer funds to and from the balance sheet.
    */
   balanceSheetManagers() {
+    // Uncached on purpose: this is the set authorization checks read (`isBalanceSheetManager`), and a
+    // grant or revoke lands here between a manager acting and the UI reflecting it. A stale cached
+    // answer would either hide a live manager or vouch for a revoked one, so each subscriber reads
+    // through. The underlying `_managers()` indexer query is itself cached, so this is not a chain
+    // fetch per subscriber.
     return this._query(null, () => {
       return combineLatest([this._managers(), this._root._protocolAddresses(this.centrifugeId)]).pipe(
         map(([managers, { asyncRequestManager, syncManager }]) => {

@@ -1,5 +1,5 @@
 import { expect } from 'chai'
-import { of } from 'rxjs'
+import { firstValueFrom, of } from 'rxjs'
 import sinon from 'sinon'
 import { Centrifuge } from '../Centrifuge.js'
 import type { HexString } from '../types/index.js'
@@ -178,6 +178,69 @@ describe('entities/Pool workflow orchestration', () => {
       let error: Error | undefined
       await pool.addToPolicy({ strategist: STRATEGIST, workflowRef: 'wf_a' }).catch((e) => (error = e))
       expect(error?.message).to.match(/OnchainPM is not deployed/)
+    })
+  })
+
+  describe('adapterStatus', () => {
+    /** Stubs the indexer and hands back both the recorded query and the mapped result. */
+    async function adapterStatusFor(items: unknown[]) {
+      const centrifuge = new Centrifuge({ environment: 'testnet' })
+      const pool = new Pool(centrifuge, poolId.raw)
+      const calls: { query: string; variables: any }[] = []
+      sinon.stub(centrifuge as any, '_queryIndexer').callsFake((...args: unknown[]) => {
+        calls.push({ query: args[0] as string, variables: args[1] })
+        return of({ poolAdapters: { items } }) as any
+      })
+      return { calls, result: await firstValueFrom(pool.adapterStatus(OTHER_CENT_ID)) }
+    }
+
+    it('asks the indexer for this pool on the spoke→hub route', async () => {
+      const { calls } = await adapterStatusFor([])
+      // `local` is the queried (spoke) chain and `remote` the pool's hub — swapping them silently
+      // reports the wrong direction's adapter set.
+      expect(calls[0]!.variables).to.deep.equal({
+        poolId: poolId.toString(),
+        local: String(OTHER_CENT_ID),
+        remote: String(CENT_ID),
+      })
+      expect(calls[0]!.query).to.contain('poolAdapters')
+    })
+
+    it('maps each adapter, lower-casing the address and naming an unlinked one', async () => {
+      const { result } = await adapterStatusFor([
+        {
+          adapterAddress: '0xAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA',
+          isEnabled: true,
+          crosschainInProgress: null,
+          adapter: { name: 'wormhole' },
+        },
+        {
+          adapterAddress: '0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb',
+          isEnabled: null,
+          crosschainInProgress: 'Enabled',
+          adapter: null,
+        },
+      ])
+      expect(result).to.deep.equal([
+        {
+          address: '0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+          name: 'wormhole',
+          isEnabled: true,
+          crosschainInProgress: null,
+        },
+        // A null `isEnabled` from the indexer is "not enabled", not "unknown" — the in-flight state
+        // is carried by `crosschainInProgress` instead.
+        {
+          address: '0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb',
+          name: 'unknown',
+          isEnabled: false,
+          crosschainInProgress: 'Enabled',
+        },
+      ])
+    })
+
+    it('returns an empty list when the pool has no adapters on that route', async () => {
+      expect((await adapterStatusFor([])).result).to.deep.equal([])
     })
   })
 })

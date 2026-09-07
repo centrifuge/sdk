@@ -285,6 +285,9 @@ function toMessage(raw: CrosschainPayloadRaw): CrosschainMessage {
     toCentrifugeId: Number(raw.toCentrifugeId) as CentrifugeId,
     status: raw.status,
     rawData: raw.rawData ? (raw.rawData as HexString) : undefined,
+    // Gas quantities stay raw bigints: `Balance`/`Price`/`Rate` model pool- and asset-denominated
+    // amounts with decimals, and gas units and wei-per-gas are neither. Wrapping them would invent a
+    // currency for them; callers format them with viem's own gas helpers instead.
     gasLimit: raw.gasLimit ? BigInt(raw.gasLimit) : undefined,
     gasPrice: raw.gasPrice ? BigInt(raw.gasPrice) : undefined,
     createdAt: new Date(Number(raw.createdAt)),
@@ -320,6 +323,7 @@ function toMessage(raw: CrosschainPayloadRaw): CrosschainMessage {
       toCentrifugeId: Number(a.toCentrifugeId) as CentrifugeId,
       type: a.type,
       side: a.side,
+      // Native-token wei paid for delivery — see the gas note in `toMessage`.
       gasPaid: a.gasPaid ? BigInt(a.gasPaid) : undefined,
       timestamp: new Date(Number(a.timestamp)),
       transactionHash: a.transactionHash as HexString,
