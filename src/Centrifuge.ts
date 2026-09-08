@@ -1439,7 +1439,14 @@ export class Centrifuge {
           if (contracts.length !== 1) {
             throw new Error(`Cannot batch transactions to different contracts: ${contracts.join(', ')}`)
           }
-          yield* wrapTransaction(title, ctx, { data, value, contract: contracts[0] as HexString, messages })
+          const alwaysBatch = batches.some((b) => b.alwaysBatch)
+          yield* wrapTransaction(title, ctx, {
+            data,
+            value,
+            contract: contracts[0] as HexString,
+            messages,
+            alwaysBatch,
+          })
         })
       )
     }, centIds[0]!)
@@ -1518,7 +1525,7 @@ export class Centrifuge {
       centrifugeId: tx.centrifugeId,
       chainId,
       to: built.contract,
-      data: encodeBatchCalldata(built.data),
+      data: encodeBatchCalldata(built.data, { alwaysBatch: built.alwaysBatch }),
       value,
       calls,
       ...(built.messages ? { messages: built.messages } : {}),
