@@ -108,14 +108,17 @@ export type {
   PoolContext,
   ScriptResult,
 } from './utils/weiroll.js'
+export { canDelegate } from './utils/bytecode.js'
 export { computeScriptHash } from './utils/scriptHash.js'
 export type { Callback } from './utils/scriptHash.js'
 export { MAGIC_VARIABLE_KEYS, resolveMagicVariables, resolveVariableLabel } from './utils/variables.js'
 export type { MagicVariableContext, MagicVariableKey } from './utils/variables.js'
 export { buildWorkflowDefinitionFromCatalog, parseMarketplaceCatalog } from './utils/catalog.js'
+export type { BuildWorkflowDefinitionFromCatalogOptions } from './utils/catalog.js'
 export { assertCidMatchesContent, canonicalCids, cidMatchesContent } from './utils/cid.js'
 export {
   checkActionSelectorSchema,
+  checkAddressLiterals,
   checkDuplicateWorkflowIds,
   checkRawCalldataTaint,
   checkTemplateIsNotUseOnly,
@@ -128,6 +131,7 @@ export type {
   DeclaringTemplate,
   RuleViolation,
   SelectorAction,
+  SelectorActionWithInputs,
   TaintTemplate,
 } from './utils/workflowRules.js'
 export { MAGIC_VARIABLE_NAMES } from './utils/workflowRules.js'
@@ -137,6 +141,7 @@ export {
   buildPreparedWorkflowDefinition,
   buildWorkflowExecuteParams,
   buildWorkflowScriptBase,
+  computeWorkflowGroupScriptDetails,
   computeWorkflowGroupScriptHashes,
   computeWorkflowScriptHash,
   encodeConfigurableValue,

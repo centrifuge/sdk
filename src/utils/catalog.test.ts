@@ -606,4 +606,163 @@ describe('utils/catalog — catalog integrity hardening', () => {
       )
     })
   })
+
+  // ── Nested callback scope ────────────────────────────────────────────────
+  //
+  // A callback compiles into bytes pinned inside the parent's hashed state, and the review surface
+  // shows only the parent's actions. So whatever decides a child slot's value decides something an
+  // operator approving the workflow cannot see.
+
+  /** parent → callback, where the child declares `minOut` with the given kind. */
+  function nested(childMinOutKind: CatalogVariable['kind'], map: Record<string, string>): MarketplaceWorkflow {
+    const templates: Record<string, CatalogTemplate> = {
+      outer: {
+        variables: [
+          { name: 'target', kind: 'pinned' },
+          // Deliberately collides with the child's `minOut`.
+          { name: 'minOut', kind: 'pinned' },
+        ],
+        actions: [
+          {
+            target: '$target',
+            selector: 'function flash(bytes data)',
+            inputs: [{ parameter: 'bytes', label: 'Callback', input: [], useTemplate: { template: 'child', map } }],
+          },
+        ],
+      },
+      child: {
+        variables: [
+          { name: 'venue', kind: 'param' },
+          { name: 'minOut', kind: childMinOutKind },
+        ],
+        actions: [
+          {
+            target: '$venue',
+            selector: 'function swap(uint256 minOut)',
+            inputs: [{ parameter: 'minOut', label: 'Min out', input: ['$minOut'] }],
+          },
+        ],
+      },
+    }
+
+    return {
+      workflowRef: 'outer_wf',
+      name: 'Outer',
+      template: 'outer',
+      chainId: 1,
+      variables: { target: ADDRESS_A, minOut: `0x${'0'.repeat(63)}1` },
+      workflowId: `0x${'0'.repeat(64)}`,
+      version: 1,
+      actions: templates.outer!.actions,
+      templates,
+    } as unknown as MarketplaceWorkflow
+  }
+
+  const childOf = (workflow: MarketplaceWorkflow) => {
+    const definition = buildWorkflowDefinitionFromCatalog(workflow)
+    const slot = definition.state.find((s) => s.type === 'template') as Extract<
+      (typeof definition.state)[number],
+      { type: 'template' }
+    >
+    return slot.workflow
+  }
+
+  it('does not let a colliding parent variable pin a child configurable slot', () => {
+    // The parent pins `minOut`; the child declares it configurable — the hub manager's to set at
+    // policy creation. Inheriting the parent's map here replaced the manager's value with the
+    // catalog author's, inside callback bytes nothing displays.
+    const child = childOf(nested('configurable', { venue: '$target' }))
+    const minOut = child.state.find((slot) => 'key' in slot && slot.key === 'minOut')
+    expect(minOut?.type).to.equal('configurable')
+    expect(child.state.some((slot) => 'value' in slot && slot.value === `0x${'0'.repeat(63)}1`)).to.equal(false)
+  })
+
+  it('does not let a colliding parent variable pin a child runtime slot', () => {
+    const child = childOf(nested('runtime', { venue: '$target' }))
+    const minOut = child.state.find((slot) => 'key' in slot && slot.key === 'minOut')
+    expect(minOut?.type).to.equal('runtime')
+    expect(child.runtimeVariables).to.include('minOut')
+  })
+
+  it('rejects a useTemplate.map entry that binds a child configurable or runtime name', () => {
+    // Fail closed rather than quietly ignore: no published catalog binds one, and a binding that
+    // silently does nothing is worse than a rejected catalog.
+    expect(() => buildWorkflowDefinitionFromCatalog(nested('configurable', { minOut: '$minOut' }))).to.throw(
+      /declares it configurable/
+    )
+    expect(() => buildWorkflowDefinitionFromCatalog(nested('runtime', { minOut: '$minOut' }))).to.throw(
+      /declares it runtime/
+    )
+  })
+
+  it('still binds a child param through the parent map', () => {
+    // The production shape (morpho_loop_deposit): every child name the callback needs is declared
+    // `param` and bound explicitly by the parent.
+    const child = childOf(nested('configurable', { venue: '$target' }))
+    expect(child.actions[0]!.target).to.equal(ADDRESS_A)
+  })
+
+  it('rebinds a nested callback own useTemplate.map through the enclosing map', () => {
+    // Callback-of-callback: the inner map is a reference in the middle scope, so it has to be
+    // rebound too. Without this the innermost layer resolved against the wrong scope.
+    const templates: Record<string, CatalogTemplate> = {
+      outer: {
+        variables: [{ name: 'target', kind: 'pinned' }],
+        actions: [
+          {
+            target: '$target',
+            selector: 'function flash(bytes data)',
+            inputs: [
+              {
+                parameter: 'bytes',
+                label: 'Callback',
+                input: [],
+                useTemplate: { template: 'mid', map: { venue: '$target' } },
+              },
+            ],
+          },
+        ],
+      },
+      mid: {
+        variables: [{ name: 'venue', kind: 'param' }],
+        actions: [
+          {
+            target: '$venue',
+            selector: 'function inner(bytes data)',
+            inputs: [
+              // Bound from the middle scope's `$venue`, which the outer map set.
+              {
+                parameter: 'bytes',
+                label: 'Inner',
+                input: [],
+                useTemplate: { template: 'leaf', map: { place: '$venue' } },
+              },
+            ],
+          },
+        ],
+      },
+      leaf: {
+        variables: [{ name: 'place', kind: 'param' }],
+        actions: [{ target: '$place', selector: 'function poke()', inputs: [] }],
+      },
+    }
+    const workflow = {
+      workflowRef: 'deep_wf',
+      name: 'Deep',
+      template: 'outer',
+      chainId: 1,
+      variables: { target: ADDRESS_B },
+      workflowId: `0x${'0'.repeat(64)}`,
+      version: 1,
+      actions: templates.outer!.actions,
+      templates,
+    } as unknown as MarketplaceWorkflow
+
+    const mid = childOf(workflow)
+    const leafSlot = mid.state.find((slot) => slot.type === 'template') as Extract<
+      (typeof mid.state)[number],
+      { type: 'template' }
+    >
+    expect(leafSlot.workflow.actions[0]!.target).to.equal(ADDRESS_B)
+  })
 })

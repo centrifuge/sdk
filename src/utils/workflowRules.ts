@@ -32,6 +32,13 @@ export interface SelectorAction {
   inputs?: { parameter: string }[]
 }
 
+/** Action shape for value-level input rules: the parameter plus what was pinned into it. */
+export interface SelectorActionWithInputs {
+  name?: string
+  selector?: unknown
+  inputs?: { parameter: string; label?: string; input?: unknown[] }[]
+}
+
 /** The template shape the taint walk reads. Structural, so an authoring template fits too. */
 export interface TaintTemplate {
   id?: string
@@ -104,6 +111,75 @@ export function parseSelectorParameters(selector: string): string[] | null {
  * that the selected function never consumes, or a field rendered as a `uint256` that lands in
  * an `address` position.
  */
+/**
+ * An `address`-typed input must carry something address-shaped.
+ *
+ * A literal in an address slot is pinned at publish time and never reviewed against the ABI, so a
+ * malformed one — a short hex string, a decimal, a 32-byte word that isn't a left-padded address —
+ * encodes as a different account than the catalog appears to name. `checkActionSelectorSchema`
+ * proves the *types* line up with the selector; this proves the pinned *values* do.
+ *
+ * `$references` are not resolved here: their values arrive per workflow (`pinned`), per policy
+ * (`configurable`) or per execution (`runtime`), and the encoder rejects a non-address at that
+ * point. Only literals are decidable from the template alone.
+ *
+ * Ported from centrifuge/workflows' `checkAddressInputs`, which could only vouch for catalogs that
+ * repo built — this runs on every catalog the SDK ingests.
+ */
+export function checkAddressLiterals(
+  action: SelectorActionWithInputs,
+  describe: string,
+  /**
+   * A workflow's `variables`, when checking in workflow context. A `$reference` that resolves here
+   * is a value the catalog pinned, so it is as decidable as an inline literal — this is what
+   * catches a token id or a uint256 amount wired into an address slot.
+   */
+  variables?: Record<string, string>
+): RuleViolation[] {
+  const violations: RuleViolation[] = []
+
+  for (const [index, input] of (action.inputs ?? []).entries()) {
+    if (!isAddressParameter(input.parameter)) continue
+    // Index 0 is the whole input: `buildWorkflowDefinitionFromCatalog` rejects any input carrying
+    // more than one value ("multi-value inputs are not supported"), so a second element can never
+    // reach a script. Looping here would imply otherwise.
+    const raw = input.input?.[0]
+    if (typeof raw !== 'string' || raw === '') continue
+
+    let value = raw
+    let via = ''
+    if (raw.startsWith('$')) {
+      const name = raw.slice(1)
+      const resolved = variables?.[name]
+      // Unresolved references get their values per policy or per execution, and the encoder
+      // rejects a non-address there; only a pinned value is decidable now.
+      if (typeof resolved !== 'string' || resolved.startsWith('$')) continue
+      value = resolved
+      via = ` via ${raw}`
+    }
+
+    if (!isAddressLikeLiteral(value)) {
+      violations.push({
+        rule: 'address-literal',
+        message: `${describe} input ${index} ("${input.label ?? input.parameter}") is an address parameter with a non-address value${via}: "${value}"`,
+      })
+    }
+  }
+
+  return violations
+}
+
+/** `address`, `address[]` and `address[N]`. Tuples are checked element-wise by their own inputs. */
+function isAddressParameter(parameter: string): boolean {
+  return /^address(\[\d*\])?$/.test(parameter.trim())
+}
+
+/** A 20-byte address, or a left-padded 32-byte word carrying one. */
+function isAddressLikeLiteral(value: string): boolean {
+  if (/^0x[0-9a-fA-F]{40}$/.test(value)) return true
+  return /^0x0{24}[0-9a-fA-F]{40}$/.test(value)
+}
+
 export function checkActionSelectorSchema(action: SelectorAction, describe: string): RuleViolation[] {
   const selector = action.selector
 
@@ -472,6 +548,7 @@ function templateViolations(templateName: string, template: CatalogTemplate): Ru
 
   for (const [index, action] of (template.actions ?? []).entries()) {
     violations.push(...checkActionSelectorSchema(action, describeAction(index)))
+    violations.push(...checkAddressLiterals(action as SelectorActionWithInputs, describeAction(index)))
   }
 
   return violations
@@ -499,14 +576,53 @@ export function validateCatalogWorkflow(
     ...checkWorkflowVariableKinds(workflow, template),
   ]
 
-  if (template && templateName) {
-    let cached = cache?.get(templateName)
+  // Every template this workflow can execute, not just the one it names. A callback template
+  // reached through `useTemplate` compiles into the workflow's hashed script and runs on-chain, so
+  // leaving it unchecked exempted exactly the material the review surface already hides. In the
+  // published catalogs that is most of them: 59 of 77 mainnet templates are reachable only this way.
+  for (const name of reachableTemplates(templateName, templates)) {
+    const reached = templates[name]
+    if (!reached) continue
+    let cached = cache?.get(name)
     if (cached === undefined) {
-      cached = templateViolations(templateName, template)
-      cache?.set(templateName, cached)
+      cached = templateViolations(name, reached)
+      cache?.set(name, cached)
     }
     violations.push(...cached)
   }
 
+  if (template && templateName) {
+    for (const [index, action] of (template.actions ?? []).entries()) {
+      violations.push(
+        ...checkAddressLiterals(
+          action as SelectorActionWithInputs,
+          `workflow "${workflowIdOf(workflow)}" action ${index}`,
+          (workflow.variables ?? {}) as Record<string, string>
+        )
+      )
+    }
+  }
+
   return violations
+}
+
+/** The named template plus every template reachable from it through `useTemplate`, transitively. */
+function reachableTemplates(root: string | undefined, templates: Record<string, CatalogTemplate>): string[] {
+  if (!root) return []
+  const seen = new Set<string>()
+  const queue = [root]
+
+  while (queue.length) {
+    const name = queue.shift()!
+    if (seen.has(name)) continue
+    seen.add(name)
+    for (const action of templates[name]?.actions ?? []) {
+      for (const input of (action as CatalogAction).inputs ?? []) {
+        const nested = input.useTemplate?.template
+        if (nested && !seen.has(nested)) queue.push(nested)
+      }
+    }
+  }
+
+  return [...seen]
 }

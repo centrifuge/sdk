@@ -116,16 +116,94 @@ export interface WorkflowPolicyEntry {
   /** 0-based indices of catalog actions excluded from the final script. */
   excludedActions?: number[]
   addedAt: string
+  /**
+   * The catalog's pre-computed id for the entry, pinned when the workflow was whitelisted. Read by
+   * `Pool`'s policy paths to refuse a rebuild when the catalog has moved on, so it is part of the
+   * type contract rather than an undeclared extra: a writer that omits it turns that check into a
+   * no-op. NOT the script hash — it is the hash of the catalog definition before this pool's
+   * configurable values are pinned in, so the two differ for every configured workflow.
+   */
+  workflowId?: string
+  /** Catalog version pinned at whitelist time; drives the "update available" flag and the same check. */
+  version?: number
+  /** Chain the entry targets, when the writer records it (the catalog's `chainId` resolves to this). */
+  centrifugeId?: number
+  /**
+   * Share class this entry was approved against.
+   *
+   * `$scId` is a magic variable resolved at build time, so it feeds the hashed script: the same
+   * catalog workflow compiled under two share classes produces two different Merkle leaves (25 of
+   * 77 published templates depend on it, carrying most published workflows). Policy rebuilds
+   * currently derive one share class for the whole group from the caller's context, which silently
+   * re-hashes every `$scId`-dependent entry under it — the strategist's working workflows stop
+   * verifying against the root while the metadata rows look unchanged.
+   *
+   * Not an authorization boundary: `policy[strategist]` on the OnchainPM is keyed by (pool,
+   * strategist) with no share-class dimension, and the OnchainPM is a pool-level balance-sheet
+   * manager. Recording it is what lets a rebuild be partitioned by `(strategist, centrifugeId,
+   * scId)` instead of re-binding a whole policy to whichever share class the editor was looking at.
+   */
+  scId?: HexString
+  /**
+   * The Merkle leaf this entry contributes to the strategist's policy root — `computeScriptHash`
+   * over the compiled script, pinned at whitelist time.
+   *
+   * This is the one field that makes a policy verifiable from metadata alone. Rebuilding a leaf
+   * from `workflowRef` + `catalogCid` requires the catalog, the resolved OnchainPM address and the
+   * pool escrow, so it can be blocked by things unrelated to the policy: mainnet verification is
+   * blocked today because the indexer serves no `onchainPMFactory` and `$onchainPM` therefore
+   * cannot be resolved. With the leaves recorded, a reader rebuilds the root from them and compares
+   * it with the root the contract enforces — one chain read, no catalog, no RPC-derived context.
+   *
+   * Recording it is not a trust concession: the leaves either produce the on-chain root or they
+   * don't. A reader must compare, never assume — a leaf set that doesn't reproduce the root is
+   * evidence the metadata is stale, which is exactly the signal worth surfacing.
+   */
+  scriptHash?: HexString
+  /**
+   * The magic values this entry's script was compiled with, recorded at whitelist time — the
+   * environment-derived ones only: `$onchainPM`/`$executor`, `$poolEscrow`, `$onOffRamp`, and the
+   * accounting-token ids, as the 32-byte words they were fed into the script as.
+   *
+   * `$poolId` and `$scId` are deliberately absent: they are derivable from the pool and from `scId`
+   * above, so recording them would create a second source of truth for the same value (and `$scId`
+   * is right-padded where addresses are left-padded, so the encoding differs per key).
+   *
+   * This is what makes a leaf *re-derivable* rather than merely comparable. `scriptHash` lets a
+   * reader rebuild the root and compare; this lets them rebuild the leaf from the workflow
+   * definition and check that it is the leaf — which recomputation alone cannot do once an address
+   * has moved, since a redeploy and tampering are indistinguishable from a differing hash.
+   *
+   * Honoured only where the on-chain root is the authority (`Pool.verifyWorkflowPolicy`). Root
+   * construction never reads it: a metadata-supplied `$onchainPM` or `$onOffRamp` would let whoever
+   * wrote the metadata choose addresses inside the script a root authorizes.
+   */
+  poolContext?: Record<string, HexString>
+  /**
+   * What compiled this entry's leaf — e.g. `@centrifuge/sdk@2.3.0`. Supplied by the writer.
+   *
+   * The compiler is an input to the hash just as much as the data is: slot canonicalization and
+   * encoding rules live in `buildScript`, and this repo has changed them (#526 tightened slot reuse
+   * and reserved the payable-value namespace). A leaf built by one version need not reproduce
+   * byte-identically under another, and without knowing which version built it, that reads as
+   * tampering rather than as compiler drift.
+   *
+   * The SDK cannot fill this in for itself: its version lives in `package.json`, and importing that
+   * from `src/` would move the emitted output to `dist/src/…` and break the published entry points.
+   * A writer knows what it ran, so it records it — which also lets a non-SDK writer name its own
+   * builder.
+   */
+  builtWith?: string
 }
 
 /**
  * A strategist's set of whitelisted workflows on the pool's OnchainPM.
  *
- * The on-chain policy is keyed by (OnchainPM address → strategist) — the
- * OnchainPM is per-pool and `policy[strategist]` holds the Merkle root — so each
- * strategist has exactly one policy per pool. The share class id required by the
- * `Hub.updateContract` routing call is derived at policy-update time rather than
- * stored here.
+ * The on-chain policy is keyed by (OnchainPM address → strategist) — the OnchainPM is per-pool and
+ * `policy[strategist]` holds the Merkle root — so each strategist has exactly one policy per pool
+ * and per chain. Entries carry their own `scId` (see `WorkflowPolicyEntry.scId`); the share class
+ * the `Hub.updateContract` routing call needs is derived from the entries being changed rather than
+ * from the editor's context.
  */
 export interface WorkflowPolicy {
   /** Client-generated UUID; stable across metadata updates. */
@@ -136,6 +214,20 @@ export interface WorkflowPolicy {
   workflows: WorkflowPolicyEntry[]
   createdAt: string
   updatedAt?: string
+  /**
+   * The Merkle roots this policy last wrote on-chain, keyed by `centrifugeId` — one per chain,
+   * since each chain's OnchainPM holds its own root.
+   *
+   * Lets any reader answer "is this list the one being enforced?" with a single `policy(strategist)`
+   * read: equal means the recorded entries are authentic, different means the metadata is stale or
+   * the root was changed elsewhere. Without it, a reader that cannot rebuild the leaves (see
+   * `WorkflowPolicyEntry.scriptHash`) has no way to tell the two apart, and the honest answer
+   * degrades to "could not verify" — which is what the transparency dashboard reports for a live
+   * mainnet pool today.
+   *
+   * A claim by the writer, and self-checking: it is only ever useful compared against the chain.
+   */
+  roots?: Record<number, HexString>
 }
 
 /**

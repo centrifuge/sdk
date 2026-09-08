@@ -35,7 +35,16 @@ const catalogEntry = (workflowRef: string, chainId: number, group?: string): Mar
 
 /** A Pool with metadata, catalog, chain-id mapping and active networks all stubbed. */
 function makePool(options: {
-  entries?: { workflowRef: string; configurableValues?: Record<string, HexString>; excludedActions?: number[] }[]
+  entries?: {
+    workflowRef: string
+    configurableValues?: Record<string, HexString>
+    excludedActions?: number[]
+    workflowId?: string
+    version?: number
+    scId?: HexString
+    scriptHash?: HexString
+    builtWith?: string
+  }[]
   strategist?: HexString
   catalog?: MarketplaceWorkflow[]
   /** centrifugeIds the pool is deployed on. */
@@ -241,6 +250,203 @@ describe('entities/Pool workflow orchestration', () => {
 
     it('returns an empty list when the pool has no adapters on that route', async () => {
       expect((await adapterStatusFor([])).result).to.deep.equal([])
+    })
+  })
+
+  describe('pinned-artifact enforcement', () => {
+    // A policy entry records the artifact it was approved against. Resolving by `workflowRef` alone
+    // let an unrelated edit re-sign a strategist's whole root over a script nobody reviewed.
+    const PINNED_ID = `0x${'1'.repeat(64)}`
+    const CATALOG_ID = `0x${'2'.repeat(64)}`
+
+    const withCatalogId = (ref: string, chainId: number, workflowId: string) =>
+      ({ ...catalogEntry(ref, chainId), workflowId }) as MarketplaceWorkflow
+
+    it('refuses to list a strategist whose pinned workflowId no longer matches the catalog', async () => {
+      const { pool } = makePool({
+        entries: [{ workflowRef: 'wf_a', workflowId: PINNED_ID }],
+        catalog: [withCatalogId('wf_a', 100, CATALOG_ID)],
+      })
+      let error: Error | undefined
+      await pool.listWorkflows({ strategist: STRATEGIST }).catch((e) => (error = e))
+      expect(error?.message).to.match(/changed in the catalog since it was whitelisted/)
+    })
+
+    it('refuses when the pinned catalog version has moved', async () => {
+      const { pool } = makePool({
+        entries: [{ workflowRef: 'wf_a', version: 1 }],
+        catalog: [{ ...catalogEntry('wf_a', 100), version: 7 } as MarketplaceWorkflow],
+      })
+      let error: Error | undefined
+      await pool.listWorkflows({ strategist: STRATEGIST }).catch((e) => (error = e))
+      expect(error?.message).to.match(/pinned to catalog version 1 .* version 7/)
+    })
+
+    it('allows an entry that still matches its pin', async () => {
+      const { pool } = makePool({
+        entries: [{ workflowRef: 'wf_a', workflowId: PINNED_ID, version: 1 }],
+        catalog: [{ ...withCatalogId('wf_a', 100, PINNED_ID), version: 1 } as MarketplaceWorkflow],
+      })
+      expect((await pool.listWorkflows({ strategist: STRATEGIST })).map((row) => row.workflowRef)).to.deep.equal([
+        'wf_a',
+      ])
+    })
+
+    it('resolves an unpinned legacy entry by name, as before', async () => {
+      // Entries written before these fields existed carry no pin; refusing them would strand
+      // every policy created before the field.
+      const { pool } = makePool({
+        entries: [{ workflowRef: 'wf_a' }],
+        catalog: [withCatalogId('wf_a', 100, CATALOG_ID)],
+      })
+      expect((await pool.listWorkflows({ strategist: STRATEGIST })).map((row) => row.workflowRef)).to.deep.equal([
+        'wf_a',
+      ])
+    })
+
+    it('lets an explicit re-pin through for the workflow being changed, but not its neighbours', async () => {
+      // `addToPolicy` on a drifted workflow is the deliberate "update" action, so its own pin is
+      // not enforced. A NEIGHBOUR that drifted still blocks the edit — the rebuilt root re-signs it.
+      const { centrifuge, pool } = makePool({
+        entries: [{ workflowRef: 'wf_a' }, { workflowRef: 'wf_b', workflowId: PINNED_ID }],
+        catalog: [catalogEntry('wf_a', 100), withCatalogId('wf_b', 100, CATALOG_ID)],
+      })
+      // Enough of the write path to reach the rebuild loop, which is where the root is built.
+      sinon.stub(PoolNetwork.prototype, 'onchainPM').returns(of({ updatePolicy: () => 'policy-tx' }) as any)
+      sinon.stub(pool, 'updateMetadata').returns('metadata-tx' as any)
+      const batch = sinon.stub(centrifuge, 'batchTransactions').returns('batched' as any)
+      const scId = `0x${'0'.repeat(32)}` as HexString
+
+      // Editing the drifted entry itself is the deliberate re-pin: allowed, and it batches.
+      expect(await pool.addToPolicy({ strategist: STRATEGIST, workflowRef: 'wf_b', scId })).to.equal('batched')
+      expect(batch.calledOnce).to.equal(true)
+
+      // Editing the neighbour is refused: that root would re-authorize the drifted wf_b too.
+      let neighbourEdit: Error | undefined
+      await pool.addToPolicy({ strategist: STRATEGIST, workflowRef: 'wf_a', scId }).catch((e) => (neighbourEdit = e))
+      expect(neighbourEdit?.message).to.match(/changed in the catalog since it was whitelisted/)
+      expect(batch.calledOnce).to.equal(true)
+    })
+  })
+
+  describe('verifyWorkflowPolicy', () => {
+    // The metadata lists what a strategist was whitelisted for; the contract holds only a root. The
+    // list proves nothing until the two are compared, which is what this method exists to do.
+    const ONCHAIN_PM = '0x382a12951987df366b3767535491790d9c28ae8a' as HexString
+    const SC_ID = `0x${'0'.repeat(31)}1` as HexString
+    const RECORDED_LEAF = `0x${'a'.repeat(64)}` as HexString
+
+    /**
+     * A workflow whose script cannot be compiled: the action references a variable no template
+     * declares, so recompiling throws — standing in for the mainnet case where `$onchainPM` cannot
+     * be resolved. Recorded leaves are the only way to check such a policy.
+     */
+    const unbuildable = () =>
+      ({
+        ...catalogEntry('wf_a', 100),
+        template: 't',
+        templates: { t: { variables: [], actions: [] } },
+        actions: [{ target: '$undeclared', selector: 'function f()', inputs: [] }],
+      }) as unknown as MarketplaceWorkflow
+
+    /** Reports the root the stubbed chain holds, and whether scripts can be rebuilt. */
+    function setup(options: { root: HexString; recordedLeaves?: boolean; buildable?: boolean }) {
+      const entries = [
+        {
+          workflowRef: 'wf_a',
+          scId: SC_ID,
+          ...(options.recordedLeaves ? { scriptHash: RECORDED_LEAF } : {}),
+        },
+      ]
+      const catalog = [options.buildable ? catalogEntry('wf_a', 100) : unbuildable()]
+      const { centrifuge, pool } = makePool({ entries, catalog })
+
+      sinon.stub(centrifuge, 'getClient').returns(of({ readContract: async () => options.root }) as any)
+      sinon.stub(centrifuge as any, '_protocolAddresses').returns(of({ hub: ONCHAIN_PM }) as any)
+      sinon.stub(pool as any, '_escrow').returns(of(ONCHAIN_PM) as any)
+      return { pool }
+    }
+
+    it('reports no-manager for a chain with no OnchainPM resolved', async () => {
+      const { pool } = setup({ root: `0x${'0'.repeat(64)}` })
+      sinon.stub(PoolNetwork.prototype, 'onchainPM').returns(of(null) as any)
+      const [result] = await pool.verifyWorkflowPolicy(STRATEGIST)
+      expect(result!.verdict).to.equal('no-manager')
+      expect(result!.note).to.match(/no policy is enforced/)
+    })
+
+    it('falls back to recorded leaves when scripts cannot be rebuilt, and says so', async () => {
+      // The mainnet case: `$onchainPM` cannot be resolved because the chain's deployment record has
+      // no factory address, so nothing can be recompiled — but the recorded leaves still either
+      // reproduce the enforced root or they don't.
+      const { pool } = setup({ root: `0x${'0'.repeat(64)}`, recordedLeaves: true })
+      sinon.stub(PoolNetwork.prototype, 'onchainPM').returns(of(null) as any)
+      const [withOverride] = await pool.verifyWorkflowPolicy(STRATEGIST, {
+        onchainPM: { [CENT_ID]: ONCHAIN_PM },
+      })
+      expect(withOverride!.onchainPM).to.equal(ONCHAIN_PM)
+      expect(withOverride!.leafSource).to.equal('recorded')
+      expect(withOverride!.note).to.match(/recorded at whitelist time/)
+      // Root is zero on-chain, so the verdict is that nothing is enforced rather than a mismatch.
+      expect(withOverride!.verdict).to.equal('not-set')
+    })
+
+    it('reports a mismatch when the rebuilt root is not the enforced one', async () => {
+      const { pool } = setup({ root: `0x${'b'.repeat(64)}`, recordedLeaves: true })
+      sinon.stub(PoolNetwork.prototype, 'onchainPM').returns(of(null) as any)
+      const [result] = await pool.verifyWorkflowPolicy(STRATEGIST, { onchainPM: { [CENT_ID]: ONCHAIN_PM } })
+      expect(result!.verdict).to.equal('mismatch')
+      expect(result!.computedRoot).to.not.equal(result!.onchainRoot)
+    })
+
+    it('reports a match when the recompiled leaves reproduce the enforced root', async () => {
+      // The success path: nothing recorded is trusted, the script is recompiled from the catalog, and
+      // the root it produces is the one the contract enforces.
+      let root = `0x${'0'.repeat(64)}` as HexString
+      const { centrifuge, pool } = makePool({
+        entries: [{ workflowRef: 'wf_a', scId: SC_ID }],
+        catalog: [catalogEntry('wf_a', 100)],
+      })
+      sinon.stub(centrifuge, 'getClient').returns(of({ readContract: async () => root }) as any)
+      sinon.stub(centrifuge as any, '_protocolAddresses').returns(of({ hub: ONCHAIN_PM }) as any)
+      sinon.stub(pool as any, '_escrow').returns(of(ONCHAIN_PM) as any)
+      sinon.stub(PoolNetwork.prototype, 'onchainPM').returns(of({ address: ONCHAIN_PM }) as any)
+
+      // First pass with no root set tells us what the policy actually hashes to...
+      const [unset] = await pool.verifyWorkflowPolicy(STRATEGIST)
+      expect(unset!.verdict).to.equal('not-set')
+      expect(unset!.computedRoot).to.be.a('string')
+
+      // ...and enforcing exactly that must verify.
+      root = unset!.computedRoot!
+      const [result] = await pool.verifyWorkflowPolicy(STRATEGIST)
+      expect(result!.verdict).to.equal('match')
+      expect(result!.leafSource).to.equal('recomputed')
+      expect(result!.builtWith).to.deep.equal([])
+      expect(result!.note).to.equal(undefined)
+    })
+
+    it('surfaces the builder recorded against each entry, and blames it on a mismatch', async () => {
+      // Without this, a leaf built by an older SDK looks exactly like a tampered one.
+      const entries = [{ workflowRef: 'wf_a', scId: SC_ID, builtWith: '@centrifuge/sdk@2.1.2' }]
+      const { centrifuge, pool } = makePool({ entries, catalog: [catalogEntry('wf_a', 100)] })
+      sinon.stub(centrifuge, 'getClient').returns(of({ readContract: async () => `0x${'b'.repeat(64)}` }) as any)
+      sinon.stub(centrifuge as any, '_protocolAddresses').returns(of({ hub: ONCHAIN_PM }) as any)
+      sinon.stub(pool as any, '_escrow').returns(of(ONCHAIN_PM) as any)
+      sinon.stub(PoolNetwork.prototype, 'onchainPM').returns(of(null) as any)
+
+      const [result] = await pool.verifyWorkflowPolicy(STRATEGIST, { onchainPM: { [CENT_ID]: ONCHAIN_PM } })
+      expect(result!.verdict).to.equal('mismatch')
+      expect(result!.builtWith).to.deep.equal(['@centrifuge/sdk@2.1.2'])
+      expect(result!.note).to.match(/compiler drift/)
+    })
+
+    it('reports unverifiable when nothing can be rebuilt and nothing was recorded', async () => {
+      const { pool } = setup({ root: `0x${'b'.repeat(64)}` })
+      sinon.stub(PoolNetwork.prototype, 'onchainPM').returns(of(null) as any)
+      const [result] = await pool.verifyWorkflowPolicy(STRATEGIST, { onchainPM: { [CENT_ID]: ONCHAIN_PM } })
+      expect(result!.verdict).to.equal('unverifiable')
+      expect(result!.note).to.match(/no leaves were recorded/)
     })
   })
 })

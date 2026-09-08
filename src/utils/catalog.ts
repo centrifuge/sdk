@@ -153,6 +153,55 @@ function mapTemplateReference(value: string, variableMap: Record<string, string>
   return variableMap[value.slice(1)] ?? value
 }
 
+/**
+ * The variables a nested callback may resolve from.
+ *
+ * A value reaches a child only through the parent's `useTemplate.map`, and only for names the child
+ * declares as `param` (bound by its caller) or `pinned`. A child's `configurable` and `runtime`
+ * names are never filled from the enclosing scope: those belong to the hub manager and the
+ * strategist respectively, and inheriting a parent value for them is exactly how a colliding outer
+ * key used to pin a catalog-chosen literal into callback bytes that the review surface does not
+ * expand. A map entry targeting one is rejected rather than ignored — no published catalog binds
+ * one, and a binding that silently does nothing is worse than a rejected catalog.
+ *
+ * Keyed by the *parent-side* name, because `applyUseTemplateMap` rewrites the child's `$childName`
+ * references to whatever the map points at. A mapped inline literal needs no entry at all (the
+ * rewrite substitutes it directly); a mapped `$reference` needs the parent's value for that name,
+ * and gets one only if the parent pinned it. When the parent didn't — the name is itself `runtime`
+ * or `configurable` up there — nothing is inherited and the child compiles its own slot under that
+ * key, which then receives the same value, by key, at fill time. Keying this way also composes: a
+ * callback-of-callback resolves through each layer's map in turn.
+ */
+function childScopeVariables(
+  parentVariables: Record<string, string>,
+  template: CatalogTemplate,
+  useTemplateMap: Record<string, string>,
+  describe: string
+): Record<string, string> {
+  const childKinds = new Map((template.variables ?? []).map((variable) => [variable.name, variable.kind]))
+  const scope: Record<string, string> = {}
+
+  for (const [childName, boundValue] of Object.entries(useTemplateMap)) {
+    const kind = childKinds.get(childName)
+    if (kind === 'configurable' || kind === 'runtime') {
+      throw new Error(
+        `buildWorkflowDefinitionFromCatalog: ${describe} binds "${childName}" through useTemplate.map, ` +
+          `but the callback template declares it ${kind} — that value is set by ` +
+          `${kind === 'configurable' ? 'the hub manager at policy creation' : 'the strategist at execution'}, ` +
+          `not by the enclosing workflow`
+      )
+    }
+    if (kind !== 'param' && kind !== 'pinned') continue
+    if (!boundValue.startsWith('$')) continue
+
+    const parentName = boundValue.slice(1)
+    const parentValue = parentVariables[parentName]
+    if (parentValue !== undefined) scope[parentName] = parentValue
+  }
+
+  return scope
+}
+
 function applyUseTemplateMap(actions: CatalogAction[], variableMap: Record<string, string>): CatalogAction[] {
   return actions.map((action) => ({
     ...action,
@@ -160,6 +209,22 @@ function applyUseTemplateMap(actions: CatalogAction[], variableMap: Record<strin
     inputs: action.inputs.map((input) => ({
       ...input,
       input: (input.input ?? []).map((value) => mapTemplateReference(value, variableMap)),
+      // A nested callback's own bindings are references in this scope too. Rebinding only `input`
+      // and `target` stopped at the first `useTemplate` layer, so a callback-of-callback resolved
+      // its map against the wrong scope and bound different values than the layer above intended.
+      ...(input.useTemplate
+        ? {
+            useTemplate: {
+              ...input.useTemplate,
+              map: Object.fromEntries(
+                Object.entries(input.useTemplate.map ?? {}).map(([key, value]) => [
+                  key,
+                  mapTemplateReference(value, variableMap),
+                ])
+              ),
+            },
+          }
+        : {}),
     })),
   }))
 }
@@ -599,13 +664,32 @@ export function buildWorkflowDefinitionFromCatalog(
           )
         }
 
+        // The child's scope is its own: only the values the parent passes through
+        // `useTemplate.map`, and only for names the child declares as `pinned`. Spreading the
+        // parent workflow (and with it `workflow.variables`) let a colliding outer key resolve a
+        // child slot to a pinned literal ahead of the kind the child declared — so a
+        // `configurable` value the hub manager believes they are setting, or a `runtime` value the
+        // strategist supplies, was silently replaced by whatever the catalog author wrote, inside
+        // callback bytes that the review surface does not expand.
+        const childVariables = childScopeVariables(
+          workflow.variables ?? {},
+          template,
+          inp.useTemplate.map ?? {},
+          `workflow "${workflow.workflowRef}" action ${actionIndex} input ${inputIndex}`
+        )
+
         const templateWorkflow: MarketplaceWorkflow = {
-          ...workflow,
           workflowRef: `${workflow.workflowRef}:${templateName}:${actionIndex}:${inputIndex}`,
           name: `${workflow.name} callback`,
           template: templateName,
+          category: workflow.category,
+          group: workflow.group,
+          chainId: workflow.chainId,
+          workspace: workflow.workspace,
+          version: workflow.version,
           workflowId: '',
           templates,
+          variables: childVariables,
           actions: applyUseTemplateMap(template.actions, inp.useTemplate.map ?? {}),
           runtimeVariables: (template.variables ?? []).filter((v) => v.kind === 'runtime').map((v) => v.name),
         }
