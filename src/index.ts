@@ -114,6 +114,7 @@ export type { Callback } from './utils/scriptHash.js'
 export { MAGIC_VARIABLE_KEYS, resolveMagicVariables, resolveVariableLabel } from './utils/variables.js'
 export type { MagicVariableContext, MagicVariableKey } from './utils/variables.js'
 export { buildWorkflowDefinitionFromCatalog, parseMarketplaceCatalog } from './utils/catalog.js'
+export type { BuildWorkflowDefinitionFromCatalogOptions } from './utils/catalog.js'
 export { assertCidMatchesContent, canonicalCids, cidMatchesContent } from './utils/cid.js'
 export {
   checkActionSelectorSchema,
