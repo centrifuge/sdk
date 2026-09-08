@@ -117,6 +117,7 @@ export { buildWorkflowDefinitionFromCatalog, parseMarketplaceCatalog } from './u
 export { assertCidMatchesContent, canonicalCids, cidMatchesContent } from './utils/cid.js'
 export {
   checkActionSelectorSchema,
+  checkAddressLiterals,
   checkDuplicateWorkflowIds,
   checkRawCalldataTaint,
   checkTemplateIsNotUseOnly,

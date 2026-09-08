@@ -2,6 +2,7 @@ import { expect } from 'chai'
 import type { CatalogAction, CatalogTemplate } from '../types/workflow.js'
 import {
   checkActionSelectorSchema,
+  checkAddressLiterals,
   checkNoDeclaredRawMode,
   checkNoForwardReferences,
   checkReturnsDoNotShadow,
@@ -413,6 +414,47 @@ describe('utils/workflowRules', () => {
       expect(
         validateCatalogWorkflow({ id: 'a', template: 'deposit', variables: { router: '0x00' } }, templates)
       ).to.deep.equal([])
+    })
+  })
+
+  describe('checkAddressLiterals', () => {
+    const action = (parameter: string, value: unknown) => ({
+      name: 'Act',
+      selector: `function f(${parameter})`,
+      inputs: [{ parameter, label: 'Receiver', input: value === undefined ? [] : [value] }],
+    })
+
+    it('accepts a 20-byte address literal', () => {
+      expect(checkAddressLiterals(action('address', '0x1111111111111111111111111111111111111111'), 'a')).to.deep.equal(
+        []
+      )
+    })
+
+    it('accepts a left-padded 32-byte word carrying an address', () => {
+      expect(checkAddressLiterals(action('address', `0x${'0'.repeat(24)}${'1'.repeat(40)}`), 'a')).to.deep.equal([])
+    })
+
+    it('rejects a malformed address literal', () => {
+      // Pinned at publish time and never checked against the ABI, so a short or mis-shaped literal
+      // encodes as a different account than the catalog appears to name.
+      const short = checkAddressLiterals(action('address', '0xdead'), 'a')
+      expect(short).to.have.length(1)
+      expect(short[0]!.rule).to.equal('address-literal')
+      expect(checkAddressLiterals(action('address', '12345'), 'a')).to.have.length(1)
+      // A 32-byte word whose high bytes are not zero is not a padded address.
+      expect(checkAddressLiterals(action('address', `0x${'1'.repeat(64)}`), 'a')).to.have.length(1)
+    })
+
+    it('leaves $references alone', () => {
+      // Their values arrive per workflow, per policy or per execution, and the encoder rejects a
+      // non-address there. Only literals are decidable from the template.
+      expect(checkAddressLiterals(action('address', '$receiver'), 'a')).to.deep.equal([])
+      expect(checkAddressLiterals(action('address', undefined), 'a')).to.deep.equal([])
+    })
+
+    it('ignores non-address parameters', () => {
+      expect(checkAddressLiterals(action('uint256', '12345'), 'a')).to.deep.equal([])
+      expect(checkAddressLiterals(action('bytes32', '0xdead'), 'a')).to.deep.equal([])
     })
   })
 })

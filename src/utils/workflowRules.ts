@@ -32,6 +32,13 @@ export interface SelectorAction {
   inputs?: { parameter: string }[]
 }
 
+/** Action shape for value-level input rules: the parameter plus what was pinned into it. */
+export interface SelectorActionWithInputs {
+  name?: string
+  selector?: unknown
+  inputs?: { parameter: string; label?: string; input?: unknown[] }[]
+}
+
 /** The template shape the taint walk reads. Structural, so an authoring template fits too. */
 export interface TaintTemplate {
   id?: string
@@ -104,6 +111,50 @@ export function parseSelectorParameters(selector: string): string[] | null {
  * that the selected function never consumes, or a field rendered as a `uint256` that lands in
  * an `address` position.
  */
+/**
+ * An `address`-typed input must carry something address-shaped.
+ *
+ * A literal in an address slot is pinned at publish time and never reviewed against the ABI, so a
+ * malformed one — a short hex string, a decimal, a 32-byte word that isn't a left-padded address —
+ * encodes as a different account than the catalog appears to name. `checkActionSelectorSchema`
+ * proves the *types* line up with the selector; this proves the pinned *values* do.
+ *
+ * `$references` are not resolved here: their values arrive per workflow (`pinned`), per policy
+ * (`configurable`) or per execution (`runtime`), and the encoder rejects a non-address at that
+ * point. Only literals are decidable from the template alone.
+ *
+ * Ported from centrifuge/workflows' `checkAddressInputs`, which could only vouch for catalogs that
+ * repo built — this runs on every catalog the SDK ingests.
+ */
+export function checkAddressLiterals(action: SelectorActionWithInputs, describe: string): RuleViolation[] {
+  const violations: RuleViolation[] = []
+
+  for (const [index, input] of (action.inputs ?? []).entries()) {
+    if (!isAddressParameter(input.parameter)) continue
+    const value = input.input?.[0]
+    if (typeof value !== 'string' || value === '' || value.startsWith('$')) continue
+    if (!isAddressLikeLiteral(value)) {
+      violations.push({
+        rule: 'address-literal',
+        message: `${describe} input ${index} ("${input.label ?? input.parameter}") is an address parameter with a non-address literal: "${value}"`,
+      })
+    }
+  }
+
+  return violations
+}
+
+/** `address`, and the tuple-array forms whose members are addresses. */
+function isAddressParameter(parameter: string): boolean {
+  return parameter === 'address' || parameter === 'address[]'
+}
+
+/** A 20-byte address, or a left-padded 32-byte word carrying one. */
+function isAddressLikeLiteral(value: string): boolean {
+  if (/^0x[0-9a-fA-F]{40}$/.test(value)) return true
+  return /^0x0{24}[0-9a-fA-F]{40}$/.test(value)
+}
+
 export function checkActionSelectorSchema(action: SelectorAction, describe: string): RuleViolation[] {
   const selector = action.selector
 
@@ -472,6 +523,7 @@ function templateViolations(templateName: string, template: CatalogTemplate): Ru
 
   for (const [index, action] of (template.actions ?? []).entries()) {
     violations.push(...checkActionSelectorSchema(action, describeAction(index)))
+    violations.push(...checkAddressLiterals(action as SelectorActionWithInputs, describeAction(index)))
   }
 
   return violations
