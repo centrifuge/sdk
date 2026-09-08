@@ -474,3 +474,136 @@ describe('utils/catalog — parseMarketplaceCatalog', () => {
     expect(() => parseMarketplaceCatalog(cat)).to.throw(/invalid workflowId/)
   })
 })
+
+describe('utils/catalog — catalog integrity hardening', () => {
+  describe('returns / slot canonicalization', () => {
+    it('rejects one variable reused under incompatible ABI types', () => {
+      // One 32-byte word reviewed as a uint256 and consumed downstream as an address.
+      const workflow = tagged(
+        'retype',
+        [
+          { name: 'router', kind: 'pinned' },
+          { name: 'x', kind: 'runtime' },
+        ],
+        [
+          {
+            target: '$router',
+            selector: 'function a(uint256)',
+            inputs: [{ parameter: 'uint256', label: 'Amount', input: ['$x'] }],
+          },
+          {
+            target: '$router',
+            selector: 'function b(address)',
+            inputs: [{ parameter: 'address', label: 'Recipient', input: ['$x'] }],
+          },
+        ],
+        { router: ADDRESS_A }
+      )
+
+      expect(() => buildWorkflowDefinitionFromCatalog(workflow)).to.throw(/incompatible parameter types/)
+    })
+
+    it('still allows one variable reused at the same ABI type', () => {
+      const workflow = tagged(
+        'reuse',
+        [
+          { name: 'router', kind: 'pinned' },
+          { name: 'amount', kind: 'runtime' },
+        ],
+        [
+          {
+            target: '$router',
+            selector: 'function a(uint256)',
+            inputs: [{ parameter: 'uint256', label: 'Amount', input: ['$amount'] }],
+          },
+          {
+            target: '$router',
+            selector: 'function b(uint256)',
+            inputs: [{ parameter: 'uint256', label: 'Amount again', input: ['$amount'] }],
+          },
+        ],
+        { router: ADDRESS_A }
+      )
+
+      const definition = buildWorkflowDefinitionFromCatalog(workflow)
+      expect(definition.runtimeVariables).to.deep.equal(['amount'])
+      expect(definition.state.filter((slot) => slot.type === 'runtime')).to.have.length(1)
+    })
+
+    it('rejects a template variable in the reserved payable-value namespace', () => {
+      const workflow = tagged(
+        'reserved',
+        [
+          { name: 'router', kind: 'pinned' },
+          { name: '__sdk_payable_value:0', kind: 'runtime' },
+        ],
+        [
+          {
+            target: '$router',
+            selector: 'function pay(uint256)',
+            inputs: [{ parameter: 'uint256', label: 'Amount', input: ['$__sdk_payable_value:0'] }],
+          },
+        ],
+        { router: ADDRESS_A }
+      )
+
+      expect(() => buildWorkflowDefinitionFromCatalog(workflow)).to.throw(/reserved "__sdk_payable_value:" prefix/)
+    })
+  })
+
+  describe('raw calldata assembly', () => {
+    const tupleArrayAction = (kind: CatalogVariable['kind']) =>
+      tagged(
+        'raw',
+        [
+          { name: 'guard', kind: 'pinned' },
+          { name: 'pairs', kind },
+        ],
+        [
+          {
+            target: '$guard',
+            selector: 'function checkZeroAllowances((address,address)[])',
+            inputs: [{ parameter: '(address,address)[]', label: 'Pairs', input: ['$pairs'] }],
+          },
+        ],
+        kind === 'pinned' ? { guard: ADDRESS_A, pairs: `[["${ADDRESS_B}","${ADDRESS_C}"]]` } : { guard: ADDRESS_A }
+      )
+
+    it('rejects a runtime source for a raw-calldata input', () => {
+      // The assembled slot carries the whole call including its selector; leaving it unpinned
+      // hands the strategist an arbitrary selector against the pinned target.
+      expect(() => buildWorkflowDefinitionFromCatalog(tupleArrayAction('runtime'))).to.throw(
+        /is a runtime source for raw calldata assembly/
+      )
+    })
+
+    it('accepts a configurable source for the same input', () => {
+      const definition = buildWorkflowDefinitionFromCatalog(tupleArrayAction('configurable'))
+      expect(definition.state.some((slot) => slot.type === 'rawcalldata')).to.equal(true)
+    })
+
+    it('rejects raw calldata assembly combined with valueNonZero', () => {
+      // Both the forwarded ETH and the calldata blob would sit outside the Merkle leaf.
+      const workflow = tagged(
+        'raw-value',
+        [
+          { name: 'router', kind: 'pinned' },
+          { name: 'pairs', kind: 'configurable' },
+        ],
+        [
+          {
+            target: '$router',
+            selector: 'function forward((address,address)[])',
+            valueNonZero: true,
+            inputs: [{ parameter: '(address,address)[]', label: 'Pairs', input: ['$pairs'] }],
+          },
+        ],
+        { router: ADDRESS_A }
+      )
+
+      expect(() => buildWorkflowDefinitionFromCatalog(workflow)).to.throw(
+        /combines raw calldata assembly with valueNonZero/
+      )
+    })
+  })
+})

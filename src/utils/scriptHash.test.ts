@@ -100,13 +100,11 @@ describe('utils/scriptHash', () => {
       const bitmap = 5n // bits 0 and 2 set
       const state1: HexString[] = [SLOT_A, SLOT_B, SLOT_C]
       const state2: HexString[] = [SLOT_A, SLOT_C, SLOT_C] // slot 1 changed to C
-      expect(computeScriptHash([CMD], state1, bitmap, []))
-        .to.equal(computeScriptHash([CMD], state2, bitmap, []))
+      expect(computeScriptHash([CMD], state1, bitmap, [])).to.equal(computeScriptHash([CMD], state2, bitmap, []))
 
       // But changing slot 0 (A, pinned) must change the hash
       const state3: HexString[] = [SLOT_B, SLOT_B, SLOT_C] // slot 0 changed to B
-      expect(computeScriptHash([CMD], state1, bitmap, []))
-        .to.not.equal(computeScriptHash([CMD], state3, bitmap, []))
+      expect(computeScriptHash([CMD], state1, bitmap, [])).to.not.equal(computeScriptHash([CMD], state3, bitmap, []))
     })
   })
 })

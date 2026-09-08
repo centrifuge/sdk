@@ -98,7 +98,10 @@ describe('describeCrosschainMessage', () => {
 
   it('aligns Request/RequestCallback labels with the app order vocabulary', () => {
     const request = (type: string) =>
-      describeCrosschainMessage({ messageType: 'Request', data: { decodedPayload: { type, data: { investor: ADDRESS } } } })
+      describeCrosschainMessage({
+        messageType: 'Request',
+        data: { decodedPayload: { type, data: { investor: ADDRESS } } },
+      })
     const callback = (type: string) =>
       describeCrosschainMessage({ messageType: 'RequestCallback', data: { decodedPayload: { type } } })
     // A deposit/redeem request reads as an investment/redemption.

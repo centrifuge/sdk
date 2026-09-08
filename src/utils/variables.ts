@@ -143,9 +143,7 @@ export function resolveVariableLabel(
 
   // Normalised lookup (case-insensitive for addresses)
   const explicit =
-    addressLabels?.[value] ??
-    addressLabels?.[value.toLowerCase()] ??
-    addressLabels?.[value.toUpperCase()]
+    addressLabels?.[value] ?? addressLabels?.[value.toLowerCase()] ?? addressLabels?.[value.toUpperCase()]
 
   if (explicit !== undefined) {
     return { value, label: explicit }

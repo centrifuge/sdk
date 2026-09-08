@@ -168,6 +168,25 @@ export function fillRuntimeSlots(
     }
   }
 
+  // Only the declared runtime variables — plus the system slots the SDK fills itself, which
+  // are deliberately kept out of runtimeVariables — may be written. Accepting any other key
+  // would let a caller populate a slot the review surface never showed, which is how a
+  // workflow ends up executing with values nobody approved. Runs whether or not the
+  // definition declares `runtimeVariables`: a definition assembled outside
+  // buildWorkflowDefinitionFromCatalog is exactly the case worth checking, and it falls back
+  // to the slots that actually exist so a hand-built definition still fills its own state.
+  const runtimeSlots = workflow.state.filter(
+    (slot): slot is Extract<WorkflowStateSlot, { type: 'runtime' }> => slot.type === 'runtime'
+  )
+  const writable = new Set(workflow.runtimeVariables ?? runtimeSlots.map((slot) => slot.key))
+  for (const slot of runtimeSlots) {
+    if (slot.system !== undefined) writable.add(slot.key)
+  }
+  const unexpected = Object.keys(runtimeValues).filter((key) => !writable.has(key))
+  if (unexpected.length > 0) {
+    throw new Error(`fillRuntimeSlots: unexpected runtime values for: ${unexpected.map((k) => `"${k}"`).join(', ')}`)
+  }
+
   const nextState = state.map((slot, i) => {
     const def = workflow.state[i]
     if (!def || def.type !== 'runtime') return slot
@@ -521,12 +540,17 @@ export function buildScript(
       state.push(value)
       stateBitmap |= 1n << BigInt(i)
     } else if (slot.type === 'rawcalldata') {
-      if (canAssembleRawCalldataAtBuildTime(workflow, slot.sourceSlots)) {
-        state.push(assembleRawCalldataSlot(state, workflow, slot))
-        stateBitmap |= 1n << BigInt(i)
-      } else {
-        state.push(EMPTY_BYTES)
+      // A raw-calldata slot that cannot be assembled now stays unpinned, which means the caller
+      // supplies the entire call — selector included — against a pinned target, with the Merkle
+      // proof still valid. buildWorkflowDefinitionFromCatalog rejects runtime sources for these
+      // slots; fail here too so a definition assembled by any other route cannot reach execute.
+      if (!canAssembleRawCalldataAtBuildTime(workflow, slot.sourceSlots)) {
+        throw new Error(
+          `buildScript: workflow "${workflow.workflowRef}" raw calldata slot ${i} (action ${slot.actionIndex ?? '?'}) depends on a runtime value — the assembled calldata could not be pinned in the state bitmap`
+        )
       }
+      state.push(assembleRawCalldataSlot(state, workflow, slot))
+      stateBitmap |= 1n << BigInt(i)
     } else if (slot.type === 'template') {
       state.push(buildTemplateSlot(workflow, slot, context))
       stateBitmap |= 1n << BigInt(i)

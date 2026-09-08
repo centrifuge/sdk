@@ -1,12 +1,16 @@
 import type { SimpleMerkleTree } from '@openzeppelin/merkle-tree'
 import { combineLatest, firstValueFrom, from, map, switchMap } from 'rxjs'
-import { encodeFunctionData, parseAbi, toHex } from 'viem'
+import { encodeFunctionData, toHex } from 'viem'
 import { ABI } from '../abi/index.js'
 import type { Centrifuge } from '../Centrifuge.js'
 import type { HexString } from '../types/index.js'
 import { addressToBytes32, encode } from '../utils/index.js'
 import type { Callback } from '../utils/scriptHash.js'
-import { buildWorkflowExecuteParams, computeWorkflowGroupScriptHashes, type PolicyEntryInput } from '../utils/workflowExecute.js'
+import {
+  buildWorkflowExecuteParams,
+  computeWorkflowGroupScriptHashes,
+  type PolicyEntryInput,
+} from '../utils/workflowExecute.js'
 import { wrapTransaction } from '../utils/transaction.js'
 import { MessageType } from '../types/transaction.js'
 import { Entity } from './Entity.js'
@@ -22,7 +26,10 @@ export class OnchainPM extends Entity {
     public network: PoolNetwork,
     address: HexString
   ) {
-    super(_root, ['onchainPM', network.centrifugeId, network.pool.id.toString()])
+    // The address is part of the key: a pool's OnchainPM is a CREATE2 address, but a factory
+    // redeploy (or an address resolved some other way) gives a second instance for the same
+    // pool and chain, and without it the newer instance would serve the older one's cached root.
+    super(_root, ['onchainPM', network.centrifugeId, network.pool.id.toString(), address.toLowerCase()])
     this.address = address.toLowerCase() as HexString
   }
 
@@ -62,7 +69,7 @@ export class OnchainPM extends Entity {
           from(
             client.readContract({
               address: accountingToken,
-              abi: parseAbi(['function minters(uint64, address) view returns (bool)']),
+              abi: ABI.AccountingToken,
               functionName: 'minters',
               args: [self.network.pool.id.raw, self.address],
             })
@@ -89,7 +96,13 @@ export class OnchainPM extends Entity {
    * ```
    */
   execute(
-    params: { commands: HexString[]; state: HexString[]; stateBitmap: bigint; callbacks: Callback[]; proof: HexString[] },
+    params: {
+      commands: HexString[]
+      state: HexString[]
+      stateBitmap: bigint
+      callbacks: Callback[]
+      proof: HexString[]
+    },
     options: { simulate?: boolean; value?: bigint } = {}
   ) {
     const self = this
@@ -316,7 +329,9 @@ export class OnchainPM extends Entity {
       yield* wrapTransaction('Update workflow policy', ctx, {
         contract: hub,
         data: calldata,
-        messages: { [self.network.centrifugeId]: [{ type: MessageType.TrustedContractUpdate, poolId: self.network.pool.id }] },
+        messages: {
+          [self.network.centrifugeId]: [{ type: MessageType.TrustedContractUpdate, poolId: self.network.pool.id }],
+        },
       })
     }, this.network.pool.centrifugeId)
   }

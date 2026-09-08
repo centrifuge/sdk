@@ -509,7 +509,9 @@ describe('parsePoolMetadataV2', () => {
     const ok = clone(mockPoolMetadataV2)
     ;(ok.pool.factsheet!.body[0] as Record<string, unknown>).subtitle = 'A block subtitle'
     ok.pool.factsheet!.keyFacts[0]!.subtitle = 'A group subtitle'
-    const tabGroup = ok.pool.factsheet!.body.find((b) => b.id === 'tabs') as { tabs: { block: Record<string, unknown> }[] }
+    const tabGroup = ok.pool.factsheet!.body.find((b) => b.id === 'tabs') as {
+      tabs: { block: Record<string, unknown> }[]
+    }
     tabGroup.tabs[0]!.block.subtitle = 'A tab subtitle'
     expect(() => parsePoolMetadataV2(ok)).to.not.throw()
   })
@@ -528,7 +530,9 @@ describe('parsePoolMetadataV2', () => {
 
   it('rejects a non-string subtitle inside a tab block', () => {
     const bad = clone(mockPoolMetadataV2)
-    const tabGroup = bad.pool.factsheet!.body.find((b) => b.id === 'tabs') as { tabs: { block: Record<string, unknown> }[] }
+    const tabGroup = bad.pool.factsheet!.body.find((b) => b.id === 'tabs') as {
+      tabs: { block: Record<string, unknown> }[]
+    }
     tabGroup.tabs[0]!.block.subtitle = 123
     expect(() => parsePoolMetadataV2(bad)).to.throw(/subtitle/)
   })

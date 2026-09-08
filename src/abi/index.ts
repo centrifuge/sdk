@@ -1,7 +1,8 @@
 import { parseAbi } from 'viem'
 import AccountingAbi from './Accounting.abi.js'
+import AccountingTokenAbi from './AccountingToken.abi.js'
 import AsyncRequestsAbi from './AsyncRequestManager.abi.js'
-import AsyncVaultAbit from './AsyncVault.abi.js'
+import AsyncVaultAbi from './AsyncVault.abi.js'
 import BalanceSheetAbi from './BalanceSheet.abi.js'
 import BatchRequestManagerAbi from './BatchRequestManager.abi.js'
 import CurrencyAbi from './Currency.abi.js'
@@ -42,12 +43,13 @@ export const ABI = {
   ERC6909: parseAbi(ERC6909Abi),
   RestrictionManager: parseAbi(RestrictionManagerAbi),
   MerkleProofManager: parseAbi(MerkleProofManagerAbi),
-  AsyncVault: parseAbi(AsyncVaultAbit),
+  AsyncVault: parseAbi(AsyncVaultAbi),
   Spoke: parseAbi(SpokeAbi),
   VaultRegistry: parseAbi(VaultRegistryAbi),
   Gateway: parseAbi(GatewayAbi),
   VaultRouter: parseAbi(VaultRouterAbi),
   Accounting: parseAbi(AccountingAbi),
+  AccountingToken: parseAbi(AccountingTokenAbi),
   Holdings: parseAbi(HoldingsAbi),
   Valuation: parseAbi(ValuationAbi),
   SyncManager: parseAbi(SyncManagerAbi),

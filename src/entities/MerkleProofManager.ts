@@ -39,7 +39,9 @@ export class MerkleProofManager extends Entity {
     public network: PoolNetwork,
     address: HexString
   ) {
-    super(_root, ['merkleProofManager', network.centrifugeId, network.pool.id.toString()])
+    // Keyed by address too — see the note in OnchainPM: two managers for one pool and chain
+    // must not share cache entries.
+    super(_root, ['merkleProofManager', network.centrifugeId, network.pool.id.toString(), address.toLowerCase()])
     this.pool = network.pool
     this.address = address.toLowerCase() as HexString
   }
@@ -636,6 +638,9 @@ async function getEncodedArgs(
         },
       ]
 
+      // The ABI is built at runtime from `policy.selector` — the decoder exposes one function per
+      // whitelisted call, so there is no fixed ABI to register. The outputs are overridden above because
+      // the decoder returns the packed addresses rather than the target's own return type.
       const encoded = await client.readContract({
         address: policy.decoder,
         abi: [abi],
@@ -767,7 +772,10 @@ function arePoliciesEquivalent(
   leftPolicy: MerkleProofPolicy | MerkleProofPolicyInput,
   rightPolicy: MerkleProofPolicy | MerkleProofPolicyInput
 ) {
-  return JSON.stringify(normalizePolicyForVerification(leftPolicy)) === JSON.stringify(normalizePolicyForVerification(rightPolicy))
+  return (
+    JSON.stringify(normalizePolicyForVerification(leftPolicy)) ===
+    JSON.stringify(normalizePolicyForVerification(rightPolicy))
+  )
 }
 
 function isDuplicateWorkflow(

@@ -8,13 +8,13 @@ import type { PoolMetadata } from '../types/poolMetadata.js'
 // ---------------------------------------------------------------------------
 
 const CTX: MagicVariableContext = {
-  executor:              '0x000000000000000000000000aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
-  poolEscrow:            '0x000000000000000000000000bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb',
-  onOffRamp:             '0x000000000000000000000000cccccccccccccccccccccccccccccccccccccccc',
-  poolId:                '0x0000000000000000000000000000000000000000000000000000000000000001',
-  scId:                  '0x0001000000000001000000000000000100000000000000000000000000000000',
-  accountingTokenId:     '0x0000000000000000000000000000000000000000000000000000000000000002',
-  accountingTokenAssetId:'0x0000000000000000000000000000000000000000000000000000000000000003',
+  executor: '0x000000000000000000000000aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+  poolEscrow: '0x000000000000000000000000bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb',
+  onOffRamp: '0x000000000000000000000000cccccccccccccccccccccccccccccccccccccccc',
+  poolId: '0x0000000000000000000000000000000000000000000000000000000000000001',
+  scId: '0x0001000000000001000000000000000100000000000000000000000000000000',
+  accountingTokenId: '0x0000000000000000000000000000000000000000000000000000000000000002',
+  accountingTokenAssetId: '0x0000000000000000000000000000000000000000000000000000000000000003',
 }
 
 // Minimal pool metadata

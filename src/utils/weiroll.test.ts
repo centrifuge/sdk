@@ -513,5 +513,66 @@ describe('utils/weiroll', () => {
       expect(filled[0]).to.equal(RUNTIME_VALUE)
       expect(filled[1]).to.equal(concat([SELECTOR, RUNTIME_VALUE]))
     })
+
+    it('rejects runtime values for keys the workflow never declared', () => {
+      // A key outside runtimeVariables backs a slot the review surface never showed, so
+      // accepting it would execute with a value nobody approved.
+      const workflow: WorkflowDefinition = {
+        workflowRef: 'undeclared',
+        actions: [],
+        state: [{ type: 'runtime', key: 'amount', parameter: 'uint256' }],
+        runtimeVariables: ['amount'],
+      }
+
+      expect(() => fillRuntimeSlots([EMPTY], workflow, { amount: RUNTIME_VALUE, recipient: RUNTIME_VALUE })).to.throw(
+        /unexpected runtime values for: "recipient"/
+      )
+    })
+
+    it('still accepts the SDK-internal payable-value slot, which is not a declared variable', () => {
+      const workflow: WorkflowDefinition = {
+        workflowRef: 'payable',
+        actions: [],
+        state: [
+          { type: 'runtime', key: 'amount', parameter: 'uint256' },
+          { type: 'runtime', key: '__sdk_payable_value:0', parameter: 'uint256', system: 'payableValue' },
+        ],
+        runtimeVariables: ['amount'],
+      }
+
+      const filled = fillRuntimeSlots([EMPTY, EMPTY], workflow, {
+        amount: RUNTIME_VALUE,
+        '__sdk_payable_value:0': RUNTIME_VALUE,
+      })
+      expect(filled[1]).to.equal(RUNTIME_VALUE)
+    })
+  })
+
+  describe('buildScript raw calldata pinning', () => {
+    it('refuses to build a script whose raw calldata depends on a runtime value', () => {
+      // An unassembled raw slot stays out of the state bitmap, so the caller supplies the whole
+      // call — selector included — against a pinned target with the proof still valid.
+      const workflow: WorkflowDefinition = {
+        workflowRef: 'unpinnable-raw',
+        actions: [
+          { target: TARGET_A, selector: SELECTOR, callType: CALL, inputs: [1], output: UNUSED_SLOT, rawMode: true },
+        ],
+        state: [
+          { type: 'runtime', key: 'amount', parameter: 'uint256' },
+          {
+            type: 'rawcalldata',
+            selector: SELECTOR,
+            parameterTypes: ['uint256'],
+            sourceSlots: [0],
+            actionIndex: 0,
+          },
+        ],
+        runtimeVariables: ['amount'],
+      }
+
+      expect(() => buildScript(workflow, { poolContext: {}, configurableValues: {} })).to.throw(
+        /depends on a runtime value/
+      )
+    })
   })
 })

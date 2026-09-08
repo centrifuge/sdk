@@ -46,6 +46,8 @@ export type {
   ActionDefinition,
   CatalogAction,
   CatalogActionInput,
+  CatalogTemplate,
+  CatalogVariable,
   InputDefinition,
   MarketplaceWorkflow,
   RuntimeVariable,
@@ -111,6 +113,24 @@ export type { Callback } from './utils/scriptHash.js'
 export { MAGIC_VARIABLE_KEYS, resolveMagicVariables, resolveVariableLabel } from './utils/variables.js'
 export type { MagicVariableContext, MagicVariableKey } from './utils/variables.js'
 export { buildWorkflowDefinitionFromCatalog, parseMarketplaceCatalog } from './utils/catalog.js'
+export { assertCidMatchesContent, canonicalCids, cidMatchesContent } from './utils/cid.js'
+export {
+  checkActionSelectorSchema,
+  checkDuplicateWorkflowIds,
+  checkRawCalldataTaint,
+  checkTemplateIsNotUseOnly,
+  checkWorkflowVariableKinds,
+  parseSelectorParameters,
+  validateCatalogWorkflow,
+} from './utils/workflowRules.js'
+export type {
+  CatalogWorkflowEntry,
+  DeclaringTemplate,
+  RuleViolation,
+  SelectorAction,
+  TaintTemplate,
+} from './utils/workflowRules.js'
+export { MAGIC_VARIABLE_NAMES } from './utils/workflowRules.js'
 export type { ParsedMarketplaceCatalog } from './utils/catalog.js'
 export {
   applyWorkflowExclusions,

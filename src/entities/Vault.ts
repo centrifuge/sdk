@@ -297,8 +297,7 @@ export class Vault extends Entity {
       if (!isSyncDeposit) throw new Error('Vault does not support synchronous deposits')
 
       const { asset, assetBalance, assetAllowance, isAllowedToDeposit } = investment
-      const supportsPermit =
-        asset.supportsPermit && signingAddressCode === undefined && !self._root.permitDisabled
+      const supportsPermit = asset.supportsPermit && signingAddressCode === undefined && !self._root.permitDisabled
       const needsApproval = assetAllowance.lt(amount)
 
       if (!isAllowedToDeposit) throw new Error('Not allowed to deposit')
@@ -366,8 +365,7 @@ export class Vault extends Entity {
       if (isSyncDeposit) throw new Error('Vault does not support asynchronous deposits')
 
       const { asset, assetBalance, assetAllowance, isAllowedToDeposit } = investment
-      const supportsPermit =
-        asset.supportsPermit && signingAddressCode === undefined && !self._root.permitDisabled
+      const supportsPermit = asset.supportsPermit && signingAddressCode === undefined && !self._root.permitDisabled
       const needsApproval = assetAllowance.lt(amount)
 
       if (!isAllowedToDeposit) throw new Error('Not allowed to deposit')

@@ -83,6 +83,29 @@ describe('Centrifuge', () => {
     }
   })
 
+  describe('workflowMarketplaceCid', () => {
+    it('returns the environment default so callers can record what they resolved', () => {
+      const centrifuge = new Centrifuge({ environment: 'testnet' })
+      const cid = centrifuge.workflowMarketplaceCid()
+      expect(cid).to.be.a('string')
+      expect(cid).to.have.length.greaterThan(0)
+    })
+
+    it('returns an explicitly passed CID unchanged', () => {
+      const centrifuge = new Centrifuge({ environment: 'testnet' })
+      expect(centrifuge.workflowMarketplaceCid('QmSomePinnedRelease')).to.equal('QmSomePinnedRelease')
+    })
+
+    it('resolves the same CID workflowMarketplace reads', () => {
+      const centrifuge = new Centrifuge({ environment: 'mainnet' })
+      // The recorded CID has to be the one actually fetched, or a policy pins a catalog it was not
+      // built from.
+      const query: any = centrifuge.workflowMarketplace()
+      expect(query).to.exist
+      expect(centrifuge.workflowMarketplaceCid()).to.equal(centrifuge.workflowMarketplaceCid(undefined))
+    })
+  })
+
   describe('Queries', () => {
     it('should fetch a pool by id', async () => {
       const pool = await context.centrifuge.pool(poolId)

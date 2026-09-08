@@ -76,6 +76,7 @@ import {
 } from './types/transaction.js'
 import { Balance } from './utils/BigInt.js'
 import { parseMarketplaceCatalog } from './utils/catalog.js'
+import { assertCidMatchesContent } from './utils/cid.js'
 import { assertCrosschainMessagingEnabled } from './utils/crosschainHotfix.js'
 import { addEstimateBuffer, estimateBatchBridgeFee } from './utils/gas.js'
 import { generateShareClassSalt, randomUint } from './utils/index.js'
@@ -96,9 +97,24 @@ const PINNING_API = 'https://pinning.centrifugelabs.io'
 
 // Update when centrifuge/workflows cuts a new release
 // CIDs are in the GitHub release notes: https://github.com/centrifuge/workflows/releases
+/**
+ * The `uint128` asset-id overload of HubRegistry's three same-arity `decimals` functions. Not
+ * cosmetic: handed the full ABI, viem resolves a `bigint` to the narrowest matching overload
+ * (`uint64`) and then throws `IntegerOutOfRangeError` for every real asset id, which are
+ * 128-bit. Same treatment as `POOL_DECIMALS_ABI` in Pool.ts — narrow the registered ABI rather
+ * than restate the signature inline, so the selector is explicit and the signature has one home.
+ */
+const ASSET_DECIMALS_ABI = ABI.HubRegistry.filter(
+  (item) => item.type === 'function' && item.name === 'decimals' && item.inputs[0]?.type === 'uint128'
+)
+
 const WORKFLOW_MARKETPLACE_CID: Record<string, string> = {
-  mainnet: 'QmXeT1GeuHPu7SE7pzPwRKePJLCfsHfzdXqDSVx9FW4Cc8',
-  testnet: 'QmeU777tCRH46MCWbdtrb6RdNoL8yaZBhS8FnjXA4V6vqY',
+  // Canonical-layout releases from centrifuge/workflows#98. The previous pins predate that PR's
+  // publish gate and do not reproduce under canonical UnixFS parameters, so `assertCidMatchesContent`
+  // below rejects them — with verification on, a non-canonical pin means the app refuses its own
+  // catalog. Any future bump has to come from a publish run whose `verify:cid` gate passed.
+  mainnet: 'bafybeigarcbuopdukqyxrnjcadgazwinuiamz4rie4tknnxnbsur5wnwdu',
+  testnet: 'bafybeid3yry4qfoqej7y3i52cbw4hqdnl62en6mwzmkxvjahspkodghxmu',
 }
 
 const envConfig = {
@@ -844,8 +860,7 @@ export class Centrifuge {
         switchMap(([{ hubRegistry }, client]) =>
           client.readContract({
             address: hubRegistry,
-            // Use inline ABI because of function overload
-            abi: parseAbi(['function decimals(uint128) view returns (uint8)']),
+            abi: ASSET_DECIMALS_ABI,
             functionName: 'decimals',
             args: [assetId.raw],
           })
@@ -1023,6 +1038,27 @@ export class Centrifuge {
   }
 
   /**
+   * The catalog CID {@link workflowMarketplace} reads for this environment, or the one passed in.
+   *
+   * Callers that record what they resolved — a hub manager whitelisting a workflow writes it to
+   * `WorkflowPolicyEntry.catalogCid` — need the CID the SDK actually used, which is otherwise not
+   * observable: the default moves with SDK releases, so "the current default" is not a stable answer
+   * after the fact.
+   *
+   * @throws if no CID is configured for the environment and none is passed.
+   */
+  workflowMarketplaceCid(cid?: string): string {
+    const resolvedCid = cid ?? WORKFLOW_MARKETPLACE_CID[this.#config.environment] ?? ''
+    if (!resolvedCid) {
+      throw new Error(
+        `workflowMarketplace: no CID configured for environment "${this.#config.environment}". ` +
+          `Pass a CID explicitly or update WORKFLOW_MARKETPLACE_CID in Centrifuge.ts.`
+      )
+    }
+    return resolvedCid
+  }
+
+  /**
    * Fetches the centrifuge/workflows marketplace catalog from IPFS and returns
    * all non-callback workflows for the current environment.
    *
@@ -1033,20 +1069,20 @@ export class Centrifuge {
    * Callback workflows (`useTemplate` present) are filtered out automatically.
    */
   workflowMarketplace(cid?: string): Query<MarketplaceWorkflow[]> {
-    const resolvedCid = cid ?? WORKFLOW_MARKETPLACE_CID[this.#config.environment] ?? ''
-    if (!resolvedCid) {
-      throw new Error(
-        `workflowMarketplace: no CID configured for environment "${this.#config.environment}". ` +
-          `Pass a CID explicitly or update WORKFLOW_MARKETPLACE_CID in Centrifuge.ts.`
-      )
-    }
+    const resolvedCid = this.workflowMarketplaceCid(cid)
     return this._query(['workflowMarketplace', resolvedCid], () =>
       defer(async () => {
         const url = getUrlFromHash(resolvedCid, this.#config.ipfsUrl)
         if (!url) throw new Error(`workflowMarketplace: invalid CID "${resolvedCid}"`)
         const res = await fetch(url)
         if (!res.ok) throw new Error(`workflowMarketplace: IPFS fetch failed — ${res.status} ${res.statusText}`)
-        const catalog = await res.json()
+        // An IPFS gateway fetch is a plain HTTP GET: content addressing buys nothing unless the
+        // client checks it. This catalog is what strategist policy roots are derived from, so an
+        // unverified response makes a gateway compromise equivalent to choosing which scripts a
+        // manager whitelists. Verify the bytes hash to the CID before parsing or trusting them.
+        const body = new Uint8Array(await res.arrayBuffer())
+        assertCidMatchesContent(resolvedCid, body, 'workflowMarketplace')
+        const catalog = JSON.parse(new TextDecoder().decode(body))
         // Validate the untrusted catalog shape before mapping. Throws on structural /
         // integrity problems (unknown template ref, malformed variables/workflowId)
         // instead of silently coercing them through `as any`.

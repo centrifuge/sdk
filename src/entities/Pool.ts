@@ -1,5 +1,5 @@
 import { catchError, combineLatest, defer, firstValueFrom, map, of, switchMap, timeout } from 'rxjs'
-import { encodeFunctionData, fromHex, parseAbi, toHex } from 'viem'
+import { encodeFunctionData, fromHex, toHex } from 'viem'
 import { ABI } from '../abi/index.js'
 import type { Centrifuge } from '../Centrifuge.js'
 import { HexString } from '../types/index.js'
@@ -25,6 +25,18 @@ import { PoolNetwork } from './PoolNetwork.js'
 import { PoolReports } from './Reports/PoolReports.js'
 import { ShareClass } from './ShareClass.js'
 import { queryCrosschainMessages, type CrosschainMessagesFilter } from './crosschainMessages.js'
+
+/**
+ * HubRegistry declares three same-arity `decimals` overloads (`uint128` asset id, `uint256` asset,
+ * `uint64` pool id), each with its own selector. viem does resolve a `bigint` argument to the
+ * `uint64` overload today — it picks the narrowest matching numeric type, and throws rather than
+ * widening once a value exceeds it — but that is an implicit, value-range-dependent choice for a
+ * call whose selector must not move. Narrow the registered ABI to the pool-id overload instead, so
+ * the selection is explicit and the signature still has one source of truth.
+ */
+const POOL_DECIMALS_ABI = ABI.HubRegistry.filter(
+  (item) => item.type === 'function' && item.name === 'decimals' && item.inputs[0]?.type === 'uint64'
+)
 
 /**
  * In-flight state of a cross-chain adapter change. `'Enabled'` / `'Disabled'`
@@ -202,6 +214,11 @@ export class Pool extends Entity {
    * These managers can transfer funds to and from the balance sheet.
    */
   balanceSheetManagers() {
+    // Uncached on purpose: this is the set authorization checks read (`isBalanceSheetManager`), and a
+    // grant or revoke lands here between a manager acting and the UI reflecting it. A stale cached
+    // answer would either hide a live manager or vouch for a revoked one, so each subscriber reads
+    // through. The underlying `_managers()` indexer query is itself cached, so this is not a chain
+    // fetch per subscriber.
     return this._query(null, () => {
       return combineLatest([this._managers(), this._root._protocolAddresses(this.centrifugeId)]).pipe(
         map(([managers, { asyncRequestManager, syncManager }]) => {
@@ -391,9 +408,7 @@ export class Pool extends Entity {
   }
 
   /** List the workflows whitelisted for a strategist, across chains. */
-  async listWorkflows(opts: {
-    strategist: HexString
-  }): Promise<
+  async listWorkflows(opts: { strategist: HexString }): Promise<
     {
       workflowRef: string
       name: string
@@ -640,8 +655,7 @@ export class Pool extends Entity {
           defer(() =>
             client.readContract({
               address: hubRegistry,
-              // Use inline ABI because of function overload
-              abi: parseAbi(['function decimals(uint64) view returns (uint8)']),
+              abi: POOL_DECIMALS_ABI,
               functionName: 'decimals',
               args: [this.id.raw],
             })
