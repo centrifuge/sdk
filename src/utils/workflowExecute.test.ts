@@ -7,6 +7,7 @@ import type { MarketplaceWorkflow } from '../types/workflow.js'
 import {
   applyWorkflowExclusions,
   buildPreparedWorkflowDefinition,
+  computeWorkflowGroupScriptDetails,
   computeWorkflowGroupScriptHashes,
   computeWorkflowScriptHash,
   encodeConfigurableValue,
@@ -355,6 +356,98 @@ describe('utils/workflowExecute', () => {
           policy: [{ workflow: broken, configurableValues: {} }],
         })
       )
+    })
+  })
+
+  describe('recorded pool context', () => {
+    /** Needs `$onchainPM`, which can only be resolved from a chain — the mainnet failure case. */
+    const magicWorkflow = () =>
+      ({
+        workflowRef: 'needs_magic',
+        name: 'Needs magic',
+        template: 't',
+        chainId: 1,
+        variables: { target: ADDRESS_A },
+        workflowId: `0x${'0'.repeat(64)}`,
+        version: 1,
+        actions: [
+          {
+            target: '$target',
+            selector: 'function poke(address account)',
+            inputs: [{ parameter: 'account', label: 'Account', input: ['$onchainPM'] }],
+          },
+        ],
+        templates: { t: { variables: [], actions: [] } },
+      }) as unknown as MarketplaceWorkflow
+
+    const RECORDED_PM = `0x${'0'.repeat(24)}${'7'.repeat(40)}` as const
+
+    it('resolves nothing when every required magic value was recorded', async () => {
+      // The proxy throws on any access, so a passing test proves no chain resolution happened —
+      // which is the point: on mainnet `$onchainPM` cannot be resolved at all.
+      const { poolContext } = await resolveWorkflowPoolContext({
+        centrifuge: unreachableCentrifuge,
+        network: fakeNetwork(['0xsc1']),
+        workflow: magicWorkflow(),
+        workflowDef: buildPreparedWorkflowDefinition(magicWorkflow()).workflowDef,
+        strategist: ADDRESS_B,
+        recordedPoolContext: { $onchainPM: RECORDED_PM },
+      })
+      expect(poolContext.$onchainPM).to.equal(RECORDED_PM)
+    })
+
+    it('reproduces the same leaf from a recorded context as from a live one', async () => {
+      // Recording is only worth anything if the hash comes out identical.
+      const args = {
+        centrifuge: unreachableCentrifuge,
+        network: fakeNetwork(['0xsc1']),
+        strategist: ADDRESS_B,
+        policy: [{ workflow: magicWorkflow(), configurableValues: {}, poolContext: { $onchainPM: RECORDED_PM } }],
+        allowRecordedContext: true,
+      }
+      const [first] = await computeWorkflowGroupScriptDetails(args)
+      const [second] = await computeWorkflowGroupScriptDetails(args)
+      expect(first!.scriptHash).to.match(/^0x[0-9a-f]{64}$/)
+      expect(second!.scriptHash).to.equal(first!.scriptHash)
+      expect(first!.poolContext.$onchainPM).to.equal(RECORDED_PM)
+    })
+
+    it('ignores a recorded context unless the caller opts in', async () => {
+      // Root construction leaves the flag off, so a metadata-supplied address cannot reach a leaf a
+      // signature would authorize — it falls back to resolving, and here that fails loudly.
+      await rejects(
+        computeWorkflowGroupScriptDetails({
+          centrifuge: unreachableCentrifuge,
+          network: fakeNetwork(['0xsc1']),
+          strategist: ADDRESS_B,
+          policy: [{ workflow: magicWorkflow(), configurableValues: {}, poolContext: { $onchainPM: RECORDED_PM } }],
+        })
+      )
+    })
+
+    it('changes the leaf when the recorded context differs', async () => {
+      const base = {
+        centrifuge: unreachableCentrifuge,
+        network: fakeNetwork(['0xsc1']),
+        strategist: ADDRESS_B,
+        allowRecordedContext: true,
+      }
+      const [a] = await computeWorkflowGroupScriptDetails({
+        ...base,
+        policy: [{ workflow: magicWorkflow(), configurableValues: {}, poolContext: { $onchainPM: RECORDED_PM } }],
+      })
+      const [b] = await computeWorkflowGroupScriptDetails({
+        ...base,
+        policy: [
+          {
+            workflow: magicWorkflow(),
+            configurableValues: {},
+            poolContext: { $onchainPM: `0x${'0'.repeat(24)}${'8'.repeat(40)}` },
+          },
+        ],
+      })
+      // A context that didn't move the leaf would mean the address never entered the hashed script.
+      expect(b!.scriptHash).to.not.equal(a!.scriptHash)
     })
   })
 })

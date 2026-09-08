@@ -6,6 +6,7 @@ import { generateExecuteProof } from '../entities/OnchainPM.js'
 import { ABI } from '../abi/index.js'
 import type { HexString } from '../types/index.js'
 import type { MarketplaceWorkflow } from '../types/workflow.js'
+import type { MagicVariableKey } from './variables.js'
 import { MessageType } from '../types/transaction.js'
 import { AssetId, ShareClassId } from './types.js'
 import {
@@ -34,6 +35,12 @@ export type PolicyEntryInput = {
    * to build a root for signing. See `computeWorkflowGroupScriptHashes`.
    */
   scriptHash?: HexString
+  /**
+   * Magic values recorded at whitelist time (`$onchainPM`, `$poolEscrow`, `$onOffRamp`, the
+   * accounting-token ids). Honoured only when the caller opts in with `allowRecordedContext`, which
+   * verification does and root construction must not — see `resolveWorkflowPoolContext`.
+   */
+  poolContext?: PoolContext
 }
 
 const INTEGER_TYPE_RE = /^u?int\d*$/
@@ -463,6 +470,21 @@ export async function resolveWorkflowPoolContext(options: {
   strategist: HexString
   poolEscrowAddress?: HexString
   scId?: HexString
+  /**
+   * Magic values recorded when the workflow was whitelisted, used in place of resolving them again.
+   *
+   * The environment-derived slots — `$onchainPM`/`$executor`, `$poolEscrow`, `$onOffRamp`, the
+   * accounting-token ids — come from chain and indexer state that moves: a redeploy changes an
+   * address, and `$onOffRamp` resolution is order-dependent. Recomputing a leaf after any of that
+   * yields a different hash, and there is no way to tell that apart from tampering. Supplying the
+   * recorded values makes the leaf reproducible.
+   *
+   * For verification only. A caller building a root to *sign* must never pass this: a
+   * metadata-supplied `$onchainPM` or `$onOffRamp` would let whoever wrote the metadata choose
+   * addresses inside the authorized script. In comparison the on-chain root is the authority, so a
+   * wrong recorded value simply fails to match.
+   */
+  recordedPoolContext?: PoolContext
 }): Promise<{ poolContext: PoolContext; resolvedScId?: HexString }> {
   const { centrifuge, network, workflowDef, workflow, poolEscrowAddress, scId } = options
   const requiredMagicKeys = collectRequiredMagicKeys(workflowDef)
@@ -472,29 +494,34 @@ export async function resolveWorkflowPoolContext(options: {
   }
 
   const poolContext: PoolContext = {}
+  const recorded = options.recordedPoolContext ?? {}
+  // A key with a recorded value is neither resolved nor queried — skipping the resolution is the
+  // point, since that is what fails when an address has moved or cannot be derived at all.
+  const needs = (key: MagicVariableKey) => requiredMagicKeys.has(key) && recorded[key] === undefined
+  for (const key of requiredMagicKeys) {
+    if (recorded[key] !== undefined) poolContext[key] = recorded[key]!
+  }
 
-  if (requiredMagicKeys.has('$executor') || requiredMagicKeys.has('$onchainPM')) {
+  if (needs('$executor') || needs('$onchainPM')) {
     const executor = pad32left(await resolveWorkflowExecutorAddress(centrifuge, network))
-    if (requiredMagicKeys.has('$executor')) {
+    if (needs('$executor')) {
       poolContext.$executor = executor
     }
-    if (requiredMagicKeys.has('$onchainPM')) {
+    if (needs('$onchainPM')) {
       poolContext.$onchainPM = executor
     }
   }
   if (requiredMagicKeys.has('$poolId')) {
+    // Derived from the pool, so never taken from a recording — there is nothing to drift.
     poolContext.$poolId = encodeUint(network.pool.id.raw)
   }
-  if (requiredMagicKeys.has('$poolEscrow')) {
+  if (needs('$poolEscrow')) {
     if (!poolEscrowAddress) throw new Error('Pool escrow address is required for this workflow')
     poolContext.$poolEscrow = pad32left(poolEscrowAddress)
   }
 
   const needsShareClass =
-    requiredMagicKeys.has('$scId') ||
-    requiredMagicKeys.has('$onOffRamp') ||
-    requiredMagicKeys.has('$accountingTokenId') ||
-    requiredMagicKeys.has('$accountingTokenAssetId')
+    needs('$scId') || needs('$onOffRamp') || needs('$accountingTokenId') || needs('$accountingTokenAssetId')
 
   if (!needsShareClass) {
     return { poolContext }
@@ -509,27 +536,26 @@ export async function resolveWorkflowPoolContext(options: {
     throw new Error(`Share class ${resolvedScId} is not active on network ${network.centrifugeId}`)
   }
 
-  if (requiredMagicKeys.has('$scId')) {
+  if (needs('$scId')) {
     poolContext.$scId = pad32right(resolvedScId)
   }
 
-  const needsAccountingToken =
-    requiredMagicKeys.has('$accountingTokenId') || requiredMagicKeys.has('$accountingTokenAssetId')
+  const needsAccountingToken = needs('$accountingTokenId') || needs('$accountingTokenAssetId')
   const accountingTokenId = needsAccountingToken ? resolveWorkflowAccountingTokenId(network, workflow) : undefined
 
-  if (requiredMagicKeys.has('$accountingTokenId')) {
+  if (needs('$accountingTokenId')) {
     if (accountingTokenId == null) {
       throw new Error(`Workflow "${workflow.workflowRef}" is missing accounting token context`)
     }
     poolContext.$accountingTokenId = encodeUint(accountingTokenId)
   }
 
-  if (requiredMagicKeys.has('$onOffRamp')) {
+  if (needs('$onOffRamp')) {
     const onOffRampManager = await firstValueFrom(network.onOfframpManager(shareClassId))
     poolContext.$onOffRamp = pad32left(onOffRampManager.onrampAddress)
   }
 
-  if (requiredMagicKeys.has('$accountingTokenAssetId')) {
+  if (needs('$accountingTokenAssetId')) {
     if (accountingTokenId == null) {
       throw new Error(`Workflow "${workflow.workflowRef}" is missing accounting token context`)
     }
@@ -577,6 +603,8 @@ export async function buildWorkflowScriptBase(options: {
   scId?: HexString
   configurableValues: Record<string, HexString>
   excludedActions?: number[]
+  /** See `resolveWorkflowPoolContext` — verification only, never root construction. */
+  recordedPoolContext?: PoolContext
 }): Promise<{
   workflow: MarketplaceWorkflow
   workflowDef: WorkflowDefinition
@@ -598,6 +626,7 @@ export async function buildWorkflowScriptBase(options: {
     strategist: options.strategist,
     poolEscrowAddress: options.poolEscrowAddress,
     scId: options.scId,
+    recordedPoolContext: options.recordedPoolContext,
   })
   const { commands, state, stateBitmap } = buildScript(workflowDef, {
     poolContext,
@@ -695,18 +724,27 @@ export async function computeWorkflowScriptHash(options: {
   scId?: HexString
   configurableValues: Record<string, HexString>
   excludedActions?: number[]
+  /** See `resolveWorkflowPoolContext` — verification only, never root construction. */
+  recordedPoolContext?: PoolContext
 }): Promise<{
   workflow: MarketplaceWorkflow
   workflowDef: WorkflowDefinition
   scriptHash: HexString
   resolvedScId?: HexString
+  /**
+   * The magic values this leaf was built from. Returned so a writer can record them alongside the
+   * leaf — without them a later reader cannot reproduce the hash once an address has moved.
+   */
+  poolContext: PoolContext
 }> {
-  const { workflow, workflowDef, commands, state, stateBitmap, resolvedScId } = await buildWorkflowScriptBase(options)
+  const { workflow, workflowDef, commands, state, stateBitmap, resolvedScId, poolContext } =
+    await buildWorkflowScriptBase(options)
 
   return {
     workflow,
     workflowDef,
     resolvedScId,
+    poolContext,
     scriptHash: computeScriptHash(commands, state, stateBitmap, []),
   }
 }
@@ -729,12 +767,38 @@ export async function computeWorkflowGroupScriptHashes(options: {
   strategist: HexString
   scId?: HexString
   poolEscrowAddress?: HexString
+  /**
+   * Honour each entry's recorded `poolContext` instead of resolving the magic values again.
+   *
+   * Off by default, and root construction leaves it off: a metadata-supplied `$onchainPM` or
+   * `$onOffRamp` would let whoever wrote the metadata choose addresses inside the script a root
+   * authorizes — the same shape as the `workflowId` leaf fallback removed in #526. Verification
+   * turns it on, because there the on-chain root is the authority and a wrong recorded value
+   * simply fails to match.
+   */
+  allowRecordedContext?: boolean
 }): Promise<HexString[]> {
-  const { centrifuge, network, policy, strategist, scId, poolEscrowAddress } = options
+  return (await computeWorkflowGroupScriptDetails(options)).map((detail) => detail.scriptHash)
+}
+
+/**
+ * As {@link computeWorkflowGroupScriptHashes}, but also returns the magic values each leaf was
+ * built from, so a writer can record them next to the leaf.
+ */
+export async function computeWorkflowGroupScriptDetails(options: {
+  centrifuge: Centrifuge
+  network: PoolNetwork
+  policy: PolicyEntryInput[]
+  strategist: HexString
+  scId?: HexString
+  poolEscrowAddress?: HexString
+  allowRecordedContext?: boolean
+}): Promise<{ scriptHash: HexString; poolContext: PoolContext }[]> {
+  const { centrifuge, network, policy, strategist, scId, poolEscrowAddress, allowRecordedContext } = options
 
   return Promise.all(
     policy.map(async (entry) => {
-      const { scriptHash } = await computeWorkflowScriptHash({
+      const { scriptHash, poolContext } = await computeWorkflowScriptHash({
         centrifuge,
         network,
         workflow: entry.workflow,
@@ -746,9 +810,10 @@ export async function computeWorkflowGroupScriptHashes(options: {
         scId: entry.scId ?? scId,
         configurableValues: entry.configurableValues ?? {},
         excludedActions: entry.excludedActions ?? [],
+        recordedPoolContext: allowRecordedContext ? entry.poolContext : undefined,
       })
 
-      return scriptHash
+      return { scriptHash, poolContext }
     })
   )
 }

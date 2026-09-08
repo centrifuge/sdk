@@ -141,6 +141,7 @@ export {
   buildPreparedWorkflowDefinition,
   buildWorkflowExecuteParams,
   buildWorkflowScriptBase,
+  computeWorkflowGroupScriptDetails,
   computeWorkflowGroupScriptHashes,
   computeWorkflowScriptHash,
   encodeConfigurableValue,

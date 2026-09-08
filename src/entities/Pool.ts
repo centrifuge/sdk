@@ -449,6 +449,7 @@ export class Pool extends Entity {
         excludedActions: entry.excludedActions ?? [],
         scId: entry.scId,
         scriptHash: entry.scriptHash,
+        poolContext: entry.poolContext,
       })
     }
     return [...byChain.values()]
@@ -484,7 +485,14 @@ export class Pool extends Entity {
       /** `bytes32(0)` means the strategist has no policy on that chain. */
       onchainRoot: HexString | null
       computedRoot: HexString | null
-      leafSource: 'recomputed' | 'recorded' | null
+      /**
+       * `recomputed` — leaves rebuilt from the catalog and freshly resolved context.
+       * `recomputed-with-recorded-context` — rebuilt from the catalog, using the magic values
+       *   recorded at whitelist time, so the leaf is reproducible even though an address has moved.
+       * `recorded` — the leaves themselves came from metadata; the comparison is all that stands
+       *   behind them.
+       */
+      leafSource: 'recomputed' | 'recomputed-with-recorded-context' | 'recorded' | null
       verdict: 'match' | 'mismatch' | 'not-set' | 'no-manager' | 'unverifiable'
       note?: string
     }[]
@@ -520,7 +528,7 @@ export class Pool extends Entity {
       })) as HexString
 
       let leaves: HexString[] | null = null
-      let leafSource: 'recomputed' | 'recorded' | null = null
+      let leafSource: 'recomputed' | 'recomputed-with-recorded-context' | 'recorded' | null = null
       let note: string | undefined
 
       try {
@@ -532,8 +540,11 @@ export class Pool extends Entity {
           strategist,
           scId,
           poolEscrowAddress: await firstValueFrom(this._escrow()),
+          // Recorded magic values are honoured here and only here: the chain's root is the
+          // authority, so a wrong one fails to match rather than authorizing anything.
+          allowRecordedContext: true,
         })
-        leafSource = 'recomputed'
+        leafSource = group.policy.some((entry) => entry.poolContext) ? 'recomputed-with-recorded-context' : 'recomputed'
       } catch (error) {
         const recorded = group.policy.map((entry) => entry.scriptHash).filter(Boolean) as HexString[]
         if (recorded.length === group.policy.length && recorded.length > 0) {

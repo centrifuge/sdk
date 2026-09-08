@@ -160,6 +160,25 @@ export interface WorkflowPolicyEntry {
    * evidence the metadata is stale, which is exactly the signal worth surfacing.
    */
   scriptHash?: HexString
+  /**
+   * The magic values this entry's script was compiled with, recorded at whitelist time — the
+   * environment-derived ones only: `$onchainPM`/`$executor`, `$poolEscrow`, `$onOffRamp`, and the
+   * accounting-token ids, as the 32-byte words they were fed into the script as.
+   *
+   * `$poolId` and `$scId` are deliberately absent: they are derivable from the pool and from `scId`
+   * above, so recording them would create a second source of truth for the same value (and `$scId`
+   * is right-padded where addresses are left-padded, so the encoding differs per key).
+   *
+   * This is what makes a leaf *re-derivable* rather than merely comparable. `scriptHash` lets a
+   * reader rebuild the root and compare; this lets them rebuild the leaf from the workflow
+   * definition and check that it is the leaf — which recomputation alone cannot do once an address
+   * has moved, since a redeploy and tampering are indistinguishable from a differing hash.
+   *
+   * Honoured only where the on-chain root is the authority (`Pool.verifyWorkflowPolicy`). Root
+   * construction never reads it: a metadata-supplied `$onchainPM` or `$onOffRamp` would let whoever
+   * wrote the metadata choose addresses inside the script a root authorizes.
+   */
+  poolContext?: Record<string, HexString>
 }
 
 /**
