@@ -23,6 +23,17 @@ export type PolicyEntryInput = {
   workflow: MarketplaceWorkflow
   configurableValues: Record<string, HexString>
   excludedActions?: number[]
+  /**
+   * Share class this entry was approved against, when the policy recorded one. `$scId` feeds the
+   * hashed script, so compiling an entry under a different share class than it was approved for
+   * produces a different leaf — see `WorkflowPolicyEntry.scId`. Falls back to the caller's `scId`.
+   */
+  scId?: HexString
+  /**
+   * The leaf recorded at whitelist time, used only when comparing against an on-chain root — never
+   * to build a root for signing. See `computeWorkflowGroupScriptHashes`.
+   */
+  scriptHash?: HexString
 }
 
 const INTEGER_TYPE_RE = /^u?int\d*$/
@@ -729,7 +740,10 @@ export async function computeWorkflowGroupScriptHashes(options: {
         workflow: entry.workflow,
         strategist,
         poolEscrowAddress,
-        scId,
+        // Each entry is compiled under the share class it was approved against. Using one share
+        // class for the whole group silently re-hashes every `$scId`-dependent entry under it, so a
+        // strategist's untouched workflows stop verifying against the root after an unrelated edit.
+        scId: entry.scId ?? scId,
         configurableValues: entry.configurableValues ?? {},
         excludedActions: entry.excludedActions ?? [],
       })

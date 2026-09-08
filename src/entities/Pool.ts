@@ -19,7 +19,11 @@ import { repeatOnEvents } from '../utils/rx.js'
 import { wrapTransaction } from '../utils/transaction.js'
 import { AssetId, CentrifugeId, PoolId, ShareClassId } from '../utils/types.js'
 import type { MarketplaceWorkflow } from '../types/workflow.js'
-import { resolveWorkflowShareClassId, type PolicyEntryInput } from '../utils/workflowExecute.js'
+import {
+  computeWorkflowGroupScriptHashes,
+  resolveWorkflowShareClassId,
+  type PolicyEntryInput,
+} from '../utils/workflowExecute.js'
 import { Entity } from './Entity.js'
 import { PoolNetwork } from './PoolNetwork.js'
 import { PoolReports } from './Reports/PoolReports.js'
@@ -93,6 +97,8 @@ export type AdapterStatus = {
  *
  * Entries written before these fields existed carry no pin and are resolved by name as before.
  */
+const ZERO_ROOT = `0x${'0'.repeat(64)}` as HexString
+
 function assertPinnedArtifact(entry: WorkflowPolicyEntry, workflow: MarketplaceWorkflow): void {
   const pinned = entry as WorkflowPolicyEntry & { workflowId?: string; version?: number }
 
@@ -441,9 +447,137 @@ export class Pool extends Entity {
         workflow,
         configurableValues: (entry.configurableValues ?? {}) as Record<string, HexString>,
         excludedActions: entry.excludedActions ?? [],
+        scId: entry.scId,
+        scriptHash: entry.scriptHash,
       })
     }
     return [...byChain.values()]
+  }
+
+  /**
+   * Check a strategist's recorded policy against the root each chain's OnchainPM enforces.
+   *
+   * The metadata lists what a strategist was whitelisted for; the contract holds only a Merkle root.
+   * So the list proves nothing on its own — this rebuilds the root and compares, which is the only
+   * way to answer "is the displayed policy the one being enforced?".
+   *
+   * Leaves come from recompiling each entry when that is possible. When it isn't — the catalog no
+   * longer carries a ref, or `$onchainPM` cannot be resolved because a chain's deployment record has
+   * no factory address, which is the case on Ethereum mainnet today — recorded `scriptHash` values
+   * are used instead, and `leafSource` says so. That is safe *here* and nowhere else: a recorded
+   * leaf either reproduces the on-chain root or it does not, and the root is the authority. Root
+   * *construction* for signing never uses them (see `computeWorkflowGroupScriptHashes` via
+   * `OnchainPM.updatePolicy`), because there a metadata-supplied leaf would become an authorization —
+   * the defect #526 removed.
+   *
+   * @param strategist - The strategist whose policy to check
+   * @param options.onchainPM - OnchainPM address per centrifugeId, for chains where the SDK cannot
+   *   derive it from the factory. Without it those chains report `no-manager`.
+   */
+  async verifyWorkflowPolicy(
+    strategist: HexString,
+    options?: { onchainPM?: Record<number, HexString> }
+  ): Promise<
+    {
+      centrifugeId: number
+      onchainPM: HexString | null
+      /** `bytes32(0)` means the strategist has no policy on that chain. */
+      onchainRoot: HexString | null
+      computedRoot: HexString | null
+      leafSource: 'recomputed' | 'recorded' | null
+      verdict: 'match' | 'mismatch' | 'not-set' | 'no-manager' | 'unverifiable'
+      note?: string
+    }[]
+  > {
+    const { buildPolicyUpdate } = await import('./OnchainPM.js')
+    const groups = await this._resolveStrategistWorkflows(strategist)
+    const results: Awaited<ReturnType<Pool['verifyWorkflowPolicy']>> = []
+
+    for (const group of groups) {
+      const override = options?.onchainPM?.[group.centrifugeId]
+      const onchainPM =
+        override ?? (await firstValueFrom(group.network.onchainPM().pipe(catchError(() => of(null)))))?.address ?? null
+
+      if (!onchainPM) {
+        results.push({
+          centrifugeId: group.centrifugeId,
+          onchainPM: null,
+          onchainRoot: null,
+          computedRoot: null,
+          leafSource: null,
+          verdict: 'no-manager',
+          note: 'No OnchainPM resolved for this chain, so no policy is enforced and nothing recorded here is executable.',
+        })
+        continue
+      }
+
+      const client = await firstValueFrom(this._root.getClient(group.centrifugeId))
+      const onchainRoot = (await client.readContract({
+        address: onchainPM,
+        abi: ABI.OnchainPM,
+        functionName: 'policy',
+        args: [strategist],
+      })) as HexString
+
+      let leaves: HexString[] | null = null
+      let leafSource: 'recomputed' | 'recorded' | null = null
+      let note: string | undefined
+
+      try {
+        const scId = await resolveWorkflowShareClassId(group.network, group.policy[0]?.scId)
+        leaves = await computeWorkflowGroupScriptHashes({
+          centrifuge: this._root,
+          network: group.network,
+          policy: group.policy,
+          strategist,
+          scId,
+          poolEscrowAddress: await firstValueFrom(this._escrow()),
+        })
+        leafSource = 'recomputed'
+      } catch (error) {
+        const recorded = group.policy.map((entry) => entry.scriptHash).filter(Boolean) as HexString[]
+        if (recorded.length === group.policy.length && recorded.length > 0) {
+          leaves = recorded
+          leafSource = 'recorded'
+          note = `Scripts could not be rebuilt (${(error as Error).message}), so the leaves recorded at whitelist time were used. They reproduce the enforced root or they do not — the comparison is what makes them meaningful.`
+        } else {
+          note = `Scripts could not be rebuilt and no leaves were recorded: ${(error as Error).message}`
+        }
+      }
+
+      const hasRoot = !!onchainRoot && onchainRoot !== ZERO_ROOT
+      let computedRoot: HexString | null = null
+      if (leaves?.length) {
+        const { root } = await buildPolicyUpdate({
+          hub: (await this._root._protocolAddresses(this.centrifugeId)).hub,
+          poolId: this.id.raw,
+          scId: await resolveWorkflowShareClassId(group.network, group.policy[0]?.scId),
+          centrifugeId: group.centrifugeId,
+          onchainPM,
+          strategist,
+          scriptHashes: leaves,
+        })
+        computedRoot = root
+      }
+
+      results.push({
+        centrifugeId: group.centrifugeId,
+        onchainPM,
+        onchainRoot: onchainRoot ?? null,
+        computedRoot,
+        leafSource,
+        verdict: !computedRoot
+          ? 'unverifiable'
+          : !hasRoot
+            ? 'not-set'
+            : computedRoot.toLowerCase() === onchainRoot.toLowerCase()
+              ? 'match'
+              : 'mismatch',
+        note,
+      })
+    }
+
+    return results
   }
 
   /** List the workflows whitelisted for a strategist, across chains. */
@@ -612,6 +746,8 @@ export class Pool extends Entity {
         workflow,
         configurableValues: (entry.configurableValues ?? {}) as Record<string, HexString>,
         excludedActions: entry.excludedActions ?? [],
+        // The entry's own share class, so this rebuild re-hashes nothing it wasn't asked to change.
+        scId: entry.scId,
       })
     }
 

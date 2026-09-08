@@ -325,4 +325,83 @@ describe('entities/Pool workflow orchestration', () => {
       expect(batch.calledOnce).to.equal(true)
     })
   })
+
+  describe('verifyWorkflowPolicy', () => {
+    // The metadata lists what a strategist was whitelisted for; the contract holds only a root. The
+    // list proves nothing until the two are compared, which is what this method exists to do.
+    const ONCHAIN_PM = '0x382a12951987df366b3767535491790d9c28ae8a' as HexString
+    const SC_ID = `0x${'0'.repeat(31)}1` as HexString
+    const RECORDED_LEAF = `0x${'a'.repeat(64)}` as HexString
+
+    /**
+     * A workflow whose script cannot be compiled: the action references a variable no template
+     * declares, so recompiling throws — standing in for the mainnet case where `$onchainPM` cannot
+     * be resolved. Recorded leaves are the only way to check such a policy.
+     */
+    const unbuildable = () =>
+      ({
+        ...catalogEntry('wf_a', 100),
+        template: 't',
+        templates: { t: { variables: [], actions: [] } },
+        actions: [{ target: '$undeclared', selector: 'function f()', inputs: [] }],
+      }) as unknown as MarketplaceWorkflow
+
+    /** Reports the root the stubbed chain holds, and whether scripts can be rebuilt. */
+    function setup(options: { root: HexString; recordedLeaves?: boolean; buildable?: boolean }) {
+      const entries = [
+        {
+          workflowRef: 'wf_a',
+          scId: SC_ID,
+          ...(options.recordedLeaves ? { scriptHash: RECORDED_LEAF } : {}),
+        },
+      ]
+      const catalog = [options.buildable ? catalogEntry('wf_a', 100) : unbuildable()]
+      const { centrifuge, pool } = makePool({ entries, catalog })
+
+      sinon.stub(centrifuge, 'getClient').returns(of({ readContract: async () => options.root }) as any)
+      sinon.stub(centrifuge as any, '_protocolAddresses').returns(of({ hub: ONCHAIN_PM }) as any)
+      sinon.stub(pool as any, '_escrow').returns(of(ONCHAIN_PM) as any)
+      return { pool }
+    }
+
+    it('reports no-manager for a chain with no OnchainPM resolved', async () => {
+      const { pool } = setup({ root: `0x${'0'.repeat(64)}` })
+      sinon.stub(PoolNetwork.prototype, 'onchainPM').returns(of(null) as any)
+      const [result] = await pool.verifyWorkflowPolicy(STRATEGIST)
+      expect(result!.verdict).to.equal('no-manager')
+      expect(result!.note).to.match(/no policy is enforced/)
+    })
+
+    it('falls back to recorded leaves when scripts cannot be rebuilt, and says so', async () => {
+      // The mainnet case: `$onchainPM` cannot be resolved because the chain's deployment record has
+      // no factory address, so nothing can be recompiled — but the recorded leaves still either
+      // reproduce the enforced root or they don't.
+      const { pool } = setup({ root: `0x${'0'.repeat(64)}`, recordedLeaves: true })
+      sinon.stub(PoolNetwork.prototype, 'onchainPM').returns(of(null) as any)
+      const [withOverride] = await pool.verifyWorkflowPolicy(STRATEGIST, {
+        onchainPM: { [CENT_ID]: ONCHAIN_PM },
+      })
+      expect(withOverride!.onchainPM).to.equal(ONCHAIN_PM)
+      expect(withOverride!.leafSource).to.equal('recorded')
+      expect(withOverride!.note).to.match(/recorded at whitelist time/)
+      // Root is zero on-chain, so the verdict is that nothing is enforced rather than a mismatch.
+      expect(withOverride!.verdict).to.equal('not-set')
+    })
+
+    it('reports a mismatch when the rebuilt root is not the enforced one', async () => {
+      const { pool } = setup({ root: `0x${'b'.repeat(64)}`, recordedLeaves: true })
+      sinon.stub(PoolNetwork.prototype, 'onchainPM').returns(of(null) as any)
+      const [result] = await pool.verifyWorkflowPolicy(STRATEGIST, { onchainPM: { [CENT_ID]: ONCHAIN_PM } })
+      expect(result!.verdict).to.equal('mismatch')
+      expect(result!.computedRoot).to.not.equal(result!.onchainRoot)
+    })
+
+    it('reports unverifiable when nothing can be rebuilt and nothing was recorded', async () => {
+      const { pool } = setup({ root: `0x${'b'.repeat(64)}` })
+      sinon.stub(PoolNetwork.prototype, 'onchainPM').returns(of(null) as any)
+      const [result] = await pool.verifyWorkflowPolicy(STRATEGIST, { onchainPM: { [CENT_ID]: ONCHAIN_PM } })
+      expect(result!.verdict).to.equal('unverifiable')
+      expect(result!.note).to.match(/no leaves were recorded/)
+    })
+  })
 })
