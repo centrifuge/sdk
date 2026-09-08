@@ -179,6 +179,21 @@ export interface WorkflowPolicyEntry {
    * wrote the metadata choose addresses inside the script a root authorizes.
    */
   poolContext?: Record<string, HexString>
+  /**
+   * What compiled this entry's leaf — e.g. `@centrifuge/sdk@2.3.0`. Supplied by the writer.
+   *
+   * The compiler is an input to the hash just as much as the data is: slot canonicalization and
+   * encoding rules live in `buildScript`, and this repo has changed them (#526 tightened slot reuse
+   * and reserved the payable-value namespace). A leaf built by one version need not reproduce
+   * byte-identically under another, and without knowing which version built it, that reads as
+   * tampering rather than as compiler drift.
+   *
+   * The SDK cannot fill this in for itself: its version lives in `package.json`, and importing that
+   * from `src/` would move the emitted output to `dist/src/…` and break the published entry points.
+   * A writer knows what it ran, so it records it — which also lets a non-SDK writer name its own
+   * builder.
+   */
+  builtWith?: string
 }
 
 /**

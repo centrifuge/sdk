@@ -450,6 +450,7 @@ export class Pool extends Entity {
         scId: entry.scId,
         scriptHash: entry.scriptHash,
         poolContext: entry.poolContext,
+        builtWith: entry.builtWith,
       })
     }
     return [...byChain.values()]
@@ -493,6 +494,12 @@ export class Pool extends Entity {
        *   behind them.
        */
       leafSource: 'recomputed' | 'recomputed-with-recorded-context' | 'recorded' | null
+      /**
+       * The compilers the recorded leaves were built with, when the writer named them. Compare
+       * against the SDK doing the verifying: on a `mismatch`, a version difference is a candidate
+       * explanation that is not tampering, and only the caller knows its own version.
+       */
+      builtWith: string[]
       verdict: 'match' | 'mismatch' | 'not-set' | 'no-manager' | 'unverifiable'
       note?: string
     }[]
@@ -513,6 +520,7 @@ export class Pool extends Entity {
           onchainRoot: null,
           computedRoot: null,
           leafSource: null,
+          builtWith: [],
           verdict: 'no-manager',
           note: 'No OnchainPM resolved for this chain, so no policy is enforced and nothing recorded here is executable.',
         })
@@ -571,19 +579,35 @@ export class Pool extends Entity {
         computedRoot = root
       }
 
+      const builtWith = [...new Set(group.policy.map((entry) => entry.builtWith).filter(Boolean) as string[])]
+      const verdict = !computedRoot
+        ? 'unverifiable'
+        : !hasRoot
+          ? 'not-set'
+          : computedRoot.toLowerCase() === onchainRoot.toLowerCase()
+            ? 'match'
+            : 'mismatch'
+
+      // A rebuilt leaf depends on the builder as well as the data: `buildScript`'s slot
+      // canonicalization has changed in this repo before. Naming the writer's version turns an
+      // otherwise indistinguishable mismatch into a question the caller can answer.
+      if (verdict === 'mismatch' && leafSource !== 'recorded' && builtWith.length) {
+        note = [
+          note,
+          `Leaves were recorded as built with ${builtWith.join(', ')}; if that differs from the version verifying here, compiler drift is a candidate explanation.`,
+        ]
+          .filter(Boolean)
+          .join(' ')
+      }
+
       results.push({
         centrifugeId: group.centrifugeId,
         onchainPM,
         onchainRoot: onchainRoot ?? null,
         computedRoot,
         leafSource,
-        verdict: !computedRoot
-          ? 'unverifiable'
-          : !hasRoot
-            ? 'not-set'
-            : computedRoot.toLowerCase() === onchainRoot.toLowerCase()
-              ? 'match'
-              : 'mismatch',
+        builtWith,
+        verdict,
         note,
       })
     }

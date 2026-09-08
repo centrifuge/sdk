@@ -41,6 +41,8 @@ export type PolicyEntryInput = {
    * verification does and root construction must not — see `resolveWorkflowPoolContext`.
    */
   poolContext?: PoolContext
+  /** What compiled the recorded leaf, for reporting when a hash doesn't reproduce. */
+  builtWith?: string
 }
 
 const INTEGER_TYPE_RE = /^u?int\d*$/

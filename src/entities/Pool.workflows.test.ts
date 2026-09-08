@@ -41,6 +41,9 @@ function makePool(options: {
     excludedActions?: number[]
     workflowId?: string
     version?: number
+    scId?: HexString
+    scriptHash?: HexString
+    builtWith?: string
   }[]
   strategist?: HexString
   catalog?: MarketplaceWorkflow[]
@@ -394,6 +397,48 @@ describe('entities/Pool workflow orchestration', () => {
       const [result] = await pool.verifyWorkflowPolicy(STRATEGIST, { onchainPM: { [CENT_ID]: ONCHAIN_PM } })
       expect(result!.verdict).to.equal('mismatch')
       expect(result!.computedRoot).to.not.equal(result!.onchainRoot)
+    })
+
+    it('reports a match when the recompiled leaves reproduce the enforced root', async () => {
+      // The success path: nothing recorded is trusted, the script is recompiled from the catalog, and
+      // the root it produces is the one the contract enforces.
+      let root = `0x${'0'.repeat(64)}` as HexString
+      const { centrifuge, pool } = makePool({
+        entries: [{ workflowRef: 'wf_a', scId: SC_ID }],
+        catalog: [catalogEntry('wf_a', 100)],
+      })
+      sinon.stub(centrifuge, 'getClient').returns(of({ readContract: async () => root }) as any)
+      sinon.stub(centrifuge as any, '_protocolAddresses').returns(of({ hub: ONCHAIN_PM }) as any)
+      sinon.stub(pool as any, '_escrow').returns(of(ONCHAIN_PM) as any)
+      sinon.stub(PoolNetwork.prototype, 'onchainPM').returns(of({ address: ONCHAIN_PM }) as any)
+
+      // First pass with no root set tells us what the policy actually hashes to...
+      const [unset] = await pool.verifyWorkflowPolicy(STRATEGIST)
+      expect(unset!.verdict).to.equal('not-set')
+      expect(unset!.computedRoot).to.be.a('string')
+
+      // ...and enforcing exactly that must verify.
+      root = unset!.computedRoot!
+      const [result] = await pool.verifyWorkflowPolicy(STRATEGIST)
+      expect(result!.verdict).to.equal('match')
+      expect(result!.leafSource).to.equal('recomputed')
+      expect(result!.builtWith).to.deep.equal([])
+      expect(result!.note).to.equal(undefined)
+    })
+
+    it('surfaces the builder recorded against each entry, and blames it on a mismatch', async () => {
+      // Without this, a leaf built by an older SDK looks exactly like a tampered one.
+      const entries = [{ workflowRef: 'wf_a', scId: SC_ID, builtWith: '@centrifuge/sdk@2.1.2' }]
+      const { centrifuge, pool } = makePool({ entries, catalog: [catalogEntry('wf_a', 100)] })
+      sinon.stub(centrifuge, 'getClient').returns(of({ readContract: async () => `0x${'b'.repeat(64)}` }) as any)
+      sinon.stub(centrifuge as any, '_protocolAddresses').returns(of({ hub: ONCHAIN_PM }) as any)
+      sinon.stub(pool as any, '_escrow').returns(of(ONCHAIN_PM) as any)
+      sinon.stub(PoolNetwork.prototype, 'onchainPM').returns(of(null) as any)
+
+      const [result] = await pool.verifyWorkflowPolicy(STRATEGIST, { onchainPM: { [CENT_ID]: ONCHAIN_PM } })
+      expect(result!.verdict).to.equal('mismatch')
+      expect(result!.builtWith).to.deep.equal(['@centrifuge/sdk@2.1.2'])
+      expect(result!.note).to.match(/compiler drift/)
     })
 
     it('reports unverifiable when nothing can be rebuilt and nothing was recorded', async () => {
