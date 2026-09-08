@@ -1,5 +1,5 @@
 import { catchError, combineLatest, defer, firstValueFrom, map, of, switchMap, timeout } from 'rxjs'
-import { encodeFunctionData, fromHex, toHex } from 'viem'
+import { encodeFunctionData, fromHex, getContract, toHex } from 'viem'
 import { ABI } from '../abi/index.js'
 import type { Centrifuge } from '../Centrifuge.js'
 import { HexString } from '../types/index.js'
@@ -472,6 +472,10 @@ export class Pool extends Entity {
    * `OnchainPM.updatePolicy`), because there a metadata-supplied leaf would become an authorization —
    * the defect #526 removed.
    *
+   * Deliberately a one-shot `Promise` rather than a `this._query()` observable: the answer is a
+   * point-in-time audit of what a chain enforces *right now*, and a cached or replayed verdict is
+   * worse than no verdict. Callers wanting a live view should re-invoke.
+   *
    * @param strategist - The strategist whose policy to check
    * @param options.onchainPM - OnchainPM address per centrifugeId, for chains where the SDK cannot
    *   derive it from the factory. Without it those chains report `no-manager`.
@@ -528,12 +532,9 @@ export class Pool extends Entity {
       }
 
       const client = await firstValueFrom(this._root.getClient(group.centrifugeId))
-      const onchainRoot = (await client.readContract({
-        address: onchainPM,
-        abi: ABI.OnchainPM,
-        functionName: 'policy',
-        args: [strategist],
-      })) as HexString
+      const onchainRoot = (await getContract({ address: onchainPM, abi: ABI.OnchainPM, client }).read.policy([
+        strategist,
+      ])) as HexString
 
       let leaves: HexString[] | null = null
       let leafSource: 'recomputed' | 'recomputed-with-recorded-context' | 'recorded' | null = null
