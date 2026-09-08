@@ -128,16 +128,48 @@ export interface WorkflowPolicyEntry {
   version?: number
   /** Chain the entry targets, when the writer records it (the catalog's `chainId` resolves to this). */
   centrifugeId?: number
+  /**
+   * Share class this entry was approved against.
+   *
+   * `$scId` is a magic variable resolved at build time, so it feeds the hashed script: the same
+   * catalog workflow compiled under two share classes produces two different Merkle leaves (25 of
+   * 77 published templates depend on it, carrying most published workflows). Policy rebuilds
+   * currently derive one share class for the whole group from the caller's context, which silently
+   * re-hashes every `$scId`-dependent entry under it — the strategist's working workflows stop
+   * verifying against the root while the metadata rows look unchanged.
+   *
+   * Not an authorization boundary: `policy[strategist]` on the OnchainPM is keyed by (pool,
+   * strategist) with no share-class dimension, and the OnchainPM is a pool-level balance-sheet
+   * manager. Recording it is what lets a rebuild be partitioned by `(strategist, centrifugeId,
+   * scId)` instead of re-binding a whole policy to whichever share class the editor was looking at.
+   */
+  scId?: HexString
+  /**
+   * The Merkle leaf this entry contributes to the strategist's policy root — `computeScriptHash`
+   * over the compiled script, pinned at whitelist time.
+   *
+   * This is the one field that makes a policy verifiable from metadata alone. Rebuilding a leaf
+   * from `workflowRef` + `catalogCid` requires the catalog, the resolved OnchainPM address and the
+   * pool escrow, so it can be blocked by things unrelated to the policy: mainnet verification is
+   * blocked today because the indexer serves no `onchainPMFactory` and `$onchainPM` therefore
+   * cannot be resolved. With the leaves recorded, a reader rebuilds the root from them and compares
+   * it with the root the contract enforces — one chain read, no catalog, no RPC-derived context.
+   *
+   * Recording it is not a trust concession: the leaves either produce the on-chain root or they
+   * don't. A reader must compare, never assume — a leaf set that doesn't reproduce the root is
+   * evidence the metadata is stale, which is exactly the signal worth surfacing.
+   */
+  scriptHash?: HexString
 }
 
 /**
  * A strategist's set of whitelisted workflows on the pool's OnchainPM.
  *
- * The on-chain policy is keyed by (OnchainPM address → strategist) — the
- * OnchainPM is per-pool and `policy[strategist]` holds the Merkle root — so each
- * strategist has exactly one policy per pool. The share class id required by the
- * `Hub.updateContract` routing call is derived at policy-update time rather than
- * stored here.
+ * The on-chain policy is keyed by (OnchainPM address → strategist) — the OnchainPM is per-pool and
+ * `policy[strategist]` holds the Merkle root — so each strategist has exactly one policy per pool
+ * and per chain. Entries carry their own `scId` (see `WorkflowPolicyEntry.scId`); the share class
+ * the `Hub.updateContract` routing call needs is derived from the entries being changed rather than
+ * from the editor's context.
  */
 export interface WorkflowPolicy {
   /** Client-generated UUID; stable across metadata updates. */
@@ -148,6 +180,20 @@ export interface WorkflowPolicy {
   workflows: WorkflowPolicyEntry[]
   createdAt: string
   updatedAt?: string
+  /**
+   * The Merkle roots this policy last wrote on-chain, keyed by `centrifugeId` — one per chain,
+   * since each chain's OnchainPM holds its own root.
+   *
+   * Lets any reader answer "is this list the one being enforced?" with a single `policy(strategist)`
+   * read: equal means the recorded entries are authentic, different means the metadata is stale or
+   * the root was changed elsewhere. Without it, a reader that cannot rebuild the leaves (see
+   * `WorkflowPolicyEntry.scriptHash`) has no way to tell the two apart, and the honest answer
+   * degrades to "could not verify" — which is what the transparency dashboard reports for a live
+   * mainnet pool today.
+   *
+   * A claim by the writer, and self-checking: it is only ever useful compared against the chain.
+   */
+  roots?: Record<number, HexString>
 }
 
 /**
