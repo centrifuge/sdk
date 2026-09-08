@@ -109,12 +109,12 @@ const ASSET_DECIMALS_ABI = ABI.HubRegistry.filter(
 )
 
 const WORKFLOW_MARKETPLACE_CID: Record<string, string> = {
-  // Canonical-layout releases from centrifuge/workflows#98. The previous pins predate that PR's
-  // publish gate and do not reproduce under canonical UnixFS parameters, so `assertCidMatchesContent`
-  // below rejects them — with verification on, a non-canonical pin means the app refuses its own
-  // catalog. Any future bump has to come from a publish run whose `verify:cid` gate passed.
-  mainnet: 'bafybeigarcbuopdukqyxrnjcadgazwinuiamz4rie4tknnxnbsur5wnwdu',
-  testnet: 'bafybeid3yry4qfoqej7y3i52cbw4hqdnl62en6mwzmkxvjahspkodghxmu',
+  // centrifuge/workflows release `c988d19`. Both pins reproduce under canonical UnixFS parameters,
+  // which `assertCidMatchesContent` below requires: with verification on, a non-canonical pin means
+  // the app refuses its own catalog, so any bump has to come from a publish run whose `verify:cid`
+  // gate passed.
+  mainnet: 'bafybeigqhm6pseqfhinhfv7ol4xfbb2dzwjkucllpaljdx5hh32aakjzwe',
+  testnet: 'bafybeifuodbheoqgzahdmh2yrmxvhdxt37yor7tksdjyibrfmme3uqh3na',
 }
 
 const envConfig = {
