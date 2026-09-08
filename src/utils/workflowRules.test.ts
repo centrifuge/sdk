@@ -411,9 +411,75 @@ describe('utils/workflowRules', () => {
         },
       }
 
+      // A real address, not the `0x00` placeholder the kind-only fixtures use: this workflow is
+      // now checked for address-shaped pinned values too.
       expect(
-        validateCatalogWorkflow({ id: 'a', template: 'deposit', variables: { router: '0x00' } }, templates)
+        validateCatalogWorkflow(
+          { id: 'a', template: 'deposit', variables: { router: '0x1111111111111111111111111111111111111111' } },
+          templates
+        )
       ).to.deep.equal([])
+    })
+
+    it('reports a pinned value that is not an address wired into an address slot', () => {
+      // The workflows repo caught this offline over its own files; now every ingested catalog is
+      // checked. A token id or amount in an address slot encodes as a different account.
+      const templates: Record<string, CatalogTemplate> = {
+        deposit: {
+          id: 'deposit',
+          variables: [{ name: 'router', kind: 'pinned' }],
+          actions: [
+            action({
+              name: 'Deposit',
+              selector: 'function deposit(address)',
+              inputs: [{ parameter: 'address', input: ['$router'] }],
+            }),
+          ],
+        },
+      }
+
+      const violations = validateCatalogWorkflow(
+        { id: 'a', template: 'deposit', variables: { router: '1' } },
+        templates
+      )
+      expect(violations.map((violation) => violation.rule)).to.include('address-literal')
+    })
+
+    it('validates a callback template reached only through useTemplate', () => {
+      // 59 of 77 published mainnet templates are reachable only this way, and a callback compiles
+      // into the workflow's hashed script — so leaving them unchecked exempted the material the
+      // review surface already hides.
+      const templates: Record<string, CatalogTemplate> = {
+        outer: {
+          id: 'outer',
+          variables: [{ name: 'target', kind: 'pinned' }],
+          actions: [
+            action({
+              name: 'Flash',
+              selector: 'function flash(bytes)',
+              inputs: [{ parameter: 'bytes', input: [], useTemplate: { template: 'callback', map: {} } }],
+            }),
+          ],
+        },
+        callback: {
+          id: 'callback',
+          variables: [{ name: 'venue', kind: 'param' }],
+          actions: [
+            // Arity mismatch: two declared parameters, one input.
+            action({
+              name: 'Swap',
+              selector: 'function swap(uint256,address)',
+              inputs: [{ parameter: 'uint256', input: ['$amount'] }],
+            }),
+          ],
+        },
+      }
+
+      const violations = validateCatalogWorkflow(
+        { id: 'a', template: 'outer', variables: { target: '0x1111111111111111111111111111111111111111' } },
+        templates
+      )
+      expect(violations.map((violation) => violation.rule)).to.include('selector-arity')
     })
   })
 
