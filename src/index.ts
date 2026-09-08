@@ -108,6 +108,7 @@ export type {
   PoolContext,
   ScriptResult,
 } from './utils/weiroll.js'
+export { canDelegate } from './utils/bytecode.js'
 export { computeScriptHash } from './utils/scriptHash.js'
 export type { Callback } from './utils/scriptHash.js'
 export { MAGIC_VARIABLE_KEYS, resolveMagicVariables, resolveVariableLabel } from './utils/variables.js'
