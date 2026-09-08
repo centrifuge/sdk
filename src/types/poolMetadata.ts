@@ -123,7 +123,7 @@ export interface WorkflowPolicyEntry {
    * no-op. NOT the script hash — it is the hash of the catalog definition before this pool's
    * configurable values are pinned in, so the two differ for every configured workflow.
    */
-  workflowId?: HexString
+  workflowId?: string
   /** Catalog version pinned at whitelist time; drives the "update available" flag and the same check. */
   version?: number
   /** Chain the entry targets, when the writer records it (the catalog's `chainId` resolves to this). */

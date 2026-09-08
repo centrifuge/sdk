@@ -100,7 +100,7 @@ export type AdapterStatus = {
 const ZERO_ROOT = `0x${'0'.repeat(64)}` as HexString
 
 function assertPinnedArtifact(entry: WorkflowPolicyEntry, workflow: MarketplaceWorkflow): void {
-  const pinned = entry as WorkflowPolicyEntry & { workflowId?: string; version?: number }
+  const pinned = entry
 
   if (
     pinned.workflowId &&
