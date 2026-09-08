@@ -99,6 +99,7 @@ export {
   encodeCommand,
   buildScript,
   fillRuntimeSlots,
+  encodeVariableLengthValue,
 } from './utils/weiroll.js'
 export type {
   WeirollCallType,
