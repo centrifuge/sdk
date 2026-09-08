@@ -140,6 +140,9 @@ export function checkAddressLiterals(
 
   for (const [index, input] of (action.inputs ?? []).entries()) {
     if (!isAddressParameter(input.parameter)) continue
+    // Index 0 is the whole input: `buildWorkflowDefinitionFromCatalog` rejects any input carrying
+    // more than one value ("multi-value inputs are not supported"), so a second element can never
+    // reach a script. Looping here would imply otherwise.
     const raw = input.input?.[0]
     if (typeof raw !== 'string' || raw === '') continue
 
@@ -166,9 +169,9 @@ export function checkAddressLiterals(
   return violations
 }
 
-/** `address`, and the tuple-array forms whose members are addresses. */
+/** `address`, `address[]` and `address[N]`. Tuples are checked element-wise by their own inputs. */
 function isAddressParameter(parameter: string): boolean {
-  return parameter === 'address' || parameter === 'address[]'
+  return /^address(\[\d*\])?$/.test(parameter.trim())
 }
 
 /** A 20-byte address, or a left-padded 32-byte word carrying one. */

@@ -518,6 +518,13 @@ describe('utils/workflowRules', () => {
       expect(checkAddressLiterals(action('address', undefined), 'a')).to.deep.equal([])
     })
 
+    it('covers the sized and unsized array forms of the parameter', () => {
+      // Matches the ported semantics: `address`, `address[]`, `address[N]`.
+      expect(checkAddressLiterals(action('address[]', '0xdead'), 'a')).to.have.length(1)
+      expect(checkAddressLiterals(action('address[3]', '0xdead'), 'a')).to.have.length(1)
+      expect(checkAddressLiterals(action(' address ', '0xdead'), 'a')).to.have.length(1)
+    })
+
     it('ignores non-address parameters', () => {
       expect(checkAddressLiterals(action('uint256', '12345'), 'a')).to.deep.equal([])
       expect(checkAddressLiterals(action('bytes32', '0xdead'), 'a')).to.deep.equal([])

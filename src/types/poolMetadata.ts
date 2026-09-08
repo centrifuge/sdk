@@ -116,6 +116,18 @@ export interface WorkflowPolicyEntry {
   /** 0-based indices of catalog actions excluded from the final script. */
   excludedActions?: number[]
   addedAt: string
+  /**
+   * The catalog's pre-computed id for the entry, pinned when the workflow was whitelisted. Read by
+   * `Pool`'s policy paths to refuse a rebuild when the catalog has moved on, so it is part of the
+   * type contract rather than an undeclared extra: a writer that omits it turns that check into a
+   * no-op. NOT the script hash — it is the hash of the catalog definition before this pool's
+   * configurable values are pinned in, so the two differ for every configured workflow.
+   */
+  workflowId?: HexString
+  /** Catalog version pinned at whitelist time; drives the "update available" flag and the same check. */
+  version?: number
+  /** Chain the entry targets, when the writer records it (the catalog's `chainId` resolves to this). */
+  centrifugeId?: number
 }
 
 /**

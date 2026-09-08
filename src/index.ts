@@ -130,6 +130,7 @@ export type {
   DeclaringTemplate,
   RuleViolation,
   SelectorAction,
+  SelectorActionWithInputs,
   TaintTemplate,
 } from './utils/workflowRules.js'
 export { MAGIC_VARIABLE_NAMES } from './utils/workflowRules.js'
