@@ -81,6 +81,42 @@ export type AdapterStatus = {
   crosschainInProgress: AdapterProgress
 }
 
+/**
+ * Reject a catalog entry that no longer matches what a policy entry pinned when it was whitelisted.
+ *
+ * A policy entry stores a name (`workflowRef`) plus the artifact it was approved against
+ * (`workflowId`, `version`, `catalogCid`). The catalog is republished with regenerated ids, so
+ * resolving by name alone let an unrelated add or remove silently re-sign a strategist's root over
+ * a *different* script than the one that was reviewed — the operator sees "remove workflow B" and
+ * signs a root that also re-authorizes a changed workflow A. Re-pinning has to be a deliberate act
+ * ("update workflow"), not a side effect of editing a neighbour.
+ *
+ * Entries written before these fields existed carry no pin and are resolved by name as before.
+ */
+function assertPinnedArtifact(entry: WorkflowPolicyEntry, workflow: MarketplaceWorkflow): void {
+  const pinned = entry as WorkflowPolicyEntry & { workflowId?: string; version?: number }
+
+  if (
+    pinned.workflowId &&
+    workflow.workflowId &&
+    pinned.workflowId.toLowerCase() !== workflow.workflowId.toLowerCase()
+  ) {
+    throw new Error(
+      `Workflow "${entry.workflowRef}" changed in the catalog since it was whitelisted ` +
+        `(pinned workflowId ${pinned.workflowId}, catalog has ${workflow.workflowId}). ` +
+        `Re-pin it explicitly with an update before changing this policy.`
+    )
+  }
+
+  if (pinned.version != null && workflow.version != null && pinned.version !== workflow.version) {
+    throw new Error(
+      `Workflow "${entry.workflowRef}" is pinned to catalog version ${pinned.version} but the ` +
+        `catalog now serves version ${workflow.version}. Re-pin it explicitly with an update ` +
+        `before changing this policy.`
+    )
+  }
+}
+
 export class Pool extends Entity {
   id: PoolId
 
@@ -386,6 +422,9 @@ export class Pool extends Entity {
     for (const entry of group.workflows) {
       const workflow = byRef.get(entry.workflowRef)
       if (!workflow) continue
+      // The proof tree this builds has to be the whitelisted one, or a generated proof simply
+      // won't verify against the on-chain root — better to say why than to fail at execution.
+      assertPinnedArtifact(entry, workflow)
       let centrifugeId = idCache.get(workflow.chainId)
       if (centrifugeId == null) {
         centrifugeId = await firstValueFrom(this._root.id(workflow.chainId))
@@ -560,6 +599,9 @@ export class Pool extends Entity {
     for (const entry of group.workflows) {
       const workflow = byRef.get(entry.workflowRef)
       if (!workflow) continue
+      // Every *other* entry has to still be the artifact it was approved as: this root re-signs
+      // them all, and only `affectedWorkflowRef` is the one the operator is deliberately changing.
+      if (entry.workflowRef !== affectedWorkflowRef) assertPinnedArtifact(entry, workflow)
       let cid = idCache.get(workflow.chainId)
       if (cid == null) {
         cid = await firstValueFrom(this._root.id(workflow.chainId))

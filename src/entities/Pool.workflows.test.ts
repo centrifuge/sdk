@@ -35,7 +35,13 @@ const catalogEntry = (workflowRef: string, chainId: number, group?: string): Mar
 
 /** A Pool with metadata, catalog, chain-id mapping and active networks all stubbed. */
 function makePool(options: {
-  entries?: { workflowRef: string; configurableValues?: Record<string, HexString>; excludedActions?: number[] }[]
+  entries?: {
+    workflowRef: string
+    configurableValues?: Record<string, HexString>
+    excludedActions?: number[]
+    workflowId?: string
+    version?: number
+  }[]
   strategist?: HexString
   catalog?: MarketplaceWorkflow[]
   /** centrifugeIds the pool is deployed on. */
@@ -241,6 +247,82 @@ describe('entities/Pool workflow orchestration', () => {
 
     it('returns an empty list when the pool has no adapters on that route', async () => {
       expect((await adapterStatusFor([])).result).to.deep.equal([])
+    })
+  })
+
+  describe('pinned-artifact enforcement', () => {
+    // A policy entry records the artifact it was approved against. Resolving by `workflowRef` alone
+    // let an unrelated edit re-sign a strategist's whole root over a script nobody reviewed.
+    const PINNED_ID = `0x${'1'.repeat(64)}`
+    const CATALOG_ID = `0x${'2'.repeat(64)}`
+
+    const withCatalogId = (ref: string, chainId: number, workflowId: string) =>
+      ({ ...catalogEntry(ref, chainId), workflowId }) as MarketplaceWorkflow
+
+    it('refuses to list a strategist whose pinned workflowId no longer matches the catalog', async () => {
+      const { pool } = makePool({
+        entries: [{ workflowRef: 'wf_a', workflowId: PINNED_ID }],
+        catalog: [withCatalogId('wf_a', 100, CATALOG_ID)],
+      })
+      let error: Error | undefined
+      await pool.listWorkflows({ strategist: STRATEGIST }).catch((e) => (error = e))
+      expect(error?.message).to.match(/changed in the catalog since it was whitelisted/)
+    })
+
+    it('refuses when the pinned catalog version has moved', async () => {
+      const { pool } = makePool({
+        entries: [{ workflowRef: 'wf_a', version: 1 }],
+        catalog: [{ ...catalogEntry('wf_a', 100), version: 7 } as MarketplaceWorkflow],
+      })
+      let error: Error | undefined
+      await pool.listWorkflows({ strategist: STRATEGIST }).catch((e) => (error = e))
+      expect(error?.message).to.match(/pinned to catalog version 1 .* version 7/)
+    })
+
+    it('allows an entry that still matches its pin', async () => {
+      const { pool } = makePool({
+        entries: [{ workflowRef: 'wf_a', workflowId: PINNED_ID, version: 1 }],
+        catalog: [{ ...withCatalogId('wf_a', 100, PINNED_ID), version: 1 } as MarketplaceWorkflow],
+      })
+      expect((await pool.listWorkflows({ strategist: STRATEGIST })).map((row) => row.workflowRef)).to.deep.equal([
+        'wf_a',
+      ])
+    })
+
+    it('resolves an unpinned legacy entry by name, as before', async () => {
+      // Entries written before these fields existed carry no pin; refusing them would strand
+      // every policy created before the field.
+      const { pool } = makePool({
+        entries: [{ workflowRef: 'wf_a' }],
+        catalog: [withCatalogId('wf_a', 100, CATALOG_ID)],
+      })
+      expect((await pool.listWorkflows({ strategist: STRATEGIST })).map((row) => row.workflowRef)).to.deep.equal([
+        'wf_a',
+      ])
+    })
+
+    it('lets an explicit re-pin through for the workflow being changed, but not its neighbours', async () => {
+      // `addToPolicy` on a drifted workflow is the deliberate "update" action, so its own pin is
+      // not enforced. A NEIGHBOUR that drifted still blocks the edit — the rebuilt root re-signs it.
+      const { centrifuge, pool } = makePool({
+        entries: [{ workflowRef: 'wf_a' }, { workflowRef: 'wf_b', workflowId: PINNED_ID }],
+        catalog: [catalogEntry('wf_a', 100), withCatalogId('wf_b', 100, CATALOG_ID)],
+      })
+      // Enough of the write path to reach the rebuild loop, which is where the root is built.
+      sinon.stub(PoolNetwork.prototype, 'onchainPM').returns(of({ updatePolicy: () => 'policy-tx' }) as any)
+      sinon.stub(pool, 'updateMetadata').returns('metadata-tx' as any)
+      const batch = sinon.stub(centrifuge, 'batchTransactions').returns('batched' as any)
+      const scId = `0x${'0'.repeat(32)}` as HexString
+
+      // Editing the drifted entry itself is the deliberate re-pin: allowed, and it batches.
+      expect(await pool.addToPolicy({ strategist: STRATEGIST, workflowRef: 'wf_b', scId })).to.equal('batched')
+      expect(batch.calledOnce).to.equal(true)
+
+      // Editing the neighbour is refused: that root would re-authorize the drifted wf_b too.
+      let neighbourEdit: Error | undefined
+      await pool.addToPolicy({ strategist: STRATEGIST, workflowRef: 'wf_a', scId }).catch((e) => (neighbourEdit = e))
+      expect(neighbourEdit?.message).to.match(/changed in the catalog since it was whitelisted/)
+      expect(batch.calledOnce).to.equal(true)
     })
   })
 })
