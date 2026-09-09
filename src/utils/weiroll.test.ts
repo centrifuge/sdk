@@ -8,7 +8,9 @@ import {
   VALUECALL,
   buildScript,
   encodeCommand,
+  encodeVariableLengthValue,
   fillRuntimeSlots,
+  getWorkflowAbiParameter,
 } from './weiroll.js'
 import type { PoolContext, WorkflowDefinition } from './weiroll.js'
 
@@ -573,6 +575,59 @@ describe('utils/weiroll', () => {
       expect(() => buildScript(workflow, { poolContext: {}, configurableValues: {} })).to.throw(
         /depends on a runtime value/
       )
+    })
+  })
+
+  describe('getWorkflowAbiParameter', () => {
+    // These two shapes were hardcoded before the parser went in, and they are the two that
+    // still compile to FLAG_RAW for script-hash stability. If parsing ever stopped
+    // reproducing them exactly, published hashes would move silently.
+    it('reproduces the formerly hardcoded tuple arrays exactly', () => {
+      expect(getWorkflowAbiParameter('(address,uint256)[]')).to.deep.equal({
+        type: 'tuple[]',
+        components: [{ type: 'address' }, { type: 'uint256' }],
+      })
+      expect(getWorkflowAbiParameter('(address,address)[]')).to.deep.equal({
+        type: 'tuple[]',
+        components: [{ type: 'address' }, { type: 'address' }],
+      })
+    })
+
+    it('parses shapes the hardcoded map could not express', () => {
+      expect(getWorkflowAbiParameter('(address,uint256,uint256,address)[]')).to.deep.equal({
+        type: 'tuple[]',
+        components: [{ type: 'address' }, { type: 'uint256' }, { type: 'uint256' }, { type: 'address' }],
+      })
+    })
+
+    it('names the parameter it cannot parse', () => {
+      expect(() => getWorkflowAbiParameter('(not a type)[]')).to.throw(/cannot parse ABI parameter/)
+    })
+  })
+
+  describe('encodeVariableLengthValue', () => {
+    it('produces a non-zero multiple of 32 bytes for every dynamic shape', () => {
+      const cases: Array<[string, unknown]> = [
+        ['bytes', '0xdeadbeef'],
+        ['string', 'hello'],
+        ['uint256[]', [1n, 2n, 3n]],
+        [
+          '(address,uint256,uint256,address)[]',
+          [['0x1111111111111111111111111111111111111111', 1n, 2n, '0x2222222222222222222222222222222222222222']],
+        ],
+      ]
+      for (const [parameter, value] of cases) {
+        const encoded = encodeVariableLengthValue(parameter, value)
+        const byteLength = (encoded.length - 2) / 2
+        expect(byteLength, parameter).to.be.greaterThan(0)
+        expect(byteLength % 32, parameter).to.equal(0)
+      }
+    })
+
+    it('drops only the leading offset word, leaving a relocatable inner encoding', () => {
+      const parameter = 'uint256[]'
+      const standalone = encodeAbiParameters([{ type: 'uint256[]' }], [[7n, 8n]])
+      expect(encodeVariableLengthValue(parameter, [7n, 8n])).to.equal(`0x${standalone.slice(66)}`)
     })
   })
 })

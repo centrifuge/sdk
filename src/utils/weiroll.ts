@@ -1,4 +1,4 @@
-import { concat, decodeAbiParameters, encodeAbiParameters } from 'viem'
+import { concat, decodeAbiParameters, encodeAbiParameters, parseAbiParameter } from 'viem'
 import type { AbiParameter } from 'viem'
 import type { HexString } from '../types/index.js'
 
@@ -192,7 +192,24 @@ export function fillRuntimeSlots(
     if (!def || def.type !== 'runtime') return slot
 
     const value = runtimeValues[def.key]
-    return value ?? slot
+    if (value === undefined) return slot
+
+    // A variable-length slot is copied verbatim into the calldata tail, so the VM requires
+    // its length be a multiple of 32 and the caller is the one who built it — via
+    // encodeVariableLengthValue, or by hand. Catching a malformed blob here names the
+    // variable and its type; letting it through surfaces as a bare revert from execute()
+    // with nothing to point at. Static slots are one word and viem's encoders already
+    // guarantee that, so only the dynamic ones need saying.
+    if (def.parameter !== undefined && isVariableLengthAbiParameter(def.parameter)) {
+      const byteLength = (value.length - 2) / 2
+      if (byteLength === 0 || byteLength % 32 !== 0) {
+        throw new Error(
+          `fillRuntimeSlots: runtime value for "${def.key}" (${def.parameter}) is ${byteLength} bytes — a variable-length slot must be a non-zero multiple of 32. Encode it with encodeVariableLengthValue().`
+        )
+      }
+    }
+
+    return value
   })
 
   for (let i = 0; i < workflow.state.length; i++) {
@@ -204,22 +221,69 @@ export function fillRuntimeSlots(
   return nextState
 }
 
-function getWorkflowAbiParameter(parameter: string): AbiParameter {
-  if (parameter === '(address,uint256)[]') {
-    return {
-      type: 'tuple[]',
-      components: [{ type: 'address' }, { type: 'uint256' }],
-    }
-  }
+/**
+ * Whether a parameter is passed through the VM's 0x80 variable-length input specifier.
+ *
+ * Mirrors `isVariableLengthParameter` in catalog.ts, minus the legacy FLAG_RAW exclusions:
+ * those never reach a runtime slot (catalog.ts refuses a runtime source for them), so from
+ * here the question is only "is this type dynamic".
+ */
+function isVariableLengthAbiParameter(parameter: string): boolean {
+  return parameter === 'bytes' || parameter === 'string' || parameter.endsWith('[]')
+}
 
-  if (parameter === '(address,address)[]') {
-    return {
-      type: 'tuple[]',
-      components: [{ type: 'address' }, { type: 'address' }],
-    }
-  }
+const abiParameterCache = new Map<string, AbiParameter>()
 
-  return { type: parameter }
+/**
+ * Resolves a catalog parameter string to a viem `AbiParameter`.
+ *
+ * This used to hardcode the only two tuple arrays anyone had needed, and fall through to
+ * `{ type: parameter }` for everything else — which silently produced an invalid parameter
+ * for any other tuple shape, since `"(address,uint256,uint256,address)[]"` is not an ABI
+ * type name. `parseAbiParameter` handles the whole grammar and reproduces both former
+ * hardcoded entries exactly (asserted in weiroll.test.ts), so the substitution is
+ * behaviour-preserving for existing catalogs and correct for new ones.
+ *
+ * Cached because it is called per input per encode, and parsing is pure.
+ */
+export function getWorkflowAbiParameter(parameter: string): AbiParameter {
+  const cached = abiParameterCache.get(parameter)
+  if (cached) return cached
+
+  let parsed: AbiParameter
+  try {
+    parsed = parseAbiParameter(parameter) as AbiParameter
+  } catch (cause) {
+    throw new Error(`getWorkflowAbiParameter: cannot parse ABI parameter "${parameter}"`, { cause })
+  }
+  abiParameterCache.set(parameter, parsed)
+  return parsed
+}
+
+/**
+ * Encodes a dynamic value into the form a variable-length (0x80) state slot must hold.
+ *
+ * The VM copies the slot verbatim into the calldata tail and writes a head offset pointing
+ * at it, so the slot must contain the value's INNER encoding — what ABI encoding produces
+ * *after* the leading offset word. `encodeAbiParameters` gives the standalone form
+ * `[offset][inner]`; dropping the first 32 bytes leaves exactly `[inner]`, which is
+ * position-independent and therefore relocatable to wherever the VM lands it.
+ *
+ * The result is always a non-zero multiple of 32 bytes, which is what the VM requires:
+ * a dynamic array is `[length][elements…]`, and `bytes`/`string` are `[length][padded data]`.
+ */
+export function encodeVariableLengthValue(parameter: string, value: unknown): HexString {
+  const standalone = encodeAbiParameters([getWorkflowAbiParameter(parameter)], [value])
+  const inner = `0x${standalone.slice(66)}` as HexString
+
+  // Belt and braces: a slot the VM rejects should fail here, where the parameter and value
+  // are still in hand, rather than as an opaque revert inside execute().
+  if ((inner.length - 2) % 64 !== 0) {
+    throw new Error(
+      `encodeVariableLengthValue: encoding of "${parameter}" is ${(inner.length - 2) / 2} bytes, not a multiple of 32`
+    )
+  }
+  return inner
 }
 
 function decodeWorkflowValue(parameter: string, encodedValue: HexString, sourceSlot?: WorkflowStateSlot): unknown {
