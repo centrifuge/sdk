@@ -99,27 +99,36 @@ export type AdapterStatus = {
  */
 const ZERO_ROOT = `0x${'0'.repeat(64)}` as HexString
 
-function assertPinnedArtifact(entry: WorkflowPolicyEntry, workflow: MarketplaceWorkflow): void {
-  const pinned = entry
-
-  if (
-    pinned.workflowId &&
-    workflow.workflowId &&
-    pinned.workflowId.toLowerCase() !== workflow.workflowId.toLowerCase()
-  ) {
-    throw new Error(
+/**
+ * Describes how the catalog's current definition of an entry differs from the one it was whitelisted
+ * against, or null when they agree.
+ *
+ * `workflowId` is the catalog's hash of the definition *before* a pool's configurable values are
+ * pinned in, so it identifies the definition rather than the leaf. If it has moved, the script the
+ * catalog would build today is not the script the policy's root was built from.
+ */
+function pinnedArtifactDrift(entry: WorkflowPolicyEntry, workflow: MarketplaceWorkflow): string | null {
+  if (entry.workflowId && workflow.workflowId && entry.workflowId.toLowerCase() !== workflow.workflowId.toLowerCase()) {
+    return (
       `Workflow "${entry.workflowRef}" changed in the catalog since it was whitelisted ` +
-        `(pinned workflowId ${pinned.workflowId}, catalog has ${workflow.workflowId}). ` +
-        `Re-pin it explicitly with an update before changing this policy.`
+      `(pinned workflowId ${entry.workflowId}, catalog has ${workflow.workflowId}).`
     )
   }
 
-  if (pinned.version != null && workflow.version != null && pinned.version !== workflow.version) {
-    throw new Error(
-      `Workflow "${entry.workflowRef}" is pinned to catalog version ${pinned.version} but the ` +
-        `catalog now serves version ${workflow.version}. Re-pin it explicitly with an update ` +
-        `before changing this policy.`
+  if (entry.version != null && workflow.version != null && entry.version !== workflow.version) {
+    return (
+      `Workflow "${entry.workflowRef}" is pinned to catalog version ${entry.version} but the ` +
+      `catalog now serves version ${workflow.version}.`
     )
+  }
+
+  return null
+}
+
+function assertPinnedArtifact(entry: WorkflowPolicyEntry, workflow: MarketplaceWorkflow): void {
+  const drift = pinnedArtifactDrift(entry, workflow)
+  if (drift) {
+    throw new Error(`${drift} Re-pin it explicitly with an update before changing this policy.`)
   }
 }
 
@@ -411,8 +420,16 @@ export class Pool extends Entity {
    * @internal
    */
   async _resolveStrategistWorkflows(
-    strategist: HexString
-  ): Promise<{ centrifugeId: number; network: PoolNetwork; policy: PolicyEntryInput[] }[]> {
+    strategist: HexString,
+    options?: {
+      /**
+       * Collect catalog drift instead of throwing on it. Only verification may do this: reporting
+       * that a definition moved is its job, where for an edit the same fact must abort the rebuild
+       * (the proof tree would no longer be the whitelisted one).
+       */
+      collectDrift?: boolean
+    }
+  ): Promise<{ centrifugeId: number; network: PoolNetwork; policy: PolicyEntryInput[]; drifted: string[] }[]> {
     const meta = await firstValueFrom(this.metadata())
     const group = (meta?.workflowPolicies ?? []).find(
       (policy) => policy.strategistAddress.toLowerCase() === strategist.toLowerCase()
@@ -423,14 +440,18 @@ export class Pool extends Entity {
     const byRef = new Map<string, MarketplaceWorkflow>(catalog.map((w) => [w.workflowRef, w]))
     const networks = await firstValueFrom(this.activeNetworks())
 
-    const byChain = new Map<number, { centrifugeId: number; network: PoolNetwork; policy: PolicyEntryInput[] }>()
+    const byChain = new Map<
+      number,
+      { centrifugeId: number; network: PoolNetwork; policy: PolicyEntryInput[]; drifted: string[] }
+    >()
     const idCache = new Map<number, number>()
     for (const entry of group.workflows) {
       const workflow = byRef.get(entry.workflowRef)
       if (!workflow) continue
       // The proof tree this builds has to be the whitelisted one, or a generated proof simply
       // won't verify against the on-chain root — better to say why than to fail at execution.
-      assertPinnedArtifact(entry, workflow)
+      const drift = options?.collectDrift ? pinnedArtifactDrift(entry, workflow) : null
+      if (!options?.collectDrift) assertPinnedArtifact(entry, workflow)
       let centrifugeId = idCache.get(workflow.chainId)
       if (centrifugeId == null) {
         centrifugeId = await firstValueFrom(this._root.id(workflow.chainId))
@@ -440,9 +461,10 @@ export class Pool extends Entity {
       if (!network) continue
       let bucket = byChain.get(centrifugeId)
       if (!bucket) {
-        bucket = { centrifugeId, network, policy: [] }
+        bucket = { centrifugeId, network, policy: [], drifted: [] }
         byChain.set(centrifugeId, bucket)
       }
+      if (drift) bucket.drifted.push(drift)
       bucket.policy.push({
         workflow,
         configurableValues: (entry.configurableValues ?? {}) as Record<string, HexString>,
@@ -509,7 +531,9 @@ export class Pool extends Entity {
     }[]
   > {
     const { buildPolicyUpdate } = await import('./OnchainPM.js')
-    const groups = await this._resolveStrategistWorkflows(strategist)
+    // Drift is collected rather than thrown: a definition that moved since whitelisting is a finding
+    // this method exists to report, where for an edit it must abort the rebuild.
+    const groups = await this._resolveStrategistWorkflows(strategist, { collectDrift: true })
     const results: Awaited<ReturnType<Pool['verifyWorkflowPolicy']>> = []
 
     for (const group of groups) {
@@ -541,6 +565,15 @@ export class Pool extends Entity {
       let note: string | undefined
 
       try {
+        // A drifted entry's leaf cannot be reproduced: the catalog no longer publishes the definition
+        // the policy was built from. Recomputing anyway yields a root that cannot match, and
+        // reporting *that* as a mismatch accuses a policy nobody touched — so this falls into the
+        // recorded-leaf path below, the only honest way left to check such a policy.
+        if (group.drifted.length) {
+          throw new Error(
+            `${group.drifted.length} of ${group.policy.length} entries were redefined in the catalog since they were whitelisted: ${group.drifted.join(' ')}`
+          )
+        }
         const scId = await resolveWorkflowShareClassId(group.network, group.policy[0]?.scId)
         leaves = await computeWorkflowGroupScriptHashes({
           centrifuge: this._root,

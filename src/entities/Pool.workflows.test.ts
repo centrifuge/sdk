@@ -441,6 +441,63 @@ describe('entities/Pool workflow orchestration', () => {
       expect(result!.note).to.match(/compiler drift/)
     })
 
+    it('reports catalog drift instead of throwing, and never as a mismatch', async () => {
+      // deJTRSY on mainnet: the catalog redefined 2 of its 4 whitelisted workflows after the policy
+      // was written. Recomputing from today's definitions yields a root that cannot match, and
+      // calling that a mismatch accuses a policy nobody touched. Before this, the drift guard threw
+      // and verification returned nothing at all.
+      const entries = [{ workflowRef: 'wf_a', scId: SC_ID, workflowId: `0x${'1'.repeat(64)}` as HexString }]
+      const { centrifuge, pool } = makePool({ entries, catalog: [catalogEntry('wf_a', 100)] })
+      sinon.stub(centrifuge, 'getClient').returns(of({ readContract: async () => `0x${'b'.repeat(64)}` }) as any)
+      sinon.stub(centrifuge as any, '_protocolAddresses').returns(of({ hub: ONCHAIN_PM }) as any)
+      sinon.stub(pool as any, '_escrow').returns(of(ONCHAIN_PM) as any)
+      sinon.stub(PoolNetwork.prototype, 'onchainPM').returns(of({ address: ONCHAIN_PM }) as any)
+
+      const [result] = await pool.verifyWorkflowPolicy(STRATEGIST)
+      expect(result!.verdict).to.equal('unverifiable')
+      expect(result!.computedRoot).to.equal(null)
+      expect(result!.note).to.match(/redefined in the catalog since they were whitelisted/)
+      expect(result!.note).to.match(/wf_a/)
+    })
+
+    it('uses recorded leaves for a drifted entry when they were pinned', async () => {
+      // What the drift case looks like once a policy records its leaves: the definition is gone, but
+      // the leaves still either reproduce the enforced root or they do not.
+      const entries = [
+        {
+          workflowRef: 'wf_a',
+          scId: SC_ID,
+          workflowId: `0x${'1'.repeat(64)}` as HexString,
+          scriptHash: RECORDED_LEAF,
+        },
+      ]
+      const { centrifuge, pool } = makePool({ entries, catalog: [catalogEntry('wf_a', 100)] })
+      sinon.stub(centrifuge, 'getClient').returns(of({ readContract: async () => `0x${'b'.repeat(64)}` }) as any)
+      sinon.stub(centrifuge as any, '_protocolAddresses').returns(of({ hub: ONCHAIN_PM }) as any)
+      sinon.stub(pool as any, '_escrow').returns(of(ONCHAIN_PM) as any)
+      sinon.stub(PoolNetwork.prototype, 'onchainPM').returns(of({ address: ONCHAIN_PM }) as any)
+
+      const [result] = await pool.verifyWorkflowPolicy(STRATEGIST)
+      expect(result!.leafSource).to.equal('recorded')
+      expect(result!.computedRoot).to.not.equal(null)
+      expect(result!.note).to.match(/redefined in the catalog/)
+    })
+
+    it('still refuses to rebuild a policy whose definitions drifted', async () => {
+      // The other half of the rule: an *edit* must abort, because the proof tree it would sign is no
+      // longer the whitelisted one. Only verification tolerates drift.
+      const entries = [{ workflowRef: 'wf_a', workflowId: `0x${'1'.repeat(64)}` as HexString }]
+      const { pool } = makePool({ entries, catalog: [catalogEntry('wf_a', 100)] })
+      let message = ''
+      try {
+        await pool._resolveStrategistWorkflows(STRATEGIST)
+      } catch (error) {
+        message = (error as Error).message
+      }
+      expect(message).to.match(/changed in the catalog since it was whitelisted/)
+      expect(message).to.match(/Re-pin it explicitly/)
+    })
+
     it('reports unverifiable when nothing can be rebuilt and nothing was recorded', async () => {
       const { pool } = setup({ root: `0x${'b'.repeat(64)}` })
       sinon.stub(PoolNetwork.prototype, 'onchainPM').returns(of(null) as any)
