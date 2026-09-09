@@ -1,9 +1,9 @@
 import { expect } from 'chai'
-import { decodeAbiParameters, toFunctionSelector } from 'viem'
+import { decodeAbiParameters, encodeFunctionData, parseAbiParameter, toFunctionSelector } from 'viem'
 import type { HexString } from '../types/index.js'
 import type { CatalogTemplate, CatalogVariable, MarketplaceWorkflow } from '../types/workflow.js'
 import { buildWorkflowDefinitionFromCatalog, parseMarketplaceCatalog } from './catalog.js'
-import { buildScript } from './weiroll.js'
+import { buildScript, encodeVariableLengthValue, fillRuntimeSlots } from './weiroll.js'
 
 const ADDRESS_A = '0x1111111111111111111111111111111111111111' as const
 const ADDRESS_B = '0x2222222222222222222222222222222222222222' as const
@@ -228,6 +228,206 @@ describe('utils/catalog', () => {
     expect(definition.state[1]).to.deep.include({ type: 'configurable', key: 'hookData', parameter: 'bytes' })
     expect(definition.actions[0]!.inputs).to.deep.equal([0, 0x80 | 1])
     expect(definition.state.every((s) => s.type !== 'rawcalldata')).to.equal(true)
+  })
+
+  // The Morpho Midnight shape. `Market.collateralParams` is a tuple array whose values come
+  // off a live order book, so it can only be `runtime` — and a tuple array used to route to
+  // FLAG_RAW, where a runtime source is refused outright. The integration was unbuildable
+  // for a reason that was never about the type being dynamic, only about the encoder never
+  // having been taught it.
+  it('encodes a runtime tuple-array argument via the 0x80 specifier, not FLAG_RAW', () => {
+    const workflow = tagged(
+      'runtime-tuple-array',
+      [
+        { name: 'target', kind: 'pinned' },
+        { name: 'units', kind: 'runtime' },
+        { name: 'collateralParams', kind: 'runtime' },
+      ],
+      [
+        {
+          target: '$target',
+          selector: 'function take(uint256,(address,uint256,uint256,address)[])',
+          inputs: [
+            { parameter: 'uint256', label: 'Units', input: ['$units'] },
+            {
+              parameter: '(address,uint256,uint256,address)[]',
+              label: 'Collateral',
+              input: ['$collateralParams'],
+            },
+          ],
+        },
+      ],
+      { target: ADDRESS_A }
+    )
+
+    const definition = buildWorkflowDefinitionFromCatalog(workflow)
+
+    expect(definition.actions[0]!.rawMode).to.equal(undefined)
+    expect(definition.actions[0]!.inputs).to.deep.equal([0, 0x80 | 1])
+    expect(definition.state.every((s) => s.type !== 'rawcalldata')).to.equal(true)
+    expect(definition.state[1]).to.deep.include({
+      type: 'runtime',
+      key: 'collateralParams',
+      parameter: '(address,uint256,uint256,address)[]',
+    })
+  })
+
+  it('reconstructs byte-exact calldata for a runtime tuple array the way the VM does', () => {
+    // The whole claim rests on the VM's variable-length path being type-agnostic: it writes a
+    // head offset and copies the slot verbatim into the tail. That is only sound because ABI
+    // tail encodings are position-independent. Assert it end to end — build the slot the SDK
+    // way, splice it the VM way, and compare against viem's encoding of the same call.
+    const parameter = '(address,uint256,uint256,address)[]'
+    const offers = [
+      [ADDRESS_B, 1n, 2n, ADDRESS_C],
+      [ADDRESS_D, 3n, 4n, ADDRESS_A],
+    ]
+
+    const workflow = tagged(
+      'vm-splice',
+      [
+        { name: 'target', kind: 'pinned' },
+        { name: 'collateralParams', kind: 'runtime' },
+      ],
+      [
+        {
+          target: '$target',
+          selector: 'function take((address,uint256,uint256,address)[])',
+          inputs: [{ parameter, label: 'Collateral', input: ['$collateralParams'] }],
+        },
+      ],
+      { target: ADDRESS_A }
+    )
+
+    const definition = buildWorkflowDefinitionFromCatalog(workflow)
+    const { state } = buildScript(definition, { poolContext: {}, configurableValues: {} })
+    const filled = fillRuntimeSlots(state, definition, {
+      collateralParams: encodeVariableLengthValue(parameter, offers),
+    })
+
+    const slot = filled[0]!
+    expect((slot.length - 2) / 2 === 0 || (slot.length - 2) % 64 !== 0).to.equal(false)
+
+    // What the VM assembles: selector, then a head word pointing at the tail (0x20 for a
+    // single argument), then the slot copied verbatim.
+    const selector = toFunctionSelector('function take((address,uint256,uint256,address)[])')
+    const head = (32).toString(16).padStart(64, '0')
+    const vmCalldata = `${selector}${head}${slot.slice(2)}`
+
+    const expected = encodeFunctionData({
+      abi: [
+        {
+          type: 'function',
+          name: 'take',
+          inputs: [parseAbiParameter(parameter)],
+          outputs: [],
+        },
+      ],
+      functionName: 'take',
+      args: [offers],
+    })
+
+    expect(vmCalldata).to.equal(expected)
+  })
+
+  it('rejects a variable-length runtime value that is not a whole number of words', () => {
+    const workflow = tagged(
+      'bad-slot',
+      [
+        { name: 'target', kind: 'pinned' },
+        { name: 'collateralParams', kind: 'runtime' },
+      ],
+      [
+        {
+          target: '$target',
+          selector: 'function take((address,uint256,uint256,address)[])',
+          inputs: [
+            {
+              parameter: '(address,uint256,uint256,address)[]',
+              label: 'Collateral',
+              input: ['$collateralParams'],
+            },
+          ],
+        },
+      ],
+      { target: ADDRESS_A }
+    )
+
+    const definition = buildWorkflowDefinitionFromCatalog(workflow)
+    const { state } = buildScript(definition, { poolContext: {}, configurableValues: {} })
+
+    expect(() => fillRuntimeSlots(state, definition, { collateralParams: '0xdeadbeef' })).to.throw(
+      /must be a non-zero multiple of 32/
+    )
+  })
+
+  it('encodes a pinned tuple-array literal from catalog JSON', () => {
+    const workflow = tagged(
+      'pinned-tuple-array',
+      [
+        { name: 'target', kind: 'pinned' },
+        { name: 'offers', kind: 'pinned' },
+      ],
+      [
+        {
+          target: '$target',
+          selector: 'function take((address,uint256,uint256,address)[])',
+          inputs: [
+            {
+              parameter: '(address,uint256,uint256,address)[]',
+              label: 'Offers',
+              input: ['$offers'],
+            },
+          ],
+        },
+      ],
+      {
+        target: ADDRESS_A,
+        // Integers as decimal strings, so a value past 2^53 survives JSON.
+        offers: `[["${ADDRESS_B}", "1", "2", "${ADDRESS_C}"]]`,
+      }
+    )
+
+    const definition = buildWorkflowDefinitionFromCatalog(workflow)
+    const slot = definition.state[0]!
+
+    expect(slot.type).to.equal('literal')
+    expect(definition.actions[0]!.rawMode).to.equal(undefined)
+    expect(definition.actions[0]!.inputs).to.deep.equal([0x80 | 0])
+
+    const value = (slot as { value: HexString }).value
+    const [decoded] = decodeAbiParameters(
+      [parseAbiParameter('(address,uint256,uint256,address)[]')],
+      `0x${(32).toString(16).padStart(64, '0')}${value.slice(2)}` as HexString
+    )
+    expect(decoded).to.deep.equal([[ADDRESS_B, 1n, 2n, ADDRESS_C]])
+  })
+
+  it('names the ABI type when a catalog literal has the wrong shape for it', () => {
+    const build = (offers: string) =>
+      buildWorkflowDefinitionFromCatalog(
+        tagged(
+          'bad-literal',
+          [
+            { name: 'target', kind: 'pinned' },
+            { name: 'offers', kind: 'pinned' },
+          ],
+          [
+            {
+              target: '$target',
+              selector: 'function take((address,uint256,uint256,address)[])',
+              inputs: [{ parameter: '(address,uint256,uint256,address)[]', label: 'Offers', input: ['$offers'] }],
+            },
+          ],
+          { target: ADDRESS_A, offers }
+        )
+      )
+
+    // A number where an address belongs used to reach viem untouched.
+    expect(() => build(`[[1, "2", "3", "${ADDRESS_C}"]]`)).to.throw(/expected a string for address/)
+    expect(() => build(`[["${ADDRESS_B}"]]`)).to.throw(/tuple expects 4 components, got 1/)
+    expect(() => build(`{"not": "an array"}`)).to.throw(/expected an array/)
+    expect(() => build(`not json`)).to.throw(/is not valid JSON/)
   })
 
   it('encodes a runtime bytes argument via the 0x80 specifier, not FLAG_RAW (selector pinned)', () => {

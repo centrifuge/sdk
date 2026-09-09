@@ -1,4 +1,5 @@
 import { toFunctionSelector } from 'viem'
+import type { AbiParameter } from 'viem'
 import type { HexString } from '../types/index.js'
 import type {
   CatalogAction,
@@ -10,10 +11,80 @@ import type {
 import { MAGIC_VARIABLE_KEYS } from './variables.js'
 import { checkDuplicateWorkflowIds, validateCatalogWorkflow } from './workflowRules.js'
 import type { CatalogWorkflowEntry, RuleViolation } from './workflowRules.js'
-import { CALL, MAX_STATE_SLOTS, UNUSED_SLOT, VALUECALL } from './weiroll.js'
+import {
+  CALL,
+  MAX_STATE_SLOTS,
+  UNUSED_SLOT,
+  VALUECALL,
+  encodeVariableLengthValue,
+  getWorkflowAbiParameter,
+} from './weiroll.js'
 import type { WeirollAction, WorkflowDefinition, WorkflowStateSlot } from './weiroll.js'
 
 const MAGIC_KEY_SET = new Set<string>(MAGIC_VARIABLE_KEYS)
+
+/**
+ * The shapes viem's encoder accepts for the ABI types a catalog literal can name:
+ * `bigint` for the integer types, `boolean` for `bool`, `string` for the address, bytes
+ * and string types, and a nested array per array or tuple.
+ *
+ * The exact member is a function of the ABI type, but that type arrives as a runtime
+ * string here, so it cannot be resolved statically — this union is the most precise
+ * return `coerceAbiValue` can promise.
+ */
+type AbiInputValue = bigint | boolean | string | readonly AbiInputValue[]
+
+/**
+ * Walks a JSON-parsed catalog literal against its ABI parameter, converting to what
+ * viem's encoder expects.
+ *
+ * JSON has no integer type wide enough for `uint256` and no tuple type at all, so the
+ * catalog writes numbers as decimal strings and structs as positional arrays. This maps
+ * both onto viem's shape and rejects anything the ABI type cannot admit, naming the type
+ * that failed — which beats viem's error, since by then the offending value has lost its
+ * position in the literal.
+ */
+function coerceAbiValue(parameter: AbiParameter, value: unknown): AbiInputValue {
+  const { type } = parameter
+
+  if (type.endsWith('[]')) {
+    if (!Array.isArray(value)) {
+      throw new Error(`coerceAbiValue: expected an array for "${type}", got ${typeof value}`)
+    }
+    const element = { ...parameter, type: type.slice(0, -2) } as AbiParameter
+    return value.map((entry) => coerceAbiValue(element, entry))
+  }
+
+  if (type === 'tuple') {
+    const components = (parameter as { components?: readonly AbiParameter[] }).components ?? []
+    if (!Array.isArray(value)) {
+      throw new Error(`coerceAbiValue: expected an array of ${components.length} components for a tuple`)
+    }
+    if (value.length !== components.length) {
+      throw new Error(`coerceAbiValue: tuple expects ${components.length} components, got ${value.length}`)
+    }
+    return components.map((component, i) => coerceAbiValue(component, value[i]))
+  }
+
+  if (/^u?int(\d+)?$/.test(type)) {
+    if (typeof value === 'bigint') return value
+    if (typeof value === 'number' || typeof value === 'string') return BigInt(value)
+    throw new Error(`coerceAbiValue: cannot read "${String(value)}" as ${type}`)
+  }
+
+  if (type === 'bool') {
+    if (typeof value === 'boolean') return value
+    if (value === 'true') return true
+    if (value === 'false') return false
+    throw new Error(`coerceAbiValue: cannot read "${String(value)}" as bool`)
+  }
+
+  // Everything left — `address`, `bytesN`, `bytes`, `string` — is spelled as a string in
+  // JSON. This used to return `value` untouched, which is what made the return `unknown`:
+  // a number written where an address belongs reached viem as a number.
+  if (typeof value === 'string') return value
+  throw new Error(`coerceAbiValue: expected a string for ${type}, got ${typeof value}`)
+}
 
 /**
  * Encodes a catalog literal value for weiroll state.
@@ -47,6 +118,38 @@ function encodeLiteralValue(raw: string, parameter = ''): HexString {
     throw new Error(`buildWorkflowDefinitionFromCatalog: unsupported bytes literal "${raw}"`)
   }
 
+  // Any other dynamic parameter — `string`, `uint256[]`, a tuple array — is stored in the
+  // same inner ABI form as `bytes` above and consumed through the same 0x80 specifier. The
+  // catalog spells the value as JSON, which is the only readable way to write a list of
+  // structs; integers arrive as decimal strings so a value past 2^53 survives the round trip.
+  if (parameter !== '' && isVariableLengthParameter(parameter)) {
+    const abiParameter = getWorkflowAbiParameter(parameter)
+    let parsed: unknown
+    if (parameter === 'string') {
+      // A bare string is the natural spelling and is not valid JSON; accept both so a
+      // catalog can quote it or not.
+      parsed = raw.startsWith('"') ? (JSON.parse(raw) as unknown) : raw
+    } else {
+      try {
+        parsed = JSON.parse(raw) as unknown
+      } catch {
+        throw new Error(`buildWorkflowDefinitionFromCatalog: literal for "${parameter}" is not valid JSON: "${raw}"`)
+      }
+    }
+    try {
+      return encodeVariableLengthValue(parameter, coerceAbiValue(abiParameter, parsed))
+    } catch (cause) {
+      // Surface the reason inline. `cause` alone means a build failure reads as "cannot
+      // encode literal" with the actual problem — which component, which type — reachable
+      // only by unwrapping, and the CLI that prints this does not.
+      const reason = cause instanceof Error ? cause.message : String(cause)
+      throw new Error(
+        `buildWorkflowDefinitionFromCatalog: cannot encode literal "${raw}" as "${parameter}" — ${reason}`,
+        { cause }
+      )
+    }
+  }
+
   if (raw === 'true') return `0x${'0'.repeat(63)}1` as HexString
   if (raw === 'false') return `0x${'0'.repeat(64)}` as HexString
   if (/^\d+$/.test(raw)) return `0x${BigInt(raw).toString(16).padStart(64, '0')}` as HexString
@@ -69,8 +172,24 @@ function fallbackLabel(label: string | undefined, key: string, parameter: string
   return label?.trim() || key || parameter
 }
 
-const RAW_CALLDATA_PARAMETER_SET = new Set<string>(['(address,uint256)[]', '(address,address)[]'])
-const VARIABLE_LENGTH_PARAMETER_SET = new Set<string>(['bytes'])
+/**
+ * Tuple-array parameters that still compile to FLAG_RAW, for hash stability only.
+ *
+ * Every dynamic ABI type can go through the VM's 0x80 variable-length specifier — see
+ * `isVariableLengthParameter`. These two got a FLAG_RAW encoding before that was
+ * understood, and they appear in the published catalog (the guard actions'
+ * `allowancePairs` and `slippageAssets`). Re-encoding them would change their script
+ * hashes, hence the Merkle root, hence a policy re-set by every hub manager — for no
+ * behavioural gain, since both are pinned or configurable in every workflow that uses
+ * them and neither needs a runtime source.
+ *
+ * So they are grandfathered, not endorsed. Nothing should be added here; a new dynamic
+ * parameter gets the 0x80 path. The set is removable in a major, at the cost of that
+ * one re-set.
+ *
+ * @deprecated Grandfathered for script-hash stability. Do not extend.
+ */
+const LEGACY_RAW_CALLDATA_PARAMETER_SET = new Set<string>(['(address,uint256)[]', '(address,address)[]'])
 const PAYABLE_VALUE_RUNTIME_KEY_PREFIX = '__sdk_payable_value:'
 
 export interface BuildWorkflowDefinitionFromCatalogOptions {
@@ -97,8 +216,28 @@ function assertNotReservedVariableName(workflowRef: string, name: string, descri
   }
 }
 
+/**
+ * Whether a parameter can be passed through the VM's 0x80 variable-length input specifier.
+ *
+ * True for every dynamic ABI type, which is the point: the VM copies the state slot
+ * verbatim into the calldata tail and writes a head offset pointing at it, and it does
+ * that without knowing the type. ABI tail encodings are position-independent — every
+ * offset inside one is relative to a point inside the blob — so a slot holding the INNER
+ * encoding of any dynamic value relocates correctly. `bytes` was never special here; it
+ * was just the only type the encoder had been taught.
+ *
+ * That matters beyond tidiness. The alternative path, FLAG_RAW, packs the whole call
+ * including its 4-byte selector into one state slot, which is why a runtime source is
+ * refused there: an unpinned FLAG_RAW slot hands the strategist an arbitrary selector
+ * against a pinned target while the Merkle proof still verifies (audit #18). The 0x80
+ * path keeps the selector in the hashed command word, so the strategist varies one
+ * argument's bytes and never the function — which makes runtime tuple arrays expressible
+ * and safe, where before they were simply rejected.
+ *
+ * The legacy set is excluded only to keep published script hashes stable.
+ */
 function isVariableLengthParameter(parameter: string): boolean {
-  return VARIABLE_LENGTH_PARAMETER_SET.has(parameter)
+  return isDynamicAbiParameter(parameter) && !LEGACY_RAW_CALLDATA_PARAMETER_SET.has(parameter)
 }
 
 function isDynamicArrayParameter(parameter: string): boolean {
@@ -110,7 +249,7 @@ function isDynamicAbiParameter(parameter: string): boolean {
     parameter === 'bytes' ||
     parameter === 'string' ||
     isDynamicArrayParameter(parameter) ||
-    RAW_CALLDATA_PARAMETER_SET.has(parameter)
+    LEGACY_RAW_CALLDATA_PARAMETER_SET.has(parameter)
   )
 }
 
@@ -145,7 +284,7 @@ function isCompatibleParameterReuse(a: string, b: string): boolean {
 }
 
 function requiresRawCalldataParameter(parameter: string): boolean {
-  return isDynamicAbiParameter(parameter) && !isVariableLengthParameter(parameter)
+  return LEGACY_RAW_CALLDATA_PARAMETER_SET.has(parameter)
 }
 
 function mapTemplateReference(value: string, variableMap: Record<string, string>): string {
