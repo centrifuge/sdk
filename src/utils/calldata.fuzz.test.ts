@@ -3,6 +3,7 @@ import { encodeAbiParameters, encodeFunctionData, parseAbiParameter, toFunctionS
 import type { HexString } from '../types/index.js'
 import type { CatalogTemplate, CatalogVariable, MarketplaceWorkflow } from '../types/workflow.js'
 import { buildWorkflowDefinitionFromCatalog } from './catalog.js'
+import { checkActionSelectorSchema, parseSelectorParameters } from './workflowRules.js'
 import {
   buildScript,
   encodeVariableLengthValue,
@@ -229,6 +230,7 @@ describe('utils/calldata — randomised differential vs viem', () => {
     let compared = 0
     let refusedWideStatic = 0
     let refusedLegacyRaw = 0
+    let schemaChecked = 0
 
     for (let iteration = 0; iteration < ITERATIONS; iteration++) {
       const arity = 1 + Math.floor(rng() * 3)
@@ -280,6 +282,34 @@ describe('utils/calldata — randomised differential vs viem', () => {
       const context = `seed ${SEED} iteration ${iteration}: function f(${parameters.join(',')})`
 
       const definition = buildWorkflowDefinitionFromCatalog(buildWorkflow(parameters))
+
+      // The two halves have to agree on how many inputs a signature declares. They did not:
+      // `flattenParameter` split every tuple while `encodeInputSpecifier` gave a dynamic one
+      // a single slot, so a template could pass validation or emit the right calldata but
+      // never both (centrifuge/workflows#105). Assert the loop is closed on every generated
+      // shape, not just the ones anyone wrote a case for.
+      const signature = `function f(${parameters.join(',')})`
+      const declared = parseSelectorParameters(signature)
+      expect(declared, `${context}: selector did not parse`).to.not.equal(null)
+      expect(declared!.length, `${context}: authoring rule and encoder disagree on arity`).to.equal(
+        definition.actions[0]!.inputs.length
+      )
+      // Where the two agree on the spelling too — the common case — the declaration the
+      // encoder accepts must also pass the schema check outright. They can differ without
+      // being in conflict: a static tuple wrapping a single leaf, `((int64))`, is one word
+      // either way, and the rule asks for the canonical leaf spelling while the encoder is
+      // indifferent. That is a naming convention, not the arity contradiction this guards.
+      if (declared!.join(',') === parameters.join(',')) {
+        expect(
+          checkActionSelectorSchema(
+            { name: 'f', selector: signature, inputs: parameters.map((parameter) => ({ parameter })) },
+            'action "f"'
+          ),
+          `${context}: the declaration the encoder accepts must also validate`
+        ).to.deep.equal([])
+        schemaChecked++
+      }
+
       const { state } = buildScript(definition, { poolContext: {}, configurableValues: {} })
 
       const runtimeValues: Record<string, HexString> = {}
@@ -306,6 +336,9 @@ describe('utils/calldata — randomised differential vs viem', () => {
     )
     expect(refusedWideStatic, 'fuzz never produced a wide static type — that branch went uncovered').to.be.greaterThan(
       0
+    )
+    expect(schemaChecked, 'fuzz never ran the schema check — the spelling filter is too tight').to.be.greaterThan(
+      ITERATIONS / 8
     )
     void refusedLegacyRaw
   })
