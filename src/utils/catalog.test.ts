@@ -430,6 +430,90 @@ describe('utils/catalog', () => {
     expect(() => build(`not json`)).to.throw(/is not valid JSON/)
   })
 
+  it('gives a dynamic tuple with no array member the 0x80 specifier', () => {
+    // `(address,bytes)` is dynamic but contains no "[]", so both old heuristics missed it:
+    // the slot got a plain index and the VM inlined one word where an offset and tail
+    // belong — calldata for a different call than the one reviewed, with nothing thrown.
+    const workflow = tagged(
+      'dynamic-tuple-no-array',
+      [
+        { name: 'target', kind: 'pinned' },
+        { name: 'payload', kind: 'runtime' },
+      ],
+      [
+        {
+          target: '$target',
+          selector: 'function f((address,bytes))',
+          inputs: [{ parameter: '(address,bytes)', label: 'Payload', input: ['$payload'] }],
+        },
+      ],
+      { target: ADDRESS_A }
+    )
+
+    const definition = buildWorkflowDefinitionFromCatalog(workflow)
+
+    expect(definition.actions[0]!.inputs).to.deep.equal([0x80 | 0])
+    expect(definition.actions[0]!.rawMode).to.equal(undefined)
+    expect(definition.state.every((s) => s.type !== 'rawcalldata')).to.equal(true)
+  })
+
+  it('keeps a static tuple inline, with no 0x80 bit', () => {
+    // The control: Morpho Blue's MarketParams shape stays in the head, which is why
+    // flattening a static tuple is ABI-correct and flattening a dynamic one is not.
+    const workflow = tagged(
+      'static-tuple',
+      [
+        { name: 'target', kind: 'pinned' },
+        { name: 'who', kind: 'runtime' },
+        { name: 'amount', kind: 'runtime' },
+      ],
+      [
+        {
+          target: '$target',
+          selector: 'function f(address,uint256)',
+          inputs: [
+            { parameter: 'address', label: 'Who', input: ['$who'] },
+            { parameter: 'uint256', label: 'Amount', input: ['$amount'] },
+          ],
+        },
+      ],
+      { target: ADDRESS_A }
+    )
+
+    const definition = buildWorkflowDefinitionFromCatalog(workflow)
+    expect(definition.actions[0]!.inputs).to.deep.equal([0, 1])
+  })
+
+  it('guards a dynamic-tuple runtime slot that used to slip past the length check', () => {
+    // Midnight's Offer: catalog.ts called it variable-length (it contains "[]") while
+    // weiroll.ts did not (it ends in ")"), so fillRuntimeSlots waved through a blob the
+    // VM splices into the tail malformed. Now both agree and it fails at build time.
+    const MARKET = '(uint256,address,address,(address,uint256,uint256,address)[],uint256,uint256,address,address)'
+    const OFFER = `(${MARKET},bool,address,uint256,uint256,uint256,bytes32,address,bytes,address,address,bool,uint128,uint128,uint256)`
+
+    const workflow = tagged(
+      'midnight-offer',
+      [
+        { name: 'midnight', kind: 'pinned' },
+        { name: 'offer', kind: 'runtime' },
+      ],
+      [
+        {
+          target: '$midnight',
+          selector: `function take(${OFFER})`,
+          inputs: [{ parameter: OFFER, label: 'Offer', input: ['$offer'] }],
+        },
+      ],
+      { target: ADDRESS_A, midnight: ADDRESS_A }
+    )
+
+    const definition = buildWorkflowDefinitionFromCatalog(workflow)
+    expect(definition.actions[0]!.inputs[0]! & 0x80).to.equal(0x80)
+
+    const { state } = buildScript(definition, { poolContext: {}, configurableValues: {} })
+    expect(() => fillRuntimeSlots(state, definition, { offer: '0xdead' })).to.throw(/must be a non-zero multiple of 32/)
+  })
+
   it('encodes a runtime bytes argument via the 0x80 specifier, not FLAG_RAW (selector pinned)', () => {
     // A runtime bytes argument keeps the call's selector in the (hashed) command word — the
     // strategist varies only the argument, never the function (audit #18 / SECURITY.md §11).

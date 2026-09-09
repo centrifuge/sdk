@@ -11,6 +11,7 @@ import {
   encodeVariableLengthValue,
   fillRuntimeSlots,
   getWorkflowAbiParameter,
+  isDynamicAbiType,
 } from './weiroll.js'
 import type { PoolContext, WorkflowDefinition } from './weiroll.js'
 
@@ -628,6 +629,45 @@ describe('utils/weiroll', () => {
       const parameter = 'uint256[]'
       const standalone = encodeAbiParameters([{ type: 'uint256[]' }], [[7n, 8n]])
       expect(encodeVariableLengthValue(parameter, [7n, 8n])).to.equal(`0x${standalone.slice(66)}`)
+    })
+  })
+
+  describe('isDynamicAbiType', () => {
+    const MARKET = '(uint256,address,address,(address,uint256,uint256,address)[],uint256,uint256,address,address)'
+    const MIDNIGHT_OFFER = `(${MARKET},bool,address,uint256,uint256,uint256,bytes32,address,bytes,address,address,bool,uint128,uint128,uint256)`
+
+    const cases: Array<[string, boolean]> = [
+      ['uint256', false],
+      ['address', false],
+      ['bytes32', false],
+      ['bool', false],
+      ['(address,uint256)', false],
+      ['bytes32[3]', false],
+      ['(address,uint256)[2]', false],
+      ['bytes', true],
+      ['string', true],
+      ['uint256[]', true],
+      ['(address,uint256)[]', true],
+      ['(address,uint256,uint256,address)[]', true],
+      // A dynamic tuple with no array member matched neither old heuristic, so it was
+      // classified static and encoded as one word where an offset and tail belong.
+      ['(address,bytes)', true],
+      ['(uint256,string)', true],
+      // A fixed-size array is dynamic iff its element is.
+      ['bytes[3]', true],
+      // Midnight's Offer: contains '[]' but ends in ')', which is what split the two
+      // old predicates apart.
+      [MIDNIGHT_OFFER, true],
+    ]
+
+    for (const [parameter, expected] of cases) {
+      it(`${expected ? 'dynamic' : 'static'}: ${parameter.length > 48 ? `${parameter.slice(0, 45)}…` : parameter}`, () => {
+        expect(isDynamicAbiType(parameter)).to.equal(expected)
+      })
+    }
+
+    it('treats an unparseable type as static rather than throwing', () => {
+      expect(isDynamicAbiType('(not a type)')).to.equal(false)
     })
   })
 })
