@@ -403,6 +403,33 @@ describe('utils/catalog', () => {
     expect(decoded).to.deep.equal([[ADDRESS_B, 1n, 2n, ADDRESS_C]])
   })
 
+  it('names the ABI type when a catalog literal has the wrong shape for it', () => {
+    const build = (offers: string) =>
+      buildWorkflowDefinitionFromCatalog(
+        tagged(
+          'bad-literal',
+          [
+            { name: 'target', kind: 'pinned' },
+            { name: 'offers', kind: 'pinned' },
+          ],
+          [
+            {
+              target: '$target',
+              selector: 'function take((address,uint256,uint256,address)[])',
+              inputs: [{ parameter: '(address,uint256,uint256,address)[]', label: 'Offers', input: ['$offers'] }],
+            },
+          ],
+          { target: ADDRESS_A, offers }
+        )
+      )
+
+    // A number where an address belongs used to reach viem untouched.
+    expect(() => build(`[[1, "2", "3", "${ADDRESS_C}"]]`)).to.throw(/expected a string for address/)
+    expect(() => build(`[["${ADDRESS_B}"]]`)).to.throw(/tuple expects 4 components, got 1/)
+    expect(() => build(`{"not": "an array"}`)).to.throw(/expected an array/)
+    expect(() => build(`not json`)).to.throw(/is not valid JSON/)
+  })
+
   it('encodes a runtime bytes argument via the 0x80 specifier, not FLAG_RAW (selector pinned)', () => {
     // A runtime bytes argument keeps the call's selector in the (hashed) command word — the
     // strategist varies only the argument, never the function (audit #18 / SECURITY.md §11).

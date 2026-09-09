@@ -24,16 +24,27 @@ import type { WeirollAction, WorkflowDefinition, WorkflowStateSlot } from './wei
 const MAGIC_KEY_SET = new Set<string>(MAGIC_VARIABLE_KEYS)
 
 /**
+ * The shapes viem's encoder accepts for the ABI types a catalog literal can name:
+ * `bigint` for the integer types, `boolean` for `bool`, `string` for the address, bytes
+ * and string types, and a nested array per array or tuple.
+ *
+ * The exact member is a function of the ABI type, but that type arrives as a runtime
+ * string here, so it cannot be resolved statically — this union is the most precise
+ * return `coerceAbiValue` can promise.
+ */
+type AbiInputValue = bigint | boolean | string | readonly AbiInputValue[]
+
+/**
  * Walks a JSON-parsed catalog literal against its ABI parameter, converting to what
  * viem's encoder expects.
  *
  * JSON has no integer type wide enough for `uint256` and no tuple type at all, so the
  * catalog writes numbers as decimal strings and structs as positional arrays. This maps
- * both onto viem's shape (bigint, and an array per tuple) and leaves addresses, bools and
- * hex strings alone. Anything the ABI type doesn't admit falls through to viem, which
- * gives a better error than a guess here would.
+ * both onto viem's shape and rejects anything the ABI type cannot admit, naming the type
+ * that failed — which beats viem's error, since by then the offending value has lost its
+ * position in the literal.
  */
-function coerceAbiValue(parameter: AbiParameter, value: unknown): unknown {
+function coerceAbiValue(parameter: AbiParameter, value: unknown): AbiInputValue {
   const { type } = parameter
 
   if (type.endsWith('[]')) {
@@ -68,7 +79,11 @@ function coerceAbiValue(parameter: AbiParameter, value: unknown): unknown {
     throw new Error(`coerceAbiValue: cannot read "${String(value)}" as bool`)
   }
 
-  return value
+  // Everything left — `address`, `bytesN`, `bytes`, `string` — is spelled as a string in
+  // JSON. This used to return `value` untouched, which is what made the return `unknown`:
+  // a number written where an address belongs reached viem as a number.
+  if (typeof value === 'string') return value
+  throw new Error(`coerceAbiValue: expected a string for ${type}, got ${typeof value}`)
 }
 
 /**
@@ -124,7 +139,14 @@ function encodeLiteralValue(raw: string, parameter = ''): HexString {
     try {
       return encodeVariableLengthValue(parameter, coerceAbiValue(abiParameter, parsed))
     } catch (cause) {
-      throw new Error(`buildWorkflowDefinitionFromCatalog: cannot encode literal "${raw}" as "${parameter}"`, { cause })
+      // Surface the reason inline. `cause` alone means a build failure reads as "cannot
+      // encode literal" with the actual problem — which component, which type — reachable
+      // only by unwrapping, and the CLI that prints this does not.
+      const reason = cause instanceof Error ? cause.message : String(cause)
+      throw new Error(
+        `buildWorkflowDefinitionFromCatalog: cannot encode literal "${raw}" as "${parameter}" — ${reason}`,
+        { cause }
+      )
     }
   }
 
