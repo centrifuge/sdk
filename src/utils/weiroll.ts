@@ -237,6 +237,9 @@ export function fillRuntimeSlots(
  * tuple with no array member at all, `(address,bytes)`, matched neither: it was classified
  * static and encoded as a single 32-byte word where an offset and tail belong, silently
  * producing calldata for a different call than the one reviewed.
+ *
+ * @internal Shared with catalog.ts so both halves classify a type identically. Not part of
+ * the public API — a caller building a workflow never needs to ask this.
  */
 export function isDynamicAbiType(parameter: string): boolean {
   let parsed: AbiParameter
@@ -264,6 +267,8 @@ export function isDynamicAbiType(parameter: string): boolean {
  * counts the words so the compiler can enforce what the convention assumes.
  *
  * Returns 1 for dynamic types: they occupy a single offset word in the head.
+ *
+ * @internal Used by catalog.ts to reject a parameter that cannot occupy one slot.
  */
 export function staticHeadWordCount(parameter: string): number {
   let parsed: AbiParameter
@@ -325,6 +330,8 @@ const abiParameterCache = new Map<string, AbiParameter>()
  * behaviour-preserving for existing catalogs and correct for new ones.
  *
  * Cached because it is called per input per encode, and parsing is pure.
+ *
+ * @internal Exported for catalog.ts and the encoding tests, not for SDK consumers.
  */
 export function getWorkflowAbiParameter(parameter: string): AbiParameter {
   const cached = abiParameterCache.get(parameter)
