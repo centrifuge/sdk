@@ -250,6 +250,48 @@ export function isDynamicAbiType(parameter: string): boolean {
   return isDynamicParsedAbiType(parsed)
 }
 
+/**
+ * How many 32-byte words a *static* type occupies in the ABI head.
+ *
+ * A weiroll state slot is one word, and a non-variable-length input specifier points at
+ * exactly one slot — so a static type wider than a word cannot be passed as a single
+ * input. `(address,uint256)` needs two words inlined and `bytes32[3]` needs three; handing
+ * either to one slot silently emits one word and shifts every argument after it.
+ *
+ * That is the same silent-corruption family as misclassifying a dynamic tuple, and the
+ * catalog's convention already avoids it by flattening static tuples into one input per
+ * leaf (which is ABI-identical, since a static tuple is inlined with no offset). This
+ * counts the words so the compiler can enforce what the convention assumes.
+ *
+ * Returns 1 for dynamic types: they occupy a single offset word in the head.
+ */
+export function staticHeadWordCount(parameter: string): number {
+  let parsed: AbiParameter
+  try {
+    parsed = getWorkflowAbiParameter(parameter)
+  } catch {
+    return 1
+  }
+  return countHeadWords(parsed)
+}
+
+function countHeadWords(parameter: AbiParameter): number {
+  if (isDynamicParsedAbiType(parameter)) return 1
+
+  const { type } = parameter
+  const array = /^(.*)\[(\d+)\]$/.exec(type)
+  if (array) {
+    return Number(array[2]) * countHeadWords({ ...parameter, type: array[1]! } as AbiParameter)
+  }
+
+  if (type === 'tuple') {
+    const components = (parameter as { components?: readonly AbiParameter[] }).components ?? []
+    return components.reduce((total, component) => total + countHeadWords(component), 0)
+  }
+
+  return 1
+}
+
 function isDynamicParsedAbiType(parameter: AbiParameter): boolean {
   const { type } = parameter
 

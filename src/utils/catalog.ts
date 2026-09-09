@@ -19,6 +19,7 @@ import {
   encodeVariableLengthValue,
   getWorkflowAbiParameter,
   isDynamicAbiType,
+  staticHeadWordCount,
 } from './weiroll.js'
 import type { WeirollAction, WorkflowDefinition, WorkflowStateSlot } from './weiroll.js'
 
@@ -238,16 +239,7 @@ function assertNotReservedVariableName(workflowRef: string, name: string, descri
  * The legacy set is excluded only to keep published script hashes stable.
  */
 function isVariableLengthParameter(parameter: string): boolean {
-  return isDynamicAbiParameter(parameter) && !LEGACY_RAW_CALLDATA_PARAMETER_SET.has(parameter)
-}
-
-/**
- * Dynamic in the ABI sense — encoded as an offset into the tail rather than inline in
- * the head. Shared with weiroll.ts so both halves of the SDK classify a type the same way;
- * see `isDynamicAbiType` for what the string heuristics this replaced got wrong.
- */
-function isDynamicAbiParameter(parameter: string): boolean {
-  return isDynamicAbiType(parameter)
+  return isDynamicAbiType(parameter) && !LEGACY_RAW_CALLDATA_PARAMETER_SET.has(parameter)
 }
 
 /**
@@ -370,7 +362,20 @@ function encodeInputSpecifier(parameter: string, slotIndex: number): number {
     throw new Error(`buildWorkflowDefinitionFromCatalog: slot index ${slotIndex} exceeds weiroll limit 127`)
   }
 
-  return isVariableLengthParameter(parameter) ? 0x80 | slotIndex : slotIndex
+  if (isVariableLengthParameter(parameter)) return 0x80 | slotIndex
+
+  // A static type wider than one word cannot ride in one slot — the head would get a
+  // single word where the ABI wants several, shifting every argument after it. Flattening
+  // a static tuple into one input per leaf is ABI-identical and is what the catalog
+  // convention already does; say so rather than emitting the wrong call.
+  const words = staticHeadWordCount(parameter)
+  if (words > 1) {
+    throw new Error(
+      `buildWorkflowDefinitionFromCatalog: static parameter "${parameter}" occupies ${words} words and cannot be one input — flatten it into ${words} inputs, one per leaf`
+    )
+  }
+
+  return slotIndex
 }
 
 // The 0x80 high bit marks a variable-length slot, so the index itself must fit in 7 bits.
@@ -733,7 +738,7 @@ export function buildWorkflowDefinitionFromCatalog(
     // correctly without FLAG_RAW, so we only require raw calldata when the value
     // is NOT known at build time (i.e. not a declared variable or configurable).
     const hasDynamicInput = action.inputs.some((input) => {
-      if (!isDynamicAbiParameter(input.parameter)) return false
+      if (!isDynamicAbiType(input.parameter)) return false
       if (input.useTemplate) return false
       // Variable-length parameters (`bytes`/`string`) are ALWAYS encoded via the weiroll VM's
       // 0x80 variable-length input specifier — for every source (literal, configurable, computed
@@ -745,8 +750,7 @@ export function buildWorkflowDefinitionFromCatalog(
       return !isVariableLengthParameter(input.parameter)
     })
     const hasComputedDynamicInput = action.inputs.some(
-      (input) =>
-        isDynamicAbiParameter(input.parameter) && (input.input ?? []).some((value) => computedVarSet.has(value))
+      (input) => isDynamicAbiType(input.parameter) && (input.input ?? []).some((value) => computedVarSet.has(value))
     )
     const hasRawCalldataOnlyInput = action.inputs.some((input) => requiresRawCalldataParameter(input.parameter))
     const rawCalldataAction = action.returns == null && hasDynamicInput && !hasComputedDynamicInput
