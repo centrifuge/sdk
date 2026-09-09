@@ -424,3 +424,92 @@ describe('utils/calldata — literal round-trip', () => {
     })
   }
 })
+
+/**
+ * Agreement with canonical weiroll.js, and one deliberate divergence.
+ *
+ * weiroll.js (github.com/weiroll/weiroll.js, `src/planner.ts`) is the reference planner
+ * for the VM this SDK targets, so its slot encoding is the thing to be measured against
+ * rather than a local model. Compared over 16 shapes, 13 agree byte-for-byte:
+ *
+ *   - `abiEncodeSingle` stores a dynamic value as `hexDataSlice(encode([param],[value]), 32)`
+ *     — the standalone encoding with its leading offset word removed. That is exactly what
+ *     `encodeVariableLengthValue` produces, independently confirming the inner-encoding rule.
+ *   - the command word is `selector(4) ‖ flags(1) ‖ args(6, 0xff-padded) ‖ ret(1) ‖ target(20)`,
+ *     and an extended command zeroes the six arg bytes and appends a 32-index word. Both
+ *     match `encodeCommand` / `encodeIndicesWord`.
+ *   - `0x80` marks a variable-length slot and `0xff` an unused one, in both.
+ *
+ * The three that disagree are the ones asserted below, and the reference is wrong on them:
+ * its `isDynamicType` is `['string','bytes','array','tuple'].includes(param.baseType)`, a
+ * blanket rule that calls *every* tuple and array dynamic. A static tuple and a fixed-size
+ * array of static elements are inlined by the ABI with no offset word, so stripping 32
+ * bytes from their encoding drops the first component — `(address,uint256)` reaches the
+ * callee as just its `uint256`, with the address silently gone.
+ *
+ * This is a known upstream bug, not a reading of ours. weiroll.js#36 ("Fix tuple encoding
+ * bug", merged 2022-06-28 and the repo's last commit) introduced both the blanket rule and
+ * the 32-byte strip, fixing dynamic tuples by over-applying; weiroll.js#34 reports the
+ * breakage that created — `add_liquidity(uint256[3],uint256)` on Curve's 3pool losing its
+ * first element — and is still open, its reporter noting "I'm not sure what the right fix
+ * is". Classifying from the parsed type is that fix.
+ *
+ * This SDK classifies from the parsed type instead, so it agrees with the ABI, and refuses
+ * these shapes outright rather than mis-encoding them. (Nothing can disagree on-chain: the
+ * VM's `CommandBuilder` reads only the 0x80 bit and never the type, so the divergence lives
+ * entirely in the planner, and this planner never emits 0x80 for a static tuple.)
+ *
+ * Flags differ by design and without collision: the reference uses 0x80 for TUPLE_RETURN,
+ * this SDK uses 0x20 for FLAG_RAW, and both use 0x40 for EXTENDED_COMMAND.
+ */
+describe('utils/calldata — vs canonical weiroll.js', () => {
+  const blanketRuleWouldCallDynamic = ['(address,uint256)', 'bytes32[3]', '(address,uint256)[2]']
+
+  for (const parameter of blanketRuleWouldCallDynamic) {
+    it(`treats ${parameter} as static, where weiroll.js's blanket rule would not`, () => {
+      expect(isDynamicAbiType(parameter)).to.equal(false)
+    })
+  }
+
+  it('refuses the shapes the reference silently truncates', () => {
+    // The reference would strip the leading word and pass a short value. Refusing is the
+    // conservative reading: these cannot ride in one slot, and flattening is exact.
+    for (const parameter of blanketRuleWouldCallDynamic) {
+      const { workflow } = tagged([parameter])
+      expect(() => buildWorkflowDefinitionFromCatalog(workflow), parameter).to.throw(/cannot be one input — flatten it/)
+    }
+  })
+
+  it('refuses a zero-length fixed array, which occupies no head at all', () => {
+    // Found by the randomised differential, not by anyone's imagination: `bytes2[0]` is
+    // static and occupies ZERO words, so a slot for it inserts a head word the ABI does
+    // not have and every offset after it shifts. Solidity rejects `T[0]` at compile time,
+    // so no real signature reaches this — but the guard checked "wider than one word" and
+    // this is narrower.
+    const { workflow } = tagged(['bytes2[0]'])
+    expect(() => buildWorkflowDefinitionFromCatalog(workflow)).to.throw(/occupies no words/)
+  })
+
+  it('rejects a zero-length fixed array of a dynamic type at fill time', () => {
+    // The dynamic sibling of the case above: `address[1][][0]` classifies dynamic (its
+    // element is), and encodes to nothing, which is not a valid variable-length slot.
+    const { workflow } = tagged(['address[1][][0]'])
+    const definition = buildWorkflowDefinitionFromCatalog(workflow)
+    const { state } = buildScript(definition, { poolContext: {}, configurableValues: {} })
+    expect(() => fillRuntimeSlots(state, definition, { arg0: '0x' })).to.throw(/must be a non-zero multiple of 32/)
+  })
+
+  it('agrees with the reference that every genuinely dynamic shape is dynamic', () => {
+    for (const parameter of [
+      'bytes',
+      'string',
+      'uint256[]',
+      '(address,uint256)[]',
+      '(address,uint256,uint256,address)[]',
+      '(address,bytes)',
+      '(uint256,string)',
+    ]) {
+      expect(isDynamicAbiType(parameter), parameter).to.equal(true)
+    }
+  })
+})

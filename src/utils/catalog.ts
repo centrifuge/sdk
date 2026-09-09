@@ -364,14 +364,18 @@ function encodeInputSpecifier(parameter: string, slotIndex: number): number {
 
   if (isVariableLengthParameter(parameter)) return 0x80 | slotIndex
 
-  // A static type wider than one word cannot ride in one slot — the head would get a
-  // single word where the ABI wants several, shifting every argument after it. Flattening
-  // a static tuple into one input per leaf is ABI-identical and is what the catalog
-  // convention already does; say so rather than emitting the wrong call.
+  // A slot is exactly one word, so a static parameter has to be exactly one word too.
+  // Wider — `(address,uint256)`, `bytes32[3]` — and the head gets one word where the ABI
+  // wants several, shifting every argument after it; flattening into one input per leaf is
+  // ABI-identical and is what the catalog convention already does. Narrower is the
+  // degenerate `T[0]`, which occupies no head at all, so a slot for it inserts a word that
+  // should not be there. Both emit a call other than the one reviewed, silently.
   const words = staticHeadWordCount(parameter)
-  if (words > 1) {
+  if (words !== 1) {
     throw new Error(
-      `buildWorkflowDefinitionFromCatalog: static parameter "${parameter}" occupies ${words} words and cannot be one input — flatten it into ${words} inputs, one per leaf`
+      words === 0
+        ? `buildWorkflowDefinitionFromCatalog: static parameter "${parameter}" occupies no words and cannot be an input at all — drop it`
+        : `buildWorkflowDefinitionFromCatalog: static parameter "${parameter}" occupies ${words} words and cannot be one input — flatten it into ${words} inputs, one per leaf`
     )
   }
 
