@@ -200,7 +200,7 @@ export function fillRuntimeSlots(
     // variable and its type; letting it through surfaces as a bare revert from execute()
     // with nothing to point at. Static slots are one word and viem's encoders already
     // guarantee that, so only the dynamic ones need saying.
-    if (def.parameter !== undefined && isVariableLengthAbiParameter(def.parameter)) {
+    if (def.parameter !== undefined && isDynamicAbiType(def.parameter)) {
       const byteLength = (value.length - 2) / 2
       if (byteLength === 0 || byteLength % 32 !== 0) {
         throw new Error(
@@ -222,14 +222,52 @@ export function fillRuntimeSlots(
 }
 
 /**
- * Whether a parameter is passed through the VM's 0x80 variable-length input specifier.
+ * Whether an ABI type is dynamic — i.e. encoded as an offset into the tail rather than
+ * inline in the head, and therefore passed through the VM's 0x80 variable-length specifier.
  *
- * Mirrors `isVariableLengthParameter` in catalog.ts, minus the legacy FLAG_RAW exclusions:
- * those never reach a runtime slot (catalog.ts refuses a runtime source for them), so from
- * here the question is only "is this type dynamic".
+ * This is the ABI's own rule, applied to the parsed type: `bytes` and `string` are dynamic;
+ * an unbounded array is dynamic; a fixed-size array is dynamic iff its element is; a tuple
+ * is dynamic iff any component is.
+ *
+ * It replaces two different string heuristics that disagreed with each other and with the
+ * ABI. `catalog.ts` tested `/\[\]/` anywhere in the string and `weiroll.ts` tested
+ * `endsWith('[]')`, so a dynamic tuple like Morpho Midnight's `Offer` — which contains a
+ * `[]` but ends in `)` — was marked variable-length by one and skipped by the other's
+ * well-formedness guard, failing at execution instead of at build time. Worse, a dynamic
+ * tuple with no array member at all, `(address,bytes)`, matched neither: it was classified
+ * static and encoded as a single 32-byte word where an offset and tail belong, silently
+ * producing calldata for a different call than the one reviewed.
  */
-function isVariableLengthAbiParameter(parameter: string): boolean {
-  return parameter === 'bytes' || parameter === 'string' || parameter.endsWith('[]')
+export function isDynamicAbiType(parameter: string): boolean {
+  let parsed: AbiParameter
+  try {
+    parsed = getWorkflowAbiParameter(parameter)
+  } catch {
+    // Unparseable types are the catalog's problem, not this predicate's; treating one as
+    // static keeps the old behaviour rather than throwing from a classification helper.
+    return false
+  }
+  return isDynamicParsedAbiType(parsed)
+}
+
+function isDynamicParsedAbiType(parameter: AbiParameter): boolean {
+  const { type } = parameter
+
+  if (type === 'bytes' || type === 'string') return true
+
+  const array = /^(.*)\[(\d*)\]$/.exec(type)
+  if (array) {
+    // Unbounded: dynamic regardless of element. Fixed-size: dynamic iff the element is.
+    if (array[2] === '') return true
+    return isDynamicParsedAbiType({ ...parameter, type: array[1]! } as AbiParameter)
+  }
+
+  if (type === 'tuple') {
+    const components = (parameter as { components?: readonly AbiParameter[] }).components ?? []
+    return components.some(isDynamicParsedAbiType)
+  }
+
+  return false
 }
 
 const abiParameterCache = new Map<string, AbiParameter>()

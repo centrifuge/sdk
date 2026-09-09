@@ -18,6 +18,7 @@ import {
   VALUECALL,
   encodeVariableLengthValue,
   getWorkflowAbiParameter,
+  isDynamicAbiType,
 } from './weiroll.js'
 import type { WeirollAction, WorkflowDefinition, WorkflowStateSlot } from './weiroll.js'
 
@@ -240,17 +241,13 @@ function isVariableLengthParameter(parameter: string): boolean {
   return isDynamicAbiParameter(parameter) && !LEGACY_RAW_CALLDATA_PARAMETER_SET.has(parameter)
 }
 
-function isDynamicArrayParameter(parameter: string): boolean {
-  return /\[\]/.test(parameter)
-}
-
+/**
+ * Dynamic in the ABI sense — encoded as an offset into the tail rather than inline in
+ * the head. Shared with weiroll.ts so both halves of the SDK classify a type the same way;
+ * see `isDynamicAbiType` for what the string heuristics this replaced got wrong.
+ */
 function isDynamicAbiParameter(parameter: string): boolean {
-  return (
-    parameter === 'bytes' ||
-    parameter === 'string' ||
-    isDynamicArrayParameter(parameter) ||
-    LEGACY_RAW_CALLDATA_PARAMETER_SET.has(parameter)
-  )
+  return isDynamicAbiType(parameter)
 }
 
 /**
