@@ -12,6 +12,7 @@ import {
   fillRuntimeSlots,
   getWorkflowAbiParameter,
   isDynamicAbiType,
+  staticHeadWordCount,
 } from './weiroll.js'
 import type { PoolContext, WorkflowDefinition } from './weiroll.js'
 
@@ -668,6 +669,47 @@ describe('utils/weiroll', () => {
 
     it('treats an unparseable type as static rather than throwing', () => {
       expect(isDynamicAbiType('(not a type)')).to.equal(false)
+    })
+  })
+
+  describe('staticHeadWordCount', () => {
+    // How many head words a type occupies, which is what decides whether it can ride in a
+    // single state slot. A slot is one word, so anything other than 1 is unrepresentable.
+    const cases: Array<[string, number]> = [
+      // Elementary types are one word each.
+      ['uint256', 1],
+      ['uint8', 1],
+      ['address', 1],
+      ['bool', 1],
+      ['bytes32', 1],
+      // Dynamic types occupy a single offset word in the head, whatever their payload.
+      ['bytes', 1],
+      ['string', 1],
+      ['uint256[]', 1],
+      ['(address,uint256)[]', 1],
+      ['(address,bytes)', 1],
+      // Static aggregates are inlined, so they are as wide as their leaves.
+      ['(address,uint256)', 2],
+      ['(address,uint256,uint256,address)', 4],
+      ['bytes32[3]', 3],
+      ['(address,uint256)[2]', 4],
+      // Nesting sums all the way down.
+      ['((address,uint256),bool)', 3],
+      ['((address,uint256)[2],bytes32)', 5],
+      // A fixed array of a dynamic element is itself dynamic: one offset word.
+      ['bytes[3]', 1],
+      // The degenerate case the fuzz surfaced: zero-length fixed array, no head at all.
+      ['bytes2[0]', 0],
+    ]
+
+    for (const [parameter, words] of cases) {
+      it(`${parameter} occupies ${words} word${words === 1 ? '' : 's'}`, () => {
+        expect(staticHeadWordCount(parameter)).to.equal(words)
+      })
+    }
+
+    it('falls back to one word for an unparseable type, rather than throwing', () => {
+      expect(staticHeadWordCount('(not a type)')).to.equal(1)
     })
   })
 })

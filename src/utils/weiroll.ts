@@ -297,7 +297,13 @@ function countHeadWords(parameter: AbiParameter): number {
   return 1
 }
 
-function isDynamicParsedAbiType(parameter: AbiParameter): boolean {
+/**
+ * `isDynamicAbiType` for an already-parsed parameter.
+ *
+ * @internal Lets workflowRules.ts ask the same question of a viem `AbiParameter` it already
+ * has, so the authoring rules and the encoder cannot drift apart on what "dynamic" means.
+ */
+export function isDynamicParsedAbiType(parameter: AbiParameter): boolean {
   const { type } = parameter
 
   if (type === 'bytes' || type === 'string') return true

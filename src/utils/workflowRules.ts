@@ -1,6 +1,7 @@
 import { parseAbiItem } from 'viem'
 import type { AbiParameter } from 'viem'
 import { MAGIC_VARIABLE_KEYS } from './variables.js'
+import { isDynamicParsedAbiType } from './weiroll.js'
 import type { CatalogAction, CatalogTemplate, CatalogVariable } from '../types/workflow.js'
 
 /**
@@ -72,12 +73,23 @@ function renderParameter(parameter: AbiParameter): string {
 /**
  * Flattens one selector parameter to the inputs a template declares for it.
  *
- * Templates flatten tuple *structs* into individual inputs, so `(uint256,address)` is two.
- * Tuple *arrays* stay atomic — `(address,uint256)[]` is a single ABI-encoded value in one
- * slot — as do ordinary arrays.
+ * A **static** tuple struct flattens into one input per leaf, so `(uint256,address)` is two.
+ * That is safe precisely because a static tuple is inlined in the head with no offset word,
+ * making the flat and nested layouts byte-identical.
+ *
+ * Everything else stays atomic — one input, one state slot. Tuple *arrays* and ordinary
+ * arrays always did. A **dynamic** tuple now does too, and that is the fix: it is encoded
+ * as one slot spliced into the calldata tail behind an offset (`encodeInputSpecifier`'s
+ * 0x80 branch), so flattening it is not ABI-identical, and this rule demanding N inputs
+ * while the encoder emits one left the two accepting disjoint declarations. A template
+ * could satisfy the arity check or produce the right calldata, never both — for
+ * `Midnight.take`, 28 head words where 7 belong, reaching the correct selector with a body
+ * it cannot decode. Reported in centrifuge/workflows#105.
  */
 function flattenParameter(parameter: AbiParameter): string[] {
-  if (parameter.type !== 'tuple') return [renderParameter(parameter)]
+  if (parameter.type !== 'tuple' || isDynamicParsedAbiType(parameter)) {
+    return [renderParameter(parameter)]
+  }
   const components = (parameter as { components: readonly AbiParameter[] }).components
   return components.flatMap(flattenParameter)
 }
