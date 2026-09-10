@@ -13,9 +13,8 @@ import { PoolNetwork } from './PoolNetwork.js'
 import { ShareClass } from './ShareClass.js'
 import { Vault } from './Vault.js'
 
-// The vault's network is a spoke chain, distinct from the pool's hub chain, so
-// the fee-estimate assertions can tell "chain this call originates on" apart
-// from "chain the routed message is estimated for".
+// The vault sits on a spoke chain and the pool's hub is elsewhere, so the estimate's
+// two chain arguments differ and a swapped pair shows up.
 const walletChainId = 11155111
 const sourceCentrifugeId = 2
 const hubCentrifugeId = 1
@@ -31,10 +30,8 @@ const vaultRouter = randomAddress()
 const vaultAddress = randomAddress()
 const assetAddress = randomAddress()
 
-// Stubs the plumbing around the router-write methods so we can inspect the fee
-// estimate and the broadcast call without a fork. `_transact` is stubbed to
-// drain the async generator against a fake context, which is what triggers
-// `wrapTransaction`'s estimate + send.
+// Fakes enough of the chain plumbing to inspect the fee estimate and the broadcast call
+// without a fork.
 function buildVault(fee: bigint) {
   const centrifuge = new Centrifuge({ environment: 'testnet' })
   const sendTransaction = sinon.stub().resolves('0x1')
@@ -66,21 +63,13 @@ function buildVault(fee: bigint) {
   return { vault, sendTransaction, estimate }
 }
 
-// Decodes the outer `sendTransaction` calldata as a `multicall` and returns each inner
-// call's function name and decoded arguments, in order. Comparing `args` (not just the
-// function name) is what catches a call reaching the router with the wrong address in it —
-// a malformed `enable` or `requestRedeem` still executes on-chain, so a name-only check
-// would miss it.
 function decodeMulticallSteps(data: HexString): { functionName: string; args: readonly unknown[] }[] {
   const outer = decodeFunctionData({ abi: ABI.VaultRouter, data })
   expect(outer.functionName).to.equal('multicall')
   const inner = outer.args![0] as readonly HexString[]
   return inner.map((call) => {
     const decoded = decodeFunctionData({ abi: ABI.VaultRouter, data: call })
-    // Addresses decode checksummed; lowercase them so the fixtures above (all
-    // lowercase, from `randomAddress`) compare on the address, not its casing.
-    // `args` is typed as a union across every VaultRouter function signature; the call
-    // actually decoded is only known at runtime, so widen to `unknown[]` for comparison.
+    // viem returns checksummed addresses; the fixtures are lowercase.
     const rawArgs = (decoded.args ?? []) as unknown as unknown[]
     const args = rawArgs.map((arg) => (typeof arg === 'string' ? arg.toLowerCase() : arg))
     return { functionName: decoded.functionName, args }

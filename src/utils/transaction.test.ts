@@ -104,7 +104,6 @@ describe('wrapTransaction broadcast path', () => {
 
     await drain(wrapTransaction('Multi', ctx, { contract, data: [call1, call2] }))
 
-    // The multicall case no longer uses writeContract — it sends pre-encoded calldata.
     expect(writeContract.called).to.equal(false)
     expect(sendTransaction.calledOnce).to.equal(true)
     const sent = sendTransaction.firstCall.args[0]
@@ -168,7 +167,6 @@ describe('wrapTransaction broadcast path', () => {
 
     expect(simulateCalls.calledOnce).to.equal(true)
     const call = simulateCalls.firstCall.args[0].calls[0]
-    // The direct-call branch sends { to, data, value }; only the multicall branch adds functionName/args.
     expect(call).to.deep.include({ to: contract, functionName: 'multicall', args: [[data]] })
   })
 })

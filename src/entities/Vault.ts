@@ -657,10 +657,8 @@ export class Vault extends Entity {
   }
 
   /**
-   * Sends a VaultRouter call that pays a cross-chain message fee — broadcast now, or queued
-   * into an outer batch when `ctx.isBatching`. The router only forwards `msg.value` into its
-   * inner calls through `multicall`, so these always batch; a direct call would leave the fee
-   * stranded in the router permanently.
+   * The router forwards `msg.value` to its inner calls only through `multicall`, so a
+   * fee-bearing call always batches; sent directly, the fee stays in the router for good.
    * @internal
    */
   _sendRouterFeeTransaction(title: string, ctx: TransactionContext, vaultRouter: HexString, data: HexString[]) {
