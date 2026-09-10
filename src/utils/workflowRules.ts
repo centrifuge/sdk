@@ -1,4 +1,4 @@
-import { parseAbiItem } from 'viem'
+import { parseAbiItem, parseAbiParameter } from 'viem'
 import type { AbiParameter } from 'viem'
 import { MAGIC_VARIABLE_KEYS } from './variables.js'
 import { isDynamicParsedAbiType } from './weiroll.js'
@@ -68,6 +68,43 @@ function renderParameter(parameter: AbiParameter): string {
   const components = (parameter as { components: readonly AbiParameter[] }).components
   // `tuple`, `tuple[]`, `tuple[3]` — keep whatever array suffix followed the word.
   return `(${components.map(renderParameter).join(',')})${parameter.type.slice('tuple'.length)}`
+}
+
+/**
+ * Whether a parameter carries a `bytes` payload anywhere inside it.
+ *
+ * The taint rule used to test `parameter === 'bytes'`, which reads the type only at the
+ * top level. A dynamic tuple that embeds `bytes` — Morpho Midnight's `Offer`, whose
+ * `callbackData` is handed to `ISellCallback(offer.callback).onSell(...)` — was therefore
+ * never inspected, and a fully strategist-controlled `Offer` passed validation with no
+ * error at all (reported in centrifuge/workflows#107).
+ *
+ * That was latent while a dynamic tuple could not be declared at all, and became reachable
+ * when #537 fixed the arity rule. Depth is what the check was missing, so it now recurses
+ * through tuple components and array elements.
+ *
+ * `string` is deliberately not included. The rule exists because a `bytes` payload is what
+ * a callback-capable target interprets as a nested call; a `string` is not re-entered as
+ * one, and flagging it would report a type that cannot carry the hazard the rule names.
+ */
+function carriesBytesPayload(parameter: string): boolean {
+  let parsed: AbiParameter
+  try {
+    parsed = parseAbiParameter(parameter) as AbiParameter
+  } catch {
+    // Unparseable is the selector rule's problem. Assume the hazard rather than waving it
+    // through: a payload check that fails open is the wrong way round.
+    return true
+  }
+  return parsedCarriesBytesPayload(parsed)
+}
+
+function parsedCarriesBytesPayload(parameter: AbiParameter): boolean {
+  const base = parameter.type.replace(/(\[\d*\])+$/, '')
+  if (base === 'bytes') return true
+  if (base !== 'tuple') return false
+  const components = (parameter as { components?: readonly AbiParameter[] }).components ?? []
+  return components.some(parsedCarriesBytesPayload)
 }
 
 /**
@@ -298,12 +335,14 @@ export function checkRawCalldataTaint(
       const inputsTainted = inputs.some((input) => (input.input ?? []).some(isTainted))
 
       for (const input of inputs) {
-        if (input.parameter !== 'bytes' || input.useTemplate || input.runtimeBytesAck) continue
+        if (!carriesBytesPayload(input.parameter) || input.useTemplate || input.runtimeBytesAck) continue
         for (const reference of input.input ?? []) {
           if (!isTainted(reference)) continue
           violations.push({
             rule: 'raw-calldata-taint',
-            message: `${options.describe(action)} routes strategist-controlled value ${reference} into a raw-calldata bytes payload (${action.selector ?? '(use)'}) — a bytes argument must derive only from pinned/configurable values or on-chain returns, never (directly or via a helper) from a runtime variable; make it configurable, or add runtimeBytesAck if the target validates the content`,
+            message: `${options.describe(action)} routes strategist-controlled value ${reference} into a raw-calldata bytes payload${
+              input.parameter === 'bytes' ? '' : ` carried by "${input.parameter}"`
+            } (${action.selector ?? '(use)'}) — a bytes argument must derive only from pinned/configurable values or on-chain returns, never (directly or via a helper) from a runtime variable; make it configurable, or add runtimeBytesAck if the target validates the content`,
           })
         }
       }

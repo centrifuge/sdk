@@ -593,4 +593,77 @@ describe('utils/workflowRules', () => {
       expect(violations[0]!.rule).to.equal('selector-arity')
     })
   })
+
+  describe('raw-calldata taint reaches nested bytes', () => {
+    // The rule tested `parameter === 'bytes'`, so it read the type only at the top level.
+    // A dynamic tuple embedding `bytes` was never inspected: a fully strategist-controlled
+    // Midnight `Offer` — carrying `maker`, `tick`, `callback` and the `callbackData` handed
+    // to `ISellCallback(offer.callback).onSell(...)` — validated with no error at all
+    // (centrifuge/workflows#107). Latent while a dynamic tuple could not be declared;
+    // reachable once #537 fixed the arity rule.
+    const MARKET = '(uint256,address,address,(address,uint256,uint256,address)[],uint256,uint256,address,address)'
+    const OFFER = `(${MARKET},bool,address,uint256,uint256,uint256,bytes32,address,bytes,address,address,bool,uint128,uint128,uint256)`
+
+    const taintOn = (parameter: string, kind: 'runtime' | 'configurable' = 'runtime') =>
+      checkRawCalldataTaint(
+        {
+          id: 'p',
+          variables: [
+            { name: 'target', kind: 'pinned' },
+            { name: 'payload', kind },
+          ] as CatalogTemplate['variables'],
+          actions: [
+            {
+              target: '$target',
+              name: 'act',
+              selector: `function act(${parameter})`,
+              inputs: [{ parameter, label: 'Payload', input: ['$payload'] }],
+            },
+          ] as CatalogAction[],
+        },
+        { describe: (action) => `action "${action.name}"` }
+      )
+
+    it('flags a runtime dynamic tuple that embeds bytes', () => {
+      expect(taintOn('(address,bytes)')).to.have.length(1)
+      expect(taintOn('(address,bytes)')[0]!.rule).to.equal('raw-calldata-taint')
+    })
+
+    it("flags Midnight's Offer, where the bytes is four levels in", () => {
+      const violations = taintOn(OFFER)
+      expect(violations).to.have.length(1)
+      // The message names the carrier, so a reviewer can see why a non-bytes input was hit.
+      expect(violations[0]!.message).to.contain('carried by')
+    })
+
+    it('flags an array of tuples embedding bytes', () => {
+      expect(taintOn('(address,bytes)[]')).to.have.length(1)
+    })
+
+    it('still flags a plain runtime bytes, without the carrier clause', () => {
+      const violations = taintOn('bytes')
+      expect(violations).to.have.length(1)
+      expect(violations[0]!.message).to.not.contain('carried by')
+    })
+
+    it('does not flag aggregates with no bytes inside', () => {
+      // The guard shapes in the published catalog, which must stay clean.
+      expect(taintOn('(address,uint256)[]')).to.deep.equal([])
+      expect(taintOn('(address,address)[]')).to.deep.equal([])
+      expect(taintOn('(address,uint256)')).to.deep.equal([])
+      expect(taintOn('uint256[]')).to.deep.equal([])
+    })
+
+    it('does not flag string, which is not re-entered as a call', () => {
+      expect(taintOn('string')).to.deep.equal([])
+    })
+
+    it('does not flag a hub-manager-set value, whatever its shape', () => {
+      expect(taintOn(OFFER, 'configurable')).to.deep.equal([])
+    })
+
+    it('assumes the hazard for an unparseable type rather than waving it through', () => {
+      expect(taintOn('(not a type)')).to.have.length(1)
+    })
+  })
 })
