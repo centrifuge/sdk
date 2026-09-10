@@ -4,6 +4,7 @@ import { encodeFunctionData, parseAbi } from 'viem'
 import { sepolia } from 'viem/chains'
 import { randomAddress } from '../tests/utils.js'
 import { HexString } from '../types/index.js'
+import { MessageType } from '../types/transaction.js'
 import type { OperationStatus, TransactionContext } from '../types/transaction.js'
 import { encodeBatchCalldata, wrapTransaction } from './transaction.js'
 
@@ -24,6 +25,12 @@ describe('encodeBatchCalldata', () => {
     const call2 = encodeFunctionData({ abi: ABI, functionName: 'setValue', args: [2n] })
     const expected = encodeFunctionData({ abi: ABI, functionName: 'multicall', args: [[call1, call2]] })
     expect(encodeBatchCalldata([call1, call2])).to.equal(expected)
+  })
+
+  it('wraps a single call in multicall(bytes[]) when alwaysBatch is set', () => {
+    const call = encodeFunctionData({ abi: ABI, functionName: 'setValue', args: [42n] })
+    const expected = encodeFunctionData({ abi: ABI, functionName: 'multicall', args: [[call]] })
+    expect(encodeBatchCalldata([call], { alwaysBatch: true })).to.equal(expected)
   })
 
   it('preserves call order when wrapping', () => {
@@ -66,6 +73,7 @@ describe('wrapTransaction broadcast path', () => {
       },
       root: {
         _idToChain: sinon.stub().resolves(sepolia.id),
+        _estimate: sinon.stub().resolves(0n),
       },
     } as unknown as TransactionContext
     return { ctx, sendTransaction, writeContract }
@@ -96,7 +104,6 @@ describe('wrapTransaction broadcast path', () => {
 
     await drain(wrapTransaction('Multi', ctx, { contract, data: [call1, call2] }))
 
-    // The multicall case no longer uses writeContract — it sends pre-encoded calldata.
     expect(writeContract.called).to.equal(false)
     expect(sendTransaction.calledOnce).to.equal(true)
     const sent = sendTransaction.firstCall.args[0]
@@ -115,5 +122,51 @@ describe('wrapTransaction broadcast path', () => {
     expect(sendTransaction.called).to.equal(false)
     expect(out).to.have.length(1)
     expect(out[0]).to.deep.include({ contract, data: [data] })
+  })
+
+  it('carries alwaysBatch through BatchTransactionData when batching', async () => {
+    const { ctx } = makeCtx()
+    ;(ctx as any).isBatching = true
+    const data = encodeFunctionData({ abi: ABI, functionName: 'setValue', args: [7n] })
+
+    const out = await drain(wrapTransaction('Batch', ctx, { contract, data, alwaysBatch: true }))
+
+    expect(out).to.have.length(1)
+    expect(out[0]).to.deep.include({ contract, data: [data], alwaysBatch: true })
+  })
+
+  it('wraps a single call with alwaysBatch and forwards the message estimate as value', async () => {
+    const { ctx, sendTransaction } = makeCtx()
+    ;(ctx.root as any)._estimate = sinon.stub().resolves(100n)
+    const data = encodeFunctionData({ abi: ABI, functionName: 'setValue', args: [42n] })
+
+    await drain(
+      wrapTransaction('Single alwaysBatch', ctx, {
+        contract,
+        data,
+        alwaysBatch: true,
+        messages: { 2: [MessageType.RegisterAsset] },
+      })
+    )
+
+    expect(sendTransaction.calledOnce).to.equal(true)
+    const sent = sendTransaction.firstCall.args[0]
+    expect(sent.to).to.equal(contract)
+    // Building this with encodeBatchCalldata would make the assertion circular.
+    expect(sent.data).to.equal(encodeFunctionData({ abi: ABI, functionName: 'multicall', args: [[data]] }))
+    expect(sent.value).to.equal(100n)
+  })
+
+  it('simulates a single call via the multicall(bytes[]) branch when alwaysBatch is set', async () => {
+    const { ctx } = makeCtx()
+    const simulateCalls = sinon.stub().resolves({ results: ['ok'] })
+    ;(ctx.publicClient as any).simulateCalls = simulateCalls
+    const data = encodeFunctionData({ abi: ABI, functionName: 'setValue', args: [5n] })
+
+    await drain(wrapTransaction('Simulate alwaysBatch', ctx, { contract, data, alwaysBatch: true }, { simulate: true }))
+
+    expect(simulateCalls.calledOnce).to.equal(true)
+    const call = simulateCalls.firstCall.args[0].calls[0]
+    expect(call).to.deep.include({ to: contract, functionName: 'multicall', args: [[data]] })
   })
 })

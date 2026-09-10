@@ -101,6 +101,22 @@ describe('buildOnly', () => {
     expect(built.calls.map((c) => c.data)).to.eql([call1, call2])
   })
 
+  it('wraps a single call in multicall(bytes[]) when alwaysBatch is set, byte-equal to the broadcast path', async () => {
+    const centrifuge = new Centrifuge({ environment: 'testnet' })
+    stubChain(centrifuge)
+    const contract = randomAddress()
+    const data = encodeFunctionData({ abi: TEST_ABI, functionName: 'setValue', args: [99n] })
+
+    const tx = (centrifuge as any)._transact(async function* (ctx: any) {
+      yield* wrapTransaction('Set value', ctx, { contract, data, alwaysBatch: true })
+    }, centId)
+
+    const built = await centrifuge.buildOnly(tx)
+    // Building this with encodeBatchCalldata would make the assertion circular.
+    const expected = encodeFunctionData({ abi: TEST_ABI, functionName: 'multicall', args: [[data]] })
+    expect(built.data).to.equal(expected)
+  })
+
   it('uses the zero address as signingAddress when no fromAddress is given', async () => {
     const centrifuge = new Centrifuge({ environment: 'testnet' })
     stubChain(centrifuge)

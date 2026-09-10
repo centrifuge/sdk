@@ -63,21 +63,25 @@ export type BatchTransactionData = {
   data: HexString[]
   value?: bigint
   messages?: Record<number, MessageTypeWithSubType[]>
+  // Set when the target only forwards `msg.value` to its underlying calls inside
+  // `multicall` (e.g. VaultRouter) — a direct single call would strand the value.
+  alwaysBatch?: boolean
 }
 
 /**
  * Encode the outer calldata for a set of inner calls exactly as the signing
  * path sends it: a single inner call is sent verbatim (no multicall wrapper),
- * while two or more are wrapped in `multicall(bytes[])`. Centralizing this keeps
+ * while two or more are wrapped in `multicall(bytes[])`. `options.alwaysBatch`
+ * forces the wrapper even for a single call. Centralizing this keeps
  * `wrapTransaction` (broadcast) and `buildOnly` (build) byte-for-byte identical.
  *
  * Uses the registered `ABI.Multicall` fragment — the `multicall(bytes[])`
  * selector is identical across every protocol contract that supports batching,
  * so the encoded bytes don't depend on which contract is targeted.
  */
-export function encodeBatchCalldata(data: HexString[]): HexString {
+export function encodeBatchCalldata(data: HexString[], options?: { alwaysBatch?: boolean }): HexString {
   if (data.length === 0) throw new Error('No calldata to encode')
-  if (data.length === 1) return data[0]!
+  if (data.length === 1 && !options?.alwaysBatch) return data[0]!
   return encodeFunctionData({
     abi: ABI.Multicall,
     functionName: 'multicall',
@@ -93,6 +97,7 @@ export async function* wrapTransaction(
     data: data_,
     value: value_,
     messages,
+    alwaysBatch,
   }: {
     contract: HexString
     data: HexString | HexString[]
@@ -101,6 +106,7 @@ export async function* wrapTransaction(
     // Used to estimate the payment for the transaction.
     // It is assumed that the messages belong to a single pool.
     messages?: Record<CentrifugeId, MessageTypeWithSubType[]>
+    alwaysBatch?: boolean
   },
   options: {
     simulate: boolean
@@ -113,6 +119,7 @@ export async function* wrapTransaction(
       data,
       value: value_,
       messages,
+      alwaysBatch,
     }
   } else {
     if (messages) {
@@ -132,17 +139,11 @@ export async function* wrapTransaction(
     if (!options.simulate) {
       const result = yield* doTransaction(title, ctx, async () => {
         await assertWalletChainMatches(ctx)
-        // Both the single-call and multicall cases broadcast via `sendTransaction`
-        // with calldata from `encodeBatchCalldata` (the same encoder `buildOnly`
-        // uses), instead of `writeContract` for the multicall case. The bytes are
-        // identical — `writeContract` just calls `encodeFunctionData` + `sendTransaction`
-        // internally — so the on-chain effect and gas are unchanged; this only
-        // moves ABI encoding to one shared helper so the build and signing paths
-        // can never diverge. (Pre-flight ABI validation is unaffected: the calldata
-        // is encoded from the same ABI either way.)
+        // Single and batched calls both encode through `encodeBatchCalldata`, the encoder
+        // `buildOnly` uses, so the built and signed bytes cannot diverge.
         return ctx.walletClient.sendTransaction({
           to: contract,
-          data: encodeBatchCalldata(data),
+          data: encodeBatchCalldata(data, { alwaysBatch }),
           value,
         })
       })
@@ -153,7 +154,7 @@ export async function* wrapTransaction(
     if (options.simulate) {
       let simulationResult
 
-      if (data.length === 1) {
+      if (data.length === 1 && !alwaysBatch) {
         const { results } = await ctx.publicClient.simulateCalls({
           account: ctx.signingAddress,
           calls: [

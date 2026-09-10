@@ -3,7 +3,7 @@ import { encodeFunctionData, getContract } from 'viem'
 import { ABI } from '../abi/index.js'
 import type { Centrifuge } from '../Centrifuge.js'
 import type { HexString } from '../types/index.js'
-import { MessageType } from '../types/transaction.js'
+import { MessageType, type TransactionContext } from '../types/transaction.js'
 import { addressesEqual } from '../utils/addresses.js'
 import { Balance } from '../utils/BigInt.js'
 import { assertCrosschainMessagingEnabled } from '../utils/crosschainHotfix.js'
@@ -330,14 +330,14 @@ export class Vault extends Entity {
         }
       }
 
-      yield* doTransaction('Invest', ctx, () =>
-        ctx.walletClient.writeContract({
-          address: vaultRouter,
+      yield* wrapTransaction('Invest', ctx, {
+        contract: vaultRouter,
+        data: encodeFunctionData({
           abi: ABI.VaultRouter,
           functionName: 'deposit',
           args: [self.address, amount.toBigInt(), ctx.signingAddress, ctx.signingAddress],
-        })
-      )
+        }),
+      })
     }, this.centrifugeId)
   }
 
@@ -351,11 +351,7 @@ export class Vault extends Entity {
     return this._transact(async function* (ctx) {
       assertCrosschainMessagingEnabled(self.centrifugeId)
 
-      const [estimate, investment, { vaultRouter }, isSyncDeposit, signingAddressCode] = await Promise.all([
-        self._root._estimate(self.centrifugeId, self.pool.id.centrifugeId, {
-          type: MessageType.Request,
-          poolId: self.pool.id,
-        }),
+      const [investment, { vaultRouter }, isSyncDeposit, signingAddressCode] = await Promise.all([
         self.investment(ctx.signingAddress),
         self._root._protocolAddresses(self.centrifugeId),
         self._isSyncDeposit(),
@@ -399,11 +395,6 @@ export class Vault extends Entity {
         }
       }
 
-      const enableData = encodeFunctionData({
-        abi: ABI.VaultRouter,
-        functionName: 'enable',
-        args: [self.address],
-      })
       const requestData = encodeFunctionData({
         abi: ABI.VaultRouter,
         functionName: 'requestDeposit',
@@ -416,14 +407,12 @@ export class Vault extends Entity {
           functionName: 'permit',
           args: [asset.address, spender, amount.toBigInt(), permit.deadline, permit.v, permit.r, permit.s],
         })
-      yield* doTransaction('Invest', ctx, () =>
-        ctx.walletClient.writeContract({
-          address: vaultRouter,
-          abi: ABI.VaultRouter,
-          functionName: 'multicall',
-          args: [[permitData!, enableData, requestData].filter(Boolean)],
-          value: estimate, // only one message is sent as a result of the multicall
-        })
+
+      yield* self._sendRouterFeeTransaction(
+        'Invest',
+        ctx,
+        vaultRouter,
+        [permitData, self._enableRouterData(), requestData].filter((d): d is HexString => d !== null)
       )
     }, this.centrifugeId)
   }
@@ -436,25 +425,25 @@ export class Vault extends Entity {
     return this._transact(async function* (ctx) {
       assertCrosschainMessagingEnabled(self.centrifugeId)
 
-      const [estimate, investment, { vaultRouter }] = await Promise.all([
-        self._root._estimate(self.centrifugeId, self.pool.id.centrifugeId, {
-          type: MessageType.Request,
-          poolId: self.pool.id,
-        }),
+      const [investment, { vaultRouter }, isOperator] = await Promise.all([
         self.investment(ctx.signingAddress),
         self._root._protocolAddresses(self.centrifugeId),
+        self._isOperator(ctx.signingAddress),
       ])
 
       if (investment.pendingDepositAssets.isZero()) throw new Error('No order to cancel')
 
-      yield* doTransaction('Cancel deposit request', ctx, () =>
-        ctx.walletClient.writeContract({
-          address: vaultRouter,
-          abi: ABI.VaultRouter,
-          functionName: 'cancelDepositRequest',
-          args: [self.address],
-          value: estimate,
-        })
+      const cancelData = encodeFunctionData({
+        abi: ABI.VaultRouter,
+        functionName: 'cancelDepositRequest',
+        args: [self.address],
+      })
+
+      yield* self._sendRouterFeeTransaction(
+        'Cancel deposit request',
+        ctx,
+        vaultRouter,
+        self._bundleEnableIfNeeded([cancelData], isOperator)
       )
     }, this.centrifugeId)
   }
@@ -468,11 +457,7 @@ export class Vault extends Entity {
     return this._transact(async function* (ctx) {
       assertCrosschainMessagingEnabled(self.centrifugeId)
 
-      const [estimate, investment, { vaultRouter }, isOperator] = await Promise.all([
-        self._root._estimate(self.centrifugeId, self.pool.id.centrifugeId, {
-          type: MessageType.Request,
-          poolId: self.pool.id,
-        }),
+      const [investment, { vaultRouter }, isOperator] = await Promise.all([
         self.investment(ctx.signingAddress),
         self._root._protocolAddresses(self.centrifugeId),
         self._isOperator(ctx.signingAddress),
@@ -483,37 +468,17 @@ export class Vault extends Entity {
       if (sharesAmount.gt(investment.shareBalance)) throw new Error('Insufficient balance')
       if (!sharesAmount.gt(0n)) throw new Error('Order amount must be greater than 0')
 
-      if (isOperator) {
-        yield* doTransaction('Redeem', ctx, () =>
-          ctx.walletClient.writeContract({
-            address: vaultRouter,
-            abi: ABI.VaultRouter,
-            functionName: 'requestRedeem',
-            args: [self.address, sharesAmount.toBigInt(), ctx.signingAddress, ctx.signingAddress],
-            value: estimate,
-          })
-        )
-        return
-      }
-
-      const enableData = encodeFunctionData({
-        abi: ABI.VaultRouter,
-        functionName: 'enable',
-        args: [self.address],
-      })
       const redeemData = encodeFunctionData({
         abi: ABI.VaultRouter,
         functionName: 'requestRedeem',
         args: [self.address, sharesAmount.toBigInt(), ctx.signingAddress, ctx.signingAddress],
       })
-      yield* doTransaction('Redeem', ctx, () =>
-        ctx.walletClient.writeContract({
-          address: vaultRouter,
-          abi: ABI.VaultRouter,
-          functionName: 'multicall',
-          args: [[enableData, redeemData]],
-          value: estimate,
-        })
+
+      yield* self._sendRouterFeeTransaction(
+        'Redeem',
+        ctx,
+        vaultRouter,
+        self._bundleEnableIfNeeded([redeemData], isOperator)
       )
     }, this.centrifugeId)
   }
@@ -526,25 +491,25 @@ export class Vault extends Entity {
     return this._transact(async function* (ctx) {
       assertCrosschainMessagingEnabled(self.centrifugeId)
 
-      const [estimate, investment, { vaultRouter }] = await Promise.all([
-        self._root._estimate(self.centrifugeId, self.pool.id.centrifugeId, {
-          type: MessageType.Request,
-          poolId: self.pool.id,
-        }),
+      const [investment, { vaultRouter }, isOperator] = await Promise.all([
         self.investment(ctx.signingAddress),
         self._root._protocolAddresses(self.centrifugeId),
+        self._isOperator(ctx.signingAddress),
       ])
 
       if (investment.pendingRedeemShares.isZero()) throw new Error('No order to cancel')
 
-      yield* doTransaction('Cancel redeem request', ctx, () =>
-        ctx.walletClient.writeContract({
-          address: vaultRouter,
-          abi: ABI.VaultRouter,
-          functionName: 'cancelRedeemRequest',
-          args: [self.address],
-          value: estimate,
-        })
+      const cancelData = encodeFunctionData({
+        abi: ABI.VaultRouter,
+        functionName: 'cancelRedeemRequest',
+        args: [self.address],
+      })
+
+      yield* self._sendRouterFeeTransaction(
+        'Cancel redeem request',
+        ctx,
+        vaultRouter,
+        self._bundleEnableIfNeeded([cancelData], isOperator)
       )
     }, this.centrifugeId)
   }
@@ -580,43 +545,18 @@ export class Vault extends Entity {
         throw new Error('No claimable funds')
       }
 
-      // Every claim on the router ends in a call into the vault with the router as `msg.sender`,
-      // which the vault only accepts if the router is an operator for the controller. Requests made
-      // directly on the vault (a valid ERC-7540 interaction) never enable the router, so bundle
-      // `enable` with the claim. `enable` sets the operator for the sender, so it can only be
-      // bundled when the sender is the controller themselves.
+      const claimData = encodeFunctionData({
+        abi: ABI.VaultRouter,
+        functionName,
+        args: [self.address, receiverAddress, controllerAddress],
+      })
+
+      // `enable` sets the operator for the sender, so bundling it here only helps when the
+      // signer is the controller themselves.
       const needsEnable = !isOperator && addressesEqual(controllerAddress, ctx.signingAddress)
+      const data = needsEnable ? [self._enableRouterData(), claimData] : claimData
 
-      if (needsEnable) {
-        const enableData = encodeFunctionData({
-          abi: ABI.VaultRouter,
-          functionName: 'enable',
-          args: [self.address],
-        })
-        const claimData = encodeFunctionData({
-          abi: ABI.VaultRouter,
-          functionName,
-          args: [self.address, receiverAddress, controllerAddress],
-        })
-        yield* doTransaction('Claim', ctx, () =>
-          ctx.walletClient.writeContract({
-            address: vaultRouter,
-            abi: ABI.VaultRouter,
-            functionName: 'multicall',
-            args: [[enableData, claimData]],
-          })
-        )
-        return
-      }
-
-      yield* doTransaction('Claim', ctx, () =>
-        ctx.walletClient.writeContract({
-          address: vaultRouter,
-          abi: ABI.VaultRouter,
-          functionName,
-          args: [self.address, receiverAddress, controllerAddress],
-        })
-      )
+      yield* wrapTransaction('Claim', ctx, { contract: vaultRouter, data })
     }, this.centrifugeId)
   }
 
@@ -695,6 +635,39 @@ export class Vault extends Entity {
         )
       )
     )
+  }
+
+  /** @internal */
+  _enableRouterData(): HexString {
+    return encodeFunctionData({
+      abi: ABI.VaultRouter,
+      functionName: 'enable',
+      args: [this.address],
+    })
+  }
+
+  /**
+   * A router call into the vault only succeeds if the router is an endorsed operator for the
+   * controller (`BaseVaults._validateController`), which a request made directly on the vault
+   * never sets up.
+   * @internal
+   */
+  _bundleEnableIfNeeded(data: HexString[], isOperator: boolean): HexString[] {
+    return isOperator ? data : [this._enableRouterData(), ...data]
+  }
+
+  /**
+   * The router forwards `msg.value` to its inner calls only through `multicall`, so a
+   * fee-bearing call always batches; sent directly, the fee stays in the router for good.
+   * @internal
+   */
+  _sendRouterFeeTransaction(title: string, ctx: TransactionContext, vaultRouter: HexString, data: HexString[]) {
+    return wrapTransaction(title, ctx, {
+      contract: vaultRouter,
+      data,
+      alwaysBatch: true,
+      messages: { [this.pool.id.centrifugeId]: [{ type: MessageType.Request, poolId: this.pool.id }] },
+    })
   }
 
   /** @internal */

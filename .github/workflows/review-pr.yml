@@ -13,6 +13,10 @@ permissions:
 
 jobs:
   review:
+    # The version-bump bot pushes to the PR branch, which re-triggers this workflow with a bot
+    # actor. The action refuses a non-human actor, and the review has already run on the human's
+    # push, so there is nothing to redo.
+    if: github.actor != 'github-actions[bot]'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -45,7 +49,6 @@ jobs:
         uses: anthropics/claude-code-action@a874e9ecd7bb36efdad65429c6b35815f5a08f10 # v1.0.210
         with:
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
-          model: claude-sonnet-4-6
           track_progress: false
           claude_args: |
             --allowedTools "Read,Glob,Grep,Write,Bash(gh pr diff:*),Bash(gh pr view:*)" --model claude-sonnet-4-6
@@ -67,7 +70,6 @@ jobs:
         uses: anthropics/claude-code-action@a874e9ecd7bb36efdad65429c6b35815f5a08f10 # v1.0.210
         with:
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
-          model: claude-sonnet-4-6
           track_progress: false
           claude_args: |
             --allowedTools "Read,Glob,Grep,Write,Bash(gh pr diff:*),Bash(gh pr view:*)" --model claude-sonnet-4-6
@@ -89,7 +91,6 @@ jobs:
         uses: anthropics/claude-code-action@a874e9ecd7bb36efdad65429c6b35815f5a08f10 # v1.0.210
         with:
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
-          model: claude-sonnet-4-6
           track_progress: false
           claude_args: |
             --allowedTools "Read,Glob,Grep,Write,Bash(gh pr diff:*),Bash(gh pr view:*)" --model claude-sonnet-4-6
@@ -112,7 +113,6 @@ jobs:
         uses: anthropics/claude-code-action@a874e9ecd7bb36efdad65429c6b35815f5a08f10 # v1.0.210
         with:
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
-          model: claude-haiku-4-5
           track_progress: false
           claude_args: |
             --allowedTools "Read,Glob,Grep,Write,Bash(gh pr diff:*),Bash(gh pr view:*)" --model claude-haiku-4-5

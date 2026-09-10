@@ -152,8 +152,9 @@ export type BuiltCall = {
  * the calldata a transaction method *would* send, with no signing or broadcast.
  *
  * - `data` is the single call's calldata, or `multicall(bytes[])` calldata when
- *   more than one inner call is wrapped — byte-equal to what the signing path
- *   would send for the same inputs.
+ *   more than one inner call is wrapped, or when the method requires batching
+ *   even for a single call — byte-equal to what the signing path would send
+ *   for the same inputs.
  * - `calls` exposes each inner call so consumers can inspect a batch without
  *   re-parsing the multicall.
  * - `messages` carries the cross-chain messages (if any) so consumers can run
