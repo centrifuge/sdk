@@ -530,4 +530,67 @@ describe('utils/workflowRules', () => {
       expect(checkAddressLiterals(action('bytes32', '0xdead'), 'a')).to.deep.equal([])
     })
   })
+
+  describe('dynamic tuple arity', () => {
+    // The rule and the encoder used to accept disjoint declarations for a dynamic tuple:
+    // this demanded one input per leaf, `encodeInputSpecifier` emitted one 0x80 slot. A
+    // template could pass validation or produce the right calldata, never both
+    // (centrifuge/workflows#105). These pin the agreement in both directions.
+    const MIDNIGHT_MARKET =
+      '(uint256,address,address,(address,uint256,uint256,address)[],uint256,uint256,address,address)'
+    const MIDNIGHT_OFFER = `(${MIDNIGHT_MARKET},bool,address,uint256,uint256,uint256,bytes32,address,bytes,address,address,bool,uint128,uint128,uint256)`
+
+    it('counts a dynamic tuple as one input', () => {
+      expect(parseSelectorParameters('function f((address,bytes))')).to.deep.equal(['(address,bytes)'])
+      expect(parseSelectorParameters('function f((uint256,string))')).to.deep.equal(['(uint256,string)'])
+    })
+
+    it('still flattens a static tuple, one input per leaf', () => {
+      expect(parseSelectorParameters('function g((address,uint256))')).to.deep.equal(['address', 'uint256'])
+      // Nested static tuples flatten all the way down.
+      expect(parseSelectorParameters('function g(((address,uint256),bool))')).to.deep.equal([
+        'address',
+        'uint256',
+        'bool',
+      ])
+    })
+
+    it('keeps a static tuple atomic once it contains a dynamic member', () => {
+      // The outer tuple is dynamic because the inner one is, so neither flattens.
+      expect(parseSelectorParameters('function g(((address,bytes),uint256))')).to.deep.equal([
+        '((address,bytes),uint256)',
+      ])
+    })
+
+    it('leaves arrays atomic, as before', () => {
+      expect(parseSelectorParameters('function h((address,uint256)[])')).to.deep.equal(['(address,uint256)[]'])
+      expect(parseSelectorParameters('function h(uint256[])')).to.deep.equal(['uint256[]'])
+    })
+
+    it('accepts the Midnight.take declaration the encoder actually emits', () => {
+      const selector = `function take(${MIDNIGHT_OFFER},bytes,uint256,address,address,address,bytes)`
+      const parameters = parseSelectorParameters(selector)
+      expect(parameters, 'take should be 7 inputs, not 28').to.have.length(7)
+      expect(parameters![0]).to.equal(MIDNIGHT_OFFER)
+
+      const violations = checkActionSelectorSchema(
+        { name: 'take', selector, inputs: parameters!.map((parameter) => ({ parameter })) },
+        'action "take"'
+      )
+      expect(violations).to.deep.equal([])
+    })
+
+    it('rejects the flattened declaration that used to be the only one accepted', () => {
+      const violations = checkActionSelectorSchema(
+        {
+          name: 'f',
+          selector: 'function f((address,bytes))',
+          inputs: [{ parameter: 'address' }, { parameter: 'bytes' }],
+        },
+        'action "f"'
+      )
+      expect(violations).to.have.length(1)
+      expect(violations[0]!.rule).to.equal('selector-arity')
+    })
+  })
 })

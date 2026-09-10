@@ -11,6 +11,8 @@ import {
   encodeVariableLengthValue,
   fillRuntimeSlots,
   getWorkflowAbiParameter,
+  isDynamicAbiType,
+  staticHeadWordCount,
 } from './weiroll.js'
 import type { PoolContext, WorkflowDefinition } from './weiroll.js'
 
@@ -628,6 +630,86 @@ describe('utils/weiroll', () => {
       const parameter = 'uint256[]'
       const standalone = encodeAbiParameters([{ type: 'uint256[]' }], [[7n, 8n]])
       expect(encodeVariableLengthValue(parameter, [7n, 8n])).to.equal(`0x${standalone.slice(66)}`)
+    })
+  })
+
+  describe('isDynamicAbiType', () => {
+    const MARKET = '(uint256,address,address,(address,uint256,uint256,address)[],uint256,uint256,address,address)'
+    const MIDNIGHT_OFFER = `(${MARKET},bool,address,uint256,uint256,uint256,bytes32,address,bytes,address,address,bool,uint128,uint128,uint256)`
+
+    const cases: Array<[string, boolean]> = [
+      ['uint256', false],
+      ['address', false],
+      ['bytes32', false],
+      ['bool', false],
+      ['(address,uint256)', false],
+      ['bytes32[3]', false],
+      ['(address,uint256)[2]', false],
+      ['bytes', true],
+      ['string', true],
+      ['uint256[]', true],
+      ['(address,uint256)[]', true],
+      ['(address,uint256,uint256,address)[]', true],
+      // A dynamic tuple with no array member matched neither old heuristic, so it was
+      // classified static and encoded as one word where an offset and tail belong.
+      ['(address,bytes)', true],
+      ['(uint256,string)', true],
+      // A fixed-size array is dynamic iff its element is.
+      ['bytes[3]', true],
+      // Midnight's Offer: contains '[]' but ends in ')', which is what split the two
+      // old predicates apart.
+      [MIDNIGHT_OFFER, true],
+    ]
+
+    for (const [parameter, expected] of cases) {
+      it(`${expected ? 'dynamic' : 'static'}: ${parameter.length > 48 ? `${parameter.slice(0, 45)}…` : parameter}`, () => {
+        expect(isDynamicAbiType(parameter)).to.equal(expected)
+      })
+    }
+
+    it('treats an unparseable type as static rather than throwing', () => {
+      expect(isDynamicAbiType('(not a type)')).to.equal(false)
+    })
+  })
+
+  describe('staticHeadWordCount', () => {
+    // How many head words a type occupies, which is what decides whether it can ride in a
+    // single state slot. A slot is one word, so anything other than 1 is unrepresentable.
+    const cases: Array<[string, number]> = [
+      // Elementary types are one word each.
+      ['uint256', 1],
+      ['uint8', 1],
+      ['address', 1],
+      ['bool', 1],
+      ['bytes32', 1],
+      // Dynamic types occupy a single offset word in the head, whatever their payload.
+      ['bytes', 1],
+      ['string', 1],
+      ['uint256[]', 1],
+      ['(address,uint256)[]', 1],
+      ['(address,bytes)', 1],
+      // Static aggregates are inlined, so they are as wide as their leaves.
+      ['(address,uint256)', 2],
+      ['(address,uint256,uint256,address)', 4],
+      ['bytes32[3]', 3],
+      ['(address,uint256)[2]', 4],
+      // Nesting sums all the way down.
+      ['((address,uint256),bool)', 3],
+      ['((address,uint256)[2],bytes32)', 5],
+      // A fixed array of a dynamic element is itself dynamic: one offset word.
+      ['bytes[3]', 1],
+      // The degenerate case the fuzz surfaced: zero-length fixed array, no head at all.
+      ['bytes2[0]', 0],
+    ]
+
+    for (const [parameter, words] of cases) {
+      it(`${parameter} occupies ${words} word${words === 1 ? '' : 's'}`, () => {
+        expect(staticHeadWordCount(parameter)).to.equal(words)
+      })
+    }
+
+    it('falls back to one word for an unparseable type, rather than throwing', () => {
+      expect(staticHeadWordCount('(not a type)')).to.equal(1)
     })
   })
 })
