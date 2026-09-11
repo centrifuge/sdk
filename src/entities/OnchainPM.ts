@@ -20,7 +20,6 @@ export class OnchainPM extends Entity {
   /** Deployed contract address on this chain. */
   address: HexString
 
-  /** @internal */
   constructor(
     _root: Centrifuge,
     public network: PoolNetwork,

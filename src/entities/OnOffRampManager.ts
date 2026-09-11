@@ -20,7 +20,6 @@ enum OnOffRampManagerTrustedCall {
 }
 
 export class OnOffRampManager extends Entity {
-  /** @internal */
   constructor(
     _root: Centrifuge,
     public network: PoolNetwork,

@@ -28,7 +28,6 @@ export enum VaultManagerTrustedCall {
  * Query and interact with a pool on a specific network.
  */
 export class PoolNetwork extends Entity {
-  /** @internal */
   constructor(
     _root: Centrifuge,
     public pool: Pool,

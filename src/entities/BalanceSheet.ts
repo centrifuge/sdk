@@ -18,7 +18,6 @@ import { ShareClass } from './ShareClass.js'
  */
 export class BalanceSheet extends Entity {
   pool: Pool
-  /** @internal */
   constructor(
     _root: Centrifuge,
     public network: PoolNetwork,

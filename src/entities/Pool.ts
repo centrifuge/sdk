@@ -135,7 +135,6 @@ function assertPinnedArtifact(entry: WorkflowPolicyEntry, workflow: MarketplaceW
 export class Pool extends Entity {
   id: PoolId
 
-  /** @internal */
   constructor(_root: Centrifuge, id: string | bigint | PoolId) {
     super(_root, ['pool', String(id)])
     this.id = id instanceof PoolId ? id : new PoolId(id)
