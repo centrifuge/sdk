@@ -1,6 +1,7 @@
 import {
   arbitrum,
   arbitrumSepolia,
+  arc,
   avalanche,
   base,
   baseSepolia,
@@ -42,6 +43,7 @@ export const pharos = defineChain({
 export const chains = [
   arbitrum,
   arbitrumSepolia,
+  arc,
   avalanche,
   base,
   baseSepolia,
