@@ -91,7 +91,6 @@ export interface ClosedRedemptionsFilter {
 export class ShareClass extends Entity {
   id: ShareClassId
 
-  /** @internal */
   constructor(
     _root: Centrifuge,
     public pool: Pool,

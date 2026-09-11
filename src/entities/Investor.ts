@@ -8,7 +8,6 @@ import { Entity } from './Entity.js'
 export class Investor extends Entity {
   address: HexString
 
-  /** @internal */
   constructor(_root: Centrifuge, address: HexString) {
     const addr = address.toLowerCase() as HexString
     super(_root, ['investor', addr])

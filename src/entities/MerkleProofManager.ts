@@ -33,7 +33,6 @@ export class MerkleProofManager extends Entity {
    * The contract address of the Merkle Proof Manager.
    */
   address: HexString
-  /** @internal */
   constructor(
     _root: Centrifuge,
     public network: PoolNetwork,
