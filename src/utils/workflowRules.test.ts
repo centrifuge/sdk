@@ -3,6 +3,7 @@ import type { CatalogAction, CatalogTemplate } from '../types/workflow.js'
 import {
   checkActionSelectorSchema,
   checkAddressLiterals,
+  checkApprovalExactness,
   checkNoDeclaredRawMode,
   checkNoForwardReferences,
   checkReturnsDoNotShadow,
@@ -664,6 +665,139 @@ describe('utils/workflowRules', () => {
 
     it('assumes the hazard for an unparseable type rather than waving it through', () => {
       expect(taintOn('(not a type)')).to.have.length(1)
+    })
+  })
+
+  describe('checkApprovalExactness', () => {
+    const describe_ = (index: number) => `action ${index}`
+    const approve = (spender: string, amount: string) =>
+      action({
+        target: '$asset',
+        name: 'Approve spending',
+        selector: 'function approve(address,uint256)',
+        inputs: [
+          { parameter: 'address', input: [spender] },
+          { parameter: 'uint256', input: [amount] },
+        ],
+      })
+
+    it('passes when the spender pulls the approved amount in the same script', () => {
+      // The erc4626_deposit shape: approve(vault, $amount) then vault.deposit($amount).
+      const template = {
+        actions: [
+          approve('$vault', '$amount'),
+          action({
+            target: '$vault',
+            selector: 'function deposit(uint256,address)',
+            inputs: [
+              { parameter: 'uint256', input: ['$amount'] },
+              { parameter: 'address', input: ['$onchainPM'] },
+            ],
+          }),
+        ],
+      }
+      expect(checkApprovalExactness(template, describe_)).to.deep.equal([])
+    })
+
+    it('flags an approval no later call consumes', () => {
+      const template = { actions: [approve('$vault', '$amount')] }
+      expect(rules(checkApprovalExactness(template, describe_))).to.deep.equal(['approval-not-exact'])
+    })
+
+    it('flags an amount consumed by someone other than the spender', () => {
+      // Approving the vault while a different contract is handed the amount leaves the
+      // vault's allowance untouched and open.
+      const template = {
+        actions: [
+          approve('$vault', '$amount'),
+          action({
+            target: '$balanceSheet',
+            selector: 'function deposit(address,uint256)',
+            inputs: [
+              { parameter: 'address', input: ['$asset'] },
+              { parameter: 'uint256', input: ['$amount'] },
+            ],
+          }),
+        ],
+      }
+      expect(rules(checkApprovalExactness(template, describe_))).to.deep.equal(['approval-not-exact'])
+    })
+
+    it('flags an infinite allowance even when the spender is called with some amount', () => {
+      const max = (2n ** 256n - 1n).toString()
+      const template = {
+        actions: [
+          approve('$vault', max),
+          action({
+            target: '$vault',
+            selector: 'function deposit(uint256)',
+            inputs: [{ parameter: 'uint256', input: ['$amount'] }],
+          }),
+        ],
+      }
+      expect(rules(checkApprovalExactness(template, describe_))).to.deep.equal(['approval-not-exact'])
+    })
+
+    it('exempts a template that keeps the runtime allowance guard', () => {
+      const template = { guards: { allowance: true }, actions: [approve('$vault', '$amount')] }
+      expect(checkApprovalExactness(template, describe_)).to.deep.equal([])
+    })
+
+    it('skips a use-only fragment, whose consumer lives in the caller', () => {
+      // `erc20_approve` is nothing but an approval; it is safe because it never runs alone.
+      const template = {
+        variables: [
+          { name: 'spender', kind: 'param' as const },
+          { name: 'amount', kind: 'param' as const },
+        ],
+        actions: [approve('$spender', '$amount')],
+      }
+      expect(checkApprovalExactness(template, describe_)).to.deep.equal([])
+    })
+
+    it('reads the amount from the last slot of an ERC-6909 approval', () => {
+      // approve(spender, id, amount) — taking inputs[1] would compare the token id instead.
+      const template = {
+        actions: [
+          action({
+            target: '$accountingToken',
+            selector: 'function approve(address,uint256,uint256)',
+            inputs: [
+              { parameter: 'address', input: ['$balanceSheet'] },
+              { parameter: 'uint256', input: ['$atokenId'] },
+              { parameter: 'uint256', input: ['$amount'] },
+            ],
+          }),
+          action({
+            target: '$balanceSheet',
+            selector: 'function deposit(uint64,bytes16,address,uint256,uint128)',
+            inputs: [
+              { parameter: 'uint64', input: ['$poolId'] },
+              { parameter: 'bytes16', input: ['$scId'] },
+              { parameter: 'address', input: ['$accountingToken'] },
+              { parameter: 'uint256', input: ['$atokenId'] },
+              { parameter: 'uint128', input: ['$amount'] },
+            ],
+          }),
+        ],
+      }
+      expect(checkApprovalExactness(template, describe_)).to.deep.equal([])
+    })
+
+    it('flags an approval whose amount is not a single pinned value', () => {
+      const template = {
+        actions: [
+          action({
+            target: '$asset',
+            selector: 'function approve(address,uint256)',
+            inputs: [
+              { parameter: 'address', input: ['$vault'] },
+              { parameter: 'uint256', input: ['$a', '$b'] },
+            ],
+          }),
+        ],
+      }
+      expect(rules(checkApprovalExactness(template, describe_))).to.deep.equal(['approval-not-exact'])
     })
   })
 })
