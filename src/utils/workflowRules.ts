@@ -447,6 +447,105 @@ export function checkNoDeclaredRawMode(template: TaintTemplate, describe: (index
   return violations
 }
 
+/** The template shape the approval rule reads: actions, variable kinds, and the guard flags. */
+export interface ApprovalTemplate {
+  actions?: unknown[]
+  variables?: CatalogVariable[]
+  guards?: { allowance?: boolean }
+}
+
+/** ERC-20 `approve(spender, amount)` and ERC-6909 `approve(spender, id, amount)`. */
+const APPROVE_SELECTORS = new Set(['approve(address,uint256)', 'approve(address,uint256,uint256)'])
+
+/** `type(uint256).max` — the canonical infinite allowance. */
+const MAX_UINT256 = (2n ** 256n - 1n).toString()
+
+/** The single value pinned into an input slot, or undefined when the slot is missing, empty or a list. */
+function soleInput(input: { input?: unknown[] } | undefined): string | undefined {
+  const values = input?.input ?? []
+  return values.length === 1 ? String(values[0]) : undefined
+}
+
+/**
+ * An approval must be provably consumed by the spender in the same script.
+ *
+ * A residual allowance outlives the transaction: the spender keeps the right to pull from
+ * OnchainPM at a time nobody is reviewing, which is the standing-approval hazard the
+ * ApprovalGuard's `checkZeroAllowances` was added to catch at runtime.
+ *
+ * The guard is a poor place to enforce it. It fires only if the leaf's `allowancePairs` are
+ * configured, and a leaf that lists the wrong pair — or none — reports success over an open
+ * allowance, so it fails open on exactly the misconfiguration it is meant to cover. The
+ * property it checks is a syntactic one the catalog already carries: an approval is safe
+ * when the same amount reference flows into a later call on the spender, because the spender
+ * then pulls the whole allowance or the transaction reverts.
+ *
+ * So this rule proves it at ingest time instead, and a template that cannot be proved safe
+ * this way must set `guards.allowance` and keep the runtime check. Both `centrifuge/workflows`
+ * (before publishing) and the SDK (over a catalog it fetched) apply it.
+ *
+ * Not applied to use-only fragments — a template declaring `param` variables is inlined into
+ * its callers, where the approval and its consumer are checked together. `erc20_approve` is
+ * nothing but an approval, and is safe precisely because it never executes alone.
+ */
+export function checkApprovalExactness(
+  template: ApprovalTemplate,
+  describe: (index: number) => string
+): RuleViolation[] {
+  if (template.guards?.allowance) return []
+  // A fragment's consumer lives in the caller; checking it standalone would flag every
+  // approve helper in the catalog for the crime of being a helper.
+  if ((template.variables ?? []).some((variable) => variable.kind === 'param')) return []
+
+  const actions = (template.actions ?? []) as CatalogAction[]
+  const violations: RuleViolation[] = []
+
+  for (const [index, action] of actions.entries()) {
+    if (typeof action.selector !== 'string') continue
+    if (!APPROVE_SELECTORS.has(action.selector.replace(/^function\s+/, '').replace(/\s+/g, ''))) continue
+
+    const inputs = action.inputs ?? []
+    const spender = soleInput(inputs[0])
+    const amount = soleInput(inputs[inputs.length - 1])
+    // An approval whose spender or amount is not a single pinned value cannot be reasoned
+    // about here at all, which is itself a reason to keep the runtime guard.
+    if (spender === undefined || amount === undefined) {
+      violations.push({
+        rule: 'approval-not-exact',
+        message: `${describe(index)} approves a spender or amount this rule cannot resolve to a single value — set "guards.allowance" so the residual allowance is checked at runtime`,
+      })
+      continue
+    }
+
+    if (amount === MAX_UINT256) {
+      violations.push({
+        rule: 'approval-not-exact',
+        message: `${describe(index)} grants an infinite allowance (type(uint256).max), which no call can consume — approve the exact amount, or set "guards.allowance"`,
+      })
+      continue
+    }
+
+    // The consumer: a later call ON the spender that takes the same amount. `deposit($amount)`
+    // after `approve(vault, $amount)` pulls the whole allowance or reverts; nothing is left over.
+    const consumed = actions
+      .slice(index + 1)
+      .some(
+        (later) =>
+          later.target === spender &&
+          (later.inputs ?? []).some((input) => (input.input ?? []).some((value) => value === amount))
+      )
+
+    if (!consumed) {
+      violations.push({
+        rule: 'approval-not-exact',
+        message: `${describe(index)} approves "${amount}" to "${spender}" but no later action calls "${spender}" with that amount — the unconsumed allowance survives the transaction; make the approval exact and consume it, or set "guards.allowance"`,
+      })
+    }
+  }
+
+  return violations
+}
+
 // ---------------------------------------------------------------------------
 // Workflow-level rules
 // ---------------------------------------------------------------------------
@@ -595,6 +694,7 @@ function templateViolations(templateName: string, template: CatalogTemplate): Ru
     ...checkRawCalldataTaint(template, {
       describe: (action) => `template "${templateName}" action "${action.name ?? action.selector}"`,
     }),
+    ...checkApprovalExactness(template, describeAction),
   ]
 
   for (const [index, action] of (template.actions ?? []).entries()) {
