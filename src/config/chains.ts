@@ -1,7 +1,7 @@
 import {
   arbitrum,
   arbitrumSepolia,
-  arc,
+  arc as arcWithoutDefaultRpc,
   avalanche,
   base,
   baseSepolia,
@@ -17,6 +17,14 @@ import {
   xLayer,
 } from 'viem/chains'
 import { defineChain } from 'viem'
+
+// viem ships Arc with no default public RPC (`rpcUrls.default.http: []`). This is
+// Circle's own mainnet endpoint — first-party, keyless — so it can be bundled the
+// same way `pharos` bundles its own default below.
+export const arc = {
+  ...arcWithoutDefaultRpc,
+  rpcUrls: { ...arcWithoutDefaultRpc.rpcUrls, default: { http: ['https://rpc.mainnet.arc.io'] } },
+}
 
 export const pharos = defineChain({
   id: 1672,
