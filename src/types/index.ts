@@ -110,4 +110,11 @@ export type ProtocolContracts = {
   simplePriceManager: HexString
   layerZeroAdapter?: HexString
   chainlinkAdapter?: HexString
+  approvalGuard?: HexString
+  circuitBreakerGuard?: HexString
+  flashLoanHelper?: HexString
+  onOffRampFactory?: HexString
+  scriptHelpers?: HexString
+  slippageGuard?: HexString
+  tokenBridge?: HexString
 }

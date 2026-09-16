@@ -42,6 +42,7 @@ type EnvFile = {
 const NAME_OVERRIDES: Record<string, string> = {
   'bnb-smart-chain': 'binance',
   'hyper-evm': 'hyperliquid',
+  'x-layer': 'xlayer',
 }
 
 function parseArgs() {
