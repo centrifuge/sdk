@@ -27,13 +27,14 @@ export type Config = {
    */
   disableRepeatOnEvents?: boolean
   /**
-   * If true, accept indexer-reported deployments for centrifugeIds that are not in
-   * the bundled allowlist (KNOWN_DEPLOYMENTS). Mismatches against known deployments
-   * still throw. Default: false (strict).
+   * If true, keep indexer-reported deployments for centrifugeIds that are not in
+   * the bundled allowlist (KNOWN_DEPLOYMENTS). Default: false (strict), which drops
+   * unknown deployments with an `UnknownDeploymentError` warning.
    *
    * Strict mode is the secure default — an attacker adding a fake centrifugeId via a
    * compromised indexer cannot slip past it. Enable only if you knowingly run an SDK
-   * version that predates a legitimate new chain deployment.
+   * version that predates a legitimate new chain deployment. Address mismatches on
+   * known deployments are always dropped.
    */
   allowUnknownDeployments?: boolean
 }

@@ -65,9 +65,9 @@ export type VerifyOptions = {
  * chain, keeps working. The dropped contract is simply unavailable until the indexer
  * matches the bundled allowlist. The response is mutated in place and returned.
  *
- * An unknown centrifugeId still throws `UnknownDeploymentError` in strict mode (the
- * default): a fake chain added to a compromised indexer is a different threat from a
- * stale-but-real contract address, and there's nothing safe to fall back to.
+ * An unknown centrifugeId is dropped in strict mode and reported with an
+ * `UnknownDeploymentError` warning. This preserves the secure default without letting
+ * one unrecognized chain reject deployments for every known chain.
  *
  * If the bundled allowlist is empty (e.g. on first commit before `pnpm gen:deployments`
  * has been run), verification is skipped with a warning. This avoids breaking dev/test
@@ -88,6 +88,8 @@ export function verifyDeployments(
     return data
   }
 
+  const verifiedDeployments: IndexerDeployment[] = []
+
   for (const deployment of data.deployments.items) {
     const centId = Number(deployment.centrifugeId)
     if (!Number.isFinite(centId)) {
@@ -96,8 +98,13 @@ export function verifyDeployments(
 
     const expected = allowlist[centId]
     if (!expected) {
-      if (options.allowUnknownDeployments) continue
-      throw new UnknownDeploymentError(centId)
+      if (options.allowUnknownDeployments) {
+        verifiedDeployments.push(deployment)
+        continue
+      }
+      const warning = new UnknownDeploymentError(centId)
+      console.warn(`[centrifuge-sdk] ${warning.message}`, warning)
+      continue
     }
 
     for (const [field, expectedValue] of Object.entries(expected) as [keyof KnownDeployment, unknown][]) {
@@ -124,7 +131,10 @@ export function verifyDeployments(
         delete (deployment as Record<string, unknown>)[field as string]
       }
     }
+
+    verifiedDeployments.push(deployment)
   }
 
+  data.deployments.items = verifiedDeployments
   return data
 }
