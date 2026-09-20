@@ -1614,8 +1614,9 @@ export class Centrifuge {
    * the bundled `KNOWN_DEPLOYMENTS` allowlist. A contract whose indexer-returned address
    * doesn't match is dropped from the emission (with a warning) so it can't be used,
    * rather than failing the whole stream — one stale address never takes down every
-   * chain. An unknown centrifugeId still surfaces as `UnknownDeploymentError`. Protects
-   * against indexer misconfiguration or compromise: an unverified address is never
+   * chain. An unknown centrifugeId is dropped with an `UnknownDeploymentError`
+   * warning unless `allowUnknownDeployments` is enabled. Protects against indexer
+   * misconfiguration or compromise: an unverified address is never
    * returned, so the app can't transact against it.
    */
   deployments() {

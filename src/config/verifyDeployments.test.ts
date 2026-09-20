@@ -167,16 +167,31 @@ describe('verifyDeployments', () => {
     }
   })
 
-  it('throws UnknownDeploymentError for an unknown centrifugeId in strict mode (default)', () => {
-    const allowlist = { 1: makeAllowlistEntry() }
-    const data = makeResponse([makeDeployment({ centrifugeId: '999' })])
-    expect(() => verifyDeployments(data, allowlist)).to.throw(UnknownDeploymentError)
+  it('drops an unknown centrifugeId without rejecting known deployments', () => {
+    const warn = sinon.stub(console, 'warn')
+    try {
+      const allowlist = { 1: makeAllowlistEntry() }
+      const known = makeDeployment()
+      const unknown = makeDeployment({ centrifugeId: '999' })
+      const result = verifyDeployments(makeResponse([unknown, known]), allowlist)
+
+      expect(result.deployments.items).to.deep.equal([known])
+      expect(warn.calledOnce).to.equal(true)
+      expect(warn.firstCall.args[0]).to.contain('centrifugeId=999')
+      expect(warn.firstCall.args[1]).to.be.instanceOf(UnknownDeploymentError)
+    } finally {
+      warn.restore()
+    }
   })
 
-  it('allows unknown centrifugeId when allowUnknownDeployments=true', () => {
+  it('keeps an unknown centrifugeId when allowUnknownDeployments=true', () => {
     const allowlist = { 1: makeAllowlistEntry() }
-    const data = makeResponse([makeDeployment({ centrifugeId: '999' })])
-    expect(() => verifyDeployments(data, allowlist, { allowUnknownDeployments: true })).not.to.throw()
+    const unknown = makeDeployment({ centrifugeId: '999' })
+    const result = verifyDeployments(makeResponse([unknown]), allowlist, {
+      allowUnknownDeployments: true,
+    })
+
+    expect(result.deployments.items).to.deep.equal([unknown])
   })
 
   it('still drops mismatches on known centIds even when allowUnknownDeployments=true', () => {
