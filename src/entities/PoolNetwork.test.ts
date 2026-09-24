@@ -573,6 +573,32 @@ describe('PoolNetwork on/off-ramp factory resolution', () => {
     expect(walletClient.writeContract.called).to.equal(false)
   })
 
+  it('computeOnOffRampManagerAddress simulates against the new onOffRampFactory when only it is set', async () => {
+    const simulateResult = '0x7777777777777777777777777777777777777777'
+    const { poolNetwork, publicClient } = createManagerDeploymentTestSubject({
+      protocolAddresses: { onOffRampFactory: newOnOffRampFactory, onOfframpManagerFactory: null },
+      simulateResult,
+    })
+
+    const result = await poolNetwork.computeOnOffRampManagerAddress(scId)
+
+    expect(result).to.equal(simulateResult)
+    expect(publicClient.simulateContract.firstCall.args[0].address).to.equal(newOnOffRampFactory)
+  })
+
+  it('computeOnOffRampManagerAddress simulates against the legacy onOfframpManagerFactory when the new factory is null', async () => {
+    const simulateResult = '0x7777777777777777777777777777777777777777'
+    const { poolNetwork, publicClient } = createManagerDeploymentTestSubject({
+      protocolAddresses: { onOffRampFactory: null, onOfframpManagerFactory: onOffRampFactory },
+      simulateResult,
+    })
+
+    const result = await poolNetwork.computeOnOffRampManagerAddress(scId)
+
+    expect(result).to.equal(simulateResult)
+    expect(publicClient.simulateContract.firstCall.args[0].address).to.equal(onOffRampFactory)
+  })
+
   it('computeOnOffRampManagerAddress throws and never calls simulateContract when neither factory is deployed', async () => {
     const { poolNetwork, publicClient } = createManagerDeploymentTestSubject({
       protocolAddresses: { onOffRampFactory: null, onOfframpManagerFactory: null },
@@ -646,6 +672,30 @@ describe('PoolNetwork on/off-ramp factory resolution', () => {
     expect(publicClient.simulateContract.firstCall.args[0].address).to.equal(newOnOffRampFactory)
     expect(walletClient.writeContract.firstCall.args[0].address).to.equal(newOnOffRampFactory)
     expect(protocolAddressesStub.callCount).to.equal(1)
+  })
+
+  it('deployAndRegisterOnOffRampManager simulates, writes, and registers against the legacy factory on the Safe path when onOffRampFactory is null, resolving the factory once', async () => {
+    const precomputedAddress = '0x6666666666666666666666666666666666666666'
+    const { poolNetwork, publicClient, walletClient, protocolAddressesStub, updateBalanceSheetManagers } =
+      createManagerDeploymentTestSubject({
+        isSafeWallet: true,
+        simulateResult: precomputedAddress,
+        protocolAddresses: { onOffRampFactory: null, onOfframpManagerFactory: onOffRampFactory },
+      })
+
+    const result = await lastValueFrom(
+      poolNetwork.deployAndRegisterOnOffRampManager(scId) as unknown as Observable<any>
+    )
+
+    expect(result.type).to.equal('TransactionConfirmed')
+    expect(publicClient.simulateContract.firstCall.args[0].address).to.equal(onOffRampFactory)
+    expect(walletClient.writeContract.firstCall.args[0].address).to.equal(onOffRampFactory)
+    expect(protocolAddressesStub.callCount).to.equal(1)
+    expect(
+      updateBalanceSheetManagers.calledOnceWithExactly([
+        { centrifugeId: centId, address: precomputedAddress, canManage: true },
+      ])
+    ).to.equal(true)
   })
 })
 
