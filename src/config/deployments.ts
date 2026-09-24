@@ -69,7 +69,6 @@ export const KNOWN_DEPLOYMENTS: Record<number, KnownDeployment> = {
     vaultDecoder: '0x8Ca5372A5613A6Df75fD5fbC43216e68c1bE6D38' as HexString,
     vaultRegistry: '0xd9531AC47928c3386346f82d9A2478960bf2CA7B' as HexString,
     vaultRouter: '0xF684014771C01e50B8B526968B3a1e33acDA63f6' as HexString,
-    wormholeAdapter: '0x4BE430401760075315E931dD34b892DFdfc706A7' as HexString,
   },
   2: {
     name: 'base',
@@ -121,7 +120,6 @@ export const KNOWN_DEPLOYMENTS: Record<number, KnownDeployment> = {
     vaultDecoder: '0x8Ca5372A5613A6Df75fD5fbC43216e68c1bE6D38' as HexString,
     vaultRegistry: '0xd9531AC47928c3386346f82d9A2478960bf2CA7B' as HexString,
     vaultRouter: '0xF684014771C01e50B8B526968B3a1e33acDA63f6' as HexString,
-    wormholeAdapter: '0x4BE430401760075315E931dD34b892DFdfc706A7' as HexString,
   },
   3: {
     name: 'arbitrum',
@@ -173,7 +171,6 @@ export const KNOWN_DEPLOYMENTS: Record<number, KnownDeployment> = {
     vaultDecoder: '0x8Ca5372A5613A6Df75fD5fbC43216e68c1bE6D38' as HexString,
     vaultRegistry: '0xd9531AC47928c3386346f82d9A2478960bf2CA7B' as HexString,
     vaultRouter: '0xF684014771C01e50B8B526968B3a1e33acDA63f6' as HexString,
-    wormholeAdapter: '0x4BE430401760075315E931dD34b892DFdfc706A7' as HexString,
   },
   4: {
     name: 'plume',
@@ -223,7 +220,6 @@ export const KNOWN_DEPLOYMENTS: Record<number, KnownDeployment> = {
     vaultDecoder: '0x8Ca5372A5613A6Df75fD5fbC43216e68c1bE6D38' as HexString,
     vaultRegistry: '0xd9531AC47928c3386346f82d9A2478960bf2CA7B' as HexString,
     vaultRouter: '0xF684014771C01e50B8B526968B3a1e33acDA63f6' as HexString,
-    wormholeAdapter: '0x4BE430401760075315E931dD34b892DFdfc706A7' as HexString,
   },
   5: {
     name: 'avalanche',
@@ -273,7 +269,6 @@ export const KNOWN_DEPLOYMENTS: Record<number, KnownDeployment> = {
     vaultDecoder: '0x8Ca5372A5613A6Df75fD5fbC43216e68c1bE6D38' as HexString,
     vaultRegistry: '0xd9531AC47928c3386346f82d9A2478960bf2CA7B' as HexString,
     vaultRouter: '0xF684014771C01e50B8B526968B3a1e33acDA63f6' as HexString,
-    wormholeAdapter: '0x4BE430401760075315E931dD34b892DFdfc706A7' as HexString,
   },
   6: {
     name: 'binance',
@@ -323,7 +318,6 @@ export const KNOWN_DEPLOYMENTS: Record<number, KnownDeployment> = {
     vaultDecoder: '0x8Ca5372A5613A6Df75fD5fbC43216e68c1bE6D38' as HexString,
     vaultRegistry: '0xd9531AC47928c3386346f82d9A2478960bf2CA7B' as HexString,
     vaultRouter: '0xF684014771C01e50B8B526968B3a1e33acDA63f6' as HexString,
-    wormholeAdapter: '0x4BE430401760075315E931dD34b892DFdfc706A7' as HexString,
   },
   9: {
     name: 'hyperliquid',
