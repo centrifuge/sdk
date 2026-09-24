@@ -1668,6 +1668,7 @@ export class Centrifuge {
                 multiAdapter
                 navManager
                 onchainPMFactory
+                onOffRampFactory
                 onOfframpManagerFactory
                 opsGuardian
                 oracleValuation

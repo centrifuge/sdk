@@ -92,7 +92,10 @@ export type ProtocolContracts = {
   vaultRouter: HexString
   balanceSheet: HexString
   merkleProofManagerFactory: HexString
-  onOfframpManagerFactory: HexString
+  /** New protocol factory; prefer this over the legacy `onOfframpManagerFactory` when both are present. */
+  onOffRampFactory?: HexString
+  /** Legacy factory, still deployed on some chains that predate `onOffRampFactory`. */
+  onOfframpManagerFactory?: HexString
   onchainPMFactory: HexString
   /** ERC-6909 accounting token used by OnchainPM workflows. Minter perms are keyed by pool. */
   accountingToken: HexString
