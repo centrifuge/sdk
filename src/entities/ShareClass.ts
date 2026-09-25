@@ -11,7 +11,7 @@ import {
   switchMap,
   timer,
 } from 'rxjs'
-import { encodeFunctionData, encodePacked, getContract } from 'viem'
+import { encodeFunctionData, encodePacked, getContract, zeroAddress } from 'viem'
 import { ABI } from '../abi/index.js'
 import type { Centrifuge } from '../Centrifuge.js'
 import { AccountType } from '../types/holdings.js'
@@ -2556,70 +2556,107 @@ export class ShareClass extends Entity {
   }
 
   /**
-   * Check whether cross-chain transfers are enabled for this share class by verifying that,
-   * across the chains using the fullRestrictionsHook:
-   *  - each chain's representative address is whitelisted as a member on every other chain, and
-   *  - each chain's own spoke is whitelisted as a member on that chain.
+   * Per-chain view of what still blocks cross-chain transfers of this share class, obtained by asking
+   * each chain's share token the same question the protocol asks at transfer time:
+   *  - outbound: `checkTransferRestriction(holder, address(uint160(destinationCentrifugeId)))` on the
+   *    source chain, for every other deployed chain, and
+   *  - inbound: `checkTransferRestriction(address(0), spoke)`, because delivery mints to the spoke
+   *    before forwarding to the receiver, so transfers to a chain revert if its spoke isn't allowed.
    *
-   * The spoke check matters because cross-chain delivery mints to the spoke before forwarding to
-   * the receiver, and that mint falls through to `isTargetMember(spoke)` — so transfers to a chain
-   * revert if its spoke isn't a member, even when all representative addresses are whitelisted.
-   * Only fullRestrictionsHook chains are checked, since other hooks don't restrict transfers.
+   * Going through the token's hook (instead of comparing hook addresses) makes the result correct
+   * for any hook — the shared ones, pool-specific instances and custom hooks alike. Hooks that don't
+   * restrict transfers simply answer true and report nothing blocked.
    *
-   * @returns Observable of boolean — true if every fullRestrictionsHook chain has the other chains'
-   *          representative addresses and its own spoke whitelisted, or if there are fewer than 2
-   *          such chains (nothing to restrict).
+   * @param holder - Sender used in the outbound check. Defaults to the source chain's own
+   *                 representative address, a plain address with no special treatment in the hooks.
+   *                 Pass a real holder to also account for freezes.
+   * @returns Observable of one entry per deployed chain: the destination chains it can't send to
+   *          (`blockedDestinations`) and whether it can't receive (`inboundBlocked`). A chain whose
+   *          checks couldn't be read is reported as fully blocked, with the cause in `error`.
    */
-  crossChainTransferStatus() {
-    return this._query(['crossChainTransferStatus'], () =>
-      combineLatest([this.deploymentPerNetwork(), this.pool.activeNetworks()]).pipe(
-        switchMap(([deployments, networks]) => {
-          if (deployments.length < 2) return of(true)
+  crossChainTransferRestrictions(holder?: HexString) {
+    const holderKey = holder?.toLowerCase()
+    return this._query(['crossChainTransferRestrictions', holderKey], () =>
+      this.deploymentPerNetwork().pipe(
+        switchMap((deployments) => {
+          if (deployments.length < 2) return of([])
 
-          const centrifugeIds = networks.map((n) => n.centrifugeId)
+          return combineLatest(
+            deployments.map((deployment) => {
+              const destinations = deployments
+                .map((other) => other.centrifugeId)
+                .filter((centrifugeId) => centrifugeId !== deployment.centrifugeId)
 
-          return combineLatest(centrifugeIds.map((id) => this._root.restrictionHooks(id))).pipe(
-            switchMap((allHooks) => {
-              // Identify chains using fullRestrictionsHook
-              const fullRestrictionsCentrifugeIds = deployments
-                .filter((d) => {
-                  const index = centrifugeIds.indexOf(d.centrifugeId)
-                  if (index === -1) return false
-                  const hooks = allHooks[index]
-                  return hooks && d.restrictionManagerAddress.toLowerCase() === hooks.fullRestrictionsHook.toLowerCase()
-                })
-                .map((d) => d.centrifugeId)
+              // defer so every repeat (see repeatOnEvents below) re-resolves the client and addresses
+              // instead of replaying a failed first attempt.
+              return defer(() =>
+                combineLatest([
+                  this._root.getClient(deployment.centrifugeId),
+                  this._root._protocolAddresses(deployment.centrifugeId),
+                ])
+              ).pipe(
+                switchMap(([client, { spoke }]) =>
+                  defer(async () => {
+                    const share = getContract({ address: deployment.shareTokenAddress, abi: ABI.Currency, client })
+                    const check = (from: HexString, to: HexString) =>
+                      share.read.checkTransferRestriction([from, to, 0n])
 
-              if (fullRestrictionsCentrifugeIds.length < 2) return of(true)
+                    const from = holder ?? convertToEvmAddress(deployment.centrifugeId)
+                    const [inboundAllowed, ...outboundAllowed] = await Promise.all([
+                      check(zeroAddress, spoke),
+                      ...destinations.map((centrifugeId) => check(from, convertToEvmAddress(centrifugeId))),
+                    ])
 
-              const allDeployedCentrifugeIds = deployments.map((d) => d.centrifugeId)
-
-              // For each fullRestrictionsHook chain, check that all other chains' rep addresses are members.
-              const repChecks = fullRestrictionsCentrifugeIds.flatMap((centrifugeId) =>
-                allDeployedCentrifugeIds
-                  .filter((otherId) => otherId !== centrifugeId)
-                  .map((otherId) => {
-                    const repAddress = convertToEvmAddress(otherId)
-                    return this.member(repAddress, centrifugeId).pipe(map((result) => result.isMember))
+                    return {
+                      centrifugeId: deployment.centrifugeId,
+                      blockedDestinations: destinations.filter((_, i) => !outboundAllowed[i]),
+                      inboundBlocked: !inboundAllowed,
+                      error: undefined as unknown,
+                    }
                   })
+                ),
+                // A chain we can't read (no client configured, unknown deployment, failing RPC) is
+                // reported as fully blocked rather than failing the whole query, so one chain doesn't
+                // hide the state of the others.
+                catchError((error) => {
+                  console.warn(`Error checking cross-chain transfer restrictions on ${deployment.centrifugeId}`, error)
+                  return of({
+                    centrifugeId: deployment.centrifugeId,
+                    blockedDestinations: destinations,
+                    inboundBlocked: true,
+                    error,
+                  })
+                }),
+                // Placed after catchError so a chain that failed once is re-read on the next event.
+                repeatOnEvents(
+                  this._root,
+                  {
+                    address: deployment.restrictionManagerAddress,
+                    eventName: 'UpdateMember',
+                    filter: (events) =>
+                      events.some(
+                        (event) => event.args.token?.toLowerCase() === deployment.shareTokenAddress.toLowerCase()
+                      ),
+                  },
+                  deployment.centrifugeId
+                )
               )
-
-              // For each fullRestrictionsHook chain, also check that its own spoke is a member — the
-              // inbound mint targets the spoke, so transfers to the chain fail without it.
-              const spokeChecks = fullRestrictionsCentrifugeIds.map((centrifugeId) =>
-                this._root
-                  ._protocolAddresses(centrifugeId)
-                  .pipe(
-                    switchMap((addresses) =>
-                      this.member(addresses.spoke, centrifugeId).pipe(map((result) => result.isMember))
-                    )
-                  )
-              )
-
-              return combineLatest([...repChecks, ...spokeChecks]).pipe(map((results) => results.every((r) => r)))
             })
           )
         })
+      )
+    )
+  }
+
+  /**
+   * Whether cross-chain transfers of this share class are fully enabled: no chain reports anything
+   * blocked in `crossChainTransferRestrictions`. Also true when the token is deployed on fewer than
+   * 2 chains (nothing to transfer between).
+   */
+  crossChainTransferStatus(holder?: HexString) {
+    return this._query(['crossChainTransferStatus', holder?.toLowerCase()], () =>
+      this.crossChainTransferRestrictions(holder).pipe(
+        map((chains) => chains.every((chain) => chain.blockedDestinations.length === 0 && !chain.inboundBlocked))
       )
     )
   }
