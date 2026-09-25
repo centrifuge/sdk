@@ -2597,13 +2597,9 @@ export class ShareClass extends Entity {
               ).pipe(
                 switchMap(([client, { spoke }]) =>
                   defer(async () => {
+                    const share = getContract({ address: deployment.shareTokenAddress, abi: ABI.Currency, client })
                     const check = (from: HexString, to: HexString) =>
-                      client.readContract({
-                        address: deployment.shareTokenAddress,
-                        abi: ABI.Currency,
-                        functionName: 'checkTransferRestriction',
-                        args: [from, to, 0n],
-                      })
+                      share.read.checkTransferRestriction([from, to, 0n])
 
                     const from = holder ?? convertToEvmAddress(deployment.centrifugeId)
                     const [inboundAllowed, ...outboundAllowed] = await Promise.all([
