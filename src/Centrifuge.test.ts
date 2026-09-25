@@ -83,6 +83,19 @@ describe('Centrifuge', () => {
     }
   })
 
+  it('requests onOffRampFactory when fetching deployments', async () => {
+    const fetchStub = sinon.stub(globalThis, 'fetch').resolves({
+      json: sinon.stub().resolves({ data: { blockchains: { items: [] }, deployments: { items: [] } } }),
+    } as any)
+
+    const centrifuge = new Centrifuge({ environment: 'testnet' })
+    await centrifuge.deployments()
+
+    const init = fetchStub.firstCall.args[1]
+    const body = JSON.parse(init!.body as string)
+    expect(body.query).to.contain('onOffRampFactory')
+  })
+
   describe('workflowMarketplaceCid', () => {
     it('returns the environment default so callers can record what they resolved', () => {
       const centrifuge = new Centrifuge({ environment: 'testnet' })

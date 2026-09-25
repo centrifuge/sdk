@@ -442,7 +442,7 @@ export class PoolNetwork extends Entity {
    * @returns The OnOffRampManager
    */
   onOfframpManager(scId: ShareClassId) {
-    return this._query(null, () =>
+    return this._query(['onOfframpManager', scId.toString()], () =>
       combineLatest([this._deployedOnOffRampManagers(scId), this.pool.balanceSheetManagers()]).pipe(
         map(([deployedOnOffRampManagers, balanceSheetManagers]) => {
           if (!deployedOnOffRampManagers.length) {
@@ -543,17 +543,26 @@ export class PoolNetwork extends Entity {
   }
 
   /**
-   * Compute the deterministic address for an OnOffRampManager before deployment.
-   * @param scId - The share class ID
-   * @returns The predicted contract address
+   * Resolves the on/off-ramp factory address for this network, preferring the current
+   * protocol factory over the legacy one some chains still run. Throws before any
+   * simulate/write when neither is deployed.
    */
-  async computeOnOffRampManagerAddress(scId: ShareClassId): Promise<HexString> {
-    const { onOfframpManagerFactory } = await this._root._protocolAddresses(this.centrifugeId)
+  private async _resolveOnOffRampFactory(): Promise<HexString> {
+    const { onOffRampFactory, onOfframpManagerFactory } = await this._root._protocolAddresses(this.centrifugeId)
+    const factory = onOffRampFactory ?? onOfframpManagerFactory
+    if (!factory) {
+      throw new Error(`No on/off-ramp manager factory is deployed for centrifugeId ${this.centrifugeId}`)
+    }
+    return factory
+  }
+
+  /** Simulates `newManager` against an already-resolved factory address. */
+  private async _computeOnOffRampManagerAddress(factory: HexString, scId: ShareClassId): Promise<HexString> {
     const client = await this._root.getClient(this.centrifugeId)
 
     try {
       const { result } = await client.simulateContract({
-        address: onOfframpManagerFactory,
+        address: factory,
         abi: ABI.OnOffRampManagerFactory,
         functionName: 'newManager',
         args: [this.pool.id.raw, scId.raw],
@@ -568,19 +577,31 @@ export class PoolNetwork extends Entity {
   }
 
   /**
+   * Compute the deterministic address for an OnOffRampManager before deployment.
+   * @param scId - The share class ID
+   * @returns The predicted contract address
+   * @throws If no on/off-ramp manager factory is deployed on this network.
+   */
+  async computeOnOffRampManagerAddress(scId: ShareClassId): Promise<HexString> {
+    const factory = await this._resolveOnOffRampFactory()
+    return this._computeOnOffRampManagerAddress(factory, scId)
+  }
+
+  /**
    * Deploy an On/Off Ramp Manager for a share class.
    * Yields the deployed manager address as a custom 'DeployedOnOfframpManager' status.
    * @param scId - The share class ID
+   * @throws If no on/off-ramp manager factory is deployed on this network.
    */
   deployOnOfframpManager(scId: ShareClassId) {
     const self = this
 
     return this._transact(async function* (ctx) {
-      const { onOfframpManagerFactory } = await self._root._protocolAddresses(self.centrifugeId)
+      const factory = await self._resolveOnOffRampFactory()
 
       const result = yield* doTransaction('DeployOnOfframpManager', ctx, () =>
         ctx.walletClient.writeContract({
-          address: onOfframpManagerFactory,
+          address: factory,
           abi: ABI.OnOffRampManagerFactory,
           functionName: 'newManager',
           args: [self.pool.id.raw, scId.raw],
@@ -589,8 +610,8 @@ export class PoolNetwork extends Entity {
 
       const events = parseEventLogs({
         logs: result.receipt.logs,
-        eventName: 'DeployOnOfframpManager',
-        address: onOfframpManagerFactory,
+        eventName: ['DeployOnOffRamp', 'DeployOnOfframpManager'],
+        address: factory,
       })
 
       const deployEvent = events[0]
@@ -626,6 +647,7 @@ export class PoolNetwork extends Entity {
   /**
    * Deploy an On/Off Ramp Manager and register it as a Balance Sheet Manager.
    * @param scId
+   * @throws If no on/off-ramp manager factory is deployed on this network.
    */
   deployAndRegisterOnOffRampManager(scId: ShareClassId) {
     const self = this
@@ -637,12 +659,12 @@ export class PoolNetwork extends Entity {
 
       const code = await ctx.publicClient.getCode({ address: ctx.signingAddress })
       const isSafeWallet = code === SAFE_PROXY_BYTECODE
-      const { onOfframpManagerFactory } = await self._root._protocolAddresses(self.centrifugeId)
-      const precomputedAddress = isSafeWallet ? await self.computeOnOffRampManagerAddress(scId) : null
+      const factory = await self._resolveOnOffRampFactory()
+      const precomputedAddress = isSafeWallet ? await self._computeOnOffRampManagerAddress(factory, scId) : null
 
       const result = yield* doTransaction('DeployOnOfframpManager', ctx, () =>
         ctx.walletClient.writeContract({
-          address: onOfframpManagerFactory,
+          address: factory,
           abi: ABI.OnOffRampManagerFactory,
           functionName: 'newManager',
           args: [self.pool.id.raw, scId.raw],
@@ -655,8 +677,8 @@ export class PoolNetwork extends Entity {
       } else {
         const events = parseEventLogs({
           logs: result.receipt.logs,
-          eventName: 'DeployOnOfframpManager',
-          address: onOfframpManagerFactory,
+          eventName: ['DeployOnOffRamp', 'DeployOnOfframpManager'],
+          address: factory,
         })
 
         const deployEvent = events[0]

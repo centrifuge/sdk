@@ -38,6 +38,9 @@ export class UnknownDeploymentError extends Error {
   }
 }
 
+// See the verifyDeployments doc for why these two fields are treated specially.
+const ON_OFF_RAMP_FACTORY_FIELDS = ['onOffRampFactory', 'onOfframpManagerFactory'] as const
+
 export type VerifyOptions = {
   /**
    * If true, allow indexer-reported deployments for centrifugeIds not present in the
@@ -73,6 +76,11 @@ export type VerifyOptions = {
  * has been run), verification is skipped with a warning. This avoids breaking dev/test
  * before the allowlist is populated, but should never happen in a published release —
  * the gen-deployments step is a release prerequisite.
+ *
+ * The on/off-ramp factory fields (`onOffRampFactory`, `onOfframpManagerFactory`) are the
+ * exception to "fields absent from the allowlist aren't enforced": PoolNetwork falls back
+ * between them, so each one is dropped whenever the allowlist entry doesn't cover it, even
+ * though the indexer returned a value and no mismatch was found.
  */
 export function verifyDeployments(
   data: IndexerDeploymentResponse,
@@ -122,6 +130,18 @@ export function verifyDeployments(
             `unavailable until the indexer matches the bundled allowlist.`
         )
         delete (deployment as Record<string, unknown>)[field as string]
+      }
+    }
+
+    // See the function doc: the general loop above doesn't cover this case.
+    for (const field of ON_OFF_RAMP_FACTORY_FIELDS) {
+      if (expected[field] === undefined && deployment[field]) {
+        console.warn(
+          `[centrifuge-sdk] Dropping unverified address for centrifugeId=${centId} field='${field}'. ` +
+            `The bundled allowlist has no entry for this field on this chain; it stays unavailable ` +
+            `until one is added.`
+        )
+        delete (deployment as Record<string, unknown>)[field]
       }
     }
   }

@@ -541,6 +541,9 @@ export const KNOWN_DEPLOYMENTS: Record<number, KnownDeployment> = {
     messageProcessor: '0x97cc7e9Dafdd725Cc23B25eeBC93c4384B4Fe30A' as HexString,
     multiAdapter: '0x35C837F0A54B715a23D193E1476BFC9BC30073BE' as HexString,
     navManager: '0x493b6C8ccC7BfD43c5a20C4F2C648701f74E9130' as HexString,
+    // Hand-patched from env/x-layer.json on the protocol repo's live-v3.2, not from a
+    // `pnpm gen:deployments` run.
+    onOffRampFactory: '0x22E2f679669D69b6b6f22CC9C1731035a3Fa0296' as HexString,
     opsGuardian: '0x055589229506Ee89645EF08ebE9B9a863486d0dE' as HexString,
     oracleValuation: '0x8c3E9f3cF2dD057d6a2eA33d979faa0061b42c12' as HexString,
     poolEscrowFactory: '0x5187A505c485E22f0b8a5FBdF69eF1c29C478CE3' as HexString,
@@ -587,6 +590,9 @@ export const KNOWN_DEPLOYMENTS: Record<number, KnownDeployment> = {
     messageProcessor: '0x97cc7e9Dafdd725Cc23B25eeBC93c4384B4Fe30A' as HexString,
     multiAdapter: '0x35C837F0A54B715a23D193E1476BFC9BC30073BE' as HexString,
     navManager: '0x493b6C8ccC7BfD43c5a20C4F2C648701f74E9130' as HexString,
+    // Not in any protocol env file yet, so a `pnpm gen:deployments` run drops this entry and
+    // it must be re-applied by hand. Bytecode checked on chain 5042 (newManager, DeployOnOffRamp).
+    onOffRampFactory: '0x8352BC2796169e3F05a15022d1fC9E2059762318' as HexString,
     opsGuardian: '0x055589229506Ee89645EF08ebE9B9a863486d0dE' as HexString,
     oracleValuation: '0xCBdb6EFFC9b954D05dF89c747eCaa8A143c26E6D' as HexString,
     poolEscrowFactory: '0x5187A505c485E22f0b8a5FBdF69eF1c29C478CE3' as HexString,

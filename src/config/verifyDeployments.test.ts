@@ -224,4 +224,94 @@ describe('verifyDeployments', () => {
     const data = makeResponse([makeDeployment({ centrifugeId: 'not-a-number' })])
     expect(() => verifyDeployments(data, allowlist)).to.throw(/non-numeric centrifugeId/)
   })
+
+  describe('on/off-ramp factory fields', () => {
+    it('keeps a value that matches the allowlist', () => {
+      const allowlist = { 1: makeAllowlistEntry({ onOffRampFactory: ADDR_B }) }
+      const data = makeResponse([makeDeployment({ onOffRampFactory: ADDR_B })])
+      const result = verifyDeployments(data, allowlist)
+      const item = result.deployments.items[0] as Record<string, unknown>
+      expect(item.onOffRampFactory).to.equal(ADDR_B)
+    })
+
+    it('drops a value that mismatches the allowlist', () => {
+      const warn = sinon.stub(console, 'warn')
+      try {
+        const allowlist = { 1: makeAllowlistEntry({ onOffRampFactory: ADDR_B }) }
+        const data = makeResponse([makeDeployment({ onOffRampFactory: ADDR_EVIL })])
+        const result = verifyDeployments(data, allowlist)
+        const item = result.deployments.items[0] as Record<string, unknown>
+        expect(item.onOffRampFactory).to.equal(undefined)
+        expect(warn.calledOnce).to.equal(true)
+        expect(warn.firstCall.args[0]).to.contain("field='onOffRampFactory'")
+      } finally {
+        warn.restore()
+      }
+    })
+
+    it('drops a value the allowlist entry does not cover, even though the centrifugeId is known', () => {
+      const warn = sinon.stub(console, 'warn')
+      try {
+        const allowlist = { 1: makeAllowlistEntry() }
+        const data = makeResponse([makeDeployment({ onOffRampFactory: ADDR_B })])
+        const result = verifyDeployments(data, allowlist)
+        const item = result.deployments.items[0] as Record<string, unknown>
+        expect(item.onOffRampFactory).to.equal(undefined)
+        expect(warn.calledOnce).to.equal(true)
+        expect(warn.firstCall.args[0]).to.contain("field='onOffRampFactory'")
+      } finally {
+        warn.restore()
+      }
+    })
+
+    it('leaves a null value untouched', () => {
+      const warn = sinon.stub(console, 'warn')
+      try {
+        const allowlist = { 1: makeAllowlistEntry() }
+        const deployment = {
+          ...makeDeployment(),
+          onOffRampFactory: null,
+        } as unknown as IndexerDeploymentResponse['deployments']['items'][number]
+        const data = makeResponse([deployment])
+        const result = verifyDeployments(data, allowlist)
+        const item = result.deployments.items[0] as Record<string, unknown>
+        expect(item.onOffRampFactory).to.equal(null)
+        expect(warn.called).to.equal(false)
+      } finally {
+        warn.restore()
+      }
+    })
+
+    it('drops both a wrong new value and an unlisted legacy value when only the new factory is allowlisted', () => {
+      const warn = sinon.stub(console, 'warn')
+      try {
+        const allowlist = { 1: makeAllowlistEntry({ onOffRampFactory: ADDR_B, onOfframpManagerFactory: undefined }) }
+        const data = makeResponse([makeDeployment({ onOffRampFactory: ADDR_EVIL, onOfframpManagerFactory: ADDR_A })])
+        const result = verifyDeployments(data, allowlist)
+        const item = result.deployments.items[0] as Record<string, unknown>
+        expect(item.onOffRampFactory).to.equal(undefined)
+        expect(item.onOfframpManagerFactory).to.equal(undefined)
+        expect(warn.callCount).to.equal(2)
+      } finally {
+        warn.restore()
+      }
+    })
+
+    it('keeps a matching legacy value and drops an unlisted new value on a legacy-only allowlist entry', () => {
+      // Mirrors a KNOWN_DEPLOYMENTS chain where only the legacy factory is allowlisted so far.
+      const warn = sinon.stub(console, 'warn')
+      try {
+        const allowlist = { 1: makeAllowlistEntry() }
+        const data = makeResponse([makeDeployment({ onOffRampFactory: ADDR_B })])
+        const result = verifyDeployments(data, allowlist)
+        const item = result.deployments.items[0] as Record<string, unknown>
+        expect(item.onOfframpManagerFactory).to.equal(ADDR_A)
+        expect(item.onOffRampFactory).to.equal(undefined)
+        expect(warn.calledOnce).to.equal(true)
+        expect(warn.firstCall.args[0]).to.contain("field='onOffRampFactory'")
+      } finally {
+        warn.restore()
+      }
+    })
+  })
 })

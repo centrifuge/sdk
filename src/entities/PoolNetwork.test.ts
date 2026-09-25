@@ -5,7 +5,7 @@ import { decodeFunctionData, encodeAbiParameters, encodeEventTopics, parseAbi } 
 import type { TransactionReceipt } from 'viem'
 import { ABI } from '../abi/index.js'
 import { Centrifuge } from '../Centrifuge.js'
-import { NULL_ADDRESS } from '../constants.js'
+import { NULL_ADDRESS, SAFE_PROXY_BYTECODE } from '../constants.js'
 import { context } from '../tests/setup.js'
 import { doTransaction } from '../utils/transaction.js'
 import { AssetId, PoolId, ShareClassId } from '../utils/types.js'
@@ -22,10 +22,12 @@ const centId = 1
 const poolManager = '0x423420Ae467df6e90291fd0252c0A8a637C1e03f'
 const signingAddress = '0x1111111111111111111111111111111111111111'
 const onOffRampFactory = '0x2222222222222222222222222222222222222222'
+const newOnOffRampFactory = '0x2222222222222222222222222222222222222299'
 const merkleFactory = '0x3333333333333333333333333333333333333333'
 
 const onOffRampEventAbi = parseAbi([
   'event DeployOnOfframpManager(uint64 indexed poolId, bytes16 scId, address indexed manager)',
+  'event DeployOnOffRamp(uint64 indexed poolId, bytes16 scId, address indexed manager)',
 ])
 const merkleEventAbi = parseAbi(['event DeployMerkleProofManager(uint64 indexed poolId, address indexed manager)'])
 
@@ -492,11 +494,219 @@ describe('PoolNetwork manager deployment flows', () => {
   })
 })
 
+describe('PoolNetwork on/off-ramp factory resolution', () => {
+  afterEach(() => {
+    sinon.restore()
+  })
+
+  it('deploys against the new onOffRampFactory when only it is set', async () => {
+    const deployedManager = '0x5555555555555555555555555555555555555555'
+    const receipt = makeOnOffRampReceipt(deployedManager, { factory: newOnOffRampFactory })
+    const { poolNetwork, walletClient } = createManagerDeploymentTestSubject({
+      receipt,
+      protocolAddresses: { onOffRampFactory: newOnOffRampFactory },
+    })
+
+    const result = await lastValueFrom(poolNetwork.deployOnOfframpManager(scId) as unknown as Observable<any>)
+
+    expect(result).to.deep.equal({ type: 'DeployedOnOfframpManager', address: deployedManager })
+    expect(walletClient.writeContract.firstCall.args[0].address).to.equal(newOnOffRampFactory)
+  })
+
+  it('deploys against the legacy onOfframpManagerFactory when only it is set', async () => {
+    const deployedManager = '0x5555555555555555555555555555555555555555'
+    const receipt = makeOnOffRampReceipt(deployedManager, { factory: onOffRampFactory })
+    const { poolNetwork, walletClient } = createManagerDeploymentTestSubject({
+      receipt,
+      protocolAddresses: { onOfframpManagerFactory: onOffRampFactory },
+    })
+
+    const result = await lastValueFrom(poolNetwork.deployOnOfframpManager(scId) as unknown as Observable<any>)
+
+    expect(result).to.deep.equal({ type: 'DeployedOnOfframpManager', address: deployedManager })
+    expect(walletClient.writeContract.firstCall.args[0].address).to.equal(onOffRampFactory)
+  })
+
+  it('prefers the new onOffRampFactory over the legacy one when both are set', async () => {
+    const deployedManager = '0x5555555555555555555555555555555555555555'
+    const receipt = makeOnOffRampReceipt(deployedManager, { factory: newOnOffRampFactory })
+    const { poolNetwork, walletClient } = createManagerDeploymentTestSubject({
+      receipt,
+      protocolAddresses: { onOffRampFactory: newOnOffRampFactory, onOfframpManagerFactory: onOffRampFactory },
+    })
+
+    await lastValueFrom(poolNetwork.deployOnOfframpManager(scId) as unknown as Observable<any>)
+
+    expect(walletClient.writeContract.firstCall.args[0].address).to.equal(newOnOffRampFactory)
+  })
+
+  it("decodes the new factory's DeployOnOffRamp event", async () => {
+    const deployedManager = '0x5555555555555555555555555555555555555555'
+    const receipt = makeOnOffRampReceipt(deployedManager, {
+      factory: newOnOffRampFactory,
+      eventName: 'DeployOnOffRamp',
+    })
+    const { poolNetwork } = createManagerDeploymentTestSubject({
+      receipt,
+      protocolAddresses: { onOffRampFactory: newOnOffRampFactory },
+    })
+
+    const result = await lastValueFrom(poolNetwork.deployOnOfframpManager(scId) as unknown as Observable<any>)
+
+    expect(result).to.deep.equal({ type: 'DeployedOnOfframpManager', address: deployedManager })
+  })
+
+  it('throws a clear error and never calls writeContract when neither factory is deployed', async () => {
+    const { poolNetwork, walletClient } = createManagerDeploymentTestSubject({
+      protocolAddresses: { onOffRampFactory: null, onOfframpManagerFactory: null },
+    })
+
+    let error: Error | null = null
+    try {
+      await lastValueFrom(poolNetwork.deployOnOfframpManager(scId) as unknown as Observable<any>)
+    } catch (e) {
+      error = e as Error
+    }
+
+    expect(error).to.be.instanceOf(Error)
+    expect(error!.message).to.match(/No on\/off-ramp manager factory is deployed/)
+    expect(walletClient.writeContract.called).to.equal(false)
+  })
+
+  it('computeOnOffRampManagerAddress simulates against the new onOffRampFactory when only it is set', async () => {
+    const simulateResult = '0x7777777777777777777777777777777777777777'
+    const { poolNetwork, publicClient } = createManagerDeploymentTestSubject({
+      protocolAddresses: { onOffRampFactory: newOnOffRampFactory, onOfframpManagerFactory: null },
+      simulateResult,
+    })
+
+    const result = await poolNetwork.computeOnOffRampManagerAddress(scId)
+
+    expect(result).to.equal(simulateResult)
+    expect(publicClient.simulateContract.firstCall.args[0].address).to.equal(newOnOffRampFactory)
+  })
+
+  it('computeOnOffRampManagerAddress simulates against the legacy onOfframpManagerFactory when the new factory is null', async () => {
+    const simulateResult = '0x7777777777777777777777777777777777777777'
+    const { poolNetwork, publicClient } = createManagerDeploymentTestSubject({
+      protocolAddresses: { onOffRampFactory: null, onOfframpManagerFactory: onOffRampFactory },
+      simulateResult,
+    })
+
+    const result = await poolNetwork.computeOnOffRampManagerAddress(scId)
+
+    expect(result).to.equal(simulateResult)
+    expect(publicClient.simulateContract.firstCall.args[0].address).to.equal(onOffRampFactory)
+  })
+
+  it('computeOnOffRampManagerAddress throws and never calls simulateContract when neither factory is deployed', async () => {
+    const { poolNetwork, publicClient } = createManagerDeploymentTestSubject({
+      protocolAddresses: { onOffRampFactory: null, onOfframpManagerFactory: null },
+    })
+
+    let error: Error | null = null
+    try {
+      await poolNetwork.computeOnOffRampManagerAddress(scId)
+    } catch (e) {
+      error = e as Error
+    }
+
+    expect(error).to.be.instanceOf(Error)
+    expect(error!.message).to.match(/No on\/off-ramp manager factory is deployed/)
+    expect(publicClient.simulateContract.called).to.equal(false)
+  })
+
+  it('deployAndRegisterOnOffRampManager throws and never calls writeContract when neither factory is deployed', async () => {
+    const { poolNetwork, walletClient } = createManagerDeploymentTestSubject({
+      protocolAddresses: { onOffRampFactory: null, onOfframpManagerFactory: null },
+    })
+
+    let error: Error | null = null
+    try {
+      await lastValueFrom(poolNetwork.deployAndRegisterOnOffRampManager(scId) as unknown as Observable<any>)
+    } catch (e) {
+      error = e as Error
+    }
+
+    expect(error).to.be.instanceOf(Error)
+    expect(error!.message).to.match(/No on\/off-ramp manager factory is deployed/)
+    expect(walletClient.writeContract.called).to.equal(false)
+  })
+
+  it("deployAndRegisterOnOffRampManager decodes the new factory's DeployOnOffRamp event on the non-Safe path", async () => {
+    const deployedManager = '0x5555555555555555555555555555555555555555'
+    const receipt = makeOnOffRampReceipt(deployedManager, {
+      factory: newOnOffRampFactory,
+      eventName: 'DeployOnOffRamp',
+    })
+    const { poolNetwork, updateBalanceSheetManagers } = createManagerDeploymentTestSubject({
+      receipt,
+      protocolAddresses: { onOffRampFactory: newOnOffRampFactory },
+    })
+
+    const result = await lastValueFrom(
+      poolNetwork.deployAndRegisterOnOffRampManager(scId) as unknown as Observable<any>
+    )
+
+    expect(result.type).to.equal('TransactionConfirmed')
+    expect(
+      updateBalanceSheetManagers.calledOnceWithExactly([
+        { centrifugeId: centId, address: deployedManager, canManage: true },
+      ])
+    ).to.equal(true)
+  })
+
+  it('deployAndRegisterOnOffRampManager simulates and writes against the same resolved factory on the Safe path, resolving the factory once', async () => {
+    const precomputedAddress = '0x6666666666666666666666666666666666666666'
+    const { poolNetwork, publicClient, walletClient, protocolAddressesStub } = createManagerDeploymentTestSubject({
+      isSafeWallet: true,
+      simulateResult: precomputedAddress,
+      protocolAddresses: { onOffRampFactory: newOnOffRampFactory },
+    })
+
+    const result = await lastValueFrom(
+      poolNetwork.deployAndRegisterOnOffRampManager(scId) as unknown as Observable<any>
+    )
+
+    expect(result.type).to.equal('TransactionConfirmed')
+    expect(publicClient.simulateContract.firstCall.args[0].address).to.equal(newOnOffRampFactory)
+    expect(walletClient.writeContract.firstCall.args[0].address).to.equal(newOnOffRampFactory)
+    expect(protocolAddressesStub.callCount).to.equal(1)
+  })
+
+  it('deployAndRegisterOnOffRampManager simulates, writes, and registers against the legacy factory on the Safe path when onOffRampFactory is null, resolving the factory once', async () => {
+    const precomputedAddress = '0x6666666666666666666666666666666666666666'
+    const { poolNetwork, publicClient, walletClient, protocolAddressesStub, updateBalanceSheetManagers } =
+      createManagerDeploymentTestSubject({
+        isSafeWallet: true,
+        simulateResult: precomputedAddress,
+        protocolAddresses: { onOffRampFactory: null, onOfframpManagerFactory: onOffRampFactory },
+      })
+
+    const result = await lastValueFrom(
+      poolNetwork.deployAndRegisterOnOffRampManager(scId) as unknown as Observable<any>
+    )
+
+    expect(result.type).to.equal('TransactionConfirmed')
+    expect(publicClient.simulateContract.firstCall.args[0].address).to.equal(onOffRampFactory)
+    expect(walletClient.writeContract.firstCall.args[0].address).to.equal(onOffRampFactory)
+    expect(protocolAddressesStub.callCount).to.equal(1)
+    expect(
+      updateBalanceSheetManagers.calledOnceWithExactly([
+        { centrifugeId: centId, address: precomputedAddress, canManage: true },
+      ])
+    ).to.equal(true)
+  })
+})
+
 function createManagerDeploymentTestSubject({
   onOffRampManagers = [],
   merkleProofManagers = [],
   poolManagers = [],
   receipt = { status: 'success', logs: [] } as any as TransactionReceipt,
+  protocolAddresses = { onOfframpManagerFactory: onOffRampFactory },
+  isSafeWallet = false,
+  simulateResult = '0x4444444444444444444444444444444444444444',
 }: {
   onOffRampManagers?: { address: `0x${string}` }[]
   merkleProofManagers?: { address: `0x${string}` }[]
@@ -508,14 +718,29 @@ function createManagerDeploymentTestSubject({
     crosschainInProgress?: 'CanManage' | 'CanNotManage' | null
   }[]
   receipt?: TransactionReceipt
+  protocolAddresses?: { onOffRampFactory?: `0x${string}` | null; onOfframpManagerFactory?: `0x${string}` | null }
+  isSafeWallet?: boolean
+  simulateResult?: `0x${string}`
 }) {
+  // First getCode read is PoolNetwork's Safe check; later reads return '0x' to stay on the plain receipt path.
+  const getCode = sinon.stub().resolves('0x')
+  if (isSafeWallet) {
+    getCode.onFirstCall().resolves(SAFE_PROXY_BYTECODE)
+  }
   const publicClient = {
-    getCode: sinon.stub().resolves('0x'),
+    getCode,
     waitForTransactionReceipt: sinon.stub().resolves(receipt),
+    simulateContract: sinon.stub().resolves({ result: simulateResult }),
   }
   const walletClient = {
     writeContract: sinon.stub().resolves('0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'),
   }
+  const protocolAddressesStub = sinon.stub().resolves({
+    ...protocolAddresses,
+    merkleProofManagerFactory: merkleFactory,
+    asyncRequestManager: '0x8888888888888888888888888888888888888888',
+    syncManager: '0x9999999999999999999999999999999999999999',
+  })
 
   const root = {
     _query: (_keys: unknown, callback: () => unknown) => callback(),
@@ -546,12 +771,7 @@ function createManagerDeploymentTestSubject({
 
       throw new Error(`Unexpected indexer query: ${query}`)
     },
-    _protocolAddresses: sinon.stub().resolves({
-      onOfframpManagerFactory: onOffRampFactory,
-      merkleProofManagerFactory: merkleFactory,
-      asyncRequestManager: '0x8888888888888888888888888888888888888888',
-      syncManager: '0x9999999999999999999999999999999999999999',
-    }),
+    _protocolAddresses: protocolAddressesStub,
     getClient: sinon.stub().resolves(publicClient),
     _transact: (callback: (ctx: any) => AsyncGenerator<unknown> | Observable<unknown>, centrifugeId: number) => {
       const tx = new Observable<unknown>((subscriber) => {
@@ -598,9 +818,22 @@ function createManagerDeploymentTestSubject({
   return {
     poolNetwork,
     walletClient,
+    publicClient,
     updateBalanceSheetManagers,
+    protocolAddressesStub,
   }
 }
+
+describe('PoolNetwork.onOfframpManager', () => {
+  it('memoizes the query per share class', () => {
+    const centrifuge = new Centrifuge({ environment: 'testnet' })
+    const pn = new PoolNetwork(centrifuge, new Pool(centrifuge, poolId.raw), centId)
+    const otherScId = ShareClassId.from(poolId, 2)
+
+    expect(pn.onOfframpManager(scId)).to.equal(pn.onOfframpManager(scId))
+    expect(pn.onOfframpManager(scId)).to.not.equal(pn.onOfframpManager(otherScId))
+  })
+})
 
 describe('PoolNetwork.onchainPM', () => {
   const onchainPMFactory = '0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'
@@ -868,10 +1101,17 @@ describe('PoolNetwork.authorizeOnchainPM', () => {
   })
 })
 
-function makeOnOffRampReceipt(manager: `0x${string}`) {
+function makeOnOffRampReceipt(
+  manager: `0x${string}`,
+  options: {
+    factory?: `0x${string}`
+    eventName?: 'DeployOnOfframpManager' | 'DeployOnOffRamp'
+  } = {}
+) {
+  const { factory = onOffRampFactory, eventName = 'DeployOnOfframpManager' } = options
   const topics = encodeEventTopics({
     abi: onOffRampEventAbi,
-    eventName: 'DeployOnOfframpManager',
+    eventName,
     args: { poolId: poolId.raw, manager },
   })
 
@@ -881,7 +1121,7 @@ function makeOnOffRampReceipt(manager: `0x${string}`) {
     status: 'success',
     logs: [
       {
-        address: onOffRampFactory,
+        address: factory,
         topics,
         data,
       },
