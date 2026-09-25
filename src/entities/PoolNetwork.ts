@@ -442,7 +442,7 @@ export class PoolNetwork extends Entity {
    * @returns The OnOffRampManager
    */
   onOfframpManager(scId: ShareClassId) {
-    return this._query(null, () =>
+    return this._query(['onOfframpManager', scId.toString()], () =>
       combineLatest([this._deployedOnOffRampManagers(scId), this.pool.balanceSheetManagers()]).pipe(
         map(([deployedOnOffRampManagers, balanceSheetManagers]) => {
           if (!deployedOnOffRampManagers.length) {

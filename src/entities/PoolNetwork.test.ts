@@ -824,6 +824,17 @@ function createManagerDeploymentTestSubject({
   }
 }
 
+describe('PoolNetwork.onOfframpManager', () => {
+  it('memoizes the query per share class', () => {
+    const centrifuge = new Centrifuge({ environment: 'testnet' })
+    const pn = new PoolNetwork(centrifuge, new Pool(centrifuge, poolId.raw), centId)
+    const otherScId = ShareClassId.from(poolId, 2)
+
+    expect(pn.onOfframpManager(scId)).to.equal(pn.onOfframpManager(scId))
+    expect(pn.onOfframpManager(scId)).to.not.equal(pn.onOfframpManager(otherScId))
+  })
+})
+
 describe('PoolNetwork.onchainPM', () => {
   const onchainPMFactory = '0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'
   const deployedPMAddress = '0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb'
