@@ -9,10 +9,6 @@ import { PoolId, ShareClassId } from '../utils/types.js'
 import { Pool } from './Pool.js'
 import { ShareClass } from './ShareClass.js'
 
-// crossChainTransferRestrictions / crossChainTransferStatus, stubbed rather than forked. What they
-// can get wrong is which (from, to) pairs are asked on which chain, how the answers map back to
-// blockedDestinations / inboundBlocked, and how a chain that can't be read degrades and recovers.
-
 const poolId = PoolId.from(1, 1)
 const scId = ShareClassId.from(poolId, 1)
 const SPOKE = '0xec3582fcdc34078a4b7a8c75a5a3ae46f48525ab' as HexString
@@ -99,7 +95,6 @@ describe('ShareClass cross-chain transfer restrictions', () => {
   })
 
   it('maps the answers to blocked destinations and inbound per chain', async () => {
-    // Ethereum can't send to Arbitrum; Base can't receive; Arbitrum is fully open.
     const { shareClass } = setup({
       chains: [1, 2, 3],
       allowed: ({ centrifugeId, from, to }) => {

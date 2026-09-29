@@ -2587,8 +2587,6 @@ export class ShareClass extends Entity {
                 .map((other) => other.centrifugeId)
                 .filter((centrifugeId) => centrifugeId !== deployment.centrifugeId)
 
-              // defer so every repeat (see repeatOnEvents below) re-resolves the client and addresses
-              // instead of replaying a failed first attempt.
               return defer(() =>
                 combineLatest([
                   this._root.getClient(deployment.centrifugeId),
@@ -2615,9 +2613,6 @@ export class ShareClass extends Entity {
                     }
                   })
                 ),
-                // A chain we can't read (no client configured, unknown deployment, failing RPC) is
-                // reported as fully blocked rather than failing the whole query, so one chain doesn't
-                // hide the state of the others.
                 catchError((error) => {
                   console.warn(`Error checking cross-chain transfer restrictions on ${deployment.centrifugeId}`, error)
                   return of({
