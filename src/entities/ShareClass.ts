@@ -2622,7 +2622,6 @@ export class ShareClass extends Entity {
                     error,
                   })
                 }),
-                // Placed after catchError so a chain that failed once is re-read on the next event.
                 repeatOnEvents(
                   this._root,
                   {
