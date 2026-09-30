@@ -120,6 +120,7 @@ export { assertCidMatchesContent, canonicalCids, cidMatchesContent } from './uti
 export {
   checkActionSelectorSchema,
   checkAddressLiterals,
+  checkApprovalExactness,
   checkDuplicateWorkflowIds,
   checkRawCalldataTaint,
   checkTemplateIsNotUseOnly,
@@ -128,6 +129,7 @@ export {
   validateCatalogWorkflow,
 } from './utils/workflowRules.js'
 export type {
+  ApprovalTemplate,
   CatalogWorkflowEntry,
   DeclaringTemplate,
   RuleViolation,
