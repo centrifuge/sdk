@@ -175,6 +175,10 @@ Building is **not** pure — it does network I/O and must stay `async`:
 must avoid are the **signer-dependent** steps (wallet client creation, address
 resolution, chain switching, `writeContract`/`sendTransaction`).
 
+**Pitfall: no nested `_transact`.** A method meant to be buildable must not start a second `_transact` inside its
+callback. Only the outer transaction carries the build mark, so the inner one runs as a normal transaction and
+fails with `Signer not set`. Route through `wrapTransaction` in the outer `ctx` instead.
+
 ### 4.4 Return shape
 
 `BuiltTransaction` normalizes the internal `BatchTransactionData` into a stable,

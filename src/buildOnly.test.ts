@@ -7,7 +7,7 @@ import { ABI } from './abi/index.js'
 import { Centrifuge } from './Centrifuge.js'
 import { Pool } from './entities/Pool.js'
 import { mockPoolMetadata } from './tests/mocks/mockPoolMetadata.js'
-import { randomAddress } from './tests/utils.js'
+import { randomAddress, stubChain } from './tests/utils.js'
 import { HexString } from './types/index.js'
 import { MessageType, MessageTypeWithSubType } from './types/transaction.js'
 import { PoolId } from './utils/types.js'
@@ -23,22 +23,6 @@ const TEST_ABI = parseAbi([
   'function setOwner(address owner)',
   'function multicall(bytes[] data) payable',
 ])
-
-/**
- * Stub the chain-resolution methods so a real `_transact` build run can resolve
- * its `centrifugeId -> chainId` and clients without an indexer or a Tenderly
- * fork. `wrapTransaction`'s batching branch — which build mode uses — never
- * touches the (absent) wallet client, so these stubs are all the I/O it needs.
- */
-function stubChain(centrifuge: Centrifuge) {
-  // `buildOnly` and `_transact` await these, so return thenable values. The real
-  // methods return awaitable Query observables; a bare `of(...)` is not thenable,
-  // so use a thenable that yields the value when awaited.
-  const thenable = <T>(value: T) => makeThenable(of(value))
-  sinon.stub(centrifuge as any, '_idToChain').returns(thenable(chainId))
-  sinon.stub(centrifuge as any, 'getChainConfig').returns(thenable(sepolia))
-  sinon.stub(centrifuge as any, 'getClient').returns(thenable({} as any))
-}
 
 describe('buildOnly', () => {
   afterEach(() => {
