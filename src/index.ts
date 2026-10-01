@@ -55,7 +55,7 @@ export type {
 export { runtimeVariableName } from './types/workflow.js'
 export * from './types/poolMetadata.js'
 export { migratePoolMetadataToV2, parsePoolMetadataV2, resolveLinkTarget } from './utils/poolMetadataMigration.js'
-export type { Query } from './types/query.js'
+export type { Query, QueryInvalidation } from './types/query.js'
 export type {
   BuildOnlyOptions,
   BuiltCall,

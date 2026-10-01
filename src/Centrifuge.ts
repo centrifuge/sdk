@@ -11,6 +11,7 @@ import {
   Observable,
   of,
   shareReplay,
+  Subject,
   switchMap,
   timer,
 } from 'rxjs'
@@ -59,7 +60,7 @@ import type {
 import { PoolMetadataInput } from './types/poolInput.js'
 import { PoolMetadata, PoolMetadataV2 } from './types/poolMetadata.js'
 import { parsePoolMetadataV2 } from './utils/poolMetadataMigration.js'
-import type { CentrifugeQueryOptions, Query } from './types/query.js'
+import type { CentrifugeQueryOptions, Query, QueryInvalidation } from './types/query.js'
 import type { MarketplaceWorkflow, RuntimeVariable } from './types/workflow.js'
 import { runtimeVariableName } from './types/workflow.js'
 import {
@@ -1126,14 +1127,24 @@ export class Centrifuge {
     )
   }
 
-  #memoized = new Map<string, any>()
+  #memoized = new Map<string, { keys: any[]; value: any }>()
+  #queryInvalidations = new Subject<QueryInvalidation>()
+
+  /**
+   * Emits whenever cached query results may be stale: after {@link clearQueryCache} drops entries.
+   * Meant for an app-level cache (e.g. react-query) layered on top of the SDK — re-read what the
+   * signal covers. `keys: null` means everything. Hints only, never data; no replay.
+   */
+  readonly queryInvalidations$: Observable<QueryInvalidation> = this.#queryInvalidations.asObservable()
+
   #memoizeWith<T = any>(keys: any[], callback: () => T): T {
     const cacheKey = hashKey(keys)
-    if (this.#memoized.has(cacheKey)) {
-      return this.#memoized.get(cacheKey)
+    const cached = this.#memoized.get(cacheKey)
+    if (cached) {
+      return cached.value
     }
     const result = callback()
-    this.#memoized.set(cacheKey, result)
+    this.#memoized.set(cacheKey, { keys, value: result })
     return result
   }
 
@@ -1141,9 +1152,25 @@ export class Centrifuge {
    * Clears the internal observable query cache.
    * Call this after transactions to ensure subsequent queries fetch fresh data
    * instead of returning stale cached values from shared observables.
+   *
+   * Without arguments the whole cache is dropped. With a `keyPrefix` only the entries cached under
+   * a key starting with it are dropped, e.g. `clearQueryCache(['pool', poolId.toString()])`.
+   * Queries already subscribed keep their current observable; only the next read of a dropped
+   * key builds a fresh one. Emits on {@link queryInvalidations$}.
    */
-  clearQueryCache() {
-    this.#memoized.clear()
+  clearQueryCache(keyPrefix?: readonly unknown[]) {
+    if (!keyPrefix) {
+      this.#memoized.clear()
+      this.#queryInvalidations.next({ keys: null })
+      return
+    }
+    const prefix = hashKey(keyPrefix as any[])
+    for (const [cacheKey, { keys }] of this.#memoized) {
+      if (hashKey(keys.slice(0, keyPrefix.length)) === prefix) {
+        this.#memoized.delete(cacheKey)
+      }
+    }
+    this.#queryInvalidations.next({ keys: keyPrefix })
   }
 
   /**
