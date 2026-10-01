@@ -1,7 +1,8 @@
 import { expect } from 'chai'
 import sinon from 'sinon'
 import { UnknownDeploymentError, verifyDeployments, type IndexerDeploymentResponse } from './verifyDeployments.js'
-import type { KnownDeployment } from './deployments.js'
+import { getAddress } from 'viem'
+import { KNOWN_DEPLOYMENTS, type KnownDeployment } from './deployments.js'
 import type { HexString } from '../types/index.js'
 
 const ADDR_A = '0x1111111111111111111111111111111111111111' as HexString
@@ -298,7 +299,7 @@ describe('verifyDeployments', () => {
     })
 
     it('keeps a matching legacy value and drops an unlisted new value on a legacy-only allowlist entry', () => {
-      // Mirrors a KNOWN_DEPLOYMENTS chain where only the legacy factory is allowlisted so far.
+      // Mirrors a chain whose allowlist entry lists only the legacy factory.
       const warn = sinon.stub(console, 'warn')
       try {
         const allowlist = { 1: makeAllowlistEntry() }
@@ -309,6 +310,48 @@ describe('verifyDeployments', () => {
         expect(item.onOffRampFactory).to.equal(undefined)
         expect(warn.calledOnce).to.equal(true)
         expect(warn.firstCall.args[0]).to.contain("field='onOffRampFactory'")
+      } finally {
+        warn.restore()
+      }
+    })
+  })
+
+  describe('accounting token on new-factory chains', () => {
+    const ARC_CENTRIFUGE_ID = 14
+    const ARC_ACCOUNTING_TOKEN = '0x25cD3c315d21251e2D413A0F0B14F2951b218313'
+    const XLAYER_ACCOUNTING_TOKEN = '0x15a5D180A4b8da06268260b7B4f89ee7d239B6c5'
+
+    it('allowlists the checksummed accounting token for X Layer and Arc', () => {
+      expect(KNOWN_DEPLOYMENTS[13]?.accountingToken).to.equal(getAddress(XLAYER_ACCOUNTING_TOKEN))
+      expect(KNOWN_DEPLOYMENTS[ARC_CENTRIFUGE_ID]?.accountingToken).to.equal(getAddress(ARC_ACCOUNTING_TOKEN))
+    })
+
+    it('lists an accountingToken on every allowlist entry that lists onOffRampFactory', () => {
+      const missing = Object.entries(KNOWN_DEPLOYMENTS)
+        .filter(([, entry]) => entry.onOffRampFactory && !entry.accountingToken)
+        .map(([centrifugeId]) => centrifugeId)
+
+      expect(missing).to.deep.equal([])
+    })
+
+    it('keeps an indexer accounting token that matches the Arc entry and drops a wrong one', () => {
+      const warn = sinon.stub(console, 'warn')
+      try {
+        const allowlist = {
+          1: makeAllowlistEntry({ accountingToken: KNOWN_DEPLOYMENTS[ARC_CENTRIFUGE_ID]!.accountingToken }),
+        }
+        const kept = verifyDeployments(
+          makeResponse([makeDeployment({ accountingToken: ARC_ACCOUNTING_TOKEN.toLowerCase() })]),
+          allowlist
+        )
+        expect((kept.deployments.items[0] as Record<string, unknown>).accountingToken).to.equal(
+          ARC_ACCOUNTING_TOKEN.toLowerCase()
+        )
+
+        const dropped = verifyDeployments(makeResponse([makeDeployment({ accountingToken: ADDR_EVIL })]), allowlist)
+        expect((dropped.deployments.items[0] as Record<string, unknown>).accountingToken).to.equal(undefined)
+        expect(warn.calledOnce).to.equal(true)
+        expect(warn.firstCall.args[0]).to.contain("field='accountingToken'")
       } finally {
         warn.restore()
       }

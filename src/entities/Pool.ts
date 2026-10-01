@@ -1340,33 +1340,47 @@ export class Pool extends Entity {
   updateBalanceSheetManagers(updates: { centrifugeId: CentrifugeId; address: HexString; canManage: boolean }[]) {
     const self = this
     return this._transact(async function* (ctx) {
-      const [{ hub }] = await Promise.all([self._root._protocolAddresses(self.centrifugeId)])
-      const enabledUpdates = filterCrosschainEnabledTargets(updates)
-      const batch = enabledUpdates.map(({ centrifugeId, address, canManage }) =>
-        encodeFunctionData({
-          abi: ABI.Hub,
-          functionName: 'updateBalanceSheetManager',
-          args: [self.id.raw, centrifugeId, addressToBytes32(address), canManage, ctx.signingAddress],
-        })
-      )
-      const messages: Record<number, MessageTypeWithSubType[]> = {}
-      enabledUpdates.forEach(({ centrifugeId }) => {
-        addMessageForEnabledTarget(messages, centrifugeId, {
-          type: MessageType.UpdateBalanceSheetManager,
-          poolId: self.id,
-        })
-      })
-
-      if (batch.length === 0) {
-        throw new Error('No enabled networks to update balance sheet managers')
-      }
+      const { hub } = await self._root._protocolAddresses(self.centrifugeId)
+      const { data, messages } = self._balanceSheetManagerUpdates(updates, ctx.signingAddress)
 
       yield* wrapTransaction('Update balance sheet managers', ctx, {
         contract: hub,
-        data: batch,
+        data,
         messages,
       })
     }, this.centrifugeId)
+  }
+
+  /**
+   * @internal Hub calldata and messages for a balance sheet manager update, so callers can run it
+   * inside their own transaction context.
+   * @throws If none of the updates targets a cross-chain enabled network.
+   */
+  _balanceSheetManagerUpdates(
+    updates: { centrifugeId: CentrifugeId; address: HexString; canManage: boolean }[],
+    signingAddress: HexString
+  ) {
+    const enabledUpdates = filterCrosschainEnabledTargets(updates)
+    const data = enabledUpdates.map(({ centrifugeId, address, canManage }) =>
+      encodeFunctionData({
+        abi: ABI.Hub,
+        functionName: 'updateBalanceSheetManager',
+        args: [this.id.raw, centrifugeId, addressToBytes32(address), canManage, signingAddress],
+      })
+    )
+    const messages: Record<number, MessageTypeWithSubType[]> = {}
+    enabledUpdates.forEach(({ centrifugeId }) => {
+      addMessageForEnabledTarget(messages, centrifugeId, {
+        type: MessageType.UpdateBalanceSheetManager,
+        poolId: this.id,
+      })
+    })
+
+    if (data.length === 0) {
+      throw new Error('No enabled networks to update balance sheet managers')
+    }
+
+    return { data, messages }
   }
 
   /**

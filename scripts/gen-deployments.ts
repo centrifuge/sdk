@@ -3,6 +3,9 @@
  * artifacts (centrifuge/protocol's env/*.json files), which are the canonical
  * record of what was actually deployed.
  *
+ * WARNING: entry 14, and the onOffRampFactory/accountingToken fields of entry 13, are hand-patched and absent
+ * from the env files; regenerating removes them. See .claude/CLAUDE.md before running.
+ *
  * Usage: pnpm gen:deployments [--protocol-path ../protocol] [--out path]
  *
  * The protocol repo is expected to be checked out as a sibling of this repo.
