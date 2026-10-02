@@ -12,12 +12,6 @@ export type CentrifugeQueryOptions = {
   cache?: boolean
 }
 
-/**
- * A hint that cached query results may be stale.
- *
- * `keys` is the key prefix that went stale (the same `keys` array a query is cached under, e.g.
- * `['pool', '1']`), or `null` when the whole cache was dropped. Treat it as "re-read", not as data.
- */
 export type QueryInvalidation = { keys: readonly unknown[] | null }
 
 export type Query<T> = PromiseLike<T> & Observable<T> & { toPromise: () => Promise<T> }
