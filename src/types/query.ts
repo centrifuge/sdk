@@ -12,6 +12,8 @@ export type CentrifugeQueryOptions = {
   cache?: boolean
 }
 
+export type QueryInvalidation = { keys: readonly unknown[] | null }
+
 export type Query<T> = PromiseLike<T> & Observable<T> & { toPromise: () => Promise<T> }
 export type QueryFn = <T>(
   keys: (string | number)[] | null,
