@@ -1,5 +1,6 @@
 // AUTO-GENERATED FILE — do not edit by hand.
 // Regenerate with: pnpm gen:deployments
+// Entry 14 and the onOffRampFactory/accountingToken fields of entry 13 are hand-patched; see .claude/CLAUDE.md first.
 // Source: protocol repo env/*.json (commit a24fe733d4ec05b40ed7832084772fd836295c57)
 // Generated: 2026-05-04T11:12:08.361Z
 //
@@ -520,6 +521,9 @@ export const KNOWN_DEPLOYMENTS: Record<number, KnownDeployment> = {
     name: 'xlayer',
     chainId: 196,
     accounting: '0x050206c38f06e4710C4a37D39F75Ddc5c16a7396' as HexString,
+    // Hand-patched, not produced by `pnpm gen:deployments`: regeneration removes it.
+    // Must equal `OnOffRampFactory.accountingToken()` on this chain.
+    accountingToken: '0x15a5D180A4b8da06268260b7B4f89ee7d239B6c5' as HexString,
     asyncRequestManager: '0xF48256AbDDf96EcDDc4B3DbD23E8C1921f9761Ae' as HexString,
     asyncVaultFactory: '0x55cde53B7dbc24336E34FFE233AF8DF10f72F0Be' as HexString,
     balanceSheet: '0x12a110cE5f0FC871cC72Bc7ECaF35cf39DD0f43e' as HexString,
@@ -541,8 +545,7 @@ export const KNOWN_DEPLOYMENTS: Record<number, KnownDeployment> = {
     messageProcessor: '0x97cc7e9Dafdd725Cc23B25eeBC93c4384B4Fe30A' as HexString,
     multiAdapter: '0x35C837F0A54B715a23D193E1476BFC9BC30073BE' as HexString,
     navManager: '0x493b6C8ccC7BfD43c5a20C4F2C648701f74E9130' as HexString,
-    // Hand-patched from env/x-layer.json on the protocol repo's live-v3.2, not from a
-    // `pnpm gen:deployments` run.
+    // Hand-patched, not produced by `pnpm gen:deployments`: regeneration removes it.
     onOffRampFactory: '0x22E2f679669D69b6b6f22CC9C1731035a3Fa0296' as HexString,
     opsGuardian: '0x055589229506Ee89645EF08ebE9B9a863486d0dE' as HexString,
     oracleValuation: '0x8c3E9f3cF2dD057d6a2eA33d979faa0061b42c12' as HexString,
@@ -563,12 +566,15 @@ export const KNOWN_DEPLOYMENTS: Record<number, KnownDeployment> = {
     vaultRegistry: '0xd9531AC47928c3386346f82d9A2478960bf2CA7B' as HexString,
     vaultRouter: '0xF684014771C01e50B8B526968B3a1e33acDA63f6' as HexString,
   },
-  // Hand-patched from env/arc.json on the protocol repo's live-v3.2, not from a
-  // `pnpm gen:deployments` run. These addresses are unverified against chain 5042.
+  // Hand-patched from the protocol repo's live-v3.2 release, not from a gen run. onOffRampFactory and
+  // accountingToken were checked on chain 5042; the other addresses come unchecked.
   14: {
     name: 'arc',
     chainId: 5042,
     accounting: '0x050206c38f06e4710C4a37D39F75Ddc5c16a7396' as HexString,
+    // Hand-patched, not produced by `pnpm gen:deployments`: regeneration removes it.
+    // Must equal `OnOffRampFactory.accountingToken()` on this chain.
+    accountingToken: '0x25cD3c315d21251e2D413A0F0B14F2951b218313' as HexString,
     asyncRequestManager: '0xF48256AbDDf96EcDDc4B3DbD23E8C1921f9761Ae' as HexString,
     asyncVaultFactory: '0x55cde53B7dbc24336E34FFE233AF8DF10f72F0Be' as HexString,
     balanceSheet: '0x12a110cE5f0FC871cC72Bc7ECaF35cf39DD0f43e' as HexString,
@@ -590,8 +596,8 @@ export const KNOWN_DEPLOYMENTS: Record<number, KnownDeployment> = {
     messageProcessor: '0x97cc7e9Dafdd725Cc23B25eeBC93c4384B4Fe30A' as HexString,
     multiAdapter: '0x35C837F0A54B715a23D193E1476BFC9BC30073BE' as HexString,
     navManager: '0x493b6C8ccC7BfD43c5a20C4F2C648701f74E9130' as HexString,
-    // Not in any protocol env file yet, so a `pnpm gen:deployments` run drops this entry and
-    // it must be re-applied by hand. Bytecode checked on chain 5042 (newManager, DeployOnOffRamp).
+    // Hand-patched, not produced by `pnpm gen:deployments`: regeneration removes it.
+    // Bytecode checked on chain 5042 (newManager, DeployOnOffRamp).
     onOffRampFactory: '0x8352BC2796169e3F05a15022d1fC9E2059762318' as HexString,
     opsGuardian: '0x055589229506Ee89645EF08ebE9B9a863486d0dE' as HexString,
     oracleValuation: '0xCBdb6EFFC9b954D05dF89c747eCaa8A143c26E6D' as HexString,

@@ -1,11 +1,13 @@
-import { combineLatest, concat, defer, EMPTY, firstValueFrom, map, of, switchMap } from 'rxjs'
+import { combineLatest, concat, defer, firstValueFrom, ignoreElements, map, of, switchMap } from 'rxjs'
 import { encodeAbiParameters, encodeFunctionData, getContract, maxUint128 } from 'viem'
 import { ABI } from '../abi/index.js'
 import type { Centrifuge } from '../Centrifuge.js'
 import { NULL_ADDRESS, SAFE_PROXY_BYTECODE } from '../constants.js'
 import { HexString } from '../types/index.js'
 import { MessageType, MessageTypeWithSubType, VaultUpdateKind } from '../types/transaction.js'
-import { assertCrosschainMessagingEnabled } from '../utils/crosschainHotfix.js'
+import type { TransactionContext } from '../types/transaction.js'
+import { addMessageForEnabledTarget, assertCrosschainMessagingEnabled } from '../utils/crosschainHotfix.js'
+import { addressesEqual } from '../utils/addresses.js'
 import { addressToBytes32, encode } from '../utils/index.js'
 import { makeThenable, repeatOnEvents } from '../utils/rx.js'
 import { doTransaction, parseEventLogs, wrapTransaction } from '../utils/transaction.js'
@@ -18,6 +20,73 @@ import { OnchainPM } from './OnchainPM.js'
 import { OnOffRampManager } from './OnOffRampManager.js'
 import type { OnOfframpManagerStatus, Pool } from './Pool.js'
 import { ShareClass } from './ShareClass.js'
+
+/**
+ * Hub call that sets a pool-wide `AccountingToken` minter flag, routed through the spoke's `contractUpdater`.
+ * `scId` only has to exist on the hub.
+ */
+function encodeAccountingTokenMinterGrant({
+  poolId,
+  scId,
+  centrifugeId,
+  accountingToken,
+  who,
+  refund,
+}: {
+  poolId: bigint
+  scId: HexString
+  centrifugeId: CentrifugeId
+  accountingToken: HexString
+  who: HexString
+  refund: HexString
+}) {
+  return encodeFunctionData({
+    abi: ABI.Hub,
+    functionName: 'updateContract',
+    args: [
+      poolId,
+      scId,
+      centrifugeId,
+      addressToBytes32(accountingToken),
+      encodeAbiParameters([{ type: 'bytes32' }, { type: 'bool' }], [addressToBytes32(who), true]),
+      0n,
+      refund,
+    ],
+  })
+}
+
+function resolveOnOffRampFactory(
+  {
+    onOffRampFactory,
+    onOfframpManagerFactory,
+  }: { onOffRampFactory?: HexString | null; onOfframpManagerFactory?: HexString | null },
+  centrifugeId: CentrifugeId
+): HexString {
+  const factory = onOffRampFactory ?? onOfframpManagerFactory
+  if (!factory) {
+    throw new Error(`No on/off-ramp manager factory is deployed for centrifugeId ${centrifugeId}`)
+  }
+  return factory
+}
+
+function missingAccountingTokenError(centrifugeId: CentrifugeId) {
+  return new Error(
+    `On/off-ramp minter grant needs an accountingToken, but the deployments for centrifugeId ${centrifugeId} list none`
+  )
+}
+
+/**
+ * Newest indexed on/off-ramp: highest `createdAtBlock`, ties broken by the highest lowercase address
+ * so every caller picks the same row.
+ */
+function newestOnOffRamp<T extends { address: string; createdAtBlock: number }>(rows: T[]): T | undefined {
+  return [...rows].sort((a, b) => {
+    if (a.createdAtBlock !== b.createdAtBlock) return b.createdAtBlock - a.createdAtBlock
+    const [addressA, addressB] = [a.address.toLowerCase(), b.address.toLowerCase()]
+    if (addressA === addressB) return 0
+    return addressA < addressB ? 1 : -1
+  })[0]
+}
 
 export enum VaultManagerTrustedCall {
   Valuation,
@@ -311,22 +380,13 @@ export class PoolNetwork extends Entity {
       })
 
       // 2. Grant the OnchainPM minter rights on the accounting token.
-      const minterPayload = encodeAbiParameters(
-        [{ type: 'bytes32' }, { type: 'bool' }],
-        [addressToBytes32(managerAddress), true]
-      )
-      const grantMinterCall = encodeFunctionData({
-        abi: ABI.Hub,
-        functionName: 'updateContract',
-        args: [
-          self.pool.id.raw,
-          resolvedScId,
-          self.centrifugeId,
-          addressToBytes32(accountingToken),
-          minterPayload,
-          0n,
-          ctx.signingAddress,
-        ],
+      const grantMinterCall = encodeAccountingTokenMinterGrant({
+        poolId: self.pool.id.raw,
+        scId: resolvedScId,
+        centrifugeId: self.centrifugeId,
+        accountingToken,
+        who: managerAddress,
+        refund: ctx.signingAddress,
       })
 
       yield* wrapTransaction('Authorize onchain PM', ctx, {
@@ -460,8 +520,7 @@ export class PoolNetwork extends Entity {
             throw new Error('OnOffRampManager not found in balance sheet managers')
           }
 
-          // Use the last verified manager (most recent deployment)
-          const verifiedManager = verifiedManagers[verifiedManagers.length - 1]!
+          const verifiedManager = newestOnOffRamp(verifiedManagers)!
 
           return new OnOffRampManager(
             this._root,
@@ -480,6 +539,7 @@ export class PoolNetwork extends Entity {
    * `onOfframpManager()` — which only resolves once a manager is confirmed live,
    * for use in transactions — this also surfaces a manager whose grant/revoke is
    * still in transit, for display purposes. Returns `[]` if none are deployed.
+   * Rows come in indexer order and are not reduced to the newest.
    * @param scId - The share class ID
    */
   onOfframpManagerStatus(scId: ShareClassId): Query<OnOfframpManagerStatus[]> {
@@ -507,39 +567,41 @@ export class PoolNetwork extends Entity {
   }
 
   /**
-   * Get all OnOffRampManagers for a given share class and assign balance sheet manager permissions.
+   * Register the newest indexed OnOffRampManager of a share class as a Balance Sheet Manager.
+   * Fails with a descriptive error, before anything is signed, when none is indexed or the newest is already
+   * registered; use `registerOnOffRampManagerAsBSManager` to re-send the grant for a registered ramp.
+   *
+   * On a network whose deployments list `onOffRampFactory`, the same hub transaction also grants the
+   * manager minter rights on the accounting token (see {@link registerOnOffRampManagerAsBSManager}).
    * @param scId - The share class ID
+   * @throws If no ramp is indexed, the newest is already registered, the network lists `onOffRampFactory` but no
+   *   `accountingToken`, or cross-chain messaging is disabled for the network; nothing is signed.
    */
   assignOnOffRampManagerPermissions(scId: ShareClassId) {
     const self = this
-    return this._transact(() => {
-      return combineLatest([this._deployedOnOffRampManagers(scId), this.pool.balanceSheetManagers()]).pipe(
-        switchMap(([deployedOnOffRampManager, balanceSheetManagers]) => {
-          const bsManagers = new Map<string, { address: `0x${string}`; centrifugeId: number; type: string }>()
-          balanceSheetManagers.forEach((manager) => {
-            if (manager.centrifugeId === self.centrifugeId) {
-              bsManagers.set(manager.address.toLowerCase(), manager)
-            }
-          })
+    return this._transact(async function* (ctx) {
+      const [ramps, balanceSheetManagers] = await Promise.all([
+        firstValueFrom(self._deployedOnOffRampManagers(scId)),
+        firstValueFrom(self.pool.balanceSheetManagers()),
+      ])
+      const newest = newestOnOffRamp(ramps)
+      if (!newest) {
+        throw new Error(
+          `No on/off-ramp is indexed for share class ${scId.toString()} on centrifugeId ${self.centrifugeId}`
+        )
+      }
 
-          const onOffRampManagers = deployedOnOffRampManager
-            .filter((onOffRampManager) => {
-              return bsManagers.has(onOffRampManager.address.toLowerCase()) === false
-            })
-            .map((onOffRampManager) => ({
-              centrifugeId: self.centrifugeId,
-              address: onOffRampManager.address,
-              canManage: true,
-            }))
-
-          if (onOffRampManagers.length === 0) {
-            return EMPTY
-          }
-
-          return this.pool.updateBalanceSheetManagers(onOffRampManagers)
-        })
+      const isRegistered = balanceSheetManagers.some(
+        (manager) => manager.centrifugeId === self.centrifugeId && addressesEqual(manager.address, newest.address)
       )
-    }, this.centrifugeId)
+      if (isRegistered) {
+        throw new Error(
+          `The newest on/off-ramp ${newest.address} is already a balance sheet manager on centrifugeId ${self.centrifugeId}; use registerOnOffRampManagerAsBSManager to re-send the grant`
+        )
+      }
+
+      yield* self._registerOnOffRamp(ctx, newest.address, scId)
+    }, this.pool.centrifugeId)
   }
 
   /**
@@ -548,12 +610,7 @@ export class PoolNetwork extends Entity {
    * simulate/write when neither is deployed.
    */
   private async _resolveOnOffRampFactory(): Promise<HexString> {
-    const { onOffRampFactory, onOfframpManagerFactory } = await this._root._protocolAddresses(this.centrifugeId)
-    const factory = onOffRampFactory ?? onOfframpManagerFactory
-    if (!factory) {
-      throw new Error(`No on/off-ramp manager factory is deployed for centrifugeId ${this.centrifugeId}`)
-    }
-    return factory
+    return resolveOnOffRampFactory(await this._root._protocolAddresses(this.centrifugeId), this.centrifugeId)
   }
 
   /** Simulates `newManager` against an already-resolved factory address. */
@@ -632,34 +689,89 @@ export class PoolNetwork extends Entity {
   /**
    * Register an On/Off Ramp Manager as a Balance Sheet Manager.
    * Use this with the address obtained from deployOnOfframpManager().
+   *
+   * On a network whose deployments list `onOffRampFactory`, the manager mints and burns the pool's
+   * accounting token, so one hub transaction both registers it and grants it minter rights. Networks
+   * with only the legacy factory get the plain balance sheet manager update.
    * @param managerAddress - The deployed manager's contract address
+   * @param scId - The manager's share class. Required when the network lists `onOffRampFactory`; it routes
+   *   the minter grant.
+   * @throws If the network lists `onOffRampFactory` but no `accountingToken`, `scId` is missing, or cross-chain
+   *   messaging is disabled for the network; nothing is signed.
    */
-  registerOnOffRampManagerAsBSManager(managerAddress: HexString) {
-    return this.pool.updateBalanceSheetManagers([
-      {
-        centrifugeId: this.centrifugeId,
-        address: managerAddress,
-        canManage: true,
-      },
+  registerOnOffRampManagerAsBSManager(managerAddress: HexString, scId?: ShareClassId) {
+    const self = this
+    return this._transact((ctx) => self._registerOnOffRamp(ctx, managerAddress, scId), this.pool.centrifugeId)
+  }
+
+  /** Shared body of register and assign; runs in the caller's hub-chain context so it stays buildable. */
+  private async *_registerOnOffRamp(ctx: TransactionContext, managerAddress: HexString, scId?: ShareClassId) {
+    const [{ onOffRampFactory, accountingToken }, { hub }] = await Promise.all([
+      this._root._protocolAddresses(this.centrifugeId),
+      this._root._protocolAddresses(this.pool.centrifugeId),
     ])
+    const update = [{ centrifugeId: this.centrifugeId, address: managerAddress, canManage: true }]
+
+    if (!onOffRampFactory) {
+      const { data, messages } = this.pool._balanceSheetManagerUpdates(update, ctx.signingAddress)
+      yield* wrapTransaction('Update balance sheet managers', ctx, { contract: hub, data, messages })
+      return
+    }
+
+    const token = this._minterGrantToken(accountingToken)
+    if (!scId) {
+      throw new Error(
+        `A share class id is required to register an on/off-ramp on centrifugeId ${this.centrifugeId}: it routes the accounting-token minter grant`
+      )
+    }
+    const { data, messages } = this.pool._balanceSheetManagerUpdates(update, ctx.signingAddress)
+    const grantMinterCall = encodeAccountingTokenMinterGrant({
+      poolId: this.pool.id.raw,
+      scId: scId.raw,
+      centrifugeId: this.centrifugeId,
+      accountingToken: token,
+      who: managerAddress,
+      refund: ctx.signingAddress,
+    })
+    addMessageForEnabledTarget(messages, this.centrifugeId, {
+      type: MessageType.TrustedContractUpdate,
+      poolId: this.pool.id,
+    })
+    yield* wrapTransaction('Register on/off-ramp manager', ctx, {
+      contract: hub,
+      data: [...data, grantMinterCall],
+      messages,
+    })
+  }
+
+  /** The one guard for registering a ramp with a minter grant; deploy runs it too, before anything is signed. */
+  private _minterGrantToken(accountingToken: HexString | null | undefined): HexString {
+    assertCrosschainMessagingEnabled(this.centrifugeId)
+    if (!accountingToken) throw missingAccountingTokenError(this.centrifugeId)
+    return accountingToken
   }
 
   /**
-   * Deploy an On/Off Ramp Manager and register it as a Balance Sheet Manager.
+   * Deploy an On/Off Ramp Manager and register it as a Balance Sheet Manager. On a network whose
+   * deployments list `onOffRampFactory`, the registration also grants it accounting-token minter
+   * rights in the same hub transaction (see {@link registerOnOffRampManagerAsBSManager}).
    * @param scId
-   * @throws If no on/off-ramp manager factory is deployed on this network.
+   * @throws If no on/off-ramp manager factory is deployed on this network, the network lists
+   *   `onOffRampFactory` but no `accountingToken`, or cross-chain messaging is disabled for the network.
+   *   On chains that list `onOffRampFactory` the latter two are raised before `newManager` is signed.
    */
   deployAndRegisterOnOffRampManager(scId: ShareClassId) {
     const self = this
     let managerAddress: HexString | null = null
 
     const deployTransaction = this._transact(async function* (ctx) {
+      const addresses = await self._root._protocolAddresses(self.centrifugeId)
       managerAddress = await self._findDeployedOnOffRampManagerAddress(scId)
       if (managerAddress) return
 
       const code = await ctx.publicClient.getCode({ address: ctx.signingAddress })
       const isSafeWallet = code === SAFE_PROXY_BYTECODE
-      const factory = await self._resolveOnOffRampFactory()
+      const factory = resolveOnOffRampFactory(addresses, self.centrifugeId)
       const precomputedAddress = isSafeWallet ? await self._computeOnOffRampManagerAddress(factory, scId) : null
 
       const result = yield* doTransaction('DeployOnOfframpManager', ctx, () =>
@@ -701,10 +813,16 @@ export class PoolNetwork extends Entity {
       if (!managerAddress) {
         throw new Error('DeployOnOfframpManager event not found')
       }
-      return self.registerOnOffRampManagerAsBSManager(managerAddress)
+      return self.registerOnOffRampManagerAsBSManager(managerAddress, scId)
     })
 
-    const transaction = makeThenable(concat(deployTransaction, registerTransaction), true)
+    // Runs before the deploy transaction resolves the wallet, so a doomed registration prompts nothing.
+    const preCheck = defer(async () => {
+      const { onOffRampFactory, accountingToken } = await self._root._protocolAddresses(self.centrifugeId)
+      if (onOffRampFactory) self._minterGrantToken(accountingToken)
+    }).pipe(ignoreElements())
+
+    const transaction = makeThenable(concat(preCheck, deployTransaction, registerTransaction), true)
     return Object.assign(transaction, { centrifugeId: self.centrifugeId })
   }
 
@@ -738,6 +856,7 @@ export class PoolNetwork extends Entity {
         onOffRampManagers(where: {tokenId: $scId, centrifugeId: $centrifugeId}) {
           items {
             address
+            createdAtBlock
           }
         }
       }`,
@@ -749,6 +868,7 @@ export class PoolNetwork extends Entity {
         onOffRampManagers: {
           items: {
             address: HexString
+            createdAtBlock: number
           }[]
         }
       }) =>
@@ -761,7 +881,7 @@ export class PoolNetwork extends Entity {
 
   private async _findDeployedOnOffRampManagerAddress(scId: ShareClassId) {
     const managers = await firstValueFrom(this._deployedOnOffRampManagers(scId))
-    return managers[managers.length - 1]?.address ?? null
+    return newestOnOffRamp(managers)?.address ?? null
   }
 
   /**

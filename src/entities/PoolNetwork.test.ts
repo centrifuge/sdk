@@ -396,37 +396,35 @@ describe('PoolNetwork manager deployment flows', () => {
 
   it('reuses an existing on/off-ramp manager and only updates balance sheet access', async () => {
     const existingManager = '0x4444444444444444444444444444444444444444'
-    const { poolNetwork, walletClient, updateBalanceSheetManagers } = createManagerDeploymentTestSubject({
+    const { poolNetwork, walletClient } = createManagerDeploymentTestSubject({
       onOffRampManagers: [{ address: existingManager }],
     })
+    const register = sinon
+      .stub(poolNetwork, 'registerOnOffRampManagerAsBSManager')
+      .returns(of({ type: 'TransactionConfirmed' } as any) as any)
 
     const result = await lastValueFrom(poolNetwork.deployAndRegisterOnOffRampManager(scId))
 
     expect(result.type).to.equal('TransactionConfirmed')
     expect(walletClient.writeContract.called).to.equal(false)
-    expect(
-      updateBalanceSheetManagers.calledOnceWithExactly([
-        { centrifugeId: centId, address: existingManager, canManage: true },
-      ])
-    ).to.equal(true)
+    expect(register.calledOnceWithExactly(existingManager, scId)).to.equal(true)
   })
 
   it('deploys a new on/off-ramp manager and then updates balance sheet access', async () => {
     const deployedManager = '0x5555555555555555555555555555555555555555'
     const receipt = makeOnOffRampReceipt(deployedManager)
-    const { poolNetwork, walletClient, updateBalanceSheetManagers } = createManagerDeploymentTestSubject({
+    const { poolNetwork, walletClient } = createManagerDeploymentTestSubject({
       receipt,
     })
+    const register = sinon
+      .stub(poolNetwork, 'registerOnOffRampManagerAsBSManager')
+      .returns(of({ type: 'TransactionConfirmed' } as any) as any)
 
     const result = await lastValueFrom(poolNetwork.deployAndRegisterOnOffRampManager(scId))
 
     expect(result.type).to.equal('TransactionConfirmed')
     expect(walletClient.writeContract.calledOnce).to.equal(true)
-    expect(
-      updateBalanceSheetManagers.calledOnceWithExactly([
-        { centrifugeId: centId, address: deployedManager, canManage: true },
-      ])
-    ).to.equal(true)
+    expect(register.calledOnceWithExactly(deployedManager, scId)).to.equal(true)
   })
 
   it('reuses an existing merkle proof manager and only updates balance sheet access', async () => {
@@ -639,30 +637,32 @@ describe('PoolNetwork on/off-ramp factory resolution', () => {
       factory: newOnOffRampFactory,
       eventName: 'DeployOnOffRamp',
     })
-    const { poolNetwork, updateBalanceSheetManagers } = createManagerDeploymentTestSubject({
+    const { poolNetwork } = createManagerDeploymentTestSubject({
       receipt,
-      protocolAddresses: { onOffRampFactory: newOnOffRampFactory },
+      protocolAddresses: { onOffRampFactory: newOnOffRampFactory, accountingToken: onOffRampFactory },
     })
+    const register = sinon
+      .stub(poolNetwork, 'registerOnOffRampManagerAsBSManager')
+      .returns(of({ type: 'TransactionConfirmed' } as any) as any)
 
     const result = await lastValueFrom(
       poolNetwork.deployAndRegisterOnOffRampManager(scId) as unknown as Observable<any>
     )
 
     expect(result.type).to.equal('TransactionConfirmed')
-    expect(
-      updateBalanceSheetManagers.calledOnceWithExactly([
-        { centrifugeId: centId, address: deployedManager, canManage: true },
-      ])
-    ).to.equal(true)
+    expect(register.calledOnceWithExactly(deployedManager, scId)).to.equal(true)
   })
 
-  it('deployAndRegisterOnOffRampManager simulates and writes against the same resolved factory on the Safe path, resolving the factory once', async () => {
+  it('deployAndRegisterOnOffRampManager simulates and writes against the same resolved factory on the Safe path, resolving the same factory for simulate and write', async () => {
     const precomputedAddress = '0x6666666666666666666666666666666666666666'
     const { poolNetwork, publicClient, walletClient, protocolAddressesStub } = createManagerDeploymentTestSubject({
       isSafeWallet: true,
       simulateResult: precomputedAddress,
-      protocolAddresses: { onOffRampFactory: newOnOffRampFactory },
+      protocolAddresses: { onOffRampFactory: newOnOffRampFactory, accountingToken: onOffRampFactory },
     })
+    sinon
+      .stub(poolNetwork, 'registerOnOffRampManagerAsBSManager')
+      .returns(of({ type: 'TransactionConfirmed' } as any) as any)
 
     const result = await lastValueFrom(
       poolNetwork.deployAndRegisterOnOffRampManager(scId) as unknown as Observable<any>
@@ -671,17 +671,20 @@ describe('PoolNetwork on/off-ramp factory resolution', () => {
     expect(result.type).to.equal('TransactionConfirmed')
     expect(publicClient.simulateContract.firstCall.args[0].address).to.equal(newOnOffRampFactory)
     expect(walletClient.writeContract.firstCall.args[0].address).to.equal(newOnOffRampFactory)
-    expect(protocolAddressesStub.callCount).to.equal(1)
+    // The pre-check and the deploy step each read the deployments once.
+    expect(protocolAddressesStub.callCount).to.equal(2)
   })
 
-  it('deployAndRegisterOnOffRampManager simulates, writes, and registers against the legacy factory on the Safe path when onOffRampFactory is null, resolving the factory once', async () => {
+  it('deployAndRegisterOnOffRampManager simulates, writes, and registers against the legacy factory on the Safe path when onOffRampFactory is null, resolving the same factory for simulate and write', async () => {
     const precomputedAddress = '0x6666666666666666666666666666666666666666'
-    const { poolNetwork, publicClient, walletClient, protocolAddressesStub, updateBalanceSheetManagers } =
-      createManagerDeploymentTestSubject({
-        isSafeWallet: true,
-        simulateResult: precomputedAddress,
-        protocolAddresses: { onOffRampFactory: null, onOfframpManagerFactory: onOffRampFactory },
-      })
+    const { poolNetwork, publicClient, walletClient, protocolAddressesStub } = createManagerDeploymentTestSubject({
+      isSafeWallet: true,
+      simulateResult: precomputedAddress,
+      protocolAddresses: { onOffRampFactory: null, onOfframpManagerFactory: onOffRampFactory },
+    })
+    const register = sinon
+      .stub(poolNetwork, 'registerOnOffRampManagerAsBSManager')
+      .returns(of({ type: 'TransactionConfirmed' } as any) as any)
 
     const result = await lastValueFrom(
       poolNetwork.deployAndRegisterOnOffRampManager(scId) as unknown as Observable<any>
@@ -690,12 +693,9 @@ describe('PoolNetwork on/off-ramp factory resolution', () => {
     expect(result.type).to.equal('TransactionConfirmed')
     expect(publicClient.simulateContract.firstCall.args[0].address).to.equal(onOffRampFactory)
     expect(walletClient.writeContract.firstCall.args[0].address).to.equal(onOffRampFactory)
-    expect(protocolAddressesStub.callCount).to.equal(1)
-    expect(
-      updateBalanceSheetManagers.calledOnceWithExactly([
-        { centrifugeId: centId, address: precomputedAddress, canManage: true },
-      ])
-    ).to.equal(true)
+    // The pre-check and the deploy step each read the deployments once.
+    expect(protocolAddressesStub.callCount).to.equal(2)
+    expect(register.calledOnceWithExactly(precomputedAddress, scId)).to.equal(true)
   })
 })
 
@@ -718,7 +718,11 @@ function createManagerDeploymentTestSubject({
     crosschainInProgress?: 'CanManage' | 'CanNotManage' | null
   }[]
   receipt?: TransactionReceipt
-  protocolAddresses?: { onOffRampFactory?: `0x${string}` | null; onOfframpManagerFactory?: `0x${string}` | null }
+  protocolAddresses?: {
+    onOffRampFactory?: `0x${string}` | null
+    onOfframpManagerFactory?: `0x${string}` | null
+    accountingToken?: `0x${string}` | null
+  }
   isSafeWallet?: boolean
   simulateResult?: `0x${string}`
 }) {
@@ -746,7 +750,9 @@ function createManagerDeploymentTestSubject({
     _query: (_keys: unknown, callback: () => unknown) => callback(),
     _queryIndexer: (query: string, _variables: unknown, transform: (data: unknown) => unknown) => {
       if (query.includes('onOffRampManagers')) {
-        return of(transform({ onOffRampManagers: { items: onOffRampManagers } }))
+        return of(
+          transform({ onOffRampManagers: { items: onOffRampManagers.map((m) => ({ createdAtBlock: 1, ...m })) } })
+        )
       }
 
       if (query.includes('merkleProofManagers')) {

@@ -62,6 +62,37 @@ if (!investment.isAllowedToInvest) {
 }
 ```
 
+#### "On/off-ramp minter grant needs an accountingToken"
+
+Cause: the chain lists `onOffRampFactory`, so registering a ramp must also grant it minter rights on the
+accounting token, but the verified deployments list no `accountingToken` for that centrifugeId (the indexer
+returned null, or the value failed the `KNOWN_DEPLOYMENTS` check). Nothing was signed.
+Remedy: wait for the indexer to report the token, or fix the chain's `KNOWN_DEPLOYMENTS` entry. There is no
+fallback.
+
+#### "A share class id is required to register an on/off-ramp on centrifugeId"
+
+Cause: `registerOnOffRampManagerAsBSManager(address)` ran on a chain that lists `onOffRampFactory` without a
+share class id, which routes the minter grant. Nothing was signed.
+Remedy: pass the ramp's share class id as the second argument.
+
+#### "No on/off-ramp is indexed for share class"
+
+Cause: `assignOnOffRampManagerPermissions` found no indexed ramp for the share class on that centrifugeId.
+Remedy: deploy one with `deployAndRegisterOnOffRampManager`, or wait for the indexer to project it.
+
+#### "The newest on/off-ramp"
+
+Cause: `assignOnOffRampManagerPermissions` has nothing to register because the newest ramp is already a balance
+sheet manager on that centrifugeId.
+Remedy: to re-send the minter grant, call `registerOnOffRampManagerAsBSManager(address, scId)`.
+
+#### "Cross-chain messaging for centrifugeId N is temporarily disabled"
+
+Cause: the cross-chain kill-switch is set for that network, so the SDK refuses to build any transaction that would
+send a message to it. On/off-ramp registration on a chain that lists `onOffRampFactory` hits this before signing.
+Remedy: wait until messaging is re-enabled for the network.
+
 ### Query Errors
 
 #### "Pool metadata not loading"
