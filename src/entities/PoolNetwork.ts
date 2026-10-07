@@ -1019,12 +1019,7 @@ export class PoolNetwork extends Entity {
         await Promise.all([
           balanceSheetContract.read.manager([self.pool.id.raw, asyncRequestManager]),
           balanceSheetContract.read.manager([self.pool.id.raw, syncManager]),
-          spokeClient.readContract({
-            address: spoke,
-            abi: ABI.Spoke,
-            functionName: 'requestManager',
-            args: [self.pool.id.raw],
-          }),
+          getContract({ client: spokeClient, address: spoke, abi: ABI.Spoke }).read.requestManager([self.pool.id.raw]),
           self.#hasPoolAdapters(),
         ])
 
