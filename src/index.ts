@@ -62,6 +62,7 @@ export type {
   BuiltTransaction,
   DeployedOnchainPMStatus,
   EIP1193ProviderLike,
+  OperationAwaitingCrosschainDeliveryStatus,
   OperationConfirmedStatus,
   OperationPendingStatus,
   OperationSignedMessageStatus,

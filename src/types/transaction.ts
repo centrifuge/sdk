@@ -10,7 +10,7 @@ import {
   type WalletClient,
 } from 'viem'
 import type { Centrifuge } from '../Centrifuge.js'
-import { PoolId } from '../utils/types.js'
+import { CentrifugeId, PoolId } from '../utils/types.js'
 import type { HexString } from './index.js'
 import type { Query } from './query.js'
 
@@ -64,6 +64,7 @@ export type OperationStatusType =
   | 'SignedMessage'
   | 'TransactionPending'
   | 'TransactionConfirmed'
+  | 'AwaitingCrosschainDelivery'
 
 export type OperationSigningStatus = {
   id: string
@@ -122,6 +123,21 @@ export type DeployedOnchainPMStatus = {
   address: HexString
 }
 
+/**
+ * A confirmed transaction sent cross-chain messages that the next step depends on,
+ * and the SDK is waiting for the destination chain to pick them up.
+ */
+export type OperationAwaitingCrosschainDeliveryStatus = {
+  /** Same `id` as the `TransactionConfirmed` status of the transaction that sent the messages. */
+  id: string
+  type: 'AwaitingCrosschainDelivery'
+  title: string
+  hash: HexString
+  fromCentrifugeId: CentrifugeId
+  toCentrifugeId: CentrifugeId
+  messageTypes: MessageTypeWithSubType[]
+}
+
 export type OperationStatus =
   | OperationSigningStatus
   | OperationSigningMessageStatus
@@ -132,6 +148,7 @@ export type OperationStatus =
   | SimulationStatus
   | DeployedOnOfframpManagerStatus
   | DeployedOnchainPMStatus
+  | OperationAwaitingCrosschainDeliveryStatus
 
 export type EIP1193ProviderLike = {
   request(...args: any): Promise<any>
