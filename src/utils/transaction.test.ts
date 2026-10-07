@@ -1,12 +1,12 @@
 import { expect } from 'chai'
 import sinon from 'sinon'
 import { encodeFunctionData, parseAbi } from 'viem'
-import { sepolia } from 'viem/chains'
+import { mainnet, sepolia } from 'viem/chains'
 import { randomAddress } from '../tests/utils.js'
 import { HexString } from '../types/index.js'
 import { MessageType } from '../types/transaction.js'
 import type { OperationStatus, TransactionContext } from '../types/transaction.js'
-import { encodeBatchCalldata, wrapTransaction } from './transaction.js'
+import { ChainMismatchError, encodeBatchCalldata, wrapTransaction } from './transaction.js'
 
 const ABI = parseAbi(['function setValue(uint256 v)', 'function multicall(bytes[] data) payable'])
 
@@ -182,5 +182,22 @@ describe('wrapTransaction broadcast path', () => {
     expect(simulateCalls.firstCall.args[0].calls[0]).to.deep.equal({ to: contract, data, value: 0n })
     expect(simulateCalls.firstCall.args[0].account).to.equal(signingAddress)
     expect(statuses).to.deep.equal([{ type: 'TransactionSimulation', title: 'Simulate single', result: ['ok'] }])
+  })
+
+  it('refuses to broadcast when the wallet is on another chain and throws ChainMismatchError', async () => {
+    const { ctx, sendTransaction } = makeCtx()
+    ;(ctx.walletClient as any).getChainId = sinon.stub().resolves(mainnet.id)
+    const data = encodeFunctionData({ abi: ABI, functionName: 'setValue', args: [1n] })
+
+    let caught: unknown
+    try {
+      await drain(wrapTransaction('Wrong chain', ctx, { contract, data }))
+    } catch (e) {
+      caught = e
+    }
+
+    expect(caught).to.be.instanceOf(ChainMismatchError)
+    expect(caught).to.include({ name: 'ChainMismatchError', expected: sepolia.id, actual: mainnet.id })
+    expect(sendTransaction.called).to.equal(false)
   })
 })
