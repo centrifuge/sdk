@@ -3,13 +3,13 @@ import { encodeAbiParameters, encodeFunctionData, getContract, maxUint128 } from
 import { ABI } from '../abi/index.js'
 import type { Centrifuge } from '../Centrifuge.js'
 import { NULL_ADDRESS, SAFE_PROXY_BYTECODE } from '../constants.js'
-import { HexString, ProtocolContracts } from '../types/index.js'
+import { HexString } from '../types/index.js'
 import { MessageType, MessageTypeWithSubType, VaultUpdateKind } from '../types/transaction.js'
 import type { OperationStatus, TransactionContext } from '../types/transaction.js'
 import { addMessageForEnabledTarget, assertCrosschainMessagingEnabled } from '../utils/crosschainHotfix.js'
 import { addressesEqual } from '../utils/addresses.js'
 import { addressToBytes32, encode } from '../utils/index.js'
-import { readPoolAdapters, sameAdapters, waitForPoolAdapters, type AdapterReader } from '../utils/poolAdapters.js'
+import { isPoolWired, waitForPoolAdapters, type PoolAdapterState } from '../utils/poolAdapters.js'
 import { makeThenable, repeatOnEvents } from '../utils/rx.js'
 import { doTransaction, parseEventLogs, wrapTransaction } from '../utils/transaction.js'
 import type { Query } from '../types/query.js'
@@ -94,8 +94,21 @@ export enum VaultManagerTrustedCall {
   MaxReserve,
 }
 
-/** Registry fields naming the bridge adapters a pool can be wired through, hub and spoke alike. */
-const ADAPTER_NAMES = ['layerZeroAdapter', 'axelarAdapter', 'chainlinkAdapter', 'wormholeAdapter'] as const
+/** The indexer's name for the LayerZero adapter, the only one `deploy` wires a pool through today. */
+const LAYER_ZERO_ADAPTER_NAME = 'layerZero'
+
+/** The indexer rows behind a pool's adapter wiring in one direction. */
+const POOL_ADAPTERS_QUERY = `query ($poolId: BigInt!, $local: String!, $remote: String!) {
+  poolAdapters(where: { poolId: $poolId, localCentrifugeId: $local, remoteCentrifugeId: $remote }) {
+    items {
+      isEnabled
+      crosschainInProgress
+      adapter {
+        name
+      }
+    }
+  }
+}`
 
 /**
  * Query and interact with a pool on a specific network.
@@ -888,35 +901,38 @@ export class PoolNetwork extends Entity {
     return newestOnOffRamp(managers)?.address ?? null
   }
 
-  /**
-   * Whether pool messages can flow between the hub and this network. `Hub.setAdapters` configures
-   * the hub's MultiAdapter at once and the spoke's through a `SetPoolAdapters` message, so the two
-   * sides can disagree: an undelivered message leaves the spoke empty or on a previous set, a spoke
-   * set up by ops may not match the hub. The spoke must hold the counterparts of the hub's adapters,
-   * resolved by name through the registry. A hub adapter the registry does not know is respected as
-   * is; one it knows but the spoke registry lacks cannot have a counterpart, so the pool is not wired.
-   */
-  async #hasPoolAdapters(
-    hubClient: AdapterReader,
-    hubContext: ProtocolContracts,
-    spokeClient: AdapterReader,
-    spokeContext: ProtocolContracts
-  ): Promise<boolean> {
-    // Same-chain messages never go through adapters.
+  /** The pool's adapter rows the indexer holds for one direction, fetched once, outside the memoised polling query. */
+  async #readPoolAdapters(
+    localCentrifugeId: CentrifugeId,
+    remoteCentrifugeId: CentrifugeId
+  ): Promise<PoolAdapterState[]> {
+    const vars = {
+      poolId: this.pool.id.toString(),
+      local: String(localCentrifugeId),
+      remote: String(remoteCentrifugeId),
+    }
+    const { poolAdapters } = await firstValueFrom(
+      this._root._getIndexerObservable<{
+        poolAdapters: {
+          items: { isEnabled: boolean | null; crosschainInProgress: string | null; adapter: { name: string } | null }[]
+        }
+      }>(POOL_ADAPTERS_QUERY, vars)
+    )
+    return poolAdapters.items.map((row) => ({
+      name: row.adapter?.name ?? 'unknown',
+      isEnabled: !!row.isEnabled,
+      crosschainInProgress: row.crosschainInProgress ?? null,
+    }))
+  }
+
+  /** See {@link isPoolWired}; same-chain messages never go through adapters. */
+  async #hasPoolAdapters(): Promise<boolean> {
     if (this.pool.centrifugeId === this.centrifugeId) return true
     const [onHub, onSpoke] = await Promise.all([
-      readPoolAdapters(hubClient, hubContext.multiAdapter, this.centrifugeId, this.pool.id.raw),
-      readPoolAdapters(spokeClient, spokeContext.multiAdapter, this.pool.centrifugeId, this.pool.id.raw),
+      this.#readPoolAdapters(this.pool.centrifugeId, this.centrifugeId),
+      this.#readPoolAdapters(this.centrifugeId, this.pool.centrifugeId),
     ])
-    if (onHub.length === 0 || onSpoke.length === 0) return false
-    const names = onHub.map((address) =>
-      ADAPTER_NAMES.find((key) => hubContext[key] && addressesEqual(hubContext[key]!, address))
-    )
-    if (names.some((name) => name === undefined)) return true
-    return sameAdapters(
-      onSpoke,
-      names.map((name) => spokeContext[name!])
-    )
+    return isPoolWired(onHub, onSpoke)
   }
 
   /**
@@ -949,9 +965,9 @@ export class PoolNetwork extends Entity {
    *
    * ## First activation on a network
    *
-   * While the pool has no adapters wired between the hub and this network (read
-   * from both MultiAdapters), the signing path sends TWO transactions: `setAdapters`
-   * alone, then, once the destination holds exactly that adapter set (an
+   * While the indexer shows no adapter wiring between the hub and this network
+   * (both directions live, nothing in flight), the signing path sends TWO transactions:
+   * `setAdapters` alone, then, once the indexer shows the destination holding exactly that set (an
    * `AwaitingCrosschainDelivery` status is emitted while it waits, typically some
    * minutes), the pool messages. Batching them in one transaction made the pool
    * messages reach the destination before its adapter configuration and fail with
@@ -970,12 +986,11 @@ export class PoolNetwork extends Entity {
     return this._transact(async function* (ctx) {
       assertCrosschainMessagingEnabled(self.centrifugeId)
 
-      const [hubContext, spokeContext, details, spokeClient, hubClient] = await Promise.all([
+      const [hubContext, spokeContext, details, spokeClient] = await Promise.all([
         self._root._protocolAddresses(self.pool.centrifugeId),
         self._root._protocolAddresses(self.centrifugeId),
         self.details(),
         self._root.getClient(self.centrifugeId),
-        self._root.getClient(self.pool.centrifugeId),
       ])
       const {
         hub,
@@ -991,7 +1006,6 @@ export class PoolNetwork extends Entity {
         syncManager,
         asyncRequestManager,
         batchRequestManager,
-        multiAdapter,
         layerZeroAdapter: remoteLzAdapter,
         // axelarAdapter: remoteAxelarAdapter, // TODO: hotfix - always use LayerZero 1/1
         // wormholeAdapter: remoteWhAdapter,
@@ -1011,7 +1025,7 @@ export class PoolNetwork extends Entity {
             functionName: 'requestManager',
             args: [self.pool.id.raw],
           }),
-          self.#hasPoolAdapters(hubClient, hubContext, spokeClient, spokeContext),
+          self.#hasPoolAdapters(),
         ])
 
       const batch: HexString[] = []
@@ -1020,7 +1034,7 @@ export class PoolNetwork extends Entity {
       // The destination's MultiAdapter rejects every message of a pool it has no adapters for.
       // `setAdapters` travels through the global adapters and the pool messages through the
       // pool's own, so sending both in one transaction races and the pool messages lose.
-      // Send `setAdapters` alone and wait for the destination to hold exactly that set.
+      // Send `setAdapters` alone and wait for the indexer to show the destination holding exactly that set.
       if (!hasPoolAdapters) {
         if (!localLzAdapter || !remoteLzAdapter) {
           throw new Error(
@@ -1055,18 +1069,20 @@ export class PoolNetwork extends Entity {
           contract: hub,
           messages: { [self.centrifugeId]: setAdaptersMessages },
         })
+        if (!confirmed) throw new Error('Set pool adapters did not confirm')
         yield {
           id: confirmed.id,
           type: 'AwaitingCrosschainDelivery',
           title: 'Set pool adapters',
-          hash: confirmed.hash,
+          hash: confirmed.receipt.transactionHash,
           fromCentrifugeId: self.pool.centrifugeId,
           toCentrifugeId: self.centrifugeId,
           messageTypes: setAdaptersMessages,
         } satisfies OperationStatus
-        await waitForPoolAdapters(spokeClient, multiAdapter, self.pool.centrifugeId, self.pool.id.raw, [
-          remoteLzAdapter,
-        ])
+        await waitForPoolAdapters(
+          () => self.#readPoolAdapters(self.centrifugeId, self.pool.centrifugeId),
+          [LAYER_ZERO_ADAPTER_NAME]
+        )
       }
 
       // notifyPool must come before the other pool-related messages, because they depend on the pool
