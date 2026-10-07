@@ -4,13 +4,17 @@ import type { HexString } from '../types/index.js'
 import { addressesEqual } from './addresses.js'
 import type { CentrifugeId } from './types.js'
 
-/** The slice of a chain client the adapter reads need. */
+/**
+ * The slice of a chain client the adapter reads need.
+ * @internal
+ */
 export type AdapterReader = Pick<PublicClient, 'readContract'>
 
 /**
  * The adapters a `MultiAdapter` uses for messages of `poolId` exchanged with `withCentrifugeId`,
  * in configuration order. Empty when the pool has no adapters on that chain yet; the MultiAdapter
  * has no fallback to the global adapters for pool messages.
+ * @internal
  */
 export async function readPoolAdapters(
   client: AdapterReader,
@@ -40,7 +44,10 @@ export async function readPoolAdapters(
   )
 }
 
-/** Same adapters in the same order, ignoring address case. */
+/**
+ * Same adapters in the same order, ignoring address case.
+ * @internal
+ */
 export function sameAdapters(a: readonly (HexString | undefined)[], b: readonly (HexString | undefined)[]) {
   return a.length === b.length && a.every((address, i) => !!address && !!b[i] && addressesEqual(address, b[i]!))
 }
@@ -51,6 +58,7 @@ export function sameAdapters(a: readonly (HexString | undefined)[], b: readonly 
  * configuration, including one left by an earlier setup, does not count: the pool messages that
  * follow are routed through `expected` and the destination only accepts them from that set.
  * A failed read is retried on the next poll; the wait only rejects at `timeoutMs`.
+ * @internal
  */
 export async function waitForPoolAdapters(
   client: AdapterReader,

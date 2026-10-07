@@ -1,7 +1,7 @@
 import { expect } from 'chai'
 import sinon from 'sinon'
 import type { HexString } from '../types/index.js'
-import { waitForPoolAdapters } from './poolAdapters.js'
+import { readPoolAdapters, sameAdapters, waitForPoolAdapters } from './poolAdapters.js'
 
 const MULTI_ADAPTER = '0x35c837f0a54b715a23d193e1476bfc9bc30073be' as HexString
 const LZ = '0xd517bc7ba17271a8d87be7355b2523bf5c750295' as HexString
@@ -77,5 +77,48 @@ describe('waitForPoolAdapters', () => {
     const error = await outcome
     expect(error?.message).to.contain('could not be read')
     expect(error?.message).to.contain('rpc down')
+  })
+})
+
+describe('readPoolAdapters', () => {
+  it('returns an empty list when the pool has no adapters, without reading entries', async () => {
+    const { client, reads } = multiAdapterReads([[]])
+    const entryReads = sinon.spy(client, 'readContract')
+    expect(await readPoolAdapters(client, MULTI_ADAPTER, 1, POOL_ID)).to.deep.equal([])
+    expect(reads()).to.equal(1)
+    expect(entryReads.callCount).to.equal(1)
+  })
+
+  it('reads quorum, then one entry per index, in configuration order', async () => {
+    const { client } = multiAdapterReads([[LZ, OTHER]])
+    const calls: { functionName: string; args: readonly unknown[] }[] = []
+    const original = client.readContract
+    client.readContract = async (call: { functionName: string; args: readonly unknown[] }) => {
+      calls.push(call)
+      return original(call)
+    }
+    expect(await readPoolAdapters(client, MULTI_ADAPTER, 1, POOL_ID)).to.deep.equal([LZ, OTHER])
+    expect(calls.map((c) => c.functionName)).to.deep.equal(['quorum', 'adapters', 'adapters'])
+    expect(calls.slice(1).map((c) => c.args[2])).to.deep.equal([0n, 1n])
+    expect(calls.every((c) => c.args[0] === 1 && c.args[1] === POOL_ID)).to.equal(true)
+  })
+})
+
+describe('sameAdapters', () => {
+  const lzChecksummed = '0xD517BC7ba17271a8D87BE7355B2523bF5c750295' as HexString
+
+  it('ignores address case', () => {
+    expect(sameAdapters([LZ], [lzChecksummed])).to.equal(true)
+  })
+
+  it('requires the same length and the same order', () => {
+    expect(sameAdapters([LZ], [LZ, OTHER])).to.equal(false)
+    expect(sameAdapters([LZ, OTHER], [OTHER, LZ])).to.equal(false)
+    expect(sameAdapters([], [])).to.equal(true)
+  })
+
+  it('never matches a missing entry', () => {
+    expect(sameAdapters([LZ], [undefined])).to.equal(false)
+    expect(sameAdapters([undefined], [undefined])).to.equal(false)
   })
 })
