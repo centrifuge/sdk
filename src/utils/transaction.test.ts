@@ -169,4 +169,18 @@ describe('wrapTransaction broadcast path', () => {
     const call = simulateCalls.firstCall.args[0].calls[0]
     expect(call).to.deep.include({ to: contract, functionName: 'multicall', args: [[data]] })
   })
+
+  it('simulates a single call directly (no multicall wrapper) and yields a TransactionSimulation', async () => {
+    const { ctx } = makeCtx()
+    const simulateCalls = sinon.stub().resolves({ results: ['ok'] })
+    ;(ctx.publicClient as any).simulateCalls = simulateCalls
+    const data = encodeFunctionData({ abi: ABI, functionName: 'setValue', args: [7n] })
+
+    const statuses = await drain(wrapTransaction('Simulate single', ctx, { contract, data }, { simulate: true }))
+
+    expect(simulateCalls.calledOnce).to.equal(true)
+    expect(simulateCalls.firstCall.args[0].calls[0]).to.deep.equal({ to: contract, data, value: 0n })
+    expect(simulateCalls.firstCall.args[0].account).to.equal(signingAddress)
+    expect(statuses).to.deep.equal([{ type: 'TransactionSimulation', title: 'Simulate single', result: ['ok'] }])
+  })
 })

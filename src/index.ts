@@ -60,6 +60,7 @@ export type {
   BuildOnlyOptions,
   BuiltCall,
   BuiltTransaction,
+  DeployedOnOfframpManagerStatus,
   DeployedOnchainPMStatus,
   EIP1193ProviderLike,
   OperationAwaitingCrosschainDeliveryStatus,

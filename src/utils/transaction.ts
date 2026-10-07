@@ -152,47 +152,13 @@ export async function* wrapTransaction(
       return result
     }
 
-    if (options.simulate) {
-      let simulationResult
+    const call =
+      data.length === 1 && !alwaysBatch
+        ? { to: contract, data: data[0], value }
+        : { to: contract, abi: ABI.Multicall, functionName: 'multicall', args: [data], value }
+    const { results } = await ctx.publicClient.simulateCalls({ account: ctx.signingAddress, calls: [call] })
 
-      if (data.length === 1 && !alwaysBatch) {
-        const { results } = await ctx.publicClient.simulateCalls({
-          account: ctx.signingAddress,
-          calls: [
-            {
-              to: contract,
-              data: data[0],
-              value,
-            },
-          ],
-        })
-
-        simulationResult = { results }
-      } else {
-        const { results } = await ctx.publicClient.simulateCalls({
-          account: ctx.signingAddress,
-          calls: [
-            {
-              to: contract,
-              abi: ABI.Multicall,
-              functionName: 'multicall',
-              args: [data],
-              value,
-            },
-          ],
-        })
-
-        simulationResult = { results }
-      }
-
-      yield {
-        type: 'TransactionSimulation',
-        title,
-        result: simulationResult.results,
-      } satisfies OperationStatus
-
-      return
-    }
+    yield { type: 'TransactionSimulation', title, result: results } satisfies OperationStatus
   }
 }
 
