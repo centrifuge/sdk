@@ -16,6 +16,7 @@ import { SAFE_PROXY_BYTECODE } from '../constants.js'
 import type { HexString } from '../types/index.js'
 import type {
   MessageTypeWithSubType,
+  OperationConfirmedStatus,
   OperationStatus,
   SafeMultisigTransactionResponse,
   Signer,
@@ -111,7 +112,7 @@ export async function* wrapTransaction(
   options: {
     simulate: boolean
   } = { simulate: false }
-): AsyncGenerator<OperationStatus | BatchTransactionData> {
+): AsyncGenerator<OperationStatus | BatchTransactionData, OperationConfirmedStatus | undefined> {
   const data = Array.isArray(data_) ? data_ : [data_]
   if (ctx.isBatching) {
     yield {
@@ -151,47 +152,13 @@ export async function* wrapTransaction(
       return result
     }
 
-    if (options.simulate) {
-      let simulationResult
+    const call =
+      data.length === 1 && !alwaysBatch
+        ? { to: contract, data: data[0], value }
+        : { to: contract, abi: ABI.Multicall, functionName: 'multicall', args: [data], value }
+    const { results } = await ctx.publicClient.simulateCalls({ account: ctx.signingAddress, calls: [call] })
 
-      if (data.length === 1 && !alwaysBatch) {
-        const { results } = await ctx.publicClient.simulateCalls({
-          account: ctx.signingAddress,
-          calls: [
-            {
-              to: contract,
-              data: data[0],
-              value,
-            },
-          ],
-        })
-
-        simulationResult = { results }
-      } else {
-        const { results } = await ctx.publicClient.simulateCalls({
-          account: ctx.signingAddress,
-          calls: [
-            {
-              to: contract,
-              abi: ABI.Multicall,
-              functionName: 'multicall',
-              args: [data],
-              value,
-            },
-          ],
-        })
-
-        simulationResult = { results }
-      }
-
-      yield {
-        type: 'TransactionSimulation',
-        title,
-        result: simulationResult.results,
-      } satisfies OperationStatus
-
-      return
-    }
+    yield { type: 'TransactionSimulation', title, result: results } satisfies OperationStatus
   }
 }
 
@@ -199,7 +166,7 @@ export async function* doTransaction(
   title: string,
   ctx: TransactionContext,
   transactionCallback: () => Promise<HexString>
-): AsyncGenerator<OperationStatus> {
+): AsyncGenerator<OperationStatus, OperationConfirmedStatus> {
   const id = Math.random().toString(36).substring(2)
   yield { id, type: 'SigningTransaction', title }
   const hash = await transactionCallback()
@@ -226,7 +193,7 @@ async function* waitForSafeTransaction(
   title: string,
   hash: HexString,
   ctx: TransactionContext
-): AsyncGenerator<OperationStatus> {
+): AsyncGenerator<OperationStatus, OperationConfirmedStatus> {
   const chainId = await ctx.root._idToChain(ctx.centrifugeId)
   // First check if tx is actually a safe tx
   let safeTx = await withRetry(() => getSafeTransaction(hash, chainId), {
@@ -234,19 +201,19 @@ async function* waitForSafeTransaction(
     delay: 5000,
   })
 
-  if (safeTx.isExecuted) return safeTx
-
-  safeTx = await withRetry(
-    async () => {
-      const status = await getSafeTransaction(hash, chainId)
-      if (status.isExecuted) return status
-      throw new Error(`Timeout waiting for safe transaction to be executed. Transaction hash: ${hash}`)
-    },
-    {
-      retryCount: 360,
-      delay: 10000,
-    }
-  )
+  if (!safeTx.isExecuted) {
+    safeTx = await withRetry(
+      async () => {
+        const status = await getSafeTransaction(hash, chainId)
+        if (status.isExecuted) return status
+        throw new Error(`Timeout waiting for safe transaction to be executed. Transaction hash: ${hash}`)
+      },
+      {
+        retryCount: 360,
+        delay: 10000,
+      }
+    )
+  }
 
   const receipt = await ctx.publicClient.waitForTransactionReceipt({ hash: safeTx.transactionHash as HexString })
   const result = { id, type: 'TransactionConfirmed', title, hash, receipt } as const

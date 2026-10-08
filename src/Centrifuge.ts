@@ -2,8 +2,10 @@ import {
   combineLatest,
   defer,
   filter,
+  finalize,
   first,
   firstValueFrom,
+  from,
   identity,
   isObservable,
   map,
@@ -1314,7 +1316,7 @@ export class Centrifuge {
     centrifugeId: CentrifugeId
   ): Transaction {
     const self = this
-    async function* transact() {
+    async function* transact(signal: AbortSignal) {
       const buildOnly = self.#buildOnly.get($tx)
       // Build-only mode: produce unsigned calldata via wrapTransaction's batching
       // branch. No signer, wallet client, address resolution, chain switching, or
@@ -1339,6 +1341,7 @@ export class Centrifuge {
         const transaction = transactionCallback({
           isBatching: true,
           isBuilding: true,
+          signal,
           signingAddress: buildOnly.fromAddress,
           chain,
           centrifugeId,
@@ -1400,6 +1403,7 @@ export class Centrifuge {
 
       const transaction = transactionCallback({
         isBatching,
+        signal,
         signingAddress: address as HexString,
         chain,
         centrifugeId,
@@ -1416,7 +1420,10 @@ export class Centrifuge {
         throw new Error('Invalid arguments')
       }
     }
-    const $tx = defer(transact).pipe(mergeMap((d) => (isObservable(d) ? d : of(d)))) as Transaction
+    const $tx = defer(() => {
+      const controller = new AbortController()
+      return from(transact(controller.signal)).pipe(finalize(() => controller.abort()))
+    }).pipe(mergeMap((d) => (isObservable(d) ? d : of(d)))) as Transaction
     makeThenable($tx, true)
     Object.assign($tx, {
       centrifugeId,
