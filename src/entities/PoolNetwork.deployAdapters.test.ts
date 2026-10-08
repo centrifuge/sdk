@@ -1,5 +1,5 @@
 import { expect } from 'chai'
-import { lastValueFrom, Observable, of, toArray } from 'rxjs'
+import { isObservable, lastValueFrom, Observable, of, toArray } from 'rxjs'
 import sinon from 'sinon'
 import { decodeFunctionData } from 'viem'
 import { ABI } from '../abi/index.js'
@@ -12,12 +12,9 @@ import { Pool } from './Pool.js'
 import { PoolNetwork } from './PoolNetwork.js'
 
 /**
- * `PoolNetwork.deploy` on a network the pool is not wired to yet. The destination MultiAdapter
- * rejects every message of a pool it has no adapters for, and `setAdapters` travels through the
- * global adapters while the pool messages travel through the pool's own LayerZero 1/1, so batching
- * them in one transaction made the pool messages arrive first and fail. These cases pin the split.
- * Whether the pool is wired, and when the spoke has received the configuration, is read from the
- * indexer's pool adapter rows. No fork, no indexer: a fake root with per-chain clients.
+ * The destination MultiAdapter rejects every message of a pool it has no adapters for, so
+ * `setAdapters` must be delivered before the pool messages are sent. These cases pin that split,
+ * and the decisions `deploy` takes from the indexer's pool adapter rows, against a fake root.
  */
 
 const HUB = 1
@@ -74,11 +71,16 @@ function createSubject({
     }),
   }
   const sendTransaction = sinon.stub()
-  sendTransaction.onFirstCall().resolves(HASH_1).onSecondCall().resolves(HASH_2)
+  sendTransaction.resolves(HASH_2)
+  sendTransaction.onFirstCall().resolves(HASH_1)
   const walletClient = { sendTransaction, getChainId: async () => 1 }
   const statuses: any[] = []
 
+  const batchTransactions = sinon.stub().callsFake((title: string) => of({ type: 'Batched', title }))
+
   const root: any = {
+    config: { indexerUrl: 'https://indexer.test/' },
+    batchTransactions,
     _query: (_keys: unknown, callback: () => unknown) => callback(),
     _protocolAddresses: async (centrifugeId: number) => (centrifugeId === HUB ? hubContext : spokeContext),
     getClient: async () => client,
@@ -100,22 +102,46 @@ function createSubject({
         },
       })
     },
-    _transact: (callback: (ctx: any) => AsyncGenerator<unknown>, centrifugeId: number) => {
+    // Mirrors `Centrifuge._transact`: a callback may return a generator or an observable, an
+    // observable yielded by the generator is flattened, and the signal aborts on unsubscription.
+    _transact: (callback: (ctx: any) => AsyncGenerator<unknown> | Observable<unknown>, centrifugeId: number) => {
       const tx = new Observable<unknown>((subscriber) => {
+        const controller = new AbortController()
+        // Items of a nested observable were already recorded by the `_transact` that produced them.
+        const relay = (nested: Observable<unknown>) =>
+          lastValueFrom(nested.pipe(toArray())).then((items) => items.forEach((item) => subscriber.next(item)))
         ;(async () => {
           try {
             const ctx = signing
-              ? { isBatching: false, signingAddress, centrifugeId, walletClient, publicClient: client, root }
-              : { isBatching: true, signingAddress, centrifugeId, walletClient, root }
-            for await (const item of callback(ctx)) {
-              statuses.push(item)
-              subscriber.next(item)
+              ? {
+                  isBatching: false,
+                  signal: controller.signal,
+                  signingAddress,
+                  centrifugeId,
+                  walletClient,
+                  publicClient: client,
+                  root,
+                }
+              : { isBatching: true, signal: controller.signal, signingAddress, centrifugeId, walletClient, root }
+            const result = callback(ctx)
+            if (isObservable(result)) {
+              await relay(result)
+            } else {
+              for await (const item of result) {
+                if (isObservable(item)) {
+                  await relay(item)
+                } else {
+                  statuses.push(item)
+                  subscriber.next(item)
+                }
+              }
             }
             subscriber.complete()
           } catch (error) {
             subscriber.error(error)
           }
         })()
+        return () => controller.abort()
       })
       return Object.assign(tx, { centrifugeId })
     },
@@ -123,8 +149,10 @@ function createSubject({
 
   const pool = new Pool(root, poolId.raw)
   const poolNetwork = new PoolNetwork(root, pool, SPOKE)
-  sinon.stub(poolNetwork, 'details').returns(makeThenable(of({ isActive: false, activeShareClasses: [] })) as any)
-  return { poolNetwork, sendTransaction, statuses, indexerReads }
+  sinon
+    .stub(PoolNetwork.prototype, 'details')
+    .returns(makeThenable(of({ isActive: false, activeShareClasses: [] })) as any)
+  return { pool, poolNetwork, sendTransaction, batchTransactions, statuses, indexerReads }
 }
 
 async function emitted(tx: unknown) {
@@ -178,18 +206,66 @@ describe('PoolNetwork.deploy: pool adapters are set before the pool messages', (
     }
   })
 
-  it('does not skip setAdapters while the spoke is still receiving the configuration', async () => {
+  it('refuses to build while the spoke is still receiving the configuration', async () => {
     // The indexer creates the spoke row when the hub sends the message and marks it in flight
     // until the spoke executes it; a non-empty row is not a delivered one.
     const { poolNetwork } = createSubject({ adapters: { [HUB]: [LZ_LIVE], [SPOKE]: [LZ_IN_FLIGHT] } })
     const error = await rejection(deploy(poolNetwork))
-    expect(error.message).to.contain('has no adapters')
+    expect(error.message).to.contain('still receiving')
   })
 
-  it('does not skip setAdapters when the spoke holds a different set than the hub', async () => {
-    const { poolNetwork } = createSubject({ adapters: { [HUB]: [LZ_LIVE], [SPOKE]: [AXELAR_LIVE] } })
+  it('waits for a configuration already in flight instead of sending it again', async () => {
+    let spokeReads = 0
+    const { poolNetwork, sendTransaction, statuses } = createSubject({
+      signing: true,
+      adapters: { [HUB]: [LZ_LIVE], [SPOKE]: () => (spokeReads++ === 0 ? [LZ_IN_FLIGHT] : [LZ_LIVE]) },
+    })
+
+    await emitted(deploy(poolNetwork))
+
+    expect(sendTransaction.callCount).to.equal(1)
+    expect(hubCalls(sendTransaction.firstCall.args[0].data)).to.not.include('setAdapters')
+    const awaiting = statuses.find((s) => s.type === 'AwaitingCrosschainDelivery')
+    expect(awaiting.id).to.be.a('string').and.not.empty
+    expect(awaiting.hash).to.equal(undefined)
+    expect(statuses.map((s) => s.type).indexOf('AwaitingCrosschainDelivery')).to.be.lessThan(
+      statuses.map((s) => s.type).indexOf('SigningTransaction')
+    )
+  })
+
+  it('sends setAdapters again when the hub already holds the LayerZero set but the spoke never got it', async () => {
+    let spokeReads = 0
+    const { poolNetwork, sendTransaction } = createSubject({
+      signing: true,
+      adapters: { [HUB]: [LZ_LIVE], [SPOKE]: () => (spokeReads++ === 0 ? [AXELAR_LIVE] : [LZ_LIVE]) },
+    })
+    await emitted(deploy(poolNetwork))
+    expect(sendTransaction.callCount).to.equal(2)
+    expect(hubCalls(sendTransaction.firstCall.args[0].data)).to.deep.equal(['setAdapters'])
+  })
+
+  it('does not overwrite a hub set that is not the LayerZero one the SDK configures', async () => {
+    for (const signing of [false, true]) {
+      const { poolNetwork, sendTransaction } = createSubject({
+        signing,
+        adapters: { [HUB]: [AXELAR_LIVE], [SPOKE]: [] },
+      })
+      const error = await rejection(deploy(poolNetwork))
+      expect(error.message).to.contain('does not overwrite')
+      expect(error.message).to.contain('[axelar]')
+      expect(sendTransaction.callCount).to.equal(0)
+      sinon.restore()
+    }
+  })
+
+  it('names the indexer and the pool when the adapter rows cannot be read', async () => {
+    const { poolNetwork } = createSubject({ adapters: {} })
+    const boom = new Observable((subscriber) => subscriber.error([{ message: 'upstream 502' }]))
+    ;(poolNetwork as any)._root._getIndexerObservable = () => boom
     const error = await rejection(deploy(poolNetwork))
-    expect(error.message).to.contain('has no adapters')
+    expect(error.message).to.contain('https://indexer.test/')
+    expect(error.message).to.contain(`pool "${poolId}"`)
+    expect(error.message).to.contain('upstream 502')
   })
 
   it('compares adapters by their indexer name, so an unknown adapter wired on both sides is respected', async () => {
@@ -245,6 +321,26 @@ describe('PoolNetwork.deploy: pool adapters are set before the pool messages', (
     expect(spokeReads).to.equal(answers.length)
   })
 
+  it('stops polling the indexer when the subscriber goes away mid-wait', async () => {
+    let spokeReads = 0
+    const { poolNetwork } = createSubject({
+      signing: true,
+      adapters: { [HUB]: [], [SPOKE]: () => (spokeReads++, [LZ_IN_FLIGHT]) },
+    })
+    const clock = sinon.useFakeTimers({ toFake: ['setTimeout', 'Date'] })
+    try {
+      const subscription = deploy(poolNetwork).subscribe({ error: () => {} })
+      await clock.tickAsync(25_000)
+      const readsBefore = spokeReads
+      expect(readsBefore).to.be.greaterThan(1)
+      subscription.unsubscribe()
+      await clock.tickAsync(60_000)
+      expect(spokeReads).to.equal(readsBefore)
+    } finally {
+      clock.restore()
+    }
+  })
+
   it('still carries the setAdapters id and hash when a Safe already executed it', async () => {
     // `doTransaction` takes the Safe path when the signer is a Safe proxy; an already executed
     // Safe transaction must still produce the confirmed status the wait is keyed on.
@@ -266,5 +362,53 @@ describe('PoolNetwork.deploy: pool adapters are set before the pool messages', (
     expect(awaiting.id).to.be.a('string').and.not.empty
     expect(awaiting.hash).to.equal(HASH_1)
     expect(statuses.filter((s) => s.type === 'TransactionConfirmed')).to.have.length(2)
+  })
+})
+
+describe('Pool.deployToNetworks', () => {
+  afterEach(() => sinon.restore())
+
+  const SPOKE_2 = 3
+  const twoNetworks = (pool: Pool) =>
+    pool.deployToNetworks([
+      { centrifugeId: SPOKE, shareClasses: [{ id: scId, hook: OTHER }] },
+      { centrifugeId: SPOKE_2, shareClasses: [{ id: scId, hook: OTHER }] },
+    ])
+
+  it('batches the deployments into one transaction when every network is wired', async () => {
+    const { pool, batchTransactions, sendTransaction } = createSubject({
+      signing: true,
+      adapters: { [HUB]: [LZ_LIVE], [SPOKE]: [LZ_LIVE], [SPOKE_2]: [LZ_LIVE] },
+    })
+    const items = (await emitted(twoNetworks(pool))) as any[]
+    expect(batchTransactions.callCount).to.equal(1)
+    expect(batchTransactions.firstCall.args[1]).to.have.length(2)
+    expect(items.map((i) => i.type)).to.deep.equal(['Batched'])
+    expect(sendTransaction.callCount).to.equal(0)
+  })
+
+  it('runs the deployments one network at a time when one of them still needs its adapters', async () => {
+    let spoke2Reads = 0
+    const { pool, batchTransactions, sendTransaction, statuses } = createSubject({
+      signing: true,
+      adapters: {
+        [HUB]: [LZ_LIVE],
+        [SPOKE]: [LZ_LIVE],
+        [SPOKE_2]: () => (spoke2Reads++ < 2 ? [] : [LZ_LIVE]),
+      },
+    })
+    await emitted(twoNetworks(pool))
+    expect(batchTransactions.callCount).to.equal(0)
+    // SPOKE: the pool messages. SPOKE_2: setAdapters, then the pool messages.
+    expect(sendTransaction.callCount).to.equal(3)
+    expect(hubCalls(sendTransaction.firstCall.args[0].data)).to.not.include('setAdapters')
+    expect(hubCalls(sendTransaction.secondCall.args[0].data)).to.deep.equal(['setAdapters'])
+    expect(statuses.filter((s) => s.type === 'AwaitingCrosschainDelivery')).to.have.length(1)
+  })
+
+  it('refuses to be batched or built', async () => {
+    const { pool } = createSubject({ adapters: { [HUB]: [LZ_LIVE], [SPOKE]: [LZ_LIVE], [SPOKE_2]: [LZ_LIVE] } })
+    const error = await rejection(twoNetworks(pool))
+    expect(error.message).to.contain('cannot be batched or built')
   })
 })

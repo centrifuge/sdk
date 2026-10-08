@@ -1,4 +1,4 @@
-import { catchError, combineLatest, defer, firstValueFrom, map, of, switchMap, timeout } from 'rxjs'
+import { catchError, combineLatest, concat, defer, firstValueFrom, map, of, switchMap, timeout } from 'rxjs'
 import { encodeFunctionData, fromHex, getContract, toHex } from 'viem'
 import { ABI } from '../abi/index.js'
 import type { Centrifuge } from '../Centrifuge.js'
@@ -356,7 +356,14 @@ export class Pool extends Entity {
   }
 
   /**
-   * Deploy share classes to multiple networks in a single hub transaction.
+   * Deploy share classes to several networks from the hub.
+   *
+   * Signs a single transaction when every target is already wired to the pool (its adapters set and
+   * delivered, as the indexer reports). A target that is not wired first needs `setAdapters` and
+   * the wait for its delivery (see {@link PoolNetwork.deploy}), which cannot share a transaction
+   * with the pool messages, so the deployments then run one network at a time, each with its own
+   * transactions. With several targets this cannot be batched or built; build each network's
+   * `deploy` instead.
    * @param deployments - A list of target networks with share classes to deploy
    */
   deployToNetworks(
@@ -369,21 +376,34 @@ export class Pool extends Entity {
       throw new Error('No share classes to deploy')
     }
 
-    const transactions = deployments
-      .filter((d) => d.shareClasses.length > 0)
-      .map((deployment) => {
-        return new PoolNetwork(this._root, this, deployment.centrifugeId).deploy(deployment.shareClasses, [])
-      })
-
-    if (transactions.length === 0) {
+    const targets = deployments.filter((d) => d.shareClasses.length > 0)
+    if (targets.length === 0) {
       throw new Error('No share classes to deploy')
     }
 
-    if (transactions.length === 1) {
-      return transactions[0]
+    const network = (centrifugeId: CentrifugeId) => new PoolNetwork(this._root, this, centrifugeId)
+    const deploys = () => targets.map((t) => network(t.centrifugeId).deploy(t.shareClasses, []))
+
+    if (targets.length === 1) {
+      return deploys()[0]!
     }
 
-    return this._root.batchTransactions('Deploy share classes and vaults', transactions)
+    const self = this
+    return this._root._transact((ctx) => {
+      if (ctx.isBatching) {
+        throw new Error(
+          `Deploying pool "${self.id}" to several networks cannot be batched or built as one transaction: a ` +
+            `network that is not wired yet first needs its adapters set and delivered. Batch or build each ` +
+            `network's deploy() separately.`
+        )
+      }
+      return defer(async () => {
+        const wired = await Promise.all(targets.map((t) => network(t.centrifugeId)._hasPoolAdapters()))
+        return wired.every(Boolean)
+          ? self._root.batchTransactions('Deploy share classes and vaults', deploys())
+          : concat(...deploys())
+      }).pipe(switchMap((tx) => tx))
+    }, this.centrifugeId)
   }
 
   /**
