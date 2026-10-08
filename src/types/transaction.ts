@@ -10,7 +10,7 @@ import {
   type WalletClient,
 } from 'viem'
 import type { Centrifuge } from '../Centrifuge.js'
-import { PoolId } from '../utils/types.js'
+import { CentrifugeId, PoolId } from '../utils/types.js'
 import type { HexString } from './index.js'
 import type { Query } from './query.js'
 
@@ -64,6 +64,7 @@ export type OperationStatusType =
   | 'SignedMessage'
   | 'TransactionPending'
   | 'TransactionConfirmed'
+  | 'AwaitingCrosschainDelivery'
 
 export type OperationSigningStatus = {
   id: string
@@ -122,6 +123,25 @@ export type DeployedOnchainPMStatus = {
   address: HexString
 }
 
+/**
+ * A confirmed transaction sent cross-chain messages that the next step depends on,
+ * and the SDK is waiting for the destination chain to pick them up.
+ */
+export type OperationAwaitingCrosschainDeliveryStatus = {
+  /**
+   * Same `id` as the `TransactionConfirmed` status of the transaction that sent the messages, or a
+   * fresh one when they were sent by an earlier transaction the SDK found still in flight.
+   */
+  id: string
+  type: 'AwaitingCrosschainDelivery'
+  title: string
+  /** The hash of the transaction that sent the messages; absent when an earlier transaction sent them. */
+  hash?: HexString
+  fromCentrifugeId: CentrifugeId
+  toCentrifugeId: CentrifugeId
+  messageTypes: MessageTypeWithSubType[]
+}
+
 export type OperationStatus =
   | OperationSigningStatus
   | OperationSigningMessageStatus
@@ -132,6 +152,7 @@ export type OperationStatus =
   | SimulationStatus
   | DeployedOnOfframpManagerStatus
   | DeployedOnchainPMStatus
+  | OperationAwaitingCrosschainDeliveryStatus
 
 export type EIP1193ProviderLike = {
   request(...args: any): Promise<any>
@@ -182,6 +203,8 @@ export type BuildOnlyOptions = {
 
 export type TransactionContext = {
   isBatching?: boolean
+  /** Aborts when the transaction's subscriber unsubscribes; long waits inside a transaction stop on it. */
+  signal?: AbortSignal
   /**
    * Build-only mode. When true, the transaction is run to produce unsigned
    * calldata (via the `wrapTransaction` batching branch) and no signing,
