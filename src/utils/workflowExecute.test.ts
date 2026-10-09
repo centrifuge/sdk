@@ -543,6 +543,53 @@ describe('utils/workflowExecute', () => {
     })
   })
 
+  describe('computeWorkflowGroupScriptDetails', () => {
+    it('returns each script hash with its resolved pool context in policy order', async () => {
+      const plainWorkflow = selfContainedWorkflow()
+      const escrowWorkflow = selfContainedWorkflow({
+        actions: [
+          {
+            target: '$target',
+            selector: 'function poke(address account)',
+            inputs: [{ parameter: 'account', label: 'Account', input: ['$poolEscrow'] }],
+          },
+        ],
+      } as Partial<MarketplaceWorkflow>)
+      const options = {
+        centrifuge: unreachableCentrifuge,
+        network: fakeNetwork(['0xsc1']),
+        strategist: ADDRESS_B,
+        poolEscrowAddress: ADDRESS_A,
+      }
+
+      const details = await computeWorkflowGroupScriptDetails({
+        ...options,
+        policy: [
+          { workflow: plainWorkflow, configurableValues: CONFIGURABLE },
+          { workflow: escrowWorkflow, configurableValues: {} },
+        ],
+      })
+      const plain = await computeWorkflowScriptHash({
+        ...options,
+        workflow: plainWorkflow,
+        configurableValues: CONFIGURABLE,
+      })
+      const escrow = await computeWorkflowScriptHash({
+        ...options,
+        workflow: escrowWorkflow,
+        configurableValues: {},
+      })
+
+      expect(details).to.deep.equal([
+        { scriptHash: plain.scriptHash, poolContext: {} },
+        {
+          scriptHash: escrow.scriptHash,
+          poolContext: { $poolEscrow: encodeWorkflowInputValue('address', ADDRESS_A) },
+        },
+      ])
+    })
+  })
+
   describe('computeWorkflowGroupScriptHashes', () => {
     it('returns one leaf per policy entry, in order', async () => {
       const hashes = await computeWorkflowGroupScriptHashes({
