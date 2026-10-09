@@ -11,7 +11,10 @@ import { AssetId } from './types.js'
 
 type ReadClient = Pick<PublicClient, 'readContract'>
 
-/** True for a contract revert or an empty return, false for a transport failure. */
+/**
+ * True for a contract revert or an empty return, false for a transport failure.
+ * @internal
+ */
 export function isContractRevert(error: unknown) {
   return (
     error instanceof BaseError &&
@@ -30,6 +33,7 @@ function isUnknownAssetRevert(error: unknown) {
 /**
  * Asset lookups against a spoke of any protocol version: v3.3 keeps them in the `SpokeRegistry` the
  * spoke points to, v3.1 and v3.2 in the spoke itself. Both return `null` for an unregistered asset.
+ * @internal
  */
 export async function spokeAssets(client: ReadClient, spoke: HexString) {
   let registry: HexString | null
