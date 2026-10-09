@@ -36,7 +36,7 @@ export class OnOffRampManager extends Entity {
     public shareClass: ShareClass,
     public onrampAddress: HexString
   ) {
-    super(_root, ['onofframpmanager', shareClass.id.toString(), network.centrifugeId])
+    super(_root, ['onofframpmanager', shareClass.id.toString(), network.centrifugeId, onrampAddress.toLowerCase()])
 
     this.onrampAddress = onrampAddress
   }
@@ -157,7 +157,7 @@ export class OnOffRampManager extends Entity {
   }
 
   balances() {
-    return this._query(['balances', this.onrampAddress.toLowerCase()], () =>
+    return this._query(['balances'], () =>
       this.assets().pipe(
         switchMap((onRampAssets) => {
           if (onRampAssets.length === 0) return of([])

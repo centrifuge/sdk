@@ -45,10 +45,9 @@ describe('OnOffRampManager query cache keys', () => {
     queries(managers[0]!).forEach((query, i) => expect(query).to.not.equal(before[i]))
   })
 
-  it('keeps balances apart for two ramps of the same share class and chain', () => {
+  it('keeps two ramps of the same share class and chain apart', () => {
     const [legacy, current] = subject(otherRamp, ramp).managers
 
-    expect(legacy!.balances()).to.not.equal(current!.balances())
-    expect(legacy!.receivers()).to.equal(current!.receivers())
+    queries(legacy!).forEach((query, i) => expect(query).to.not.equal(queries(current!)[i]))
   })
 })

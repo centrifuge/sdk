@@ -38,7 +38,7 @@ function isUnknownAssetRevert(error: unknown) {
 export async function spokeAssets(client: ReadClient, spoke: HexString) {
   let registry: HexString | null
   try {
-    registry = await client.readContract({ address: spoke, abi: ABI.SpokeRegistry, functionName: 'spokeRegistry' })
+    registry = await client.readContract({ address: spoke, abi: ABI.Spoke, functionName: 'spokeRegistry' })
   } catch (error) {
     if (!isContractRevert(error)) throw error
     registry = null

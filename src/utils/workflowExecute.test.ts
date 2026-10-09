@@ -1,9 +1,12 @@
 import { expect } from 'chai'
 import { of } from 'rxjs'
-import { decodeAbiParameters } from 'viem'
+import { ContractFunctionRevertedError, decodeAbiParameters, encodeErrorResult } from 'viem'
+import { ABI } from '../abi/index.js'
 import type { Centrifuge } from '../Centrifuge.js'
 import type { PoolNetwork } from '../entities/PoolNetwork.js'
 import type { MarketplaceWorkflow } from '../types/workflow.js'
+import { toAccountingTokenId } from './accountingToken.js'
+import { ShareClassId } from './types.js'
 import {
   applyWorkflowExclusions,
   buildPreparedWorkflowDefinition,
@@ -450,4 +453,123 @@ describe('utils/workflowExecute', () => {
       expect(b!.scriptHash).to.not.equal(a!.scriptHash)
     })
   })
+})
+
+describe('resolveWorkflowPoolContext: $accountingTokenAssetId', () => {
+  const SPOKE = '0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee'
+  const REGISTRY = '0xffffffffffffffffffffffffffffffffffffffff'
+  const ACCOUNTING_TOKEN = '0xdddddddddddddddddddddddddddddddddddddddd'
+  const ASSET = '0x4444444444444444444444444444444444444444'
+  const SC = '0x00010000000000010000000000000001'
+  const POOL_ID_RAW = 281474976710657n
+  const ACCOUNTING_ASSET_ID = 67499859160952759170896452279861254n
+  // erc7540_requestDeposit moves the liability accounting token.
+  const TOKEN_ID = toAccountingTokenId(POOL_ID_RAW, ASSET, true)
+
+  type Read = { address: string; functionName: string; args?: readonly unknown[] }
+
+  const workflow = (omit?: 'spoke' | 'accountingToken') => {
+    const variables: Record<string, string> = {
+      target: ADDRESS_A,
+      asset: ASSET,
+      spoke: SPOKE,
+      accountingToken: ACCOUNTING_TOKEN,
+    }
+    if (omit) delete variables[omit]
+    return {
+      workflowRef: 'needs_accounting_asset',
+      name: 'Needs accounting asset',
+      template: 'erc7540_requestDeposit',
+      chainId: 1,
+      variables,
+      workflowId: `0x${'0'.repeat(64)}`,
+      version: 1,
+      actions: [
+        {
+          target: '$target',
+          selector: 'function poke(uint256 id)',
+          inputs: [{ parameter: 'id', label: 'Id', input: ['$accountingTokenAssetId'] }],
+        },
+      ],
+      templates: { erc7540_requestDeposit: { variables: [], actions: [] } },
+    } as unknown as MarketplaceWorkflow
+  }
+
+  const network = {
+    centrifugeId: 1,
+    pool: { id: { raw: POOL_ID_RAW, toString: () => POOL_ID_RAW.toString() }, centrifugeId: 1 },
+    details: () => of({ activeShareClasses: [{ id: new ShareClassId(SC) }] }),
+  } as unknown as PoolNetwork
+
+  function spoke(version: 'v3.2' | 'v3.3', registered: boolean) {
+    const reads: Read[] = []
+    const client = {
+      readContract: async (call: Read) => {
+        reads.push(call)
+        if (call.functionName === 'spokeRegistry') {
+          if (version === 'v3.3') return REGISTRY
+          throw new ContractFunctionRevertedError({
+            abi: ABI.Spoke,
+            functionName: 'spokeRegistry',
+            message: 'execution reverted',
+          })
+        }
+        if (call.functionName === 'assetToId') {
+          if (registered) return ACCOUNTING_ASSET_ID
+          if (version === 'v3.3') return 0n
+          throw new ContractFunctionRevertedError({
+            abi: ABI.Spoke,
+            functionName: 'assetToId',
+            data: encodeErrorResult({ abi: ABI.Spoke, errorName: 'UnknownAsset' }),
+            message: 'execution reverted',
+          })
+        }
+        throw new Error(`unexpected eth_call ${call.functionName}`)
+      },
+    }
+    return { centrifuge: { getClient: () => of(client) } as unknown as Centrifuge, reads }
+  }
+
+  function resolve(wf: MarketplaceWorkflow, centrifuge: Centrifuge) {
+    return resolveWorkflowPoolContext({
+      centrifuge,
+      network,
+      workflow: wf,
+      workflowDef: buildPreparedWorkflowDefinition(wf).workflowDef,
+      strategist: ADDRESS_B,
+      scId: SC,
+    })
+  }
+
+  for (const version of ['v3.2', 'v3.3'] as const) {
+    it(`resolves the accounting token's asset id on a ${version} spoke`, async () => {
+      const { centrifuge, reads } = spoke(version, true)
+
+      const { poolContext } = await resolve(workflow(), centrifuge)
+
+      expect(poolContext.$accountingTokenAssetId).to.equal(`0x${ACCOUNTING_ASSET_ID.toString(16).padStart(64, '0')}`)
+      const lookup = reads.find((read) => read.functionName === 'assetToId')!
+      expect(lookup.address).to.equal(version === 'v3.3' ? REGISTRY : SPOKE)
+      expect(lookup.args).to.deep.equal([ACCOUNTING_TOKEN, TOKEN_ID])
+    })
+
+    it(`rejects an accounting token that is not registered on a ${version} spoke`, async () => {
+      const { centrifuge } = spoke(version, false)
+
+      const error = await resolve(workflow(), centrifuge).catch((e: Error) => e)
+
+      expect((error as Error).message).to.contain(`but that asset is not registered on spoke ${SPOKE}`)
+    })
+  }
+
+  for (const variable of ['spoke', 'accountingToken'] as const) {
+    it(`rejects a workflow without a "${variable}" variable before reading the chain`, async () => {
+      const { centrifuge, reads } = spoke('v3.2', true)
+
+      const error = await resolve(workflow(variable), centrifuge).catch((e: Error) => e)
+
+      expect((error as Error).message).to.contain(`is missing a valid "${variable}" variable`)
+      expect(reads).to.deep.equal([])
+    })
+  }
 })
