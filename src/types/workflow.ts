@@ -121,6 +121,17 @@ export interface CatalogTemplate {
   actions: CatalogAction[]
   variables?: CatalogVariable[]
   id?: string
+  /**
+   * Guard flags the publishing repo sets, which decide which guard actions were injected
+   * around `actions`. Read by `checkApprovalExactness`: a template that keeps the runtime
+   * allowance check is exempt from proving its approvals exact.
+   */
+  guards?: {
+    allowance?: boolean
+    slippageBps?: number
+    circuitBreakerBps?: boolean
+    circuitBreakerVolume?: boolean
+  }
 }
 
 /**
