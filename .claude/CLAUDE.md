@@ -180,6 +180,22 @@ too). Register, assign and the manager lookups (not `onOfframpManagerStatus`) ac
 (`createdAtBlock`, ties by highest lowercase address). `assignOnOffRampManagerPermissions` throws when no ramp
 is indexed or the newest is already registered; use `registerOnOffRampManagerAsBSManager` to re-send the grant.
 
+A new-factory ramp's `deposit` and `withdraw` also deposit an accounting token into the balance sheet (liability for
+`deposit`, non-liability for `withdraw`), which reverts with `UnknownAsset` or `InvalidPrice` unless that token is
+registered on the spoke and has a spoke price. `OnOffRampManager.setAsset` and `setReceiver(…, true)` therefore append
+`Hub.notifyAssetPrice` for the token to the hub transaction. They decide per ramp, not per chain: a ramp whose
+`accountingToken()` reverts is legacy and gets no price, and one that answers must name the indexed deployments'
+`accountingToken` or the call throws. When the token is unknown on the spoke and the call is signed, a
+`Spoke.registerAsset` transaction on the ramp's chain comes first, after checking that the signer is a hub manager.
+Both stay one hub-chain `_transact`, so `buildOnly` and batches keep working; there they never register, and an
+unregistered token leaves the plain trusted call they produced before.
+
+New spoke asset lookups go through `utils/spokeAssets.ts` rather than a direct `Spoke.assetToId`/`idToAsset` read:
+v3.3 moved them to the `SpokeRegistry` that `Spoke.spokeRegistry()` returns, where an unknown asset reads as zero
+instead of reverting with `UnknownAsset`. The ramp and workflow lookups use it; `Centrifuge.assetCurrency`,
+`BalanceSheet.deposit` (`idToAsset`) and `ShareClass` (`pricePoolPerAsset`) still read the spoke directly and must move
+with the v3.3 migration.
+
 ### ABI File Format
 
 Human-readable format (Viem/ethers style):

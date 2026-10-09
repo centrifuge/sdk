@@ -18,6 +18,8 @@ import {
 } from './weiroll.js'
 import { computeScriptHash } from './scriptHash.js'
 import { buildWorkflowDefinitionFromCatalog } from './catalog.js'
+import { toAccountingTokenId } from './accountingToken.js'
+import { spokeAssets } from './spokeAssets.js'
 
 /** A whitelisted policy entry on one chain: catalog workflow + its add-time pinned values. */
 export type PolicyEntryInput = {
@@ -51,7 +53,6 @@ const ADDRESS_RE = /^0x[0-9a-fA-F]{40}$/
 const ZERO_ADDRESS = '0x0000000000000000000000000000000000000000'
 const ADDRESS_UINT256_ARRAY_TYPE = '(address,uint256)[]'
 const ADDRESS_ADDRESS_ARRAY_TYPE = '(address,address)[]'
-const ACCOUNTING_TOKEN_LIABILITY_BIT = 1n << 255n
 const LIABILITY_ACCOUNTING_TOKEN_TEMPLATES = new Set([
   'erc7540_requestDeposit',
   'erc7540_claimDeposit',
@@ -186,11 +187,6 @@ function usesLiabilityAccountingToken(workflow: MarketplaceWorkflow): boolean {
   throw new Error(
     `Workflow "${workflow.workflowRef}" uses accounting tokens, but template "${workflow.template}" has no accounting-token mapping`
   )
-}
-
-function toAccountingTokenId(poolIdRaw: bigint, assetAddress: HexString, liability: boolean): bigint {
-  const baseId = (poolIdRaw << 160n) | BigInt(assetAddress)
-  return liability ? baseId | ACCOUNTING_TOKEN_LIABILITY_BIT : baseId
 }
 
 function resolveWorkflowAccountingTokenId(network: PoolNetwork, workflow: MarketplaceWorkflow): bigint {
@@ -572,25 +568,15 @@ export async function resolveWorkflowPoolContext(options: {
     }
 
     const client = await firstValueFrom(centrifuge.getClient(network.centrifugeId))
-    let assetId: bigint
-    try {
-      assetId = await client.readContract({
-        address: spokeAddress as HexString,
-        abi: ABI.Spoke,
-        functionName: 'assetToId',
-        args: [accountingTokenAddress as HexString, accountingTokenId!],
-      })
-    } catch (error) {
-      const message = error instanceof Error ? error.message : String(error)
-      if (message.includes('UnknownAsset')) {
-        throw new Error(
-          `Workflow "${workflow.workflowRef}" requires accounting token ${accountingTokenAddress} with tokenId ${accountingTokenId.toString()}, but that asset is not registered on spoke ${spokeAddress}.`
-        )
-      }
-      throw error
+    const assets = await spokeAssets(client, spokeAddress as HexString)
+    const assetId = await assets.assetId(accountingTokenAddress as HexString, accountingTokenId)
+    if (!assetId) {
+      throw new Error(
+        `Workflow "${workflow.workflowRef}" requires accounting token ${accountingTokenAddress} with tokenId ${accountingTokenId.toString()}, but that asset is not registered on spoke ${spokeAddress}.`
+      )
     }
 
-    poolContext.$accountingTokenAssetId = encodeUint(assetId)
+    poolContext.$accountingTokenAssetId = encodeUint(assetId.raw)
   }
 
   return { poolContext, resolvedScId }

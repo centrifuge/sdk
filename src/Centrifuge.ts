@@ -779,24 +779,36 @@ export class Centrifuge {
     tokenId: number | bigint = 0
   ) {
     const self = this
-    return this._transact(async function* (ctx) {
-      assertCrosschainMessagingEnabled(originCentrifugeId)
-      assertCrosschainMessagingEnabled(registerOnCentrifugeId)
+    return this._transact(
+      (ctx) => self._registerAsset(ctx, originCentrifugeId, registerOnCentrifugeId, assetAddress, tokenId),
+      originCentrifugeId
+    )
+  }
 
-      const [addresses, estimate] = await Promise.all([
-        self._protocolAddresses(originCentrifugeId),
-        self._estimate(originCentrifugeId, registerOnCentrifugeId, MessageType.RegisterAsset),
-      ])
-      yield* doTransaction('Register asset', ctx, () =>
-        ctx.walletClient.writeContract({
-          address: addresses.spoke,
-          abi: ABI.Spoke,
-          functionName: 'registerAsset',
-          args: [registerOnCentrifugeId, assetAddress, BigInt(tokenId), ctx.signingAddress],
-          value: estimate,
-        })
-      )
-    }, originCentrifugeId)
+  /** @internal The steps of {@link registerAsset}, for a caller that runs them inside its own transaction context. */
+  async *_registerAsset(
+    ctx: TransactionContext,
+    originCentrifugeId: CentrifugeId,
+    registerOnCentrifugeId: CentrifugeId,
+    assetAddress: HexString,
+    tokenId: number | bigint = 0
+  ) {
+    assertCrosschainMessagingEnabled(originCentrifugeId)
+    assertCrosschainMessagingEnabled(registerOnCentrifugeId)
+
+    const [addresses, estimate] = await Promise.all([
+      this._protocolAddresses(originCentrifugeId),
+      this._estimate(originCentrifugeId, registerOnCentrifugeId, MessageType.RegisterAsset),
+    ])
+    return yield* doTransaction('Register asset', ctx, () =>
+      ctx.walletClient.writeContract({
+        address: addresses.spoke,
+        abi: ABI.Spoke,
+        functionName: 'registerAsset',
+        args: [registerOnCentrifugeId, assetAddress, BigInt(tokenId), ctx.signingAddress],
+        value: estimate,
+      })
+    )
   }
 
   /**
