@@ -1,8 +1,14 @@
 import { expect } from 'chai'
 import sinon from 'sinon'
-import { ContractFunctionRevertedError, encodeErrorResult, zeroAddress } from 'viem'
+import {
+  BaseError,
+  ContractFunctionRevertedError,
+  ContractFunctionZeroDataError,
+  encodeErrorResult,
+  zeroAddress,
+} from 'viem'
 import { ABI } from '../abi/index.js'
-import { spokeAssets } from './spokeAssets.js'
+import { isContractRevert, spokeAssets } from './spokeAssets.js'
 import { AssetId } from './types.js'
 
 const spoke = '0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee'
@@ -108,5 +114,31 @@ describe('spokeAssets', () => {
     const error = await spokeAssets(client as any, spoke).catch((e: Error) => e)
 
     expect((error as Error).message).to.equal('fetch failed')
+  })
+})
+
+describe('isContractRevert', () => {
+  it('recognizes an empty return wrapped in a contract call error', () => {
+    const cause = new ContractFunctionZeroDataError({ functionName: 'spokeRegistry' })
+    expect(isContractRevert(new BaseError('Contract call failed', { cause }))).to.equal(true)
+  })
+
+  it('does not classify transport failures or arbitrary values as contract reverts', () => {
+    expect(isContractRevert(new BaseError('fetch failed'))).to.equal(false)
+    expect(isContractRevert(new Error('fetch failed'))).to.equal(false)
+    expect(isContractRevert(null)).to.equal(false)
+  })
+
+  it('uses the legacy spoke when spokeRegistry returns no data', async () => {
+    const client = clientFor(({ address, functionName }) => {
+      expect(address).to.equal(spoke)
+      if (functionName === 'spokeRegistry') {
+        throw new ContractFunctionZeroDataError({ functionName })
+      }
+      return functionName === 'assetToId' ? assetId.raw : [token, 0n]
+    })
+    const assets = await spokeAssets(client as any, spoke)
+    expect((await assets.assetId(token, 0n))?.raw).to.equal(assetId.raw)
+    expect(await assets.asset(assetId)).to.deep.equal({ address: token, tokenId: 0n })
   })
 })

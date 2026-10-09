@@ -1,4 +1,6 @@
+import { SimpleMerkleTree } from '@openzeppelin/merkle-tree'
 import { expect } from 'chai'
+import sinon from 'sinon'
 import { of } from 'rxjs'
 import { ContractFunctionRevertedError, decodeAbiParameters, encodeErrorResult } from 'viem'
 import { ABI } from '../abi/index.js'
@@ -6,10 +8,14 @@ import type { Centrifuge } from '../Centrifuge.js'
 import type { PoolNetwork } from '../entities/PoolNetwork.js'
 import type { MarketplaceWorkflow } from '../types/workflow.js'
 import { toAccountingTokenId } from './accountingToken.js'
-import { ShareClassId } from './types.js'
+import { MessageType } from '../types/transaction.js'
+import { computeScriptHash } from './scriptHash.js'
+import { AssetId, PoolId, ShareClassId } from './types.js'
 import {
   applyWorkflowExclusions,
   buildPreparedWorkflowDefinition,
+  buildWorkflowExecuteParams,
+  estimateWorkflowExecutionValue,
   computeWorkflowGroupScriptDetails,
   computeWorkflowGroupScriptHashes,
   computeWorkflowScriptHash,
@@ -292,6 +298,215 @@ describe('utils/workflowExecute', () => {
       })
       expect(poolContext).to.deep.equal({})
       expect(resolvedScId).to.equal(undefined)
+    })
+  })
+
+  describe('workflow execution parameters and fees', () => {
+    const poolId = PoolId.from(1, 15)
+    const network = { centrifugeId: 13, pool: { id: poolId, centrifugeId: 1 } } as PoolNetwork
+    const cases = [
+      ['updateContract', MessageType.UntrustedContractUpdate, 1],
+      ['submitQueuedAssets', MessageType.UpdateHoldingAmount, 1],
+      ['crosschainTransferShares', MessageType.InitiateTransferShares, 14],
+      ['requestDeposit', MessageType.Request, 1],
+      ['claimDeposit', MessageType.RequestCallback, 5],
+    ] as const
+    const payableWorkflow = (names: readonly string[]) =>
+      selfContainedWorkflow({
+        variables: { target: ADDRESS_A, destinationCentrifugeId: '14', cfgAssetId: AssetId.from(5, 1).toString() },
+        actions: names.map((name) => ({
+          target: '$target',
+          selector: `function ${name}()`,
+          inputs: [],
+          valueNonZero: true,
+        })),
+      } as Partial<MarketplaceWorkflow>)
+
+    for (const [name, type, destination] of cases) {
+      it(`estimates ${name} with the correct destination and message type`, async () => {
+        const workflow = payableWorkflow([name])
+        const workflowDef = buildPreparedWorkflowDefinition(workflow).workflowDef
+        const estimate = sinon.stub().returns(of(123n))
+        const result = await estimateWorkflowExecutionValue({
+          centrifuge: { _estimate: estimate } as unknown as Centrifuge,
+          network,
+          workflow,
+          workflowDef,
+        })
+        expect(estimate.calledOnceWithExactly(13, destination, { type, poolId })).to.equal(true)
+        expect(result.totalValue).to.equal(123n)
+        expect(result.runtimeValues).to.deep.equal({
+          '__sdk_payable_value:0': encodeWorkflowInputValue('uint256', '123'),
+        })
+      })
+    }
+
+    it('sums multiple fees and assigns each to its own runtime slot', async () => {
+      const workflow = payableWorkflow(cases.map(([name]) => name))
+      const workflowDef = buildPreparedWorkflowDefinition(workflow).workflowDef
+      const estimate = sinon.stub()
+      cases.forEach((_, index) => estimate.onCall(index).returns(of(BigInt(index + 1))))
+      const result = await estimateWorkflowExecutionValue({
+        centrifuge: { _estimate: estimate } as unknown as Centrifuge,
+        network,
+        workflow,
+        workflowDef,
+      })
+      expect(result.totalValue).to.equal(15n)
+      expect(result.runtimeValues).to.deep.equal(
+        Object.fromEntries(
+          cases.map((_, index) => [
+            `__sdk_payable_value:${index}`,
+            encodeWorkflowInputValue('uint256', String(index + 1)),
+          ])
+        )
+      )
+    })
+
+    it('needs no chain access for a nonpayable workflow', async () => {
+      const workflow = selfContainedWorkflow()
+      const result = await estimateWorkflowExecutionValue({
+        centrifuge: unreachableCentrifuge,
+        network,
+        workflow,
+        workflowDef: buildPreparedWorkflowDefinition(workflow).workflowDef,
+      })
+      expect(result).to.deep.equal({ runtimeValues: {}, totalValue: 0n })
+    })
+
+    for (const [name, variable, pattern] of [
+      ['crosschainTransferShares', 'destinationCentrifugeId', /destinationCentrifugeId/],
+      ['claimDeposit', 'cfgAssetId', /cfgAssetId/],
+      ['unsupported', 'unused', /fee estimation is not implemented/],
+    ] as const) {
+      it(`rejects invalid fee context for ${name}`, async () => {
+        const workflow = payableWorkflow([name])
+        delete workflow.variables[variable]
+        await rejects(
+          estimateWorkflowExecutionValue({
+            centrifuge: unreachableCentrifuge,
+            network,
+            workflow,
+            workflowDef: buildPreparedWorkflowDefinition(workflow).workflowDef,
+          }),
+          pattern
+        )
+      })
+    }
+
+    it('builds the executable script, fills estimated fees and proves membership in the policy', async () => {
+      const workflow = payableWorkflow(['submitQueuedAssets'])
+      const entry = { workflow, configurableValues: {} }
+      const other = { workflow: selfContainedWorkflow(), configurableValues: CONFIGURABLE }
+      const centrifuge = { _estimate: () => of(123n) } as unknown as Centrifuge
+      const policy = [entry, other]
+      const result = await buildWorkflowExecuteParams({
+        centrifuge,
+        network,
+        entry,
+        policy,
+        strategist: ADDRESS_B,
+        runtimeValues: { '__sdk_payable_value:0': encodeWorkflowInputValue('uint256', '999') },
+      })
+      expect(result.commands).to.have.length(1)
+      expect(result.state).to.include(encodeWorkflowInputValue('uint256', '123'))
+      expect(result.state).to.not.include(encodeWorkflowInputValue('uint256', '999'))
+      expect(result.value).to.equal(123n)
+      expect(result.callbacks).to.deep.equal([])
+      const hashes = await computeWorkflowGroupScriptHashes({ centrifuge, network, policy, strategist: ADDRESS_B })
+      const leaf = computeScriptHash(result.commands, result.state, result.stateBitmap, result.callbacks)
+      expect(SimpleMerkleTree.of(hashes).verify(leaf, result.proof)).to.equal(true)
+    })
+
+    it('rejects execution of an entry outside the whitelisted policy', async () => {
+      await rejects(
+        buildWorkflowExecuteParams({
+          centrifuge: unreachableCentrifuge,
+          network,
+          entry: { workflow: selfContainedWorkflow(), configurableValues: CONFIGURABLE },
+          policy: [
+            { workflow: selfContainedWorkflow({ variables: { target: ADDRESS_B } }), configurableValues: CONFIGURABLE },
+          ],
+          strategist: ADDRESS_B,
+        }),
+        /not found in allScriptHashes/
+      )
+    })
+  })
+
+  describe('pool magic variables', () => {
+    const poolId = PoolId.from(1, 15)
+    const scId = ShareClassId.from(poolId, 1)
+    const ramp = '0x3333333333333333333333333333333333333333' as const
+    const network = {
+      centrifugeId: 13,
+      pool: { id: poolId, centrifugeId: 1 },
+      details: () => of({ activeShareClasses: [{ id: scId }] }),
+      onOfframpManager: (id: ShareClassId) => {
+        expect(id.raw).to.equal(scId.raw)
+        return of({ onrampAddress: ramp })
+      },
+    } as unknown as PoolNetwork
+    function workflowFor(key: string, type: string) {
+      return selfContainedWorkflow({
+        actions: [
+          {
+            target: '$target',
+            selector: `function poke(${type} value)`,
+            inputs: [{ parameter: 'value', label: 'Value', input: [key] }],
+          },
+        ],
+      } as Partial<MarketplaceWorkflow>)
+    }
+    for (const [key, type, expected] of [
+      ['$poolId', 'uint64', encodeWorkflowInputValue('uint64', poolId.raw.toString())],
+      ['$poolEscrow', 'address', encodeWorkflowInputValue('address', ADDRESS_B)],
+      ['$scId', 'bytes16', encodeWorkflowInputValue('bytes16', scId.raw)],
+      ['$onOffRamp', 'address', encodeWorkflowInputValue('address', ramp)],
+    ] as const) {
+      it(`resolves ${key} from the pool context`, async () => {
+        const workflow = workflowFor(key, type)
+        const result = await resolveWorkflowPoolContext({
+          centrifuge: unreachableCentrifuge,
+          network,
+          workflow,
+          workflowDef: buildPreparedWorkflowDefinition(workflow).workflowDef,
+          strategist: ADDRESS_A,
+          poolEscrowAddress: ADDRESS_B,
+          recordedPoolContext: key === '$poolId' ? { $poolId: encodeWorkflowInputValue('uint64', '99') } : undefined,
+        })
+        expect(result.poolContext[key]).to.equal(expected)
+        expect(result.resolvedScId).to.equal(key === '$scId' || key === '$onOffRamp' ? scId.raw : undefined)
+      })
+    }
+
+    it('requires a pool escrow when the workflow references it', async () => {
+      const workflow = workflowFor('$poolEscrow', 'address')
+      await rejects(
+        resolveWorkflowPoolContext({
+          centrifuge: unreachableCentrifuge,
+          network,
+          workflow,
+          workflowDef: buildPreparedWorkflowDefinition(workflow).workflowDef,
+          strategist: ADDRESS_A,
+        }),
+        /Pool escrow address is required/
+      )
+    })
+
+    it('rejects a share class that is not active on the network', async () => {
+      const workflow = workflowFor('$scId', 'bytes16')
+      await rejects(
+        resolveWorkflowPoolContext({
+          centrifuge: unreachableCentrifuge,
+          network,
+          workflow,
+          workflowDef: buildPreparedWorkflowDefinition(workflow).workflowDef,
+          strategist: ADDRESS_A,
+          scId: ShareClassId.from(poolId, 2).raw,
+        }),
+        /is not active/
+      )
     })
   })
 

@@ -187,8 +187,9 @@ registered on the spoke and has a spoke price. `OnOffRampManager.setAsset` and `
 `accountingToken()` reverts is legacy and gets no price, and one that answers must name the indexed deployments'
 `accountingToken` or the call throws. When the token is unknown on the spoke and the call is signed, a
 `Spoke.registerAsset` transaction on the ramp's chain comes first, after checking that the signer is a hub manager.
-Both stay one hub-chain `_transact`, so `buildOnly` and batches keep working; there they never register, and an
-unregistered token leaves the plain trusted call they produced before.
+The operation keeps its hub-chain `_transact` identity. `buildOnly` and batches never register; an unregistered
+accounting token throws with instructions to call `registerAsset` first, so a successful update always includes its
+price. Legacy ramps that do not deposit accounting tokens still send only the trusted call.
 
 New spoke asset lookups go through `utils/spokeAssets.ts` rather than a direct `Spoke.assetToId`/`idToAsset` read:
 v3.3 moved them to the `SpokeRegistry` that `Spoke.spokeRegistry()` returns, where an unknown asset reads as zero

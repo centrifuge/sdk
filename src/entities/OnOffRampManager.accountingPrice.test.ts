@@ -308,23 +308,20 @@ describe('OnOffRampManager accounting-token price notification', () => {
       expect(assetToId!.args[0].args).to.deep.equal([accountingToken, s.depositTokenId])
     })
 
-    it('keeps the plain trusted call when the token is not registered, never registering', async () => {
-      const s = createSubject({ registered: new Map() })
+    for (const method of ['setAsset', 'setReceiver'] as const) {
+      it(`${method} rejects an unregistered token before building an update without its price`, async () => {
+        const s = createSubject({ registered: new Map() })
+        const tx =
+          method === 'setAsset' ? s.manager.setAsset(usdcAssetId) : s.manager.setReceiver(usdcAssetId, receiver)
 
-      const items = await emitted(s.manager.setReceiver(usdcAssetId, receiver))
+        const error = await rejection(tx)
 
-      expect(items).to.deep.equal([
-        {
-          contract: hub,
-          data: [s.updateContractCall(offrampPayload)],
-          messages: { [rampCentrifugeId]: [{ type: MessageType.TrustedContractUpdate, poolId: s.poolId }] },
-          value: undefined,
-          alwaysBatch: undefined,
-        },
-      ])
-      expect(s.registerAsset.called).to.equal(false)
-      expect(reads(s.client)).to.not.include('manager')
-    })
+        expect(error.message).to.contain('Register it with registerAsset before building or batching')
+        expect(s.registerAsset.called).to.equal(false)
+        expect(s.sent).to.have.length(0)
+        expect(reads(s.client)).to.not.include('manager')
+      })
+    }
 
     it('disabling a receiver and setRelayer send only the trusted call and read nothing', async () => {
       const s = createSubject()
@@ -647,13 +644,25 @@ describe('OnOffRampManager through the real Centrifuge buildOnly and batch paths
     ])
   })
 
-  it('buildOnly returns the same plain trusted call as before when the token is not registered', async () => {
-    const { centrifuge, manager } = subject(false)
+  for (const batch of [false, true]) {
+    it(`rejects an unregistered accounting token in ${batch ? 'a batch' : 'buildOnly'}`, async () => {
+      const { centrifuge, manager } = subject(false)
+      centrifuge.setSigner(privateKeyToAccount(`0x${'ab'.repeat(32)}`))
+      const tx = manager.setReceiver(xLayerUsdcAssetId, receiver)
 
-    const built = await centrifuge.buildOnly(manager.setReceiver(xLayerUsdcAssetId, receiver), { fromAddress })
+      const error = await centrifuge
+        .buildOnly(batch ? centrifuge.batchTransactions('Configure ramp', [manager.setRelayer(relayer), tx]) : tx, {
+          fromAddress,
+        })
+        .then(
+          () => undefined,
+          (error: Error) => error
+        )
 
-    expect(built.data).to.equal(hybUpdateContract(hybOfframpPayload))
-  })
+      expect(error).to.be.instanceOf(Error)
+      expect(error!.message).to.contain('Register it with registerAsset before building or batching')
+    })
+  }
 
   it('a batch with setRelayer carries the trusted calls and the price in one multicall', async () => {
     const { centrifuge, manager } = subject(true)

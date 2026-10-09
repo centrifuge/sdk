@@ -1,5 +1,5 @@
 import { combineLatest, concat, defer, from, map, of, switchMap } from 'rxjs'
-import { encodeFunctionData, isAddressEqual, parseEventLogs, type TransactionReceipt } from 'viem'
+import { encodeFunctionData, getContract, isAddressEqual, parseEventLogs, type TransactionReceipt } from 'viem'
 import { ABI } from '../abi/index.js'
 import { Centrifuge } from '../Centrifuge.js'
 import { HexString } from '../types/index.js'
@@ -45,6 +45,7 @@ export class OnOffRampManager extends Entity {
    * Get the receivers of an OnOffRampManager
    */
   receivers() {
+    // The indexer's generated root field is `offRampAddresss` (see types/indexer.ts).
     return this._query(['receivers'], () =>
       of(this.network.centrifugeId).pipe(
         switchMap((centrifugeId) =>
@@ -176,6 +177,7 @@ export class OnOffRampManager extends Entity {
   /**
    * Set a receiver address for a given asset. Enabling one also notifies the price of the accounting token
    * `withdraw` deposits; a signed call registers that token on the spoke first if needed.
+   * Building or batching requires the accounting token to be registered beforehand.
    * @param assetId - The asset ID to set the receiver for
    * @param receiver - The receiver address to set
    */
@@ -200,7 +202,7 @@ export class OnOffRampManager extends Entity {
 
   /**
    * Enable an onramp asset. Also notifies the price of the accounting token `deposit` deposits; a signed call
-   * registers that token on the spoke first if needed.
+   * registers that token on the spoke first if needed. Building or batching requires prior registration.
    */
   setAsset(assetId: AssetId) {
     return this._updateRamp('Set Asset', () => encode([OnOffRampManagerTrustedCall.Onramp, assetId.raw, true]), {
@@ -215,16 +217,23 @@ export class OnOffRampManager extends Entity {
     priced?: { assetId: AssetId; liability: boolean }
   ) {
     const self = this
+    // _transact accepts an Observable so registration can finish on the spoke before the hub update starts.
     return this._transact((ctx) => {
       const payload = encodePayload()
       if (!priced) return self._hubRampSteps(ctx, title, payload, null)
       return defer(() => self._accountingTokenAsset(priced.assetId, priced.liability)).pipe(
-        switchMap((accounting) =>
-          // A build or a batch carries a single hub call, so it can only price a token that is already registered.
-          !accounting || accounting.assetId || ctx.isBatching
-            ? from(self._hubRampSteps(ctx, title, payload, accounting?.assetId ?? null))
-            : self._registerAndUpdateRamp(ctx, title, payload, accounting)
-        )
+        switchMap((accounting) => {
+          if (!accounting || accounting.assetId) {
+            return from(self._hubRampSteps(ctx, title, payload, accounting?.assetId ?? null))
+          }
+          // A build or batch cannot register on another chain before constructing its hub call.
+          if (ctx.isBatching) {
+            throw new Error(
+              `Accounting token ${accounting.accountingToken} (tokenId ${accounting.tokenId}) is not registered on spoke ${accounting.spoke}. Register it with registerAsset before building or batching the ramp update so notifyAssetPrice can be included.`
+            )
+          }
+          return self._registerAndUpdateRamp(ctx, title, payload, accounting)
+        })
       )
     }, this.network.pool.centrifugeId)
   }
@@ -282,34 +291,36 @@ export class OnOffRampManager extends Entity {
     accounting: AccountingTokenAsset
   ) {
     const self = this
-    let registeredAssetId: AssetId | null = null
+    return defer(() => {
+      let registeredAssetId: AssetId | null = null
 
-    const registration = this._transact(async function* (spokeCtx) {
-      const { receipt } = yield* self._root._registerAsset(
-        spokeCtx,
-        self.network.centrifugeId,
-        self.network.pool.centrifugeId,
-        accounting.accountingToken,
-        accounting.tokenId
-      )
-      registeredAssetId =
-        findRegisteredAssetId(receipt, accounting) ??
-        (await (await self._spokeAssets(accounting.spoke)).assetId(accounting.accountingToken, accounting.tokenId))
-      if (!registeredAssetId) {
-        throw new Error(
-          `Registered accounting token ${accounting.accountingToken} (tokenId ${accounting.tokenId}) in ${receipt.transactionHash}, but the spoke on centrifugeId ${self.network.centrifugeId} does not report it`
+      const registration = this._transact(async function* (spokeCtx) {
+        const { receipt } = yield* self._root._registerAsset(
+          spokeCtx,
+          self.network.centrifugeId,
+          self.network.pool.centrifugeId,
+          accounting.accountingToken,
+          accounting.tokenId
         )
-      }
-    }, this.network.centrifugeId)
+        registeredAssetId =
+          findRegisteredAssetId(receipt, accounting) ??
+          (await (await self._spokeAssets(accounting.spoke)).assetId(accounting.accountingToken, accounting.tokenId))
+        if (!registeredAssetId) {
+          throw new Error(
+            `Registered accounting token ${accounting.accountingToken} (tokenId ${accounting.tokenId}) in ${receipt.transactionHash}, but the spoke on centrifugeId ${self.network.centrifugeId} does not report it`
+          )
+        }
+      }, this.network.centrifugeId)
 
-    const update = defer(() =>
-      self._transact(
-        (hubCtx) => self._hubRampSteps(hubCtx, title, payload, registeredAssetId),
-        self.network.pool.centrifugeId
+      const update = defer(() =>
+        self._transact(
+          (hubCtx) => self._hubRampSteps(hubCtx, title, payload, registeredAssetId),
+          self.network.pool.centrifugeId
+        )
       )
-    )
 
-    return defer(() => self._assertHubManager(ctx.signingAddress)).pipe(switchMap(() => concat(registration, update)))
+      return defer(() => self._assertHubManager(ctx.signingAddress)).pipe(switchMap(() => concat(registration, update)))
+    })
   }
 
   /** The accounting token this ramp deposits for `assetId`, or `null` for a legacy ramp that deposits none. */
@@ -340,11 +351,11 @@ export class OnOffRampManager extends Entity {
   private async _rampAccountingToken(): Promise<HexString | null> {
     const client = await this._root.getClient(this.network.centrifugeId)
     try {
-      return await client.readContract({
+      return await getContract({
         address: this.onrampAddress,
         abi: ABI.OnOffRampManager,
-        functionName: 'accountingToken',
-      })
+        client,
+      }).read.accountingToken()
     } catch (error) {
       if (isContractRevert(error)) return null
       throw error
@@ -361,12 +372,10 @@ export class OnOffRampManager extends Entity {
       this._root._protocolAddresses(hubCentrifugeId),
       this._root.getClient(hubCentrifugeId),
     ])
-    const isManager = await client.readContract({
-      address: hubRegistry,
-      abi: ABI.HubRegistry,
-      functionName: 'manager',
-      args: [this.network.pool.id.raw, address],
-    })
+    const isManager = await getContract({ address: hubRegistry, abi: ABI.HubRegistry, client }).read.manager([
+      this.network.pool.id.raw,
+      address,
+    ])
     if (!isManager) {
       throw new Error(
         `${address} is not a hub manager of pool ${this.network.pool.id.toString()}, so it cannot send the ramp update the accounting token would be registered for`
@@ -378,12 +387,9 @@ export class OnOffRampManager extends Entity {
     const self = this
     return this._transact(async function* (ctx) {
       yield* doTransaction('Deposit', ctx, () =>
-        ctx.walletClient.writeContract({
-          address: self.onrampAddress,
-          abi: ABI.OnOffRampManager,
-          functionName: 'deposit',
-          args: [assetAddress, 0n, amount.toBigInt(), receiverAddress],
-        })
+        getContract({ address: self.onrampAddress, abi: ABI.OnOffRampManager, client: ctx.walletClient }).write.deposit(
+          [assetAddress, 0n, amount.toBigInt(), receiverAddress]
+        )
       )
     }, self.network.centrifugeId)
   }
@@ -392,12 +398,11 @@ export class OnOffRampManager extends Entity {
     const self = this
     return this._transact(async function* (ctx) {
       yield* doTransaction('Withdraw', ctx, () =>
-        ctx.walletClient.writeContract({
+        getContract({
           address: self.onrampAddress,
           abi: ABI.OnOffRampManager,
-          functionName: 'withdraw',
-          args: [assetAddress, 0n, amount.toBigInt(), receiverAddress],
-        })
+          client: ctx.walletClient,
+        }).write.withdraw([assetAddress, 0n, amount.toBigInt(), receiverAddress])
       )
     }, self.network.centrifugeId)
   }
