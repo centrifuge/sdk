@@ -1,4 +1,6 @@
 export default [
+  // Only on the OnOffRamp the new factory deploys; the legacy OnOfframpManager reverts.
+  'function accountingToken() view returns (address)',
   // 'function balanceSheet() view returns (address)',
   // 'function contractUpdater() view returns (address)',
   'function deposit(address asset, uint256, uint128 amount, address)',

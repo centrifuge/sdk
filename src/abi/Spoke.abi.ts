@@ -32,6 +32,8 @@ export default [
   'function setShareTokenVault(uint64 poolId, bytes16 scId, address asset, address vault)',
   'function shareClass(uint64, bytes16) view returns (address shareToken, (uint128 price, uint64 computedAt, uint64 maxAge) pricePoolPerShare)',
   'function shareToken(uint64 poolId, bytes16 scId) view returns (address)',
+  // v3.3 only; earlier spokes keep the asset lookups themselves and revert here.
+  'function spokeRegistry() view returns (address)',
   'function tokenFactory() view returns (address)',
   'function updateContract(uint64 poolId, bytes16 scId, bytes32 target, bytes payload, uint128 extraGasLimit, address refund) payable',
   'function updatePricePoolPerAsset(uint64 poolId, bytes16 scId, uint128 assetId, uint128 price, uint64 computedAt)',
