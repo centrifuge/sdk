@@ -2,7 +2,7 @@ import { SimpleMerkleTree } from '@openzeppelin/merkle-tree'
 import { expect } from 'chai'
 import sinon from 'sinon'
 import { of } from 'rxjs'
-import { ContractFunctionRevertedError, decodeAbiParameters, encodeErrorResult } from 'viem'
+import { ContractFunctionRevertedError, decodeAbiParameters, encodeErrorResult, toFunctionSelector } from 'viem'
 import { ABI } from '../abi/index.js'
 import type { Centrifuge } from '../Centrifuge.js'
 import type { PoolNetwork } from '../entities/PoolNetwork.js'
@@ -14,6 +14,7 @@ import { AssetId, PoolId, ShareClassId } from './types.js'
 import {
   applyWorkflowExclusions,
   buildPreparedWorkflowDefinition,
+  buildWorkflowScriptBase,
   buildWorkflowExecuteParams,
   estimateWorkflowExecutionValue,
   computeWorkflowGroupScriptDetails,
@@ -258,6 +259,79 @@ describe('utils/workflowExecute', () => {
       const { workflow, excludedActions } = buildPreparedWorkflowDefinition(wf)
       expect(excludedActions).to.deep.equal([])
       expect(workflow).to.equal(wf)
+    })
+  })
+
+  describe('buildWorkflowScriptBase', () => {
+    it('builds the prepared workflow, commands and pinned state with the resolved pool context', async () => {
+      const poolId = PoolId.from(1, 15)
+      const scId = ShareClassId.from(poolId, 1)
+      const network = {
+        centrifugeId: 13,
+        pool: { id: poolId, centrifugeId: 1 },
+        onchainPM: () => of(null),
+        details: () => of({ activeShareClasses: [{ id: scId }] }),
+      } as unknown as PoolNetwork
+      const readContract = sinon.stub().resolves(ADDRESS_B)
+      const getClient = sinon.stub().returns(of({ readContract }))
+      const protocolContext = sinon.stub().returns(of({ onchainPMFactory: ADDRESS_A }))
+      const centrifuge = { getClient, _protocolAddresses: protocolContext } as unknown as Centrifuge
+      const workflow = selfContainedWorkflow({
+        actions: [
+          {
+            target: '$target',
+            selector: 'function poke(bytes16 scId, address executor, uint256 amount)',
+            inputs: [
+              { parameter: 'scId', label: 'Share class', input: ['$scId'] },
+              { parameter: 'executor', label: 'Executor', input: ['$onchainPM'] },
+              { parameter: 'amount', label: 'Amount', input: ['$slippageAmount'] },
+            ],
+          },
+          { target: '$target', selector: 'function optionalAction()', inputs: [], optional: true },
+        ],
+      } as Partial<MarketplaceWorkflow>)
+
+      const result = await buildWorkflowScriptBase({
+        centrifuge,
+        network,
+        workflow,
+        strategist: ADDRESS_B,
+        configurableValues: CONFIGURABLE,
+        excludedActions: [1],
+      })
+
+      expect(result).to.have.all.keys(
+        'workflow',
+        'workflowDef',
+        'commands',
+        'state',
+        'stateBitmap',
+        'poolContext',
+        'resolvedScId'
+      )
+      expect(result.workflow).to.deep.equal({ ...workflow, actions: [workflow.actions[0]] })
+      expect(workflow.actions).to.have.length(2)
+      expect(result.workflowDef.workflowRef).to.equal(workflow.workflowRef)
+      expect(result.workflowDef.actions).to.have.length(1)
+      expect(result.commands).to.deep.equal([
+        `${toFunctionSelector('poke(bytes16,address,uint256)')}01000102ffffffff${ADDRESS_A.slice(2)}`,
+      ])
+      const encodedScId = encodeWorkflowInputValue('bytes16', scId.raw)
+      const encodedExecutor = encodeWorkflowInputValue('address', ADDRESS_B)
+      expect(result.state).to.deep.equal([encodedScId, encodedExecutor, CONFIGURABLE.slippageAmount])
+      expect(result.stateBitmap).to.equal(0b111n)
+      expect(result.poolContext).to.deep.equal({ $scId: encodedScId, $onchainPM: encodedExecutor })
+      expect(result.resolvedScId).to.equal(scId.raw)
+      expect(protocolContext.calledOnceWithExactly(network.centrifugeId)).to.equal(true)
+      expect(getClient.calledOnceWithExactly(network.centrifugeId)).to.equal(true)
+      expect(
+        readContract.calledOnceWithExactly({
+          address: ADDRESS_A,
+          abi: ABI.OnchainPMFactory,
+          functionName: 'getAddress',
+          args: [poolId.raw],
+        })
+      ).to.equal(true)
     })
   })
 

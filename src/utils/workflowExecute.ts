@@ -1,5 +1,5 @@
 import { firstValueFrom, Observable } from 'rxjs'
-import { AbiParameter, decodeAbiParameters, encodeAbiParameters } from 'viem'
+import { AbiParameter, decodeAbiParameters, encodeAbiParameters, getContract } from 'viem'
 import type { Centrifuge } from '../Centrifuge.js'
 import type { PoolNetwork } from '../entities/PoolNetwork.js'
 import { generateExecuteProof } from '../entities/OnchainPM.js'
@@ -148,12 +148,11 @@ async function resolveWorkflowExecutorAddress(centrifuge: Centrifuge, network: P
     (centrifuge as ProtocolAddressCapableCentrifuge)._protocolAddresses(network.centrifugeId)
   )
   const client = await firstValueFrom(centrifuge.getClient(network.centrifugeId))
-  const predictedOnchainPM = await client.readContract({
+  const predictedOnchainPM = await getContract({
     address: onchainPMFactory,
     abi: ABI.OnchainPMFactory,
-    functionName: 'getAddress',
-    args: [network.pool.id.raw],
-  })
+    client,
+  }).read.getAddress([network.pool.id.raw])
 
   if (!predictedOnchainPM || predictedOnchainPM.toLowerCase() === ZERO_ADDRESS) {
     throw new Error(
