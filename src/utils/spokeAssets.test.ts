@@ -51,6 +51,17 @@ describe('spokeAssets', () => {
       expect(await assets.asset(assetId)).to.equal(null)
     })
 
+    it('maps a zero result to null as well', async () => {
+      const client = clientFor(({ functionName }) => {
+        if (functionName === 'spokeRegistry') throw revert('spokeRegistry')
+        return functionName === 'assetToId' ? 0n : [zeroAddress, 0n]
+      })
+      const assets = await spokeAssets(client as any, spoke)
+
+      expect(await assets.assetId(token, 1n)).to.equal(null)
+      expect(await assets.asset(assetId)).to.equal(null)
+    })
+
     it('rethrows a revert that is not UnknownAsset', async () => {
       const client = clientFor(({ functionName }) => {
         throw revert(functionName)

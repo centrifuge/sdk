@@ -46,23 +46,21 @@ export async function spokeAssets(client: ReadClient, spoke: HexString) {
 
   return {
     async assetId(asset: HexString, tokenId: bigint): Promise<AssetId | null> {
-      if (registry) {
-        const id = await client.readContract({
-          address: registry,
-          abi: ABI.SpokeRegistry,
-          functionName: 'assetToId',
-          args: [asset, tokenId],
-        })
-        return id === 0n ? null : new AssetId(id)
-      }
       try {
-        const id = await client.readContract({
-          address: spoke,
-          abi: ABI.Spoke,
-          functionName: 'assetToId',
-          args: [asset, tokenId],
-        })
-        return new AssetId(id)
+        const id = registry
+          ? await client.readContract({
+              address: registry,
+              abi: ABI.SpokeRegistry,
+              functionName: 'assetToId',
+              args: [asset, tokenId],
+            })
+          : await client.readContract({
+              address: spoke,
+              abi: ABI.Spoke,
+              functionName: 'assetToId',
+              args: [asset, tokenId],
+            })
+        return id === 0n ? null : new AssetId(id)
       } catch (error) {
         if (isUnknownAssetRevert(error)) return null
         throw error
@@ -70,23 +68,21 @@ export async function spokeAssets(client: ReadClient, spoke: HexString) {
     },
 
     async asset(assetId: AssetId): Promise<{ address: HexString; tokenId: bigint } | null> {
-      if (registry) {
-        const [address, tokenId] = await client.readContract({
-          address: registry,
-          abi: ABI.SpokeRegistry,
-          functionName: 'idToAsset',
-          args: [assetId.raw],
-        })
-        return address === zeroAddress ? null : { address, tokenId }
-      }
       try {
-        const [address, tokenId] = await client.readContract({
-          address: spoke,
-          abi: ABI.Spoke,
-          functionName: 'idToAsset',
-          args: [assetId.raw],
-        })
-        return { address, tokenId }
+        const [address, tokenId] = registry
+          ? await client.readContract({
+              address: registry,
+              abi: ABI.SpokeRegistry,
+              functionName: 'idToAsset',
+              args: [assetId.raw],
+            })
+          : await client.readContract({
+              address: spoke,
+              abi: ABI.Spoke,
+              functionName: 'idToAsset',
+              args: [assetId.raw],
+            })
+        return address === zeroAddress ? null : { address, tokenId }
       } catch (error) {
         if (isUnknownAssetRevert(error)) return null
         throw error
