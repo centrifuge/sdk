@@ -4,7 +4,12 @@ import {
   BaseError,
   ContractFunctionRevertedError,
   ContractFunctionZeroDataError,
+  createPublicClient,
+  custom,
+  encodeAbiParameters,
   encodeErrorResult,
+  RpcRequestError,
+  toFunctionSelector,
   zeroAddress,
 } from 'viem'
 import { ABI } from '../abi/index.js'
@@ -118,9 +123,13 @@ describe('spokeAssets', () => {
 })
 
 describe('isContractRevert', () => {
-  it('recognizes an empty return wrapped in a contract call error', () => {
+  it('recognizes a revert wrapped in a contract call error', () => {
+    expect(isContractRevert(new BaseError('Contract call failed', { cause: revert('spokeRegistry') }))).to.equal(true)
+  })
+
+  it('does not classify an empty return as a revert, since it means no code at the address', () => {
     const cause = new ContractFunctionZeroDataError({ functionName: 'spokeRegistry' })
-    expect(isContractRevert(new BaseError('Contract call failed', { cause }))).to.equal(true)
+    expect(isContractRevert(new BaseError('Contract call failed', { cause }))).to.equal(false)
   })
 
   it('does not classify transport failures or arbitrary values as contract reverts', () => {
@@ -129,16 +138,33 @@ describe('isContractRevert', () => {
     expect(isContractRevert(null)).to.equal(false)
   })
 
-  it('uses the legacy spoke when spokeRegistry returns no data', async () => {
-    const client = clientFor(({ address, functionName }) => {
-      expect(address).to.equal(spoke)
-      if (functionName === 'spokeRegistry') {
-        throw new ContractFunctionZeroDataError({ functionName })
-      }
-      return functionName === 'assetToId' ? assetId.raw : [token, 0n]
+  for (const code of [3, -32000]) {
+    it(`uses the legacy spoke when a node reports the missing spokeRegistry() as error ${code} without data`, async () => {
+      const spokeRegistrySelector = toFunctionSelector('function spokeRegistry() view returns (address)')
+      const client = createPublicClient({
+        transport: custom({
+          request: async ({ method, params }: { method: string; params: [{ data: string }] }) => {
+            if (method !== 'eth_call') throw new Error(`unexpected ${method}`)
+            if (params[0].data.startsWith(spokeRegistrySelector)) {
+              throw new RpcRequestError({ body: { method }, error: { code, message: 'execution reverted' }, url: '' })
+            }
+            return encodeAbiParameters([{ type: 'uint128' }], [assetId.raw])
+          },
+        }),
+      })
+
+      const assets = await spokeAssets(client, spoke)
+
+      expect((await assets.assetId(token, 0n))?.raw).to.equal(assetId.raw)
     })
-    const assets = await spokeAssets(client as any, spoke)
-    expect((await assets.assetId(token, 0n))?.raw).to.equal(assetId.raw)
-    expect(await assets.asset(assetId)).to.deep.equal({ address: token, tokenId: 0n })
+  }
+
+  it('propagates an empty return from spokeRegistry instead of assuming a legacy spoke', async () => {
+    const client = clientFor(({ functionName }) => {
+      if (functionName === 'spokeRegistry') throw new ContractFunctionZeroDataError({ functionName })
+      return assetId.raw
+    })
+    const error = await spokeAssets(client as any, spoke).catch((e: Error) => e)
+    expect(error).to.be.instanceOf(ContractFunctionZeroDataError)
   })
 })

@@ -728,6 +728,27 @@ describe('Centrifuge', () => {
       expect(Number(spy.thirdCall.args[0].params[0].chainId)).to.equal(chainId)
     })
 
+    it("doesn't switch chains when the caller passes switchChain: false, leaving that to nested transactions", async () => {
+      const cent = new Centrifuge({
+        environment: 'testnet',
+      })
+      const signer = mockProvider({ chainId: 1 })
+      const spy = sinon.spy(signer, 'request')
+      cent.setSigner(signer)
+
+      const tx = cent._transact(
+        async function* (ctx) {
+          yield* doTransaction('Test', { ...ctx, publicClient }, async () => '0x1')
+        },
+        centId,
+        { switchChain: false }
+      )
+
+      const status: any = await firstValueFrom(tx)
+      expect(status.type).to.equal('SigningTransaction')
+      expect(spy.getCalls().map((call) => call.args[0].method)).to.not.include('wallet_switchEthereumChain')
+    })
+
     it("shouldn't try to switch chains when the signer is connected to the right chain", async () => {
       const cent = new Centrifuge({
         environment: 'testnet',

@@ -77,7 +77,9 @@ function createSubject({
   rampAccountingToken = accountingToken as string | Error,
   registered,
   usdcRegistered = true,
+  usdcTokenId = 0n,
   isManager = true,
+  hubRegistered = true,
   assetToIdError,
   registeredIds = [withdrawAccountingAssetId],
   emitRegisterEvent = true,
@@ -91,7 +93,9 @@ function createSubject({
   rampAccountingToken?: string | Error
   registered?: Map<bigint, AssetId>
   usdcRegistered?: boolean
+  usdcTokenId?: bigint
   isManager?: boolean
+  hubRegistered?: boolean
   assetToIdError?: Error
   // The id each successive registration is assigned.
   registeredIds?: AssetId[]
@@ -121,6 +125,11 @@ function createSubject({
         expect(args).to.deep.equal([poolId.raw, signingAddress])
         return isManager
       }
+      if (functionName === 'isRegistered') {
+        expect(address).to.equal(hubRegistry)
+        expect([...known.values()].map((id) => id.raw)).to.include(args![0])
+        return hubRegistered
+      }
       if (functionName === 'spokeRegistry') {
         expect(address).to.equal(spoke)
         if (spokeVersion === 'v3.2') throw revert('spokeRegistry')
@@ -129,7 +138,7 @@ function createSubject({
       expect(address).to.equal(spokeVersion === 'v3.3' ? spokeRegistry : spoke)
       if (functionName === 'idToAsset') {
         expect(args).to.deep.equal([usdcAssetId.raw])
-        if (usdcRegistered) return [usdc, 0n]
+        if (usdcRegistered) return [usdc, usdcTokenId]
         if (spokeVersion === 'v3.3') return [zeroAddress, 0n]
         throw revert('idToAsset', 'UnknownAsset')
       }
@@ -166,6 +175,7 @@ function createSubject({
   })
 
   const sent: { centrifugeId: number; data: `0x${string}` }[] = []
+  const transacts: { centrifugeId: number; switchChain: boolean }[] = []
 
   const root: any = {
     _query: (_keys: unknown, callback: () => unknown) => callback(),
@@ -179,8 +189,13 @@ function createSubject({
     _idToChain: sinon.stub().callsFake(async (centrifugeId: number) => centrifugeId),
     _registerAsset: registerAsset,
     // Mirrors Centrifuge._transact: the callback returns an async generator or an observable.
-    _transact: (callback: (ctx: any) => AsyncGenerator<unknown> | Observable<unknown>, centrifugeId: number) => {
+    _transact: (
+      callback: (ctx: any) => AsyncGenerator<unknown> | Observable<unknown>,
+      centrifugeId: number,
+      options?: { switchChain?: boolean }
+    ) => {
       const tx = new Observable<unknown>((subscriber) => {
+        transacts.push({ centrifugeId, switchChain: options?.switchChain ?? true })
         const walletClient = {
           getChainId: async () => centrifugeId,
           sendTransaction: async ({ data }: { data: `0x${string}` }) => {
@@ -241,6 +256,8 @@ function createSubject({
     client,
     registerAsset,
     sent,
+    transacts,
+    getClient: root.getClient as sinon.SinonStub,
     poolId,
     withdrawTokenId,
     depositTokenId,
@@ -368,10 +385,32 @@ describe('OnOffRampManager accounting-token price notification', () => {
       expect((await rejection(s.manager.setAsset(usdcAssetId))).message).to.equal('fetch failed')
     })
 
+    it('refuses an ERC-6909 ramp asset before paying for the hub transaction', async () => {
+      const s = createSubject({ usdcTokenId: 7n })
+
+      const error = await rejection(s.manager.setAsset(usdcAssetId))
+
+      expect(error.message).to.contain('ERC-6909 token 7')
+      expect(reads(s.client)).to.not.include('assetToId')
+    })
+
     it('propagates a spoke read failure other than UnknownAsset', async () => {
       const s = createSubject({ assetToIdError: new Error('fetch failed') })
 
       expect((await rejection(s.manager.setReceiver(usdcAssetId, receiver))).message).to.equal('fetch failed')
+    })
+
+    it('throws when the spoke maps the accounting token but the hub does not know it yet', async () => {
+      for (const mode of ['build', 'sign'] as const) {
+        const s = createSubject({ mode, hubRegistered: false })
+
+        const error = await rejection(s.manager.setReceiver(usdcAssetId, receiver))
+
+        expect(error.message).to.contain(`hub on centrifugeId ${hubCentrifugeId} does not know it yet`)
+        expect(error.message).to.contain(withdrawAccountingAssetId.toString())
+        expect(s.registerAsset.called).to.equal(false)
+        expect(s.sent).to.have.length(0)
+      }
     })
 
     it('throws when the ramp asset itself is not registered on the spoke', async () => {
@@ -415,6 +454,25 @@ describe('OnOffRampManager accounting-token price notification', () => {
   })
 
   describe('signing', () => {
+    it('reads the accounting token registration from the hub registry before signing', async () => {
+      for (const [update, accountingAssetId] of [
+        [(s: ReturnType<typeof createSubject>) => s.manager.setAsset(usdcAssetId), depositAccountingAssetId],
+        [
+          (s: ReturnType<typeof createSubject>) => s.manager.setReceiver(usdcAssetId, receiver),
+          withdrawAccountingAssetId,
+        ],
+      ] as const) {
+        const s = createSubject({ mode: 'sign' })
+
+        await emitted(update(s))
+
+        const read = s.client.readContract.getCalls().find((call) => call.args[0].functionName === 'isRegistered')!
+        expect(read.args[0]).to.deep.include({ address: hubRegistry, args: [accountingAssetId.raw] })
+        expect(s.getClient.calledWith(hubCentrifugeId)).to.equal(true)
+        expect(s.sent).to.have.length(1)
+      }
+    })
+
     it('sends one priced hub transaction when the token is registered', async () => {
       const s = createSubject({ mode: 'sign' })
 
@@ -458,6 +516,27 @@ describe('OnOffRampManager accounting-token price notification', () => {
       ])
     })
 
+    it('only switches the wallet inside the nested transactions, right before each signature', async () => {
+      const plain = createSubject({ mode: 'sign' })
+      await emitted(plain.manager.setReceiver(usdcAssetId, receiver))
+      expect(plain.transacts).to.deep.equal([
+        { centrifugeId: hubCentrifugeId, switchChain: false },
+        { centrifugeId: hubCentrifugeId, switchChain: true },
+      ])
+
+      const registering = createSubject({ mode: 'sign', registered: new Map() })
+      await emitted(registering.manager.setReceiver(usdcAssetId, receiver))
+      expect(registering.transacts).to.deep.equal([
+        { centrifugeId: hubCentrifugeId, switchChain: false },
+        { centrifugeId: rampCentrifugeId, switchChain: true },
+        { centrifugeId: hubCentrifugeId, switchChain: true },
+      ])
+
+      const built = createSubject({ mode: 'build' })
+      await emitted(built.manager.setReceiver(usdcAssetId, receiver))
+      expect(built.transacts).to.deep.equal([{ centrifugeId: hubCentrifugeId, switchChain: false }])
+    })
+
     it('falls back to the spoke when the receipt carries no matching RegisterAsset event', async () => {
       const s = createSubject({ mode: 'sign', registered: new Map(), emitRegisterEvent: false })
 
@@ -478,6 +557,16 @@ describe('OnOffRampManager accounting-token price notification', () => {
 
       expect(error.message).to.contain('does not report it')
       expect(s.sent).to.have.length(0)
+    })
+
+    it('does not consult the hub registry for a token it registers itself', async () => {
+      const s = createSubject({ mode: 'sign', registered: new Map(), hubRegistered: false })
+
+      await emitted(s.manager.setReceiver(usdcAssetId, receiver))
+
+      expect(reads(s.client)).to.not.include('isRegistered')
+      expect(s.registerAsset.calledOnce).to.equal(true)
+      expect(s.sent).to.have.length(1)
     })
 
     it('refuses before registering when the signer is not a hub manager', async () => {
@@ -597,6 +686,10 @@ describe('OnOffRampManager through the real Centrifuge buildOnly and batch paths
           if (!registered) throw revert('assetToId', 'UnknownAsset')
           expect(args![1]).to.equal(toAccountingTokenId(hybPoolId.raw, xLayerUsdc, false))
           return withdrawAssetId.raw
+        }
+        if (functionName === 'isRegistered') {
+          expect(args).to.deep.equal([withdrawAssetId.raw])
+          return true
         }
         throw new Error(`unexpected eth_call ${functionName}`)
       }),

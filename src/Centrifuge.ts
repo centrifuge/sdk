@@ -1291,7 +1291,7 @@ export class Centrifuge {
    * Executes one or more transactions on a given chain.
    * When subscribed to, it emits status updates as it progresses.
    * When awaited, it returns the final confirmed result if successful.
-   * Will additionally prompt the user to switch chains if they're not on the correct chain.
+   * Will additionally prompt the user to switch chains if they're not on the correct chain, unless `switchChain` is false.
    *
    * @example
    *
@@ -1325,7 +1325,8 @@ export class Centrifuge {
     transactionCallback: (
       params: TransactionContext
     ) => AsyncGenerator<OperationStatus | BatchTransactionData> | Observable<OperationStatus | BatchTransactionData>,
-    centrifugeId: CentrifugeId
+    centrifugeId: CentrifugeId,
+    { switchChain = true }: { switchChain?: boolean } = {}
   ): Transaction {
     const self = this
     async function* transact(signal: AbortSignal) {
@@ -1399,7 +1400,7 @@ export class Centrifuge {
       const [address] = await walletClient.getAddresses()
       if (!address) throw new Error('No account selected')
 
-      if (!isBatching) {
+      if (!isBatching && switchChain) {
         const selectedChain = await walletClient.getChainId()
         if (selectedChain !== chainId) {
           yield { type: 'SwitchingChain', chainId } as const

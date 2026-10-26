@@ -1,7 +1,7 @@
 import {
   BaseError,
   ContractFunctionRevertedError,
-  ContractFunctionZeroDataError,
+  ExecutionRevertedError,
   getContract,
   zeroAddress,
   type PublicClient,
@@ -11,23 +11,25 @@ import type { HexString } from '../types/index.js'
 import { AssetId } from './types.js'
 
 /**
- * True for a contract revert or an empty return, false for a transport failure.
+ * True for a contract revert, false for an empty return or a transport failure.
  * @internal
  */
 export function isContractRevert(error: unknown) {
   return (
     error instanceof BaseError &&
-    !!error.walk((e) => e instanceof ContractFunctionRevertedError || e instanceof ContractFunctionZeroDataError)
+    !!error.walk((e) => e instanceof ContractFunctionRevertedError || e instanceof ExecutionRevertedError)
   )
 }
 
 function isUnknownAssetRevert(error: unknown) {
-  if (!(error instanceof Error)) return false
-  const decoded =
+  return (
     error instanceof BaseError &&
     !!error.walk((e) => e instanceof ContractFunctionRevertedError && e.data?.errorName === 'UnknownAsset')
-  return decoded || error.message.includes('UnknownAsset')
+  )
 }
+
+/** @internal */
+export type SpokeAssets = Awaited<ReturnType<typeof spokeAssets>>
 
 /**
  * Asset lookups against a spoke of any protocol version: v3.3 keeps them in the `SpokeRegistry` the

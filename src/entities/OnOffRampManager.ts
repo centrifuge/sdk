@@ -1,15 +1,20 @@
-import { combineLatest, concat, defer, from, map, of, switchMap } from 'rxjs'
+import { combineLatest, concat, defer, from, map, of, switchMap, type Observable } from 'rxjs'
 import { encodeFunctionData, getContract, isAddressEqual, parseEventLogs, type TransactionReceipt } from 'viem'
 import { ABI } from '../abi/index.js'
 import { Centrifuge } from '../Centrifuge.js'
-import { HexString } from '../types/index.js'
-import { MessageType, type MessageTypeWithSubType, type TransactionContext } from '../types/transaction.js'
+import { Client, HexString } from '../types/index.js'
+import {
+  MessageType,
+  type MessageTypeWithSubType,
+  type OperationStatus,
+  type TransactionContext,
+} from '../types/transaction.js'
 import { toAccountingTokenId } from '../utils/accountingToken.js'
 import { Balance } from '../utils/BigInt.js'
 import { assertCrosschainMessagingEnabled } from '../utils/crosschainHotfix.js'
 import { addressToBytes32, encode } from '../utils/index.js'
-import { isContractRevert, spokeAssets } from '../utils/spokeAssets.js'
-import { doTransaction, wrapTransaction } from '../utils/transaction.js'
+import { isContractRevert, spokeAssets, type SpokeAssets } from '../utils/spokeAssets.js'
+import { doTransaction, wrapTransaction, type BatchTransactionData } from '../utils/transaction.js'
 import { AssetId } from '../utils/types.js'
 import { Entity } from './Entity.js'
 import { PoolNetwork } from './PoolNetwork.js'
@@ -27,7 +32,7 @@ type AccountingTokenRef = {
   tokenId: bigint
 }
 
-type AccountingTokenAsset = AccountingTokenRef & { assetId: AssetId | null }
+type AccountingTokenAsset = AccountingTokenRef & { assetId: AssetId | null; lookups: SpokeAssets }
 
 export class OnOffRampManager extends Entity {
   constructor(
@@ -217,25 +222,35 @@ export class OnOffRampManager extends Entity {
     priced?: { assetId: AssetId; liability: boolean }
   ) {
     const self = this
-    // _transact accepts an Observable so registration can finish on the spoke before the hub update starts.
-    return this._transact((ctx) => {
-      const payload = encodePayload()
-      if (!priced) return self._hubRampSteps(ctx, title, payload, null)
-      return defer(() => self._accountingTokenAsset(priced.assetId, priced.liability)).pipe(
-        switchMap((accounting) => {
-          if (!accounting || accounting.assetId) {
-            return from(self._hubRampSteps(ctx, title, payload, accounting?.assetId ?? null))
-          }
-          // A build or batch cannot register on another chain before constructing its hub call.
-          if (ctx.isBatching) {
-            throw new Error(
-              `Accounting token ${accounting.accountingToken} (tokenId ${accounting.tokenId}) is not registered on spoke ${accounting.spoke}. Register it with registerAsset before building or batching the ramp update so notifyAssetPrice can be included.`
-            )
-          }
-          return self._registerAndUpdateRamp(ctx, title, payload, accounting)
-        })
-      )
-    }, this.network.pool.centrifugeId)
+    // Signing happens in nested transactions that each switch chain right before signing.
+    return this._transact(
+      (ctx) => {
+        assertCrosschainMessagingEnabled(self.network.centrifugeId)
+        const payload = encodePayload()
+        const hubUpdate = (accountingAssetId: AssetId | null) =>
+          ctx.isBatching
+            ? from(self._hubRampSteps(ctx, title, payload, accountingAssetId))
+            : self._transact(
+                (hubCtx) => self._hubRampSteps(hubCtx, title, payload, accountingAssetId),
+                self.network.pool.centrifugeId
+              )
+        if (!priced) return hubUpdate(null)
+        return defer(() => self._accountingTokenAsset(priced.assetId, priced.liability)).pipe(
+          switchMap((accounting) => {
+            if (!accounting || accounting.assetId) return hubUpdate(accounting?.assetId ?? null)
+            // A build or batch cannot register on another chain before constructing its hub call.
+            if (ctx.isBatching) {
+              throw new Error(
+                `Accounting token ${accounting.accountingToken} (tokenId ${accounting.tokenId}) is not registered on spoke ${accounting.spoke}. Register it with registerAsset before building or batching the ramp update so notifyAssetPrice can be included.`
+              )
+            }
+            return self._registerAndUpdateRamp(ctx, accounting, hubUpdate)
+          })
+        )
+      },
+      this.network.pool.centrifugeId,
+      { switchChain: false }
+    )
   }
 
   private async *_hubRampSteps(
@@ -244,8 +259,6 @@ export class OnOffRampManager extends Entity {
     payload: HexString,
     accountingAssetId: AssetId | null
   ) {
-    assertCrosschainMessagingEnabled(this.network.centrifugeId)
-
     const { hub } = await this._root._protocolAddresses(this.network.pool.centrifugeId)
     const data = [
       encodeFunctionData({
@@ -286,9 +299,8 @@ export class OnOffRampManager extends Entity {
   /** Registers the accounting token on the ramp's chain, then sends the priced hub update. Signing only. */
   private _registerAndUpdateRamp(
     ctx: TransactionContext,
-    title: string,
-    payload: HexString,
-    accounting: AccountingTokenAsset
+    accounting: AccountingTokenAsset,
+    hubUpdate: (accountingAssetId: AssetId) => Observable<OperationStatus | BatchTransactionData>
   ) {
     const self = this
     return defer(() => {
@@ -304,7 +316,7 @@ export class OnOffRampManager extends Entity {
         )
         registeredAssetId =
           findRegisteredAssetId(receipt, accounting) ??
-          (await (await self._spokeAssets(accounting.spoke)).assetId(accounting.accountingToken, accounting.tokenId))
+          (await accounting.lookups.assetId(accounting.accountingToken, accounting.tokenId))
         if (!registeredAssetId) {
           throw new Error(
             `Registered accounting token ${accounting.accountingToken} (tokenId ${accounting.tokenId}) in ${receipt.transactionHash}, but the spoke on centrifugeId ${self.network.centrifugeId} does not report it`
@@ -312,12 +324,7 @@ export class OnOffRampManager extends Entity {
         }
       }, this.network.centrifugeId)
 
-      const update = defer(() =>
-        self._transact(
-          (hubCtx) => self._hubRampSteps(hubCtx, title, payload, registeredAssetId),
-          self.network.pool.centrifugeId
-        )
-      )
+      const update = defer(() => hubUpdate(registeredAssetId!))
 
       return defer(() => self._assertHubManager(ctx.signingAddress)).pipe(switchMap(() => concat(registration, update)))
     })
@@ -325,31 +332,60 @@ export class OnOffRampManager extends Entity {
 
   /** The accounting token this ramp deposits for `assetId`, or `null` for a legacy ramp that deposits none. */
   private async _accountingTokenAsset(assetId: AssetId, liability: boolean): Promise<AccountingTokenAsset | null> {
-    const rampAccountingToken = await this._rampAccountingToken()
+    const client = await this._root.getClient(this.network.centrifugeId)
+    const [rampAccountingToken, context] = await Promise.all([
+      this._rampAccountingToken(client),
+      this._root._protocolAddresses(this.network.centrifugeId),
+    ])
     if (!rampAccountingToken) return null
 
-    const context = await this._root._protocolAddresses(this.network.centrifugeId)
     if (!context.accountingToken || !isAddressEqual(rampAccountingToken, context.accountingToken)) {
       throw new Error(
         `On/off-ramp ${this.onrampAddress} deposits accounting token ${rampAccountingToken}, but the deployments list ${context.accountingToken ?? 'none'} for centrifugeId ${this.network.centrifugeId}`
       )
     }
 
-    const assets = await this._spokeAssets(context.spoke)
-    const asset = await assets.asset(assetId)
+    const lookups = await spokeAssets(client, context.spoke)
+    const asset = await lookups.asset(assetId)
     if (!asset) {
       throw new Error(`Asset ${assetId.toString()} is not registered on spoke ${context.spoke}`)
+    }
+    if (asset.tokenId !== 0n) {
+      throw new Error(
+        `Asset ${assetId.toString()} is ERC-6909 token ${asset.tokenId} of ${asset.address}; the on/off-ramp only supports ERC-20 assets`
+      )
     }
     const accounting = {
       spoke: context.spoke,
       accountingToken: context.accountingToken,
       tokenId: toAccountingTokenId(this.network.pool.id.raw, asset.address, liability),
     }
-    return { ...accounting, assetId: await assets.assetId(accounting.accountingToken, accounting.tokenId) }
+    const accountingAssetId = await lookups.assetId(accounting.accountingToken, accounting.tokenId)
+    if (accountingAssetId) await this._assertRegisteredOnHub(accounting, accountingAssetId)
+    return { ...accounting, assetId: accountingAssetId, lookups }
   }
 
-  private async _rampAccountingToken(): Promise<HexString | null> {
-    const client = await this._root.getClient(this.network.centrifugeId)
+  /** A v3.2 hub rejects the holding update of a token it does not know, so the ramp must not be enabled before. */
+  private async _assertRegisteredOnHub(accounting: AccountingTokenRef, accountingAssetId: AssetId) {
+    const hubCentrifugeId = this.network.pool.centrifugeId
+    const registered = await (await this._hubRegistry()).read.isRegistered([accountingAssetId.raw])
+    if (!registered) {
+      throw new Error(
+        `Accounting token ${accounting.accountingToken} (tokenId ${accounting.tokenId}) is registered on spoke ${accounting.spoke} as asset ${accountingAssetId.toString()}, but the hub on centrifugeId ${hubCentrifugeId} does not know it yet: its RegisterAsset message from an earlier call has not been executed on the hub. If the indexer shows the message awaiting delivery, retry in a few minutes; if it shows it failed, retry it with retryMessage first; if it stays undelivered, the lane to the hub is not relaying.`
+      )
+    }
+  }
+
+  private async _hubRegistry() {
+    const hubCentrifugeId = this.network.pool.centrifugeId
+    const [{ hubRegistry }, client] = await Promise.all([
+      this._root._protocolAddresses(hubCentrifugeId),
+      this._root.getClient(hubCentrifugeId),
+    ])
+    return getContract({ address: hubRegistry, abi: ABI.HubRegistry, client })
+  }
+
+  private async _rampAccountingToken(client: Client): Promise<HexString | null> {
     try {
       return await getContract({
         address: this.onrampAddress,
@@ -362,20 +398,8 @@ export class OnOffRampManager extends Entity {
     }
   }
 
-  private async _spokeAssets(spoke: HexString) {
-    return spokeAssets(await this._root.getClient(this.network.centrifugeId), spoke)
-  }
-
   private async _assertHubManager(address: HexString) {
-    const hubCentrifugeId = this.network.pool.centrifugeId
-    const [{ hubRegistry }, client] = await Promise.all([
-      this._root._protocolAddresses(hubCentrifugeId),
-      this._root.getClient(hubCentrifugeId),
-    ])
-    const isManager = await getContract({ address: hubRegistry, abi: ABI.HubRegistry, client }).read.manager([
-      this.network.pool.id.raw,
-      address,
-    ])
+    const isManager = await (await this._hubRegistry()).read.manager([this.network.pool.id.raw, address])
     if (!isManager) {
       throw new Error(
         `${address} is not a hub manager of pool ${this.network.pool.id.toString()}, so it cannot send the ramp update the accounting token would be registered for`
