@@ -27,6 +27,7 @@ import PoolEscrowFactoryAbi from './PoolEscrowFactory.abi.js'
 import RestrictionManagerAbi from './RestrictionManager.abi.js'
 import ShareClassManagerAbi from './ShareClassManager.abi.js'
 import SpokeAbi from './Spoke.abi.js'
+import SpokeRegistryAbi from './SpokeRegistry.abi.js'
 import SyncManagerAbi from './SyncManager.abi.js'
 import ValuationAbi from './Valuation.abi.js'
 import VaultRegistryAbi from './VaultRegistry.abi.js'
@@ -45,6 +46,7 @@ export const ABI = {
   MerkleProofManager: parseAbi(MerkleProofManagerAbi),
   AsyncVault: parseAbi(AsyncVaultAbi),
   Spoke: parseAbi(SpokeAbi),
+  SpokeRegistry: parseAbi(SpokeRegistryAbi),
   VaultRegistry: parseAbi(VaultRegistryAbi),
   Gateway: parseAbi(GatewayAbi),
   VaultRouter: parseAbi(VaultRouterAbi),

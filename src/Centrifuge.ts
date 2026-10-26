@@ -779,24 +779,36 @@ export class Centrifuge {
     tokenId: number | bigint = 0
   ) {
     const self = this
-    return this._transact(async function* (ctx) {
-      assertCrosschainMessagingEnabled(originCentrifugeId)
-      assertCrosschainMessagingEnabled(registerOnCentrifugeId)
+    return this._transact(
+      (ctx) => self._registerAsset(ctx, originCentrifugeId, registerOnCentrifugeId, assetAddress, tokenId),
+      originCentrifugeId
+    )
+  }
 
-      const [addresses, estimate] = await Promise.all([
-        self._protocolAddresses(originCentrifugeId),
-        self._estimate(originCentrifugeId, registerOnCentrifugeId, MessageType.RegisterAsset),
-      ])
-      yield* doTransaction('Register asset', ctx, () =>
-        ctx.walletClient.writeContract({
-          address: addresses.spoke,
-          abi: ABI.Spoke,
-          functionName: 'registerAsset',
-          args: [registerOnCentrifugeId, assetAddress, BigInt(tokenId), ctx.signingAddress],
-          value: estimate,
-        })
-      )
-    }, originCentrifugeId)
+  /** @internal The steps of {@link registerAsset}, for a caller that runs them inside its own transaction context. */
+  async *_registerAsset(
+    ctx: TransactionContext,
+    originCentrifugeId: CentrifugeId,
+    registerOnCentrifugeId: CentrifugeId,
+    assetAddress: HexString,
+    tokenId: number | bigint = 0
+  ) {
+    assertCrosschainMessagingEnabled(originCentrifugeId)
+    assertCrosschainMessagingEnabled(registerOnCentrifugeId)
+
+    const [addresses, estimate] = await Promise.all([
+      this._protocolAddresses(originCentrifugeId),
+      this._estimate(originCentrifugeId, registerOnCentrifugeId, MessageType.RegisterAsset),
+    ])
+    return yield* doTransaction('Register asset', ctx, () =>
+      ctx.walletClient.writeContract({
+        address: addresses.spoke,
+        abi: ABI.Spoke,
+        functionName: 'registerAsset',
+        args: [registerOnCentrifugeId, assetAddress, BigInt(tokenId), ctx.signingAddress],
+        value: estimate,
+      })
+    )
   }
 
   /**
@@ -1279,7 +1291,7 @@ export class Centrifuge {
    * Executes one or more transactions on a given chain.
    * When subscribed to, it emits status updates as it progresses.
    * When awaited, it returns the final confirmed result if successful.
-   * Will additionally prompt the user to switch chains if they're not on the correct chain.
+   * Will additionally prompt the user to switch chains if they're not on the correct chain, unless `switchChain` is false.
    *
    * @example
    *
@@ -1313,7 +1325,8 @@ export class Centrifuge {
     transactionCallback: (
       params: TransactionContext
     ) => AsyncGenerator<OperationStatus | BatchTransactionData> | Observable<OperationStatus | BatchTransactionData>,
-    centrifugeId: CentrifugeId
+    centrifugeId: CentrifugeId,
+    { switchChain = true }: { switchChain?: boolean } = {}
   ): Transaction {
     const self = this
     async function* transact(signal: AbortSignal) {
@@ -1387,7 +1400,7 @@ export class Centrifuge {
       const [address] = await walletClient.getAddresses()
       if (!address) throw new Error('No account selected')
 
-      if (!isBatching) {
+      if (!isBatching && switchChain) {
         const selectedChain = await walletClient.getChainId()
         if (selectedChain !== chainId) {
           yield { type: 'SwitchingChain', chainId } as const

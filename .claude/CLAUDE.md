@@ -180,6 +180,35 @@ too). Register, assign and the manager lookups (not `onOfframpManagerStatus`) ac
 (`createdAtBlock`, ties by highest lowercase address). `assignOnOffRampManagerPermissions` throws when no ramp
 is indexed or the newest is already registered; use `registerOnOffRampManagerAsBSManager` to re-send the grant.
 
+A new-factory ramp's `deposit` and `withdraw` also deposit an accounting token into the balance sheet (liability for
+`deposit`, non-liability for `withdraw`), which reverts with `UnknownAsset` or `InvalidPrice` unless that token is
+registered on the spoke and has a spoke price. `OnOffRampManager.setAsset` and `setReceiver(…, true)` therefore append
+`Hub.notifyAssetPrice` for the token to the hub transaction. They decide per ramp, not per chain: a ramp whose
+`accountingToken()` reverts is legacy and gets no price, and one that answers must name the indexed deployments'
+`accountingToken` or the call throws. When the token is unknown on the spoke and the call is signed, a
+`Spoke.registerAsset` transaction on the ramp's chain comes first, after checking that the signer is a hub manager.
+The price only needs the token registered on the spoke, not on the hub, so a pending `RegisterAsset` message does not
+block it. ERC-6909 ramp assets throw before anything is paid, since the ramp's trusted calls reject them.
+The operation keeps its hub-chain `_transact` identity but passes `switchChain: false`: the signing happens in nested
+`_transact` calls, each switching to its own chain right before signing, so the registration path never asks the
+wallet to switch to the hub first. `buildOnly` and batches never register; an unregistered
+accounting token throws with instructions to call `registerAsset` first, so a successful update always includes its
+price. Legacy ramps that do not deposit accounting tokens still send only the trusted call.
+
+When the spoke already maps the accounting token, the update also requires `HubRegistry.isRegistered` on the pool's
+hub and throws otherwise, without waiting: the token's `RegisterAsset` from an earlier call is still in transit,
+undelivered or failed, and a v3.2 hub rejects the holding updates of a token it does not know (`Holdings` reads its hub
+decimals). This only covers tokens the spoke already maps: retries after a rejected hub signature and later updates
+for the same token, such as a second receiver. The first activation of each token registers it in the same call and
+enables the ramp without awaiting the hub, so a registration that gets stuck afterwards is only visible through
+monitoring.
+
+New spoke asset lookups go through `utils/spokeAssets.ts` rather than a direct `Spoke.assetToId`/`idToAsset` read:
+v3.3 moved them to the `SpokeRegistry` that `Spoke.spokeRegistry()` returns, where an unknown asset reads as zero
+instead of reverting with `UnknownAsset`. The ramp and workflow lookups use it; `Centrifuge.assetCurrency`,
+`BalanceSheet.deposit` (`idToAsset`) and `ShareClass` (`pricePoolPerAsset`) still read the spoke directly and must move
+with the v3.3 migration.
+
 ### ABI File Format
 
 Human-readable format (Viem/ethers style):
