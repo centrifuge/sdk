@@ -18,7 +18,7 @@ jobs:
           # https://www.conventionalcommits.org/en/v1.0.0/
           requireScope: false
 
-      - uses: agilepathway/label-checker@be847a108e0a42beaa699bb9c9783c7bc01ef2ee # v2.0.0
+      - uses: agilepathway/label-checker@b4d0c88c122efbd009768dace4c63caefada31de # v2.0.70
         # https://github.com/agilepathway/label-checker
         id: check-pr-labels
         with:
