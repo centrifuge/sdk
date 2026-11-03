@@ -21,10 +21,15 @@ import { defineChain } from 'viem'
 // viem ships Arc with no default public RPC (`rpcUrls.default.http: []`). This is
 // Circle's own mainnet endpoint — first-party, keyless — so it can be bundled the
 // same way `pharos` bundles its own default below.
-export const arc = {
+export const arc = defineChain({
   ...arcWithoutDefaultRpc,
   rpcUrls: { ...arcWithoutDefaultRpc.rpcUrls, default: { http: ['https://rpc.mainnet.arc.io'] } },
-}
+  // Preinstalled at genesis, so there is no deployment block. Without it viem cannot batch reads.
+  contracts: {
+    ...arcWithoutDefaultRpc.contracts,
+    multicall3: { address: '0xcA11bde05977b3631167028862bE2a173976CA11' },
+  },
+})
 
 export const pharos = defineChain({
   id: 1672,
