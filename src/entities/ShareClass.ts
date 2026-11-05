@@ -88,6 +88,19 @@ export interface ClosedRedemptionsFilter {
  * Query and interact with a share class, which allows querying total issuance, NAV per share,
  * and allows interactions related to asynchronous deposits and redemptions.
  */
+/** The options {@link ShareClass.updateSharePrice} takes. */
+export interface SharePriceWriteOptions {
+  /**
+   * Networks NOT to notify, as `centrifugeId`s — an operator unticking a chain
+   * whose messaging is paused. An exclude-list rather than an allow-list so the
+   * SDK keeps deciding where the share class is deployed and the caller can
+   * only subtract from that set, never forget a network. An id the share class
+   * is not deployed on is ignored. Skipping every deployed network is a
+   * hub-only update that sends no message.
+   */
+  skipNetworks?: CentrifugeId[]
+}
+
 export class ShareClass extends Entity {
   id: ShareClassId
 
@@ -695,11 +708,19 @@ export class ShareClass extends Entity {
     }, this.pool.centrifugeId)
   }
 
+  /**
+   * Set the share price on the hub and notify it to every active network the
+   * share class is deployed on, in one batch.
+   * @param options.skipNetworks - Deployed networks NOT to notify. See
+   * {@link SharePriceWriteOptions.skipNetworks}.
+   */
   updateSharePrice(
     pricePerShare: Price,
-    updatedAt = new Date(Date.now() - SHARE_PRICE_TIMESTAMP_SAFETY_BUFFER_SECONDS * 1000)
+    updatedAt = new Date(Date.now() - SHARE_PRICE_TIMESTAMP_SAFETY_BUFFER_SECONDS * 1000),
+    options: SharePriceWriteOptions = {}
   ) {
     const self = this
+    const skip = options.skipNetworks ?? []
     return this._transact(async function* (ctx) {
       const [{ hub }, activeNetworks] = await Promise.all([
         self._root._protocolAddresses(self.pool.centrifugeId),
@@ -725,7 +746,7 @@ export class ShareClass extends Entity {
         activeNetworks.map(async (activeNetwork) => {
           const id = activeNetwork.centrifugeId
 
-          if (isCrosschainMessagingDisabled(id)) return
+          if (isCrosschainMessagingDisabled(id) || skip.includes(id)) return
 
           const networkDetails = await activeNetwork.details()
 
