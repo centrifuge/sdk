@@ -49,7 +49,8 @@ There are no release labels and no GitHub release to promote.
 - **Trigger**: pull request events
 - **Check**: a pull request that changes mirror-owned paths must be opened by the mirror App from
   `mirror/main`; a mirror pull request may change only mirror-owned paths. The App's login comes from
-  the repository variable `SDK_MIRROR_APP_LOGIN`; without it the check fails.
+  the repository variable `SDK_MIRROR_APP_LOGIN`; without it no pull request counts as the mirror's,
+  so changes to mirror-owned paths fail and changes to repository-owned paths still pass.
 
 ### `naming-conventions.yml`
 

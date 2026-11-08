@@ -32,9 +32,13 @@ jobs:
           MIRROR_LOGIN: ${{ vars.SDK_MIRROR_APP_LOGIN }}
         run: |
           set -euo pipefail
+          # Without the App's login no pull request counts as the mirror's, so changes to mirror-owned
+          # paths are refused while repository-owned changes still pass.
+          from_mirror=false
           if [ -z "${MIRROR_LOGIN}" ]; then
-            echo "::error::Repository variable SDK_MIRROR_APP_LOGIN is not set; the guard fails closed."
-            exit 1
+            echo "::warning::Repository variable SDK_MIRROR_APP_LOGIN is not set; no pull request counts as the mirror's."
+          elif [ "${AUTHOR}" = "${MIRROR_LOGIN}" ]; then
+            from_mirror=true
           fi
 
           # Owned by this repository; everything else belongs to the mirror.
@@ -55,18 +59,18 @@ jobs:
             [ -n "${path}" ] || continue
             if is_public_owned "${path}"; then
               public_paths=$((public_paths + 1))
-              if [ "${AUTHOR}" = "${MIRROR_LOGIN}" ]; then
+              if [ "${from_mirror}" = true ]; then
                 echo "::error::${path} belongs to this repository; the mirror may not change it."
               fi
             else
               mirror_paths=$((mirror_paths + 1))
-              if [ "${AUTHOR}" != "${MIRROR_LOGIN}" ]; then
+              if [ "${from_mirror}" != true ]; then
                 echo "::error::${path} belongs to the mirror; SDK changes land in the private monorepo and arrive through the mirror pull request."
               fi
             fi
           done < "${RUNNER_TEMP}/files.txt"
 
-          if [ "${AUTHOR}" = "${MIRROR_LOGIN}" ]; then
+          if [ "${from_mirror}" = true ]; then
             if [ "${HEAD_REPO}" != "${REPO}" ] || [ "${HEAD_REF}" != "mirror/main" ]; then
               echo "::error::A mirror pull request must come from ${REPO}:mirror/main (got ${HEAD_REPO}:${HEAD_REF})."
               exit 1
