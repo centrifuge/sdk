@@ -1,0 +1,78 @@
+name: Mirror guard
+
+# SDK code is developed in the private monorepo and arrives here only through the mirror pull
+# request, opened by the mirror GitHub App from branch mirror/main. This check keeps it that way:
+#   - a pull request that changes anything the mirror owns must come from the mirror App;
+#   - a pull request from the mirror App may change only what the mirror owns.
+# This repository owns .github/, docs/, README.md, LICENSE and .npmrc; the mirror owns the rest.
+# Meant to be a required check on main.
+
+on:
+  pull_request:
+    types: [opened, reopened, synchronize, edited]
+
+permissions: {}
+
+jobs:
+  mirror-guard:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      pull-requests: read
+    steps:
+      - name: Check who changes which paths
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          AUTHOR: ${{ github.event.pull_request.user.login }}
+          HEAD_REF: ${{ github.event.pull_request.head.ref }}
+          HEAD_REPO: ${{ github.event.pull_request.head.repo.full_name }}
+          MIRROR_LOGIN: ${{ vars.SDK_MIRROR_APP_LOGIN }}
+        run: |
+          set -euo pipefail
+          if [ -z "${MIRROR_LOGIN}" ]; then
+            echo "::error::Repository variable SDK_MIRROR_APP_LOGIN is not set; the guard fails closed."
+            exit 1
+          fi
+
+          # Owned by this repository; everything else belongs to the mirror.
+          is_public_owned() {
+            case "$1" in
+              .github/* | docs/* | README.md | LICENSE | .npmrc) return 0 ;;
+              *) return 1 ;;
+            esac
+          }
+
+          # A rename counts on both sides, so a file cannot be moved out of a mirror-owned path.
+          gh api --paginate "repos/${REPO}/pulls/${PR_NUMBER}/files" \
+            --jq '.[] | .filename, (.previous_filename // empty)' > "${RUNNER_TEMP}/files.txt"
+
+          mirror_paths=0
+          public_paths=0
+          while IFS= read -r path; do
+            [ -n "${path}" ] || continue
+            if is_public_owned "${path}"; then
+              public_paths=$((public_paths + 1))
+              if [ "${AUTHOR}" = "${MIRROR_LOGIN}" ]; then
+                echo "::error::${path} belongs to this repository; the mirror may not change it."
+              fi
+            else
+              mirror_paths=$((mirror_paths + 1))
+              if [ "${AUTHOR}" != "${MIRROR_LOGIN}" ]; then
+                echo "::error::${path} belongs to the mirror; SDK changes land in the private monorepo and arrive through the mirror pull request."
+              fi
+            fi
+          done < "${RUNNER_TEMP}/files.txt"
+
+          if [ "${AUTHOR}" = "${MIRROR_LOGIN}" ]; then
+            if [ "${HEAD_REPO}" != "${REPO}" ] || [ "${HEAD_REF}" != "mirror/main" ]; then
+              echo "::error::A mirror pull request must come from ${REPO}:mirror/main (got ${HEAD_REPO}:${HEAD_REF})."
+              exit 1
+            fi
+            [ "${public_paths}" -eq 0 ] || exit 1
+          else
+            [ "${mirror_paths}" -eq 0 ] || exit 1
+          fi
+          echo "${AUTHOR}: ${mirror_paths} mirror-owned and ${public_paths} repository-owned paths, as allowed."
