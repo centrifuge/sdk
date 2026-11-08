@@ -1,4 +1,4 @@
-# Build, Test, and Report
+# Build and test
 name: Build, Test, and Report
 
 on:
@@ -9,56 +9,48 @@ on:
     branches:
       - main
 
+permissions: {}
+
 jobs:
+  # The job name is a required check on main; keep it.
   build-n-test:
-    permissions:
-      id-token: write
     runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      # Installs @centrifuge/addressbook from GitHub Packages. Pull requests from forks get no
+      # package access, so their install fails; SDK code changes do not come from forks.
+      packages: read
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: pnpm/action-setup@b307475762933b98ed359c036b0e51f26b63b74b # v5.0.0
 
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
-          node-version-file: '.nvmrc'
+          node-version: 22
+          cache: pnpm
 
-      - name: Enable Corepack and Set pnpm version
+      - name: Install
+        env:
+          NODE_AUTH_TOKEN: ${{ github.token }}
         run: |
-          corepack enable
-          corepack prepare pnpm@10.10.0 --activate
+          set -euo pipefail
+          # shellcheck disable=SC2016 # npm expands ${NODE_AUTH_TOKEN} itself
+          echo '//npm.pkg.github.com/:_authToken=${NODE_AUTH_TOKEN}' >> ~/.npmrc
+          pnpm install --frozen-lockfile
 
-      - name: Install dependencies
-        run: pnpm install --frozen-lockfile
+      # build:publish builds @centrifuge/protocol and @centrifuge/queries first, which test:unit reads
+      # from their dist/.
+      - name: Build the publish artifact
+        run: pnpm build:publish
 
-      - name: Run Build
-        run: pnpm build
+      - name: Verify the artifact from a clean consumer
+        run: pnpm verify:publish
 
-      - name: Run unit tests
+      - name: Unit tests
         run: pnpm test:unit
 
-      # Integration tests (entity tests) require a Tenderly fork or local Anvil — not yet enabled in CI.
-      # To re-enable later:
-      # - name: Run integration tests
-      #   run: pnpm test
-      #   env:
-      #     TENDERLY_ACCESS_KEY: ${{ secrets.TENDERLY_ACCESS_KEY }}
-      #     PROJECT_SLUG: ${{ secrets.PROJECT_SLUG }}
-      #     ACCOUNT_SLUG: ${{ secrets.ACCOUNT_SLUG }}
-      #     DEBUG: ${{ github.run_attempt > 1 }}
-
-      - name: Upload test results
-        if: success() || failure()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
-        with:
-          name: test-results
-          path: |
-            report/
-            coverage/lcov-report/
-          retention-days: 15
-
-      - name: Upload coverage to Codecov
-        uses: codecov/codecov-action@303a32d7a59b442fa8d48b6a1cc6825c09c847a5 # v7.1.1
-        with:
-          directory: ./coverage
-          token: ${{ secrets.CODECOV_TOKEN }}
-          name: sdk-coverage
-          fail_ci_if_error: false
+      # Fork and integration tests need a Tenderly fork or a local Anvil and are not run in CI.
