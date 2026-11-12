@@ -112,16 +112,13 @@ const ASSET_DECIMALS_ABI = ABI.HubRegistry.filter(
 )
 
 const WORKFLOW_MARKETPLACE_CID: Record<string, string> = {
-  // centrifuge/workflows release `8781e23`, the first published after centrifuge/workflows#100 took
-  // the build timestamp out of the document. Both pins reproduce under canonical UnixFS parameters,
+  // centrifuge/workflows release `cfe52fa`. Both pins reproduce under canonical UnixFS parameters,
   // which `assertCidMatchesContent` below requires: with verification on, a non-canonical pin means
   // the app refuses its own catalog, so any bump has to come from a publish run whose `verify:cid`
-  // gate passed.
-  //
-  // From this release on, republishing an unchanged catalog produces the same CID, so a pin only
-  // needs moving when the catalog's contents actually change.
-  mainnet: 'bafybeia56ud7kvlyo4l6myovsxhmpd2vjwpuabkooy3ypxy7enb6wm2xgq',
-  testnet: 'bafybeihvrd6iuotl5ey4e7uiq5wmwy22rgtqpfumi3d6grsmtt3ukpdagy',
+  // gate passed. An unchanged catalog republishes to the same CID, so a pin only needs moving when
+  // the catalog's contents change.
+  mainnet: 'bafybeibkidba3sxjupzofqrj77k5hxehd3b265qhpzbfgmgrcs7jff2cte',
+  testnet: 'bafybeif4jwyt63b422lcraghbntmmibejzoiph5jz5n7getpa5zwsky5ei',
 }
 
 const envConfig = {
