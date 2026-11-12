@@ -5,6 +5,8 @@ on:
 jobs:
   publish:
     runs-on: ubuntu-latest
+    # The package's trusted publisher on npmjs names this workflow file and this environment; a job
+    # outside them gets no token.
     environment: release
     permissions:
       contents: read
@@ -13,14 +15,27 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ github.ref }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      # A release can tag any commit; only one on main is staged.
+      - name: Check the release commit is on main and the tag names the package version
+        run: |
+          set -euo pipefail
+          git merge-base --is-ancestor "${GITHUB_SHA}" origin/main
+          VERSION=$(node -p "require('./package.json').version")
+          if [ "${GITHUB_REF_NAME}" != "v${VERSION}" ]; then
+            echo "tag ${GITHUB_REF_NAME} does not name version ${VERSION}: expected v${VERSION}" >&2
+            exit 1
+          fi
 
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version-file: '.nvmrc'
           registry-url: 'https://registry.npmjs.org'
 
-      - name: Update npm to latest
-        run: npm install -g npm@latest
+      # Staged publishing needs npm 11.15.0 or later; Node 22 ships npm 10.
+      - run: npm install -g npm@11.21.1
 
       - name: Enable Corepack and Set pnpm version
         run: |
@@ -31,37 +46,19 @@ jobs:
       - name: Build
         run: pnpm build
 
-      - name: Publish to NPM
-        # npm ci should use OIDC authentication thus not needing NODE_AUTH_TOKEN
-        # https://docs.npmjs.com/trusted-publishers
-        # https://www.npmjs.com/package/@centrifuge/sdk/access <-- Needs admin access to the package to see settings
-        run: npm publish --provenance --access public 2>&1
-        # run: pnpm npm publish --access public
-        # Note: supported tools for publishing your packages with provenance.
-        # https://docs.npmjs.com/generating-provenance-statements#using-third-party-package-publishing-tools
+      # The trusted publisher may only stage: a staged version is not installable until a maintainer
+      # approves it with 2FA, so nothing this job does reaches consumers on its own. Provenance is
+      # attached at stage time and carries over on approval.
+      - name: Stage
+        run: npm stage publish --provenance --access public
 
-      - name: Verify provenance attestations
+      - name: Say how to approve it
         run: |
-          echo "Verifying provenance attestations on published package..."
-
-          # Get the package version from package.json
-          PACKAGE_VERSION=$(node -p "require('./package.json').version")
-          PACKAGE_NAME=$(node -p "require('./package.json').name")
-
-          echo "Checking package: $PACKAGE_NAME@$PACKAGE_VERSION"
-
-          # Check for attestations in the published package
-          echo "--- Registry metadata ---"
-          npm view $PACKAGE_NAME@$PACKAGE_VERSION dist.attestations --json || echo "No attestations found"
-
-          echo "--- Registry signatures ---"
-          npm view $PACKAGE_NAME@$PACKAGE_VERSION dist.signatures --json || echo "No signatures found"
-
-          echo "--- Git head ---"
-          npm view $PACKAGE_NAME@$PACKAGE_VERSION gitHead --json || echo "No git head found"
-
-          echo "---"
-          echo "If provenance is working, you should see:"
-          echo "1. Attestations in the registry metadata"
-          echo "2. A green 'Verified provenance' badge on https://www.npmjs.com/package/@centrifuge/sdk?activeTab=versions"
-          echo "3. Build environment and source commit information"
+          NAME=$(node -p "require('./package.json').name")
+          VERSION=$(node -p "require('./package.json').version")
+          {
+            echo "### ${NAME}@${VERSION} is staged"
+            echo "Not installable until a maintainer approves it with 2FA: npmjs.com, the package's Staged Packages tab,"
+            echo "or \`npm stage list ${NAME}\` then \`npm stage approve <stage-id>\`. After approval, check its provenance:"
+            echo "\`npm view ${NAME}@${VERSION} dist.attestations.provenance.predicateType\`."
+          } >> "$GITHUB_STEP_SUMMARY"

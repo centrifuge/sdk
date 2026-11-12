@@ -23,9 +23,10 @@
 
 4. **Publishing**:
 
-   - When a developer publishes a release on GitHub, package is automatically published to NPM -- Generally this will be done by editing the draft release from step 3
-   - Uses NPM provenance for enhanced security
-   - Published with public access
+   - When a developer publishes a release on GitHub, the package is staged on npm. Generally this is done by editing the draft release from step 3
+   - A staged version is not installable until an npm maintainer approves it with 2FA, on npmjs.com under the package's Staged Packages tab or with `npm stage list @centrifuge/sdk` then `npm stage approve <stage-id>` (npm 11.15.0 or later). `npm stage reject <stage-id>` discards it
+   - Staged with npm provenance and public access; the provenance carries over on approval
+   - The workflow refuses a release whose commit is not on `main` or whose tag is not `v<package.json version>`
 
    **To publish a draft release:**
 
@@ -86,9 +87,10 @@ Handles NPM package publishing:
 
 - **Trigger**: Runs when a GitHub release is published (moved from draft to released)
 - **Actions**:
+  - Checks the release commit is on `main` and the tag names the package version
   - Builds the project
-  - Publishes to NPM with provenance enabled
-  - Uses Node.js native `npm publish` command for provenance support
+  - Stages the version on npm with `npm stage publish --provenance`; a maintainer approves it with 2FA before it goes live
+  - Authenticates with npm trusted publishing (OIDC) in the `release` environment, so no npm token is stored
 
 ## Scripts
 
