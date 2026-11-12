@@ -4,6 +4,10 @@ name: NPM publish
 # arrives through the mirror pull request from the private monorepo; merging it is the only
 # human step here. A staged version is not installable until an npm maintainer approves it
 # with 2FA, so nothing this workflow does reaches consumers on its own.
+#
+# The tag v<version> marks a staged version: it is pushed right after staging and names the
+# commit the stage was built from. A version that is tagged but not on npm is waiting for
+# approval (or was rejected), and is not staged again. See .github/DOCS.md.
 
 on:
   push:
@@ -12,7 +16,9 @@ on:
       - packages/sdk/package.json
   workflow_dispatch:
 
-# A stage is never cancelled half way.
+# A stage is never cancelled half way. GitHub keeps one pending run per group and cancels an
+# older pending one, so when versions land faster than they stage, only the version on main when
+# a run starts is staged; an intermediate version is skipped on npm, not staged late.
 concurrency:
   group: ${{ github.workflow }}
   cancel-in-progress: false
@@ -45,44 +51,51 @@ jobs:
         with:
           persist-credentials: false
 
-      # Published: stop. Not on npm (E404): stage it. Anything else, such as a registry
-      # outage: fail rather than guess.
-      - name: Check whether the version is already on npm
+      # Published: stop. Tagged but not published: staged already, waiting for approval; stop.
+      # Neither: stage it. Anything else, such as a registry outage: fail rather than guess.
+      - name: Check whether the version is new
         id: version
         run: |
           set -euo pipefail
           VERSION=$(node -p "require('./packages/sdk/package.json').version")
+          TAG="v${VERSION}"
           echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
           if OUT=$(npm view "@centrifuge/sdk@${VERSION}" version --registry https://registry.npmjs.org/ 2>&1); then
             echo "::notice::@centrifuge/sdk@${VERSION} is already on npm; nothing to stage."
             echo "new=false" >> "$GITHUB_OUTPUT"
-          elif printf '%s' "${OUT}" | grep -q 'E404'; then
-            echo "new=true" >> "$GITHUB_OUTPUT"
-          else
+            exit 0
+          fi
+          if ! printf '%s' "${OUT}" | grep -q 'E404'; then
             printf '%s\n' "${OUT}"
             echo "::error::Could not tell whether @centrifuge/sdk@${VERSION} is on npm."
             exit 1
           fi
+          # The commit the tag points to: the peeled ref of an annotated tag sorts last.
+          TAGGED="$(git ls-remote --tags origin "refs/tags/${TAG}" "refs/tags/${TAG}^{}" | sort -k2 | tail -n1 | cut -f1)"
+          if [ -z "${TAGGED}" ]; then
+            echo "new=true" >> "$GITHUB_OUTPUT"
+          elif [ "${TAGGED}" = "${GITHUB_SHA}" ]; then
+            echo "::notice::@centrifuge/sdk@${VERSION} is already staged from this commit and waiting for approval on npm."
+            echo "new=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "::warning::@centrifuge/sdk@${VERSION} is already staged from ${TAGGED}, not from main's ${GITHUB_SHA}; approving that stage ships ${TAGGED}. To stage main, raise the version, or reject the stage, delete ${TAG} and run this workflow from main."
+            echo "new=false" >> "$GITHUB_OUTPUT"
+          fi
 
-      - uses: pnpm/action-setup@b307475762933b98ed359c036b0e51f26b63b74b # v5.0.0
+      - name: Install
         if: steps.version.outputs.new == 'true'
-
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
-        if: steps.version.outputs.new == 'true'
+        uses: ./.github/actions/install
         with:
-          node-version: 22
+          token: ${{ github.token }}
 
-      - name: Install, build and verify
+      # No token from here on: the build and verify scripts cannot read it.
+      - name: Build the publish artifact
         if: steps.version.outputs.new == 'true'
-        env:
-          NODE_AUTH_TOKEN: ${{ github.token }}
-        run: |
-          set -euo pipefail
-          # shellcheck disable=SC2016 # npm expands ${NODE_AUTH_TOKEN} itself
-          echo '//npm.pkg.github.com/:_authToken=${NODE_AUTH_TOKEN}' >> ~/.npmrc
-          pnpm install --frozen-lockfile
-          pnpm build:publish
-          pnpm verify:publish
+        run: pnpm build:publish
+
+      - name: Verify the artifact from a clean consumer
+        if: steps.version.outputs.new == 'true'
+        run: pnpm verify:publish
 
       # This tarball is what gets staged. Nothing is rebuilt after this.
       - name: Pack the tarball
@@ -120,8 +133,10 @@ jobs:
           node-version: 22
           registry-url: https://registry.npmjs.org
 
-      # Staged publishing needs npm 11.15.0 or later; Node 22 ships npm 10.
-      - run: npm install -g npm@11.21.1
+      # Staged publishing needs npm 11.15.0 or later; Node 22 ships npm 10. This is the version
+      # staging was tested with.
+      - name: Install npm with staged publishing
+        run: npm install -g npm@11.21.2
 
       - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
@@ -130,17 +145,35 @@ jobs:
       # The trusted publisher may only stage. Provenance is attached at stage time and carries
       # over on approval.
       - name: Stage
-        run: npm stage publish sdk.tgz --provenance --access public --ignore-scripts
+        id: stage
+        run: |
+          set -euo pipefail
+          npm stage publish sdk.tgz --provenance --access public --ignore-scripts --json | tee "$RUNNER_TEMP/stage.json"
+          # The stage id, wherever the JSON puts it; empty when it carries none.
+          STAGE_ID="$(node -e '
+            const find = (v) => v && typeof v === "object"
+              ? (typeof v.stageId === "string" ? v.stageId : Object.values(v).map(find).find(Boolean))
+              : undefined
+            try { console.log(find(JSON.parse(require("fs").readFileSync(process.argv[1], "utf8"))) ?? "") } catch { console.log("") }
+          ' "$RUNNER_TEMP/stage.json")"
+          echo "stage-id=${STAGE_ID}" >> "$GITHUB_OUTPUT"
 
+      # Cannot fail the job once the version is staged, so a re-run of failed jobs never stages it twice.
       - name: Say how to approve it
+        continue-on-error: true
         env:
           VERSION: ${{ needs.build.outputs.version }}
+          STAGE_ID: ${{ steps.stage.outputs.stage-id }}
         run: |
           {
             echo "### @centrifuge/sdk@${VERSION} is staged"
-            echo "Not installable until a maintainer approves it with 2FA: npmjs.com, the package's Staged Packages tab,"
-            echo "or \`npm stage list @centrifuge/sdk\` then \`npm stage approve <stage-id>\`. After approval, check its provenance:"
-            echo "\`npm view @centrifuge/sdk@${VERSION} dist.attestations.provenance.predicateType\`."
+            echo "Not installable until a maintainer approves it with 2FA: npmjs.com, the package's Staged Packages tab, or"
+            if [ -n "${STAGE_ID}" ]; then
+              echo "\`npm stage approve ${STAGE_ID}\` (npm 11.15.0 or later)."
+            else
+              echo "\`npm stage list @centrifuge/sdk\` then \`npm stage approve <stage-id>\` (npm 11.15.0 or later)."
+            fi
+            echo "After approval, check its provenance: \`npm view @centrifuge/sdk@${VERSION} dist.attestations.provenance.predicateType\`."
           } >> "$GITHUB_STEP_SUMMARY"
 
   tag:
@@ -153,16 +186,21 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
-      # A re-run finds the tag already there.
+      # A re-run finds the tag at this commit and stops. A tag at another commit means a different
+      # build of this version was staged before: fail, so the tag and the staged build cannot disagree.
       - name: Push tag v<version>
         env:
           VERSION: ${{ needs.build.outputs.version }}
         run: |
           set -euo pipefail
           TAG="v${VERSION}"
-          if git ls-remote --exit-code --tags origin "refs/tags/${TAG}" > /dev/null; then
-            echo "::notice::${TAG} already exists."
+          TAGGED="$(git ls-remote --tags origin "refs/tags/${TAG}" "refs/tags/${TAG}^{}" | sort -k2 | tail -n1 | cut -f1)"
+          if [ "${TAGGED}" = "${GITHUB_SHA}" ]; then
+            echo "::notice::${TAG} already points at ${GITHUB_SHA}."
             exit 0
+          elif [ -n "${TAGGED}" ]; then
+            echo "::error::${TAG} points at ${TAGGED}, but this run staged ${GITHUB_SHA}. Reject one of the two stages on npm and move the tag to the commit of the other."
+            exit 1
           fi
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
