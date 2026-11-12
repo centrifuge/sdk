@@ -1,8 +1,9 @@
-name: PR Title and Label Check
+name: PR Title Check
 on:
   pull_request:
-    types: [opened, reopened, edited, labeled, unlabeled, synchronize]
+    types: [opened, reopened, edited, synchronize]
 jobs:
+  # The job id is kept: it may be a required check on main.
   title-n-label-check:
     runs-on: ubuntu-latest
     permissions:
@@ -18,13 +19,6 @@ jobs:
           # https://www.conventionalcommits.org/en/v1.0.0/
           requireScope: false
 
-      - uses: agilepathway/label-checker@be847a108e0a42beaa699bb9c9783c7bc01ef2ee # v2.0.0
-        # https://github.com/agilepathway/label-checker
-        id: check-pr-labels
-        with:
-          one_of: major,minor,patch,no-release,alpha
-          repo_token: ${{ secrets.GITHUB_TOKEN }}
-
       - name: Find existing PR title error comment
         uses: peter-evans/find-comment@b30e6a3c0ed37e7c023ccd3f1db5c6c0b0c23aad # v4.0.0
         id: find-title-comment
@@ -32,14 +26,6 @@ jobs:
           issue-number: ${{ github.event.pull_request.number }}
           comment-author: 'github-actions[bot]'
           body-includes: We require pull request titles to follow
-
-      - name: Find existing PR label error comment
-        uses: peter-evans/find-comment@b30e6a3c0ed37e7c023ccd3f1db5c6c0b0c23aad # v4.0.0
-        id: find-label-comment
-        with:
-          issue-number: ${{ github.event.pull_request.number }}
-          comment-author: 'github-actions[bot]'
-          body-includes: PR must have ONLY one of the following labels
 
       - name: Add PR naming error comment
         id: pr-title-error
@@ -65,34 +51,10 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           COMMENT_ID: ${{ steps.find-title-comment.outputs.comment-id }}
+          REPO: ${{ github.repository }}
         run: |
           curl -X DELETE \
             -H "Authorization: token $GITHUB_TOKEN" \
             -H "Accept: application/vnd.github.v3+json" \
-            https://api.github.com/repos/${{ github.repository }}/issues/comments/$COMMENT_ID
+            "https://api.github.com/repos/${REPO}/issues/comments/${COMMENT_ID}"
         if: steps.check-pr-naming.outputs.error_message == null
-
-      - name: Add PR label error comment
-        id: pr-label-error
-        uses: peter-evans/create-or-update-comment@e8674b075228eee787fea43ef493e45ece1004c9 # v5.0.0
-        with:
-          token: ${{ secrets.GITHUB_TOKEN }}
-          repository: ${{ github.repository }}
-          issue-number: ${{ github.event.pull_request.number }}
-          comment-id: ${{ steps.find-label-comment.outputs.comment-id }}
-          body: |
-            PR must have ONLY one of the following labels: major, minor, patch, no-release, alpha.
-            Check the logs for more details: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
-          edit-mode: replace
-        if: steps.check-pr-labels.outputs.label_check != 'success'
-
-      - name: Remove label error comment
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          COMMENT_ID: ${{ steps.find-label-comment.outputs.comment-id }}
-        run: |
-          curl -X DELETE \
-            -H "Authorization: token $GITHUB_TOKEN" \
-            -H "Accept: application/vnd.github.v3+json" \
-            https://api.github.com/repos/${{ github.repository }}/issues/comments/$COMMENT_ID
-        if: steps.check-pr-labels.outputs.label_check == 'success'

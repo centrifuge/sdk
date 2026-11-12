@@ -1,5 +1,3 @@
-# CODEOWNERS for GitHub metadata and workflows
-
-# Replace @centrifuge/your-team with the correct team or usernames
-
-.github/\*\* @centrifuge/devops @gpmayorga @hieronx
+# Workflows and repository settings. npm's trusted publisher is bound to publish-release.yml and the
+# release environment, so a change here needs a code owner's review.
+.github/** @centrifuge/devops @gpmayorga @hieronx

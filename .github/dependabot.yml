@@ -1,22 +1,7 @@
 version: 2
 
 updates:
-  - package-ecosystem: 'npm'
-    directory: '/'
-    schedule:
-      interval: 'monthly'
-      timezone: 'Europe/Berlin'
-
-    open-pull-requests-limit: 1
-
-    labels: []
-
-    groups:
-      monthly-updates:
-        update-types:
-          - 'minor'
-          - 'patch'
-
+  # npm dependencies are managed in the private monorepo and arrive through the mirror.
   - package-ecosystem: 'github-actions'
     directory: '/'
     schedule:

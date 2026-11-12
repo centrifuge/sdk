@@ -1,109 +1,96 @@
 # GitHub Workflows Overview
 
+## Where the code comes from
+
+The SDK is developed in a private monorepo. Its source reaches this repository through the
+**mirror**: a GitHub App opens and updates one pull request from branch `mirror/main`, carrying the
+workspace (`packages/sdk`, `packages/protocol`, `packages/queries`) and the generated root files. This
+repository owns only `.github/`, `docs/`, `README.md`, `LICENSE` and `.npmrc`; the mirror owns the rest.
+
+Pull requests that change SDK code here are refused by `mirror-guard.yml`. Changes land in the
+private monorepo and arrive through the next mirror pull request.
+
 ## Release Process
 
-1. **Pull Request Stage**:
+1. **Version.** The version is set in the private monorepo (`packages/sdk/package.json`) and arrives
+   with the mirror pull request. Nothing in this repository bumps it.
+2. **Merge.** A maintainer reviews and merges the mirror pull request. That is the only human step in
+   this repository.
+3. **Stage.** When `packages/sdk/package.json` on `main` carries a version that is neither on npm nor
+   tagged yet, `publish-release.yml` builds the package, verifies it, and stages it on npm with
+   provenance. It then tags the commit `v<version>`. A merge without a version change stages nothing.
+4. **Approve.** A staged version is not installable until an npm maintainer approves it with 2FA, on
+   npmjs.com under the package's Staged Packages tab or with `npm stage approve <stage-id>` (npm 11.15.0
+   or later); the run's summary names the stage id. `npm stage reject <stage-id>` discards it.
 
-   - PR must have a Conventional Commits compliant title
-   - PR must have exactly one release label (major, minor, patch, alpha, no-release)
-   - Build and tests must pass
+There are no release labels and no GitHub release to promote.
 
-2. **Version Bumping**:
+The tag `v<version>` marks a staged version and names the commit it was built from. A version that is
+tagged but not on npm is waiting for approval, or was rejected, and is not staged again: a later run
+with the same version stops with a notice, or with a warning when `main` has moved past the staged
+commit. To stage a version again after rejecting it, delete its tag and run `publish-release.yml` from
+`main`.
 
-   - Triggered by PR approval
-   - Version is bumped based on PR label
-   - Skipped if PR has `no-release` label
-   - Additional checks prevent duplicate version bumps
-
-3. **Release Creation**:
-
-   - Draft release is automatically created when PR is merged to `main`
-   - Release notes are auto-generated
-   - Created as a prerelease
-
-4. **Publishing**:
-
-   - When a developer publishes a release on GitHub, the package is staged on npm. Generally this is done by editing the draft release from step 3
-   - A staged version is not installable until an npm maintainer approves it with 2FA, on npmjs.com under the package's Staged Packages tab or with `npm stage list @centrifuge/sdk` then `npm stage approve <stage-id>` (npm 11.15.0 or later). `npm stage reject <stage-id>` discards it
-   - Staged with npm provenance and public access; the provenance carries over on approval
-   - The workflow refuses a release whose commit is not on `main` or whose tag is not `v<package.json version>`
-
-   **To publish a draft release:**
-
-   **Option 1 - CLI**
-   https://docs.github.com/en/repositories/releasing-projects-on-github/managing-releases-in-a-repository#editing-a-release
-
-   **Option 2 - GH website**
-   https://github.com/centrifuge/sdk/releases
-   (a draft release will appear in this URL as indicated in step 3 above)
+Only the version on `main` when a run starts is staged. Runs queue one at a time, and a newer run
+replaces a waiting one, so a version that was on `main` only between two runs is skipped on npm.
 
 ## Workflows
 
-### 1. `bump-version.yml`
+### `publish-release.yml`
 
-This workflow handles version bumping:
+- **Trigger**: push to `main` that changes `packages/sdk/package.json`, or a manual run from `main`
+- **Jobs**:
+  - `build`: skips when the version is already on npm or already tagged; otherwise installs (the only
+    step that holds the GitHub Packages token), runs `build:publish` and `verify:publish`, and packs the
+    tarball
+  - `stage`: in the `release` environment, the only job with `id-token: write`; sees only the tarball and
+    runs `npm stage publish --provenance` over npm trusted publishing (OIDC), so no npm token is stored
+  - `tag`: pushes `v<version>` once the version is staged, and fails if the tag already points at
+    another commit
+- npm's trusted publisher is bound to this file name and the `release` environment: renaming either
+  breaks publishing.
 
-- **Trigger**: Runs on pull request events (opened, reopened, labeled, synchronize)
-- **Version Bump**:
-  - Determines version bump type based on PR labels (major, minor, patch, alpha)
-  - Uses `npm version` to update version in `package.json`
-  - For alpha releases, creates versions with `-alpha.N` suffix
-  - Skips version bump if PR has `no-release` label
-  - Reverts version bump if `no-release` label is added after version was bumped
+### `build-test-report.yml`
 
-### 2. `create-release.yml`
+- **Trigger**: pull requests to `main` and pushes to `main`
+- **Actions**: installs the workspace, runs `build:publish`, `verify:publish` and `test:unit`
 
-This workflow handles release creation:
+Both workflows install through `.github/actions/install`, which sets up pnpm and Node and runs a frozen
+install with the GitHub Packages token in that step only.
 
-- **Trigger**: Runs when a pull request is closed (merged)
-- **Action**: Creates a prerelease draft on GitHub with auto-generated release notes
+### `mirror-guard.yml`
 
-### 3. `build-test-report.yml`
+- **Trigger**: `pull_request_target`, so `main`'s copy of the guard judges every pull request and a pull
+  request cannot change it. Nothing from the pull request is checked out or run.
+- **Check**: a pull request that changes mirror-owned paths must be opened by the mirror App from
+  `mirror/main`, and every commit in it must be the App's; a mirror pull request may change only
+  mirror-owned paths. A pull request with more changed files than the API lists (3000) fails. The App's
+  login comes from the repository variable `SDK_MIRROR_APP_LOGIN`; without it no pull request counts as
+  the mirror's, so changes to mirror-owned paths fail and changes to repository-owned paths still pass.
 
-Handles continuous integration tasks:
+### `naming-conventions.yml`
 
-- **Trigger**: Runs on pull requests and pushes to `main`
-- **Actions**:
-  - Sets up Node.js 20 and pnpm 10.10.0
-  - Installs dependencies
-  - Runs build process
-  - Executes tests with coverage
-  - Uploads test results and coverage reports
-  - Reports coverage to Codecov
+- **Trigger**: pull request events
+- **Check**: the pull request title follows the Conventional Commits specification
 
-### 4. `naming-conventions.yml`
+### `pinned-actions-check.yml`
 
-Enforces PR conventions:
+- **Trigger**: pull requests that change workflows or actions
+- **Check**: every GitHub Action is pinned to a full commit SHA
 
-- **Trigger**: Runs on PR events (opened, edited, labeled, unlabeled, synchronize)
-- **Validations**:
-  - Ensures PR titles follow Conventional Commits specification
-  - Verifies exactly one release label is present (major, minor, patch, no-release, alpha)
-- **Feedback**: Adds/removes automated comments on PRs for validation issues
+## Repository settings
 
-### 5. `publish-release.yml`
+The workflows rely on these settings:
 
-Handles NPM package publishing:
+- **Ruleset on `main`**: pull request required with one approval and review from Code Owners, so a
+  change under `.github/` needs a code owner; required checks `build-n-test`, `mirror-guard` and
+  `title-n-label-check`; no bypass for the mirror App.
+- **Ruleset on `mirror/main`**: only the mirror App may push. The guard also refuses commits that are
+  not the App's, but commit metadata can be forged, so this ruleset is the control.
+- **Tags `v*`**: GitHub Actions may create them, or the `tag` job fails after staging.
 
-- **Trigger**: Runs when a GitHub release is published (moved from draft to released)
-- **Actions**:
-  - Checks the release commit is on `main` and the tag names the package version
-  - Builds the project
-  - Stages the version on npm with `npm stage publish --provenance`; a maintainer approves it with 2FA before it goes live
-  - Authenticates with npm trusted publishing (OIDC) in the `release` environment, so no npm token is stored
+## Installing
 
-## Scripts
-
-The workflow uses two helper scripts:
-
-### `bump-check.sh`
-
-- Prevents duplicate version bumps
-- Checks if version already exists in releases
-- Verifies if version was already bumped in current branch
-
-### `pr-label-check.sh`
-
-- Validates PR labels
-- Ensures exactly one release label is present
-- Returns the type of release or `no-release`
+`packages/protocol` depends on `@centrifuge/addressbook`, which is published to GitHub Packages. The
+workflows install it with their `GITHUB_TOKEN` and `packages: read`; this repository has read access to
+the package.
