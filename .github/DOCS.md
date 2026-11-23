@@ -19,6 +19,8 @@ private monorepo and arrive through the next mirror pull request.
 3. **Stage.** When `packages/sdk/package.json` on `main` carries a version that is neither on npm nor
    tagged yet, `publish-release.yml` builds the package, verifies it, and stages it on npm with
    provenance. It then tags the commit `v<version>`. A merge without a version change stages nothing.
+   A release goes to the `latest` dist-tag. A prerelease (a version such as `2.12.0-rc.1`) goes to `next`,
+   so approving it never moves `latest`.
 4. **Approve.** A staged version is not installable until an npm maintainer approves it with 2FA, on
    npmjs.com under the package's Staged Packages tab or with `npm stage approve <stage-id>` (npm 11.15.0
    or later); the run's summary names the stage id. `npm stage reject <stage-id>` discards it.
@@ -44,7 +46,8 @@ replaces a waiting one, so a version that was on `main` only between two runs is
     step that holds the GitHub Packages token), runs `build:publish` and `verify:publish`, and packs the
     tarball
   - `stage`: in the `release` environment, the only job with `id-token: write`; sees only the tarball and
-    runs `npm stage publish --provenance` over npm trusted publishing (OIDC), so no npm token is stored
+    runs `npm stage publish --provenance` with dist-tag `latest`, or `next` for a prerelease, over npm
+    trusted publishing (OIDC), so no npm token is stored
   - `tag`: pushes `v<version>` once the version is staged, and fails if the tag already points at
     another commit
 - npm's trusted publisher is bound to this file name and the `release` environment: renaming either

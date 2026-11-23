@@ -36,6 +36,7 @@ jobs:
       packages: read
     outputs:
       version: ${{ steps.version.outputs.version }}
+      dist-tag: ${{ steps.version.outputs.dist-tag }}
       new: ${{ steps.version.outputs.new }}
     steps:
       - name: Verify running from main
@@ -60,6 +61,11 @@ jobs:
           VERSION=$(node -p "require('./packages/sdk/package.json').version")
           TAG="v${VERSION}"
           echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
+          # A prerelease (a '-' before any '+build' part) goes to next, so it never moves latest.
+          case "${VERSION%%+*}" in
+            *-*) echo "dist-tag=next" >> "$GITHUB_OUTPUT" ;;
+            *) echo "dist-tag=latest" >> "$GITHUB_OUTPUT" ;;
+          esac
           if OUT=$(npm view "@centrifuge/sdk@${VERSION}" version --registry https://registry.npmjs.org/ 2>&1); then
             echo "::notice::@centrifuge/sdk@${VERSION} is already on npm; nothing to stage."
             echo "new=false" >> "$GITHUB_OUTPUT"
@@ -146,9 +152,11 @@ jobs:
       # over on approval.
       - name: Stage
         id: stage
+        env:
+          DIST_TAG: ${{ needs.build.outputs.dist-tag }}
         run: |
           set -euo pipefail
-          npm stage publish sdk.tgz --provenance --access public --ignore-scripts --json | tee "$RUNNER_TEMP/stage.json"
+          npm stage publish sdk.tgz --tag "${DIST_TAG}" --provenance --access public --ignore-scripts --json | tee "$RUNNER_TEMP/stage.json"
           # The stage id, wherever the JSON puts it; empty when it carries none.
           STAGE_ID="$(node -e '
             const find = (v) => v && typeof v === "object"
@@ -163,10 +171,11 @@ jobs:
         continue-on-error: true
         env:
           VERSION: ${{ needs.build.outputs.version }}
+          DIST_TAG: ${{ needs.build.outputs.dist-tag }}
           STAGE_ID: ${{ steps.stage.outputs.stage-id }}
         run: |
           {
-            echo "### @centrifuge/sdk@${VERSION} is staged"
+            echo "### @centrifuge/sdk@${VERSION} is staged under dist-tag \`${DIST_TAG}\`"
             echo "Not installable until a maintainer approves it with 2FA: npmjs.com, the package's Staged Packages tab, or"
             if [ -n "${STAGE_ID}" ]; then
               echo "\`npm stage approve ${STAGE_ID}\` (npm 11.15.0 or later)."
