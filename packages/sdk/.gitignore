@@ -1,0 +1,25 @@
+# Logs
+*.log
+npm-debug.log*
+pnpm-debug.log*
+
+.DS_Store
+node_modules
+dist
+.next
+.idea/
+.vscode
+out
+
+.env
+
+# Tests and coverage
+coverage/
+test-results.xml
+report/
+
+# API Extractor working directory (the checked-in report lives in etc/)
+temp/
+
+# Publish artifact (pnpm build:publish). Generated, never committed.
+dist-publish

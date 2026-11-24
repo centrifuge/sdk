@@ -1,0 +1,25 @@
+/**
+ * ABI for `ERC6909` at protocol v3.2: the single copy both the backend
+ * builders and the SDK encode against.
+ */
+export const ERC6909_ABI_V3_2 = [
+  "function allowance(address owner, address spender, uint256 tokenId) view returns (uint256 amount)",
+  "function approve(address spender, uint256 tokenId, uint256 amount) returns (bool)",
+  "function balanceOf(address owner, uint256 tokenId) view returns (uint256 amount)",
+  "function name(uint256 tokenId) view returns (string)",
+  "function symbol(uint256 tokenId) view returns (string)",
+  "function decimals(uint256 tokenId) view returns (uint8)",
+  // 'function isOperator(address owner, address spender) view returns (bool approved)',
+  // 'function setOperator(address operator, bool approved) returns (bool)',
+  // 'function supportsInterface(bytes4 interfaceID) view returns (bool)',
+  // 'function transfer(address receiver, uint256 tokenId, uint256 amount) returns (bool)',
+  // 'function transferFrom(address sender, address receiver, uint256 tokenId, uint256 amount) returns (bool)',
+  "event Approval(address indexed owner, address indexed spender, uint256 indexed tokenId, uint256 amount)",
+  // 'event OperatorSet(address indexed owner, address indexed operator, bool approved)',
+  "event Transfer(address caller, address indexed from, address indexed to, uint256 indexed tokenId, uint256 amount)",
+  // 'error EmptyAmount()',
+  // 'error EmptyOwner()',
+  // 'error InsufficientAllowance(address sender, uint256 tokenId)',
+  // 'error InsufficientBalance(address owner, uint256 tokenId)',
+  // 'error InvalidTokenId()',
+] as const;

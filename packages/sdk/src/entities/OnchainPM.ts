@@ -1,0 +1,538 @@
+import type { SimpleMerkleTree } from '@openzeppelin/merkle-tree'
+import { combineLatest, firstValueFrom, from, map, of, switchMap } from 'rxjs'
+import { encodeFunctionData, toHex } from 'viem'
+import {
+  ABIS_V3_3,
+  encodeOnchainPMPolicyPayload,
+  PROTOCOL_VERSION_V3_3,
+  type ContractAbis,
+  type ProtocolVersion,
+} from '@centrifuge/protocol'
+import type { Centrifuge } from '../Centrifuge.js'
+import type { HexString } from '../types/index.js'
+import { addressToBytes32, encode } from '../utils/index.js'
+import type { Callback } from '../utils/scriptHash.js'
+import {
+  buildWorkflowExecuteParams,
+  computeWorkflowGroupScriptHashes,
+  type PolicyEntryInput,
+} from '../utils/workflowExecute.js'
+import { wrapTransaction } from '../utils/transaction.js'
+import { MessageType, MessageTypeV3_3, messageV3_3 } from '../types/transaction.js'
+import { Entity } from './Entity.js'
+import type { PoolNetwork } from './PoolNetwork.js'
+
+export class OnchainPM extends Entity {
+  /** Deployed contract address on this chain. */
+  address: HexString
+
+  constructor(
+    _root: Centrifuge,
+    public network: PoolNetwork,
+    address: HexString
+  ) {
+    // The address is part of the key: a pool's OnchainPM is a CREATE2 address, but a factory
+    // redeploy (or an address resolved some other way) gives a second instance for the same
+    // pool and chain, and without it the newer instance would serve the older one's cached root.
+    super(_root, ['onchainPM', network.centrifugeId, network.pool.id.toString(), address.toLowerCase()])
+    this.address = address.toLowerCase() as HexString
+  }
+
+  /** Current policy root for the given strategist. `bytes32(0)` means no policy is set. */
+  policy(strategist: HexString) {
+    return this._query(['policy', strategist.toLowerCase()], () =>
+      combineLatest([
+        this._root.getClient(this.network.centrifugeId),
+        this.network._protocolContext(),
+      ]).pipe(
+        switchMap(([client, { contractAbis: ABI }]) =>
+          from(
+            client.readContract({
+              address: this.address,
+              abi: ABI.OnchainPM,
+              functionName: 'policy',
+              args: [strategist],
+            })
+          )
+        )
+      )
+    )
+  }
+
+  /**
+   * Whether this OnchainPM is fully authorized to run workflows for the pool —
+   * i.e. it is both a balance sheet manager and a minter on the pool's
+   * accounting token. `authorizeOnchainPM` grants both; surface this so the UI
+   * can detect a partial/stale state and re-authorize.
+   */
+  isAuthorized() {
+    const self = this
+    return this._query(['isAuthorized'], () =>
+      combineLatest([
+        from(this.network._protocolContext()),
+        from(this._root.getClient(this.network.centrifugeId)),
+        this.network.pool.isBalanceSheetManager(this.network.centrifugeId, this.address),
+      ]).pipe(
+        switchMap(([{ accountingToken, contractAbis: ABI }, client, isBalanceSheetManager]) => {
+          // No AccountingToken on this chain means the minter half of the grant
+          // cannot exist, so this PM is not fully authorized. Answered `false`
+          // rather than thrown: this is a predicate the UI polls to decide
+          // whether to offer re-authorization, and `authorizeOnchainPM` already
+          // throws with the actionable message when someone acts on it.
+          if (!accountingToken) return of(false)
+          return from(
+            client.readContract({
+              address: accountingToken,
+              abi: ABI.AccountingToken,
+              functionName: 'minters',
+              args: [self.network.pool.id.raw, self.address],
+            })
+          ).pipe(map((isMinter) => Boolean(isBalanceSheetManager) && Boolean(isMinter)))
+        })
+      )
+    )
+  }
+
+  /**
+   * Executes a whitelisted weiroll script on-chain.
+   *
+   * Build the arguments with:
+   * - `buildScript()` → `{ commands, state, stateBitmap }`
+   * - `fillRuntimeSlots()` → final `state` with runtime values filled in
+   * - `generateExecuteProof()` → `proof`
+   *
+   * @example
+   * ```typescript
+   * const { commands, state: rawState, stateBitmap } = buildScript(workflow, { poolContext, configurableValues })
+   * const state = fillRuntimeSlots(rawState, workflow, { amount: '0x...' })
+   * const proof = await generateExecuteProof(computeScriptHash(commands, rawState, stateBitmap, []), allGroupScriptHashes)
+   * await onchainPM.execute({ commands, state, stateBitmap, callbacks: [], proof })
+   * ```
+   */
+  execute(
+    params: {
+      commands: HexString[]
+      state: HexString[]
+      stateBitmap: bigint
+      callbacks: Callback[]
+      proof: HexString[]
+    },
+    options: { simulate?: boolean; value?: bigint } = {}
+  ) {
+    const self = this
+    return this._transact(async function* (ctx) {
+      const { contractAbis: ABI } = await self._root.protocolContext({
+        poolId: self.network.pool.id,
+        centrifugeId: self.network.centrifugeId,
+      })
+      yield* wrapTransaction(
+        'Execute workflow',
+        ctx,
+        {
+          contract: self.address,
+          data: encodeFunctionData({
+            abi: ABI.OnchainPM,
+            functionName: 'execute',
+            args: [params.commands, params.state, params.stateBitmap, params.callbacks, params.proof],
+          }),
+          value: options.value,
+        },
+        { simulate: options.simulate ?? false }
+      )
+    }, this.network.centrifugeId)
+  }
+
+  /**
+   * Runs several whitelisted weiroll scripts in a single transaction via the
+   * OnchainPM's `multicall` — used to batch a strategist's "account"/accounting
+   * workflows (e.g. price updates) into one atomic accounting update. Each item is
+   * built exactly like {@link execute}'s argument; the items are ABI-encoded as
+   * `execute(...)` calls and batched, so they all succeed or revert together.
+   * `value` is the total native value forwarded to the multicall (sum of the
+   * individual workflows' values).
+   *
+   * @example
+   * ```typescript
+   * await onchainPM.executeAccountingBatch([
+   *   { commands, state, stateBitmap, callbacks: [], proof },
+   *   { commands: c2, state: s2, stateBitmap: b2, callbacks: [], proof: p2 },
+   * ])
+   * ```
+   */
+  executeRawBatch(
+    items: {
+      commands: HexString[]
+      state: HexString[]
+      stateBitmap: bigint
+      callbacks: Callback[]
+      proof: HexString[]
+    }[],
+    options: { simulate?: boolean; value?: bigint } = {}
+  ) {
+    const self = this
+    return this._transact(async function* (ctx) {
+      const { contractAbis: ABI } = await self._root.protocolContext({
+        poolId: self.network.pool.id,
+        centrifugeId: self.network.centrifugeId,
+      })
+      const calls = items.map((p) =>
+        encodeFunctionData({
+          abi: ABI.OnchainPM,
+          functionName: 'execute',
+          args: [p.commands, p.state, p.stateBitmap, p.callbacks, p.proof],
+        })
+      )
+      yield* wrapTransaction(
+        'Accounting update',
+        ctx,
+        {
+          contract: self.address,
+          data: encodeFunctionData({
+            abi: ABI.OnchainPM,
+            functionName: 'multicall',
+            args: [calls],
+          }),
+          value: options.value,
+        },
+        { simulate: options.simulate ?? false }
+      )
+    }, this.network.centrifugeId)
+  }
+
+  /**
+   * Build and run several whitelisted workflows in one atomic `multicall` — the accounting
+   * update. The SDK builds each `run` entry's script/proof from `policy` (the strategist's
+   * full whitelisted set on this chain, which defines the Merkle proof tree), derives the
+   * pool escrow, and sums the native value. Permission preflights are the caller's concern;
+   * a reverted workflow surfaces via `simulate`.
+   */
+  executeAccountingBatch(
+    input: {
+      policy: PolicyEntryInput[]
+      run: number[]
+      runtimeValues?: Record<number, Record<string, HexString>>
+      strategist: HexString
+      scId?: HexString
+    },
+    options: { simulate?: boolean } = {}
+  ) {
+    const self = this
+    return this._transact(async function* (ctx) {
+      const { contractAbis: ABI } = await self._root.protocolContext({
+        poolId: self.network.pool.id,
+        centrifugeId: self.network.centrifugeId,
+      })
+      const poolEscrowAddress = await firstValueFrom(self.network.pool._escrow(self.network.centrifugeId))
+      const built = await Promise.all(
+        input.run.map((index) =>
+          buildWorkflowExecuteParams({
+            centrifuge: self._root,
+            network: self.network,
+            entry: input.policy[index]!,
+            policy: input.policy,
+            strategist: input.strategist,
+            scId: input.scId,
+            poolEscrowAddress,
+            runtimeValues: input.runtimeValues?.[index],
+          })
+        )
+      )
+      const calls = built.map((p) =>
+        encodeFunctionData({
+          abi: ABI.OnchainPM,
+          functionName: 'execute',
+          args: [p.commands, p.state, p.stateBitmap, p.callbacks, p.proof],
+        })
+      )
+      const value = built.reduce((sum, p) => sum + p.value, 0n)
+      yield* wrapTransaction(
+        'Accounting update',
+        ctx,
+        {
+          contract: self.address,
+          data: encodeFunctionData({ abi: ABI.OnchainPM, functionName: 'multicall', args: [calls] }),
+          value,
+        },
+        { simulate: options.simulate ?? false }
+      )
+    }, this.network.centrifugeId)
+  }
+
+  /**
+   * Build and run a single whitelisted workflow. `policy` is the strategist's full
+   * whitelisted set on this chain (needed for the proof tree); `run` indexes the entry to
+   * execute. `runtimeValues` are the strategist's per-execution inputs (encoded).
+   */
+  executeWorkflow(
+    input: {
+      policy: PolicyEntryInput[]
+      run: number
+      runtimeValues?: Record<string, HexString>
+      strategist: HexString
+      scId?: HexString
+    },
+    options: { simulate?: boolean } = {}
+  ) {
+    const self = this
+    return this._transact(async function* (ctx) {
+      const { contractAbis: ABI } = await self._root.protocolContext({
+        poolId: self.network.pool.id,
+        centrifugeId: self.network.centrifugeId,
+      })
+      const poolEscrowAddress = await firstValueFrom(self.network.pool._escrow(self.network.centrifugeId))
+      const p = await buildWorkflowExecuteParams({
+        centrifuge: self._root,
+        network: self.network,
+        entry: input.policy[input.run]!,
+        policy: input.policy,
+        strategist: input.strategist,
+        scId: input.scId,
+        poolEscrowAddress,
+        runtimeValues: input.runtimeValues,
+      })
+      yield* wrapTransaction(
+        'Execute workflow',
+        ctx,
+        {
+          contract: self.address,
+          data: encodeFunctionData({
+            abi: ABI.OnchainPM,
+            functionName: 'execute',
+            args: [p.commands, p.state, p.stateBitmap, p.callbacks, p.proof],
+          }),
+          value: p.value,
+        },
+        { simulate: options.simulate ?? false }
+      )
+    }, this.network.centrifugeId)
+  }
+
+  /**
+   * Submits a Hub.updateContract() transaction to update this OnchainPM's
+   * policy root for a strategist. Called whenever workflows are added to or
+   * removed from a group.
+   *
+   * Rebuilds the Merkle root from `scriptHashes` and routes the update:
+   * Hub → Spoke contractUpdater → OnchainPM.trustedCall()
+   *
+   * Pass `scriptHashes: []` to set root to bytes32(0), which disables the strategist.
+   *
+   * The transaction is signed on the hub chain (pool.centrifugeId).
+   */
+  updatePolicy(params: {
+    scId: HexString
+    strategist: HexString
+    /** The whitelisted set. The Merkle leaves are computed from this when `scriptHashes` is omitted. */
+    policy?: PolicyEntryInput[]
+    /** Pre-computed leaves. Pass `[]` to disable the strategist. Takes precedence over `policy`. */
+    scriptHashes?: HexString[]
+    refund?: HexString
+  }) {
+    const self = this
+    return this._transact(async function* (ctx) {
+      const { hub, contractAbis: ABI, protocolVersion } = await self._root.protocolContext(self.network.pool.id)
+
+      let scriptHashes = params.scriptHashes
+      if (scriptHashes === undefined) {
+        if (!params.policy) throw new Error('updatePolicy requires either `policy` or `scriptHashes`')
+        const poolEscrowAddress = await firstValueFrom(self.network.pool._escrow(self.network.centrifugeId))
+        scriptHashes = await computeWorkflowGroupScriptHashes({
+          centrifuge: self._root,
+          network: self.network,
+          policy: params.policy,
+          strategist: params.strategist,
+          scId: params.scId,
+          poolEscrowAddress,
+        })
+      }
+
+      const { calldata } = await buildPolicyUpdate({
+        hub,
+        abis: ABI,
+        protocolVersion,
+        poolId: self.network.pool.id.raw,
+        scId: params.scId,
+        centrifugeId: self.network.centrifugeId,
+        onchainPM: self.address,
+        strategist: params.strategist,
+        scriptHashes,
+        refund: params.refund,
+      })
+      yield* wrapTransaction('Update workflow policy', ctx, {
+        contract: hub,
+        policy: { poolId: self.network.pool.id },
+        data: calldata,
+        messages: {
+          [self.network.centrifugeId]: [
+            protocolVersion === PROTOCOL_VERSION_V3_3
+              ? messageV3_3(MessageTypeV3_3.ManagerCallFromHub, self.network.pool.id)
+              : { type: MessageType.TrustedContractUpdate, poolId: self.network.pool.id },
+          ],
+        },
+      })
+    }, this.network.pool.centrifugeId)
+  }
+}
+
+export interface PolicyUpdateRequest {
+  /** Hub contract address for the target chain. */
+  hub: HexString
+  /** The pool's resolved contract ABIs; the update is encoded against its Hub. */
+  abis: ContractAbis
+  /**
+   * The pool's protocol version, from its resolved context. v3.2 (the default)
+   * encodes `Hub.updateContract`; v3.3 encodes `Hub.managerCall` to the
+   * OnchainPM's `fromHub`, which decodes the same `(bytes32 strategist,
+   * bytes32 root)` and carries no share class.
+   */
+  protocolVersion?: ProtocolVersion
+  /** Pool ID (uint64). */
+  poolId: bigint
+  /** Share class ID (bytes16). */
+  scId: HexString
+  /** Chain centrifuge ID (uint16). */
+  centrifugeId: number
+  /** OnchainPM contract address to update. */
+  onchainPM: HexString
+  /** Strategist Safe multisig address. */
+  strategist: HexString
+  /**
+   * Script hashes — one per whitelisted workflow, computed via
+   * `computeScriptHash(commands, state, stateBitmap, [])`.
+   *
+   * Pass an empty array to disable the strategist (sets root to `bytes32(0)`).
+   */
+  scriptHashes: HexString[]
+  /**
+   * Address that receives the cross-chain gas refund.
+   * Defaults to `strategist` when omitted.
+   */
+  refund?: HexString
+}
+
+export interface PolicyUpdateResult {
+  /** New Merkle root. `bytes32(0)` means the strategist is disabled. */
+  root: HexString
+  /**
+   * ABI-encoded `Hub.updateContract()` (v3.2) or `Hub.managerCall()` (v3.3)
+   * calldata. Set this as the `data` field of a transaction sent to `hub`.
+   */
+  calldata: HexString
+}
+
+/**
+ * Builds an unsigned `Hub.updateContract()` call to update an OnchainPM
+ * strategist's policy root.
+ *
+ * The Merkle root is computed over `scriptHashes` using `SimpleMerkleTree`
+ * (order-invariant, compatible with `MerkleProofLib` on-chain). Routing:
+ *
+ * ```
+ * Hub.updateContract()
+ *   → Spoke contractUpdater.trustedCall()
+ *   → OnchainPM.trustedCall()
+ *   → policy[strategist] = newRoot
+ * ```
+ *
+ * **Usage** (BE calls this whenever workflows are added to / removed from a group):
+ *
+ * ```typescript
+ * const { root, calldata } = await buildPolicyUpdate({
+ *   hub, poolId, scId, centrifugeId, onchainPM, strategist,
+ *   scriptHashes: workflows.map(w => computeScriptHash(w.commands, w.state, w.stateBitmap, [])),
+ * })
+ * // Return calldata + hub to FE → Hub manager (Safe) signs and executes
+ * ```
+ */
+export async function buildPolicyUpdate(req: PolicyUpdateRequest): Promise<PolicyUpdateResult> {
+  const { poolId, scId, centrifugeId, onchainPM, strategist, scriptHashes, refund, abis: ABI, protocolVersion } = req
+
+  // Normalise case before building the Merkle tree so the root is deterministic
+  // regardless of whether callers pass checksummed or lowercase hashes.
+  const normalizedHashes = scriptHashes.map((h) => h.toLowerCase() as HexString)
+
+  // 1. Build Merkle root over script hashes.
+  //    Empty set → bytes32(0) which disables the strategist entirely.
+  let root: HexString
+  if (normalizedHashes.length === 0) {
+    root = toHex(0, { size: 32 })
+  } else {
+    const { SimpleMerkleTree } = await loadMerkleTree()
+    root = SimpleMerkleTree.of(normalizedHashes).root as HexString
+  }
+
+  // 2. Payload: strategist address (right-padded, Centrifuge cross-chain encoding) + new root.
+  const payload = encode([strategist, root])
+
+  if (protocolVersion === PROTOCOL_VERSION_V3_3) {
+    const calldata = encodeFunctionData({
+      abi: ABIS_V3_3.Hub,
+      functionName: 'managerCall',
+      args: [
+        poolId,
+        centrifugeId,
+        addressToBytes32(onchainPM),
+        encodeOnchainPMPolicyPayload({ strategist, root }),
+        0n,
+        0n,
+        refund ?? strategist,
+      ],
+    })
+    return { root, calldata }
+  }
+
+  // 3. Encode Hub.updateContract() call.
+  //    - target: OnchainPM address (right-padded to bytes32)
+  //    - extraGasLimit: 0 (covered by Hub's default gas estimate)
+  //    - refund: receives unused cross-chain gas; defaults to strategist
+  const calldata = encodeFunctionData({
+    abi: ABI.Hub,
+    functionName: 'updateContract',
+    args: [poolId, scId, centrifugeId, addressToBytes32(onchainPM), payload, 0n, refund ?? strategist],
+  })
+
+  return { root, calldata }
+}
+
+/**
+ * Generates the Merkle inclusion proof required by `OnchainPM.execute()`.
+ *
+ * Rebuilds the same `SimpleMerkleTree` that `buildPolicyUpdate()` committed
+ * on-chain and returns `tree.getProof(index)` for the given `scriptHash`.
+ * Pass the result as the `proof` argument:
+ *
+ * ```typescript
+ * const proof = await generateExecuteProof(scriptHash, allGroupScriptHashes)
+ * // submit: OnchainPM.execute(commands, filledState, stateBitmap, [], proof)
+ * ```
+ *
+ * For a group with a single workflow the proof is `[]` — the Merkle root is
+ * the script hash itself, so no siblings are needed.
+ *
+ * @throws if `allScriptHashes` is empty (strategist has no whitelisted workflows)
+ * @throws if `scriptHash` is not present in `allScriptHashes`
+ */
+export async function generateExecuteProof(scriptHash: HexString, allScriptHashes: HexString[]): Promise<HexString[]> {
+  if (allScriptHashes.length === 0) {
+    throw new Error('generateExecuteProof: allScriptHashes is empty — strategist has no whitelisted workflows')
+  }
+
+  // Normalise case so proof generation is consistent with buildPolicyUpdate(),
+  // which also lowercases before building the tree.
+  const normalizedHash = scriptHash.toLowerCase() as HexString
+  const normalizedAll = allScriptHashes.map((h) => h.toLowerCase() as HexString)
+
+  const index = normalizedAll.indexOf(normalizedHash)
+  if (index === -1) {
+    throw new Error(`generateExecuteProof: scriptHash ${scriptHash} not found in allScriptHashes`)
+  }
+
+  const { SimpleMerkleTree } = await loadMerkleTree()
+  return SimpleMerkleTree.of(normalizedAll).getProof(index) as HexString[]
+}
+
+// Dynamic import for CJS/ESM compatibility (same pattern as MerkleProofManager).
+async function loadMerkleTree(): Promise<{ SimpleMerkleTree: typeof SimpleMerkleTree }> {
+  const mod = await import('@openzeppelin/merkle-tree')
+  return (mod.default ?? mod) as { SimpleMerkleTree: typeof SimpleMerkleTree }
+}

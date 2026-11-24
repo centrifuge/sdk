@@ -1,0 +1,22 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "module": "commonjs",
+    "moduleResolution": "node",
+    "declaration": true,
+    "declarationMap": true,
+    "sourceMap": true,
+    "paths": {
+      // The package ships subpath types only under node16/bundler resolution;
+      // this project resolves with node10.
+      "@centrifuge/addressbook/load": [
+        "./node_modules/@centrifuge/addressbook/dist/src/loader.d.ts"
+      ],
+      "@centrifuge/addressbook/abis": [
+        "./node_modules/@centrifuge/addressbook/dist/src/abis.d.ts"
+      ]
+    }
+  },
+  "include": ["src/**/*.ts", "vitest.config.mts"],
+  "exclude": ["node_modules", "dist"]
+}

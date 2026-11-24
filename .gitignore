@@ -1,19 +1,8 @@
-# Logs
-*.log
-npm-debug.log*
-pnpm-debug.log*
-
-.DS_Store
 node_modules
 dist
-.next
-.idea/
-.vscode
-out
-
+dist-publish
+temp
+coverage
+*.log
 .env
-
-# Tests and coverage
-coverage/
-test-results.xml
-report/
+.env.*

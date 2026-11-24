@@ -1,0 +1,907 @@
+import { ABIS_V3_2 } from '@centrifuge/protocol'
+import { expect } from 'chai'
+import { lastValueFrom, Observable, of } from 'rxjs'
+import sinon from 'sinon'
+import { decodeFunctionData, encodeAbiParameters, encodeEventTopics, parseAbi } from 'viem'
+import type { TransactionReceipt } from 'viem'
+import { ABIS_V3_2 as ABI } from '@centrifuge/protocol'
+import { Centrifuge } from '../Centrifuge.js'
+import { NULL_ADDRESS } from '../constants.js'
+import { context } from '../tests/setup.js'
+import { doTransaction } from '../utils/transaction.js'
+import { AssetId, PoolId, ShareClassId } from '../utils/types.js'
+import { MerkleProofManager } from './MerkleProofManager.js'
+import { OnchainPM } from './OnchainPM.js'
+import { Pool } from './Pool.js'
+import { PoolNetwork } from './PoolNetwork.js'
+import { Vault } from './Vault.js'
+
+const poolId = PoolId.from(1, 1)
+const scId = ShareClassId.from(poolId, 1)
+const _chainId = 11155111
+const centId = 1
+const poolManager = '0x423420Ae467df6e90291fd0252c0A8a637C1e03f'
+const signingAddress = '0x1111111111111111111111111111111111111111'
+const onOffRampFactory = '0x2222222222222222222222222222222222222222'
+const merkleFactory = '0x3333333333333333333333333333333333333333'
+
+const onOffRampEventAbi = parseAbi([
+  'event DeployOnOfframpManager(uint64 indexed poolId, bytes16 scId, address indexed manager)',
+])
+const merkleEventAbi = parseAbi(['event DeployMerkleProofManager(uint64 indexed poolId, address indexed manager)'])
+
+describe.skip('PoolNetwork', () => {
+  let poolNetwork: PoolNetwork
+
+  beforeEach(() => {
+    const { centrifuge } = context
+    const pool = new Pool(centrifuge, poolId.raw)
+    poolNetwork = new PoolNetwork(centrifuge, pool, centId)
+  })
+
+  it('should get whether a pool is deployed to a network', async () => {
+    const isActive = await poolNetwork.isActive()
+    expect(isActive).to.equal(true)
+
+    // non-active pool/network
+    const poolNetwork2 = new PoolNetwork(context.centrifuge, new Pool(context.centrifuge, '123'), centId)
+    const isActive2 = await poolNetwork2.isActive()
+    expect(isActive2).to.equal(false)
+  })
+
+  it.skip('get vaults for a share class', async () => {
+    const vaults = await poolNetwork.vaults(scId)
+    expect(vaults).to.have.length.greaterThan(0)
+    expect(vaults[0]!.address.toLowerCase()).not.to.equal(NULL_ADDRESS)
+  })
+
+  it.skip('gets the details', async () => {
+    const details = await poolNetwork.details()
+    expect(details.isActive).to.equal(true)
+    expect(details.activeShareClasses).to.have.length.greaterThan(0)
+    expect(details.activeShareClasses[0]!.shareToken).not.to.equal(NULL_ADDRESS)
+    expect(details.activeShareClasses[0]!.id.equals(scId)).to.equal(true)
+    expect(details.activeShareClasses[0]!.vaults).to.have.length.greaterThan(0)
+  })
+
+  it.skip('deploys share classes and vaults', async () => {
+    const { hub, freezeOnlyHook, vaultRouter } = await context.centrifuge.protocolContext(centId)
+
+    context.tenderlyFork.impersonateAddress = poolManager
+    context.centrifuge.setSigner(context.tenderlyFork.signer)
+
+    await context.centrifuge._transact(async function* (ctx) {
+      yield* doTransaction('Add share class', ctx, async () => {
+        return ctx.walletClient.writeContract({
+          address: hub,
+          abi: ABI.Hub,
+          functionName: 'addShareClass',
+          args: [poolId.raw, 'Test Share Class', 'TSC', '0x123'.padEnd(66, '0') as any],
+        })
+      })
+    }, centId)
+
+    const addresses = await context.centrifuge.protocolContext(centId)
+    const client = await context.centrifuge.getClient(centId)
+    const shareClassCount = await client.readContract({
+      address: addresses.shareClassManager,
+      abi: ABI.ShareClassManager,
+      functionName: 'shareClassCount',
+      args: [poolId.raw],
+    })
+    const nextIndex = Number(shareClassCount)
+    const scId = ShareClassId.from(poolId, nextIndex)
+
+    const assetId = AssetId.from(1, 1)
+
+    const result = await poolNetwork.deploy(
+      [{ id: scId, hook: freezeOnlyHook }],
+      [{ shareClassId: scId, assetId, kind: 'syncDeposit' }]
+    )
+    expect(result.type).to.equal('TransactionConfirmed')
+
+    const details = await poolNetwork.details()
+    expect(details.activeShareClasses.some((sc) => sc.id.equals(scId))).to.be.true
+
+    const asset = await context.centrifuge.assetCurrency(assetId)
+    const vaultAddr = await client.readContract({
+      address: vaultRouter,
+      abi: ABI.VaultRouter,
+      functionName: 'getVault',
+      args: [poolId.raw, scId.raw, asset.address],
+    })
+
+    const vault = new Vault(
+      context.centrifuge,
+      new PoolNetwork(context.centrifuge, new Pool(context.centrifuge, poolId.raw), centId),
+      details.activeShareClasses.find((sc) => sc.id.equals(scId))!.shareClass,
+      asset.address,
+      vaultAddr as any,
+      assetId
+    )
+
+    const vaultDetails = await vault.details()
+    expect(vaultDetails.isSyncDeposit).to.be.true
+
+    const maxReserve = await client.readContract({
+      address: addresses.syncManager,
+      abi: ABI.SyncManager,
+      functionName: 'maxReserve',
+      args: [poolId.raw, scId.raw, asset.address, 0n],
+    })
+    expect(maxReserve).to.equal(340282366920938463463374607431768211455n)
+  })
+
+  it.skip('disables vaults', async () => {
+    const { vaultRouter } = await context.centrifuge.protocolContext(centId)
+    const client = await context.centrifuge.getClient(centId)
+
+    context.tenderlyFork.impersonateAddress = poolManager
+    context.centrifuge.setSigner(context.tenderlyFork.signer)
+
+    const scId = ShareClassId.from(poolId, 2)
+    const assetId = AssetId.from(1, 1)
+    const asset = await context.centrifuge.assetCurrency(assetId)
+
+    const vaultAddr = await client.readContract({
+      address: vaultRouter,
+      abi: ABI.VaultRouter,
+      functionName: 'getVault',
+      args: [poolId.raw, scId.raw, asset.address],
+    })
+
+    const mock = sinon.mock(poolNetwork)
+    mock.expects('details').resolves({
+      activeShareClasses: [{ id: scId, vaults: [{ assetId, address: vaultAddr }] }],
+    })
+
+    const result = await poolNetwork.unlinkVaults([
+      { shareClassId: scId, assetId, address: vaultAddr as `0x${string}` },
+    ])
+    expect(result.type).to.equal('TransactionConfirmed')
+
+    const vaultAddr2 = await client.readContract({
+      address: vaultRouter,
+      abi: ABI.VaultRouter,
+      functionName: 'getVault',
+      args: [poolId.raw, scId.raw, asset.address],
+    })
+    expect(vaultAddr2).to.equal(NULL_ADDRESS)
+  })
+
+  it.skip('links vaults', async () => {
+    const { vaultRouter } = await context.centrifuge.protocolContext(centId)
+    const client = await context.centrifuge.getClient(centId)
+
+    context.tenderlyFork.impersonateAddress = poolManager
+    context.centrifuge.setSigner(context.tenderlyFork.signer)
+
+    const scId = ShareClassId.from(poolId, 2)
+    const assetId = AssetId.from(1, 1)
+    const asset = await context.centrifuge.assetCurrency(assetId)
+
+    const initialVaultAddr = await client.readContract({
+      address: vaultRouter,
+      abi: ABI.VaultRouter,
+      functionName: 'getVault',
+      args: [poolId.raw, scId.raw, asset.address],
+    })
+    expect(initialVaultAddr).not.to.equal(NULL_ADDRESS)
+
+    const mockUnlink = sinon.mock(poolNetwork)
+    mockUnlink.expects('details').resolves({
+      activeShareClasses: [{ id: scId, vaults: [{ assetId, address: initialVaultAddr }] }],
+    })
+
+    const unlinkResult = await poolNetwork.unlinkVaults([
+      { shareClassId: scId, assetId, address: initialVaultAddr as `0x${string}` },
+    ])
+    expect(unlinkResult.type).to.equal('TransactionConfirmed')
+
+    mockUnlink.restore()
+
+    const unlinkedVaultAddr = await client.readContract({
+      address: vaultRouter,
+      abi: ABI.VaultRouter,
+      functionName: 'getVault',
+      args: [poolId.raw, scId.raw, asset.address],
+    })
+    expect(unlinkedVaultAddr).to.equal(NULL_ADDRESS)
+
+    const mockLink = sinon.mock(poolNetwork)
+    mockLink.expects('details').resolves({
+      activeShareClasses: [
+        {
+          id: scId,
+          vaults: [{ assetId, address: initialVaultAddr }],
+        },
+      ],
+    })
+
+    const linkResult = await poolNetwork.linkVaults([
+      { shareClassId: scId, assetId, address: initialVaultAddr as `0x${string}` },
+    ])
+    expect(linkResult.type).to.equal('TransactionConfirmed')
+
+    mockLink.restore()
+
+    const linkedVaultAddr = await client.readContract({
+      address: vaultRouter,
+      abi: ABI.VaultRouter,
+      functionName: 'getVault',
+      args: [poolId.raw, scId.raw, asset.address],
+    })
+    expect(linkedVaultAddr).to.equal(initialVaultAddr)
+    expect(linkedVaultAddr).not.to.equal(NULL_ADDRESS)
+  })
+
+  describe.skip('merkleProofManager', () => {
+    it('should return merkleProofManager', async () => {
+      const result = await poolNetwork.merkleProofManager()
+
+      expect(result).to.be.instanceOf(MerkleProofManager)
+    })
+
+    it('should deploy merkleProofManager', async () => {
+      context.tenderlyFork.impersonateAddress = poolManager
+      context.centrifuge.setSigner(context.tenderlyFork.signer)
+
+      await context.tenderlyFork.fundAccountEth(poolManager, 10n ** 18n)
+
+      const poolId = PoolId.from(1, 10)
+      const { centrifuge } = context
+      const pool = new Pool(centrifuge, poolId.raw)
+      const poolNetwork = new PoolNetwork(centrifuge, pool, centId)
+
+      const result = await poolNetwork.deployMerkleProofManager()
+
+      expect(result.type).to.equal('TransactionConfirmed')
+    })
+
+    it('should throw when it does not find merkleProofManager', async () => {
+      const poolId = PoolId.from(1, 10)
+      const { centrifuge } = context
+      const pool = new Pool(centrifuge, poolId.raw)
+      const poolNetwork = new PoolNetwork(centrifuge, pool, centId)
+      try {
+        await poolNetwork.merkleProofManager()
+      } catch (error: any) {
+        expect(error.message).to.equal('MerkleProofManager not found')
+      }
+    })
+  })
+
+  describe.skip('onOfframpManager', () => {
+    it.skip('returns onOfframpManager', async () => {
+      context.tenderlyFork.impersonateAddress = poolManager
+      context.centrifuge.setSigner(context.tenderlyFork.signer)
+
+      await context.tenderlyFork.fundAccountEth(poolManager, 10n ** 18n)
+      await poolNetwork.pool.updateBalanceSheetManagers([
+        { centrifugeId: centId, address: '0x8c0E6DC2461c6190A3e5703B714942cacfCb3C14', canManage: true },
+      ])
+
+      // TODO: Needs data in indexer for manager to be balance sheet manager
+      await poolNetwork.onOfframpManager(ShareClassId.from(poolId, 1))
+
+      // expect(result).to.be.instanceOf(OnOffRampManager)
+    })
+
+    it('should throw when it does not find onOfframpManager', async () => {
+      try {
+        await poolNetwork.onOfframpManager(ShareClassId.from(poolId, 10))
+      } catch (error: any) {
+        expect(error.message).to.equal('OnOffRampManager not found')
+      }
+    })
+
+    it('should throw when onOfframpManager is not balance sheet manager', async () => {
+      context.tenderlyFork.impersonateAddress = poolManager
+      context.centrifuge.setSigner(context.tenderlyFork.signer)
+
+      await context.tenderlyFork.fundAccountEth(poolManager, 10n ** 18n)
+      await poolNetwork.pool.updateBalanceSheetManagers([
+        { centrifugeId: centId, address: '0x8c0E6DC2461c6190A3e5703B714942cacfCb3C14', canManage: true },
+      ])
+
+      try {
+        await poolNetwork.onOfframpManager(ShareClassId.from(poolId, 1))
+      } catch (error: any) {
+        expect(error.message).to.equal('OnOffRampManager not found in balance sheet managers')
+      }
+    })
+
+    it('should deploy onOfframpManager', async () => {
+      const centrifugeWithPin = new Centrifuge({
+        environment: 'testnet',
+        pinJson: async () => {
+          return 'abc'
+        },
+        rpcUrls: {
+          11155111: context.tenderlyFork.rpcUrl,
+        },
+      })
+
+      context.tenderlyFork.impersonateAddress = poolManager
+      centrifugeWithPin.setSigner(context.tenderlyFork.signer)
+
+      await context.tenderlyFork.fundAccountEth(poolManager, 10n ** 18n)
+
+      const pool = new Pool(centrifugeWithPin, poolId.raw)
+
+      await pool.update({}, [], [{ tokenName: 'DummyShareClass', symbolName: 'DSC' }])
+
+      const addresses = await centrifugeWithPin.protocolContext(centId)
+      const client = await centrifugeWithPin.getClient(centId)
+
+      const shareClassesCount = await client.readContract({
+        address: addresses.shareClassManager,
+        abi: ABI.ShareClassManager,
+        functionName: 'shareClassCount',
+        args: [poolId.raw],
+      })
+
+      await poolNetwork.deploy([{ id: ShareClassId.from(pool.id, shareClassesCount), hook: '0x' }], [])
+
+      const result = await poolNetwork.deployOnOfframpManager(ShareClassId.from(pool.id, shareClassesCount))
+
+      expect(result.type).to.equal('TransactionConfirmed')
+    })
+
+    it.skip('should assign onOfframpManager permissions', async () => {
+      const centrifugeWithPin = new Centrifuge({
+        environment: 'testnet',
+        pinJson: async () => {
+          return 'abc'
+        },
+        rpcUrls: {
+          11155111: context.tenderlyFork.rpcUrl,
+        },
+      })
+
+      context.tenderlyFork.impersonateAddress = poolManager
+      centrifugeWithPin.setSigner(context.tenderlyFork.signer)
+
+      await context.tenderlyFork.fundAccountEth(poolManager, 10n ** 18n)
+
+      const pool = new Pool(centrifugeWithPin, poolId.raw)
+
+      await pool.update({}, [], [{ tokenName: 'DummyShareClass', symbolName: 'DSC' }])
+
+      const addresses = await centrifugeWithPin.protocolContext(centId)
+      const client = await centrifugeWithPin.getClient(centId)
+
+      const shareClassesCount = await client.readContract({
+        address: addresses.shareClassManager,
+        abi: ABI.ShareClassManager,
+        functionName: 'shareClassCount',
+        args: [poolId.raw],
+      })
+
+      await poolNetwork.deploy([{ id: ShareClassId.from(pool.id, shareClassesCount), hook: '0x' }], [])
+
+      await poolNetwork.deployOnOfframpManager(ShareClassId.from(pool.id, shareClassesCount))
+
+      // TODO: Needs data in indexer to return onOffRampManager who is not already a balance sheet manager
+      await poolNetwork.assignOnOffRampManagerPermissions(ShareClassId.from(pool.id, shareClassesCount))
+    })
+  })
+})
+
+describe('PoolNetwork manager deployment flows', () => {
+  afterEach(() => {
+    sinon.restore()
+  })
+
+  it('reuses an existing on/off-ramp manager and only updates balance sheet access', async () => {
+    const existingManager = '0x4444444444444444444444444444444444444444'
+    const { poolNetwork, walletClient } = createManagerDeploymentTestSubject({
+      onOffRampManagers: [{ address: existingManager }],
+    })
+    const register = sinon
+      .stub(poolNetwork, 'registerOnOffRampManagerAsBSManager')
+      .returns(of({ type: 'TransactionConfirmed' } as any) as any)
+
+    const result = await lastValueFrom(poolNetwork.deployAndRegisterOnOffRampManager(scId))
+
+    expect(result.type).to.equal('TransactionConfirmed')
+    expect(walletClient.writeContract.called).to.equal(false)
+    expect(register.calledOnceWithExactly(existingManager, scId)).to.equal(true)
+  })
+
+  it('deploys a new on/off-ramp manager and then updates balance sheet access', async () => {
+    const deployedManager = '0x5555555555555555555555555555555555555555'
+    const receipt = makeOnOffRampReceipt(deployedManager)
+    const { poolNetwork, walletClient } = createManagerDeploymentTestSubject({
+      receipt,
+    })
+    const register = sinon
+      .stub(poolNetwork, 'registerOnOffRampManagerAsBSManager')
+      .returns(of({ type: 'TransactionConfirmed' } as any) as any)
+
+    const result = await lastValueFrom(poolNetwork.deployAndRegisterOnOffRampManager(scId))
+
+    expect(result.type).to.equal('TransactionConfirmed')
+    expect(walletClient.writeContract.calledOnce).to.equal(true)
+    expect(register.calledOnceWithExactly(deployedManager, scId)).to.equal(true)
+  })
+
+  it('reuses an existing merkle proof manager and only updates balance sheet access', async () => {
+    const existingManager = '0x6666666666666666666666666666666666666666'
+    const { poolNetwork, walletClient, updateBalanceSheetManagers } = createManagerDeploymentTestSubject({
+      merkleProofManagers: [{ address: existingManager }],
+    })
+
+    const result = await lastValueFrom(poolNetwork.deployMerkleProofManager())
+
+    expect(result.type).to.equal('TransactionConfirmed')
+    expect(walletClient.writeContract.called).to.equal(false)
+    expect(
+      updateBalanceSheetManagers.calledOnceWithExactly([
+        { centrifugeId: centId, address: existingManager, canManage: true },
+      ])
+    ).to.equal(true)
+  })
+
+  it('deploys a new merkle proof manager and then updates balance sheet access', async () => {
+    const deployedManager = '0x7777777777777777777777777777777777777777'
+    const receipt = makeMerkleReceipt(deployedManager)
+    const { poolNetwork, walletClient, updateBalanceSheetManagers } = createManagerDeploymentTestSubject({
+      receipt,
+    })
+
+    const result = await lastValueFrom(poolNetwork.deployMerkleProofManager())
+
+    expect(result.type).to.equal('TransactionConfirmed')
+    expect(walletClient.writeContract.calledOnce).to.equal(true)
+    expect(
+      updateBalanceSheetManagers.calledOnceWithExactly([
+        { centrifugeId: centId, address: deployedManager, canManage: true },
+      ])
+    ).to.equal(true)
+  })
+
+  it('onOfframpManagerStatus enriches deployed managers with balance-sheet status, including in-transit state', async () => {
+    const confirmedManager = '0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'
+    const pendingManager = '0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb'
+    const undeployedManager = '0xcccccccccccccccccccccccccccccccccccccccc'
+
+    const { poolNetwork } = createManagerDeploymentTestSubject({
+      onOffRampManagers: [{ address: confirmedManager }, { address: pendingManager }],
+      poolManagers: [
+        { address: confirmedManager, centrifugeId: String(centId), isBalancesheetManager: true },
+        { address: pendingManager, centrifugeId: String(centId), crosschainInProgress: 'CanManage' },
+        // A manager on a different network shouldn't leak into this network's status.
+        { address: undeployedManager, centrifugeId: '99', isBalancesheetManager: true },
+      ],
+    })
+
+    const status = await lastValueFrom(poolNetwork.onOfframpManagerStatus(scId))
+
+    expect(status).to.have.length(2)
+
+    const confirmed = status.find((s) => s.address === confirmedManager)
+    expect(confirmed?.centrifugeId).to.equal(centId)
+    expect(confirmed?.isBalancesheetManager).to.equal(true)
+    expect(confirmed?.crosschainInProgress).to.equal(null)
+
+    const pending = status.find((s) => s.address === pendingManager)
+    expect(pending?.isBalancesheetManager).to.equal(false)
+    expect(pending?.crosschainInProgress).to.equal('CanManage')
+  })
+})
+
+function createManagerDeploymentTestSubject({
+  onOffRampManagers = [],
+  merkleProofManagers = [],
+  poolManagers = [],
+  receipt = { status: 'success', logs: [] } as any as TransactionReceipt,
+}: {
+  onOffRampManagers?: { address: `0x${string}` }[]
+  merkleProofManagers?: { address: `0x${string}` }[]
+  poolManagers?: {
+    address: `0x${string}`
+    centrifugeId: string
+    isHubManager?: boolean
+    isBalancesheetManager?: boolean
+    crosschainInProgress?: 'CanManage' | 'CanNotManage' | null
+  }[]
+  receipt?: TransactionReceipt
+}) {
+  const publicClient = {
+    getCode: sinon.stub().resolves('0x'),
+    waitForTransactionReceipt: sinon.stub().resolves(receipt),
+  }
+  const walletClient = {
+    writeContract: sinon.stub().resolves('0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'),
+  }
+
+  const root = {
+    _query: (_keys: unknown, callback: () => unknown) => callback(),
+    _routesToBackend: () => false,
+    // `_queryData(name, vars, postProcess?)` resolves a named catalogue entry:
+    // it hands `postProcess` the ROW ARRAY, where the old `_queryIndexer` passed
+    // a GraphQL document and handed the transform the raw envelope.
+    _queryData: (name: string, _variables: unknown, transform?: (data: unknown) => unknown) => {
+      if (name === 'onOffRampManagers') {
+        return of(transform ? transform(onOffRampManagers) : onOffRampManagers)
+      }
+
+      if (name === 'merkleProofManagers') {
+        return of(transform ? transform(merkleProofManagers) : merkleProofManagers)
+      }
+
+      if (name === 'poolManagers') {
+        const rows = poolManagers.map((m) => ({
+          isHubManager: false,
+          isBalancesheetManager: false,
+          crosschainInProgress: null,
+          poolId: poolId.toString(),
+          ...m,
+        }))
+        return of(transform ? transform(rows) : rows)
+      }
+
+      throw new Error(`Unexpected query: ${name}`)
+    },
+    protocolContext: sinon.stub().resolves({ contractAbis: ABIS_V3_2,
+      onOfframpManagerFactory: onOffRampFactory,
+      merkleProofManagerFactory: merkleFactory,
+      asyncRequestManager: '0x8888888888888888888888888888888888888888',
+      syncManager: '0x9999999999999999999999999999999999999999',
+    }),
+    getClient: sinon.stub().resolves(publicClient),
+    _transact: (callback: (ctx: any) => AsyncGenerator<unknown> | Observable<unknown>, centrifugeId: number) => {
+      const tx = new Observable<unknown>((subscriber) => {
+        ;(async () => {
+          try {
+            const result = callback({
+              publicClient,
+              walletClient,
+              signingAddress,
+              executionAddress: signingAddress,
+              chain: {} as any,
+              centrifugeId,
+              signer: {} as any,
+              root,
+            })
+
+            if (Symbol.asyncIterator in result) {
+              for await (const item of result) {
+                subscriber.next(item)
+              }
+            } else {
+              result.subscribe(subscriber)
+              return
+            }
+
+            subscriber.complete()
+          } catch (error) {
+            subscriber.error(error)
+          }
+        })()
+      })
+
+      return Object.assign(tx, { centrifugeId })
+    },
+  }
+
+  const pool = new Pool(root as any, poolId.raw)
+  const updateBalanceSheetManagers = sinon
+    .stub(pool, 'updateBalanceSheetManagers')
+    .returns(of({ type: 'TransactionConfirmed' } as any) as any)
+
+  const poolNetwork = new PoolNetwork(root as any, pool, centId)
+
+  return {
+    poolNetwork,
+    walletClient,
+    updateBalanceSheetManagers,
+  }
+}
+
+describe('PoolNetwork.onchainPM', () => {
+  const onchainPMFactory = '0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'
+  const deployedPMAddress = '0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb'
+
+  afterEach(() => {
+    sinon.restore()
+  })
+
+  function createOnchainPMTestSubject(returnedAddress: string) {
+    const publicClient = {
+      readContract: sinon.stub().resolves(returnedAddress),
+      getCode: sinon.stub().resolves(returnedAddress === NULL_ADDRESS ? '0x' : '0x1234'),
+    }
+    const root = {
+      _query: (_keys: unknown, callback: () => unknown) => callback(),
+      protocolContext: sinon.stub().resolves({ contractAbis: ABIS_V3_2, onchainPMFactory }),
+      getClient: sinon.stub().resolves(publicClient),
+      _transact: sinon.stub(),
+    }
+    const pool = new Pool(root as any, poolId.raw)
+    const pn = new PoolNetwork(root as any, pool, centId)
+    return { pn, publicClient }
+  }
+
+  it('returns an OnchainPM entity when the factory resolves a deployed address', async () => {
+    const { pn } = createOnchainPMTestSubject(deployedPMAddress)
+    const result = await lastValueFrom(pn.onchainPM() as unknown as Observable<OnchainPM | null>)
+    expect(result).to.be.instanceOf(OnchainPM)
+    expect((result as OnchainPM).address).to.equal(deployedPMAddress)
+  })
+
+  it('returns null when the factory resolves the zero address (not yet deployed)', async () => {
+    const { pn } = createOnchainPMTestSubject(NULL_ADDRESS)
+    const result = await lastValueFrom(pn.onchainPM() as unknown as Observable<OnchainPM | null>)
+    expect(result).to.equal(null)
+  })
+
+  it('returns null without touching the chain when the network has no OnchainPMFactory', async () => {
+    // Chains without an OnchainPM deployment return no factory from the indexer.
+    // A readContract against an undefined address would be sent as an eth_call
+    // without `to` and fail with an opaque EVM StackUnderflow.
+    const publicClient = {
+      readContract: sinon.stub(),
+      getCode: sinon.stub(),
+    }
+    const root = {
+      _query: (_keys: unknown, callback: () => unknown) => callback(),
+      protocolContext: sinon.stub().resolves({ contractAbis: ABIS_V3_2, onchainPMFactory: null }),
+      getClient: sinon.stub().resolves(publicClient),
+      _transact: sinon.stub(),
+    }
+    const pool = new Pool(root as any, poolId.raw)
+    const pn = new PoolNetwork(root as any, pool, centId)
+
+    const result = await lastValueFrom(pn.onchainPM() as unknown as Observable<OnchainPM | null>)
+    expect(result).to.equal(null)
+    expect(publicClient.readContract.called).to.be.false
+  })
+})
+
+describe('PoolNetwork.deployOnchainPM', () => {
+  const onchainPMFactory = '0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'
+  const deployedPMAddress = '0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb'
+
+  afterEach(() => {
+    sinon.restore()
+  })
+
+  it('deploys or reuses the spoke OnchainPM without updating balance sheet managers', async () => {
+    const publicClient = {
+      readContract: sinon.stub().resolves(deployedPMAddress),
+      getCode: sinon.stub().resolves('0x1234'),
+    }
+
+    const root = {
+      protocolContext: sinon.stub().resolves({ contractAbis: ABIS_V3_2, onchainPMFactory }),
+      _transact: (callback: (ctx: any) => AsyncGenerator<unknown> | Observable<unknown>, centrifugeId: number) => {
+        const tx = new Observable<unknown>((subscriber) => {
+          ;(async () => {
+            try {
+              const result = callback({
+                publicClient,
+                walletClient: { writeContract: sinon.stub() },
+                signingAddress,
+                chain: {} as any,
+                centrifugeId,
+                signer: {} as any,
+                root,
+              })
+
+              if (Symbol.asyncIterator in result) {
+                for await (const item of result) {
+                  subscriber.next(item)
+                }
+              } else {
+                result.subscribe(subscriber)
+                return
+              }
+
+              subscriber.complete()
+            } catch (error) {
+              subscriber.error(error)
+            }
+          })()
+        })
+
+        return Object.assign(tx, { centrifugeId })
+      },
+    }
+
+    const pool = new Pool(root as any, poolId.raw)
+    const updateBalanceSheetManagers = sinon.stub(pool, 'updateBalanceSheetManagers')
+    const pn = new PoolNetwork(root as any, pool, centId)
+
+    const result = await lastValueFrom(pn.deployOnchainPM() as unknown as Observable<any>)
+    expect(result).to.deep.equal({ type: 'DeployedOnchainPM', address: deployedPMAddress })
+    expect(updateBalanceSheetManagers.called).to.be.false
+  })
+
+  it('fails with a clear error when the network has no OnchainPMFactory', async () => {
+    const publicClient = {
+      readContract: sinon.stub(),
+      getCode: sinon.stub(),
+    }
+
+    const root = {
+      protocolContext: sinon.stub().resolves({ contractAbis: ABIS_V3_2, onchainPMFactory: null }),
+      _transact: (callback: (ctx: any) => AsyncGenerator<unknown> | Observable<unknown>, centrifugeId: number) => {
+        const tx = new Observable<unknown>((subscriber) => {
+          ;(async () => {
+            try {
+              const result = callback({
+                publicClient,
+                walletClient: { writeContract: sinon.stub() },
+                signingAddress,
+                chain: {} as any,
+                centrifugeId,
+                signer: {} as any,
+                root,
+              })
+
+              if (Symbol.asyncIterator in result) {
+                for await (const item of result) {
+                  subscriber.next(item)
+                }
+              } else {
+                result.subscribe(subscriber)
+                return
+              }
+
+              subscriber.complete()
+            } catch (error) {
+              subscriber.error(error)
+            }
+          })()
+        })
+
+        return Object.assign(tx, { centrifugeId })
+      },
+    }
+
+    const pool = new Pool(root as any, poolId.raw)
+    const pn = new PoolNetwork(root as any, pool, centId)
+
+    let error: Error | null = null
+    try {
+      await lastValueFrom(pn.deployOnchainPM() as unknown as Observable<any>)
+    } catch (e) {
+      error = e as Error
+    }
+    expect(error).to.be.instanceOf(Error)
+    expect(error!.message).to.match(/OnchainPM is not available/)
+    expect(publicClient.readContract.called).to.be.false
+  })
+})
+
+describe('PoolNetwork.authorizeOnchainPM', () => {
+  const hub = '0xcccccccccccccccccccccccccccccccccccccccc'
+  const accountingToken = '0xdddddddddddddddddddddddddddddddddddddddd'
+  const managerAddress = '0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb' as const
+
+  afterEach(() => {
+    sinon.restore()
+  })
+
+  it('batches the BSM registration and the accounting-token minter grant into one hub transaction', async () => {
+    const root = {
+      protocolContext: sinon.stub().resolves({ contractAbis: ABIS_V3_2, hub, accountingToken }),
+      _transact: (callback: (ctx: any) => AsyncGenerator<unknown> | Observable<unknown>, cId: number) => {
+        const tx = new Observable<unknown>((subscriber) => {
+          ;(async () => {
+            try {
+              // isBatching short-circuits wrapTransaction to yield the raw batch payload.
+              const result = callback({ isBatching: true, signingAddress, centrifugeId: cId, root })
+              if (Symbol.asyncIterator in result) {
+                for await (const item of result) subscriber.next(item)
+              } else {
+                result.subscribe(subscriber)
+                return
+              }
+              subscriber.complete()
+            } catch (error) {
+              subscriber.error(error)
+            }
+          })()
+        })
+        return Object.assign(tx, { centrifugeId: cId })
+      },
+    }
+
+    const pool = new Pool(root as any, poolId.raw)
+    sinon.stub(pool, 'shareClasses').returns(of([{ id: { raw: scId.raw } }]) as any)
+    const pn = new PoolNetwork(root as any, pool, centId)
+
+    const batch = (await lastValueFrom(pn.authorizeOnchainPM(managerAddress) as unknown as Observable<any>)) as {
+      contract: string
+      data: `0x${string}`[]
+      messages: Record<number, { type: number }[]>
+    }
+
+    expect(batch.contract).to.equal(hub)
+    expect(batch.data).to.have.length(2)
+    expect(decodeFunctionData({ abi: ABI.Hub, data: batch.data[0]! }).functionName).to.equal(
+      'updateBalanceSheetManager'
+    )
+    expect(decodeFunctionData({ abi: ABI.Hub, data: batch.data[1]! }).functionName).to.equal('updateContract')
+  })
+
+  it('fails with a clear error when the network has no AccountingToken', async () => {
+    const root = {
+      protocolContext: sinon.stub().resolves({ contractAbis: ABIS_V3_2, hub, accountingToken: null }),
+      _transact: (callback: (ctx: any) => AsyncGenerator<unknown> | Observable<unknown>, cId: number) => {
+        const tx = new Observable<unknown>((subscriber) => {
+          ;(async () => {
+            try {
+              const result = callback({ isBatching: true, signingAddress, centrifugeId: cId, root })
+              if (Symbol.asyncIterator in result) {
+                for await (const item of result) subscriber.next(item)
+              } else {
+                result.subscribe(subscriber)
+                return
+              }
+              subscriber.complete()
+            } catch (error) {
+              subscriber.error(error)
+            }
+          })()
+        })
+        return Object.assign(tx, { centrifugeId: cId })
+      },
+    }
+
+    const pool = new Pool(root as any, poolId.raw)
+    const pn = new PoolNetwork(root as any, pool, centId)
+
+    let error: Error | null = null
+    try {
+      await lastValueFrom(pn.authorizeOnchainPM(managerAddress) as unknown as Observable<any>)
+    } catch (e) {
+      error = e as Error
+    }
+    expect(error).to.be.instanceOf(Error)
+    expect(error!.message).to.match(/OnchainPM cannot be authorized/)
+  })
+})
+
+function makeOnOffRampReceipt(manager: `0x${string}`) {
+  const topics = encodeEventTopics({
+    abi: onOffRampEventAbi,
+    eventName: 'DeployOnOfframpManager',
+    args: { poolId: poolId.raw, manager },
+  })
+
+  const data = encodeAbiParameters([{ type: 'bytes16' }], [scId.raw])
+
+  return {
+    status: 'success',
+    logs: [
+      {
+        address: onOffRampFactory,
+        topics,
+        data,
+      },
+    ],
+  } as any as TransactionReceipt
+}
+
+function makeMerkleReceipt(manager: `0x${string}`) {
+  const topics = encodeEventTopics({
+    abi: merkleEventAbi,
+    eventName: 'DeployMerkleProofManager',
+    args: { poolId: poolId.raw, manager },
+  })
+
+  return {
+    status: 'success',
+    logs: [
+      {
+        address: merkleFactory,
+        topics,
+        data: '0x',
+      },
+    ],
+  } as any as TransactionReceipt
+}
