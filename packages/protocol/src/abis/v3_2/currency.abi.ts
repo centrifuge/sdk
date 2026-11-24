@@ -1,0 +1,21 @@
+/**
+ * ABI for `Currency` at protocol v3.2: the single copy both the backend
+ * builders and the SDK encode against.
+ */
+export const CURRENCY_ABI_V3_2 = [
+  "event Approval(address indexed owner, address indexed spender, uint256 value)",
+  "event Transfer(address indexed from, address indexed to, uint256 value)",
+  "function PERMIT_TYPEHASH() view returns (bytes32)",
+  "function nonces(address) view returns (uint256)",
+  "function version() view returns (string)",
+  "function eip712Domain() view returns (bytes1 fields, string name, string version, uint256 chainId, address verifyingContract, bytes32 salt, uint256[] extensions)",
+  "function approve(address, uint) external returns (bool)",
+  "function transfer(address, uint) external returns (bool)",
+  "function balanceOf(address) view returns (uint)",
+  "function allowance(address owner, address spender) view returns (uint)",
+  "function decimals() view returns (uint8)",
+  "function name() view returns (string)",
+  "function symbol() view returns (string)",
+  "function checkTransferRestriction(address, address, uint) view returns (bool)",
+  "function hook() view returns (address)",
+] as const;

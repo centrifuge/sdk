@@ -1,0 +1,32 @@
+{
+  "name": "@centrifuge/protocol",
+  "version": "0.1.0",
+  "private": true,
+  "files": [
+    "dist"
+  ],
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "license": "LGPL-3.0-only",
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "test": "vitest run --config vitest.config.mts",
+    "gen:signatures": "pnpm build && node scripts/gen-deployed-signatures.mjs"
+  },
+  "dependencies": {
+    "@centrifuge/addressbook": "catalog:",
+    "viem": "2.57.13"
+  },
+  "devDependencies": {
+    "@types/node": "25.9.1",
+    "typescript": "5.9.3",
+    "vitest": "4.1.10"
+  }
+}

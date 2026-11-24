@@ -1,0 +1,81 @@
+import type { MonoTypeOperatorFunction, Observable, Subscriber, Subscription } from 'rxjs'
+import { filter, firstValueFrom, identity, lastValueFrom, repeat, ReplaySubject, share, Subject, timer } from 'rxjs'
+import type { ProtocolVersion } from '@centrifuge/protocol'
+import type { Abi, Log } from 'viem'
+import type { Centrifuge } from '../Centrifuge.js'
+import { HexString } from '../types/index.js'
+import type { Query } from '../types/query.js'
+import { CentrifugeId } from './types.js'
+
+export function shareReplayWithDelayedReset<T>(config?: {
+  bufferSize?: number
+  windowTime?: number
+  resetDelay?: number
+  resetOnComplete?: boolean
+}): MonoTypeOperatorFunction<T> {
+  const { bufferSize = Infinity, windowTime = Infinity, resetDelay = 1000, resetOnComplete = false } = config ?? {}
+  const reset = resetDelay === 0 ? true : isFinite(resetDelay) ? () => timer(resetDelay) : false
+  return share<T>({
+    connector: () => (bufferSize === 0 ? new Subject() : new ExpiringReplaySubject(bufferSize, windowTime)),
+    resetOnError: true,
+    resetOnComplete,
+    resetOnRefCountZero: reset,
+  })
+}
+
+export function repeatOnEvents<T>(
+  centrifuge: Centrifuge,
+  opts: {
+    address: HexString | HexString[]
+    eventName: string | string[]
+    filter?: (events: (Log<bigint, number, false, undefined, true, Abi, string> & { args: any })[]) => boolean
+  },
+  centrifugeId: CentrifugeId,
+  protocolVersion?: ProtocolVersion
+): MonoTypeOperatorFunction<T> {
+  if (centrifuge.config.disableRepeatOnEvents) {
+    return identity
+  }
+  return repeat({
+    delay: () =>
+      centrifuge._filteredEvents(opts.address, opts.eventName, centrifugeId, protocolVersion).pipe(
+        filter((events) => {
+          return opts.filter ? opts.filter(events) : true
+        })
+      ),
+  })
+}
+
+export function makeThenable<T>($query: Observable<T>, exhaust = false) {
+  const thenableQuery: Query<T> = Object.assign($query, {
+    then(onfulfilled: (value: T) => any, onrejected: (reason: any) => any) {
+      return (exhaust ? lastValueFrom : firstValueFrom)($query).then(onfulfilled, onrejected)
+    },
+    toPromise() {
+      return (exhaust ? lastValueFrom : firstValueFrom)($query)
+    },
+  })
+  return thenableQuery
+}
+
+// A ReplaySubject that completes when an existing buffer is expired
+class ExpiringReplaySubject<T> extends ReplaySubject<T> {
+  // @ts-expect-error
+  protected override _subscribe(subscriber: Subscriber<T>): Subscription {
+    // Get the initial buffer length
+    // @ts-expect-error
+    const { _buffer } = this
+    const length = _buffer.length
+
+    // The ReplaySubject will remove expired items from the buffer
+    // @ts-expect-error
+    const subscription = super._subscribe(subscriber)
+
+    // If the buffer is now empty, complete the subject.
+    // Necessary for `createShared()` to be called again in Centrifuge._query()
+    if (length && _buffer.length === 0) {
+      this.complete()
+    }
+    return subscription
+  }
+}
