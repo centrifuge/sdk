@@ -1,0 +1,115 @@
+name: Mirror guard
+
+# SDK code is developed in the private monorepo and arrives here only through the mirror pull
+# request, opened by the mirror GitHub App from branch mirror/main. This check keeps it that way:
+#   - a pull request that changes anything the mirror owns must come from the mirror App, and every
+#     commit in it must be the App's;
+#   - a pull request from the mirror App may change only what the mirror owns.
+# This repository owns .github/, docs/, README.md, LICENSE and .npmrc; the mirror owns the rest.
+# Meant to be a required check on main.
+#
+# pull_request_target runs main's copy of this file, so a pull request cannot change the guard
+# that judges it. That is safe here only because nothing from the pull request is checked out or
+# run: the job reads the pull request through the API with a read-only token.
+
+on:
+  pull_request_target:
+    types: [opened, reopened, synchronize, edited]
+
+permissions: {}
+
+jobs:
+  mirror-guard:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      pull-requests: read
+    steps:
+      - name: Check who changes which paths
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          AUTHOR: ${{ github.event.pull_request.user.login }}
+          HEAD_REF: ${{ github.event.pull_request.head.ref }}
+          HEAD_REPO: ${{ github.event.pull_request.head.repo.full_name }}
+          CHANGED_FILES: ${{ github.event.pull_request.changed_files }}
+          COMMITS: ${{ github.event.pull_request.commits }}
+          MIRROR_LOGIN: ${{ vars.SDK_MIRROR_APP_LOGIN }}
+        run: |
+          set -euo pipefail
+          # Without the App's login no pull request counts as the mirror's, so changes to mirror-owned
+          # paths are refused while repository-owned changes still pass.
+          from_mirror=false
+          if [ -z "${MIRROR_LOGIN}" ]; then
+            echo "::warning::Repository variable SDK_MIRROR_APP_LOGIN is not set; no pull request counts as the mirror's."
+          elif [ "${AUTHOR}" = "${MIRROR_LOGIN}" ]; then
+            from_mirror=true
+          fi
+
+          # Owned by this repository; everything else belongs to the mirror.
+          is_public_owned() {
+            case "$1" in
+              .github/* | docs/* | README.md | LICENSE | .npmrc) return 0 ;;
+              *) return 1 ;;
+            esac
+          }
+
+          gh api --paginate "repos/${REPO}/pulls/${PR_NUMBER}/files" \
+            --jq '.[] | [.filename, (.previous_filename // "")] | @tsv' > "${RUNNER_TEMP}/files.tsv"
+
+          # The files endpoint stops at 3000 files. A shorter list than the pull request reports would
+          # be checked only in part, so refuse it rather than pass it.
+          listed=$(wc -l < "${RUNNER_TEMP}/files.tsv")
+          if [ "${listed}" -ne "${CHANGED_FILES}" ]; then
+            echo "::error::The API listed ${listed} of the ${CHANGED_FILES} changed files; the guard cannot check this pull request. Split it."
+            exit 1
+          fi
+
+          # A rename counts on both sides, so a file cannot be moved out of a mirror-owned path.
+          mirror_paths=0
+          public_paths=0
+          while IFS=$'\t' read -r filename previous; do
+            for path in "${filename}" "${previous}"; do
+              [ -n "${path}" ] || continue
+              if is_public_owned "${path}"; then
+                public_paths=$((public_paths + 1))
+                if [ "${from_mirror}" = true ]; then
+                  echo "::error::${path} belongs to this repository; the mirror may not change it."
+                fi
+              else
+                mirror_paths=$((mirror_paths + 1))
+                if [ "${from_mirror}" != true ]; then
+                  echo "::error::${path} belongs to the mirror; SDK changes land in the private monorepo and arrive through the mirror pull request."
+                fi
+              fi
+            done
+          done < "${RUNNER_TEMP}/files.tsv"
+
+          if [ "${from_mirror}" = true ]; then
+            if [ "${HEAD_REPO}" != "${REPO}" ] || [ "${HEAD_REF}" != "mirror/main" ]; then
+              echo "::error::A mirror pull request must come from ${REPO}:mirror/main (got ${HEAD_REPO}:${HEAD_REF})."
+              exit 1
+            fi
+            # The pull request's opener is the App, but anyone who can push to mirror/main could add a
+            # commit to it. Every commit must be the App's. Commit metadata can be forged, so this backs
+            # up the ruleset that lets only the App push to mirror/main; it does not replace it.
+            gh api --paginate "repos/${REPO}/pulls/${PR_NUMBER}/commits" \
+              --jq '.[] | [.sha, (.author.login // "-"), (.committer.login // "-")] | @tsv' > "${RUNNER_TEMP}/commits.tsv"
+            if [ "$(wc -l < "${RUNNER_TEMP}/commits.tsv")" -ne "${COMMITS}" ]; then
+              echo "::error::The API listed fewer commits than the pull request has; the guard cannot check them."
+              exit 1
+            fi
+            foreign=0
+            while IFS=$'\t' read -r sha commit_author commit_committer; do
+              if [ "${commit_author}" != "${MIRROR_LOGIN}" ] || [ "${commit_committer}" != "${MIRROR_LOGIN}" ]; then
+                echo "::error::Commit ${sha} is by ${commit_author} (committed by ${commit_committer}), not the mirror App; only the mirror may change mirror/main."
+                foreign=$((foreign + 1))
+              fi
+            done < "${RUNNER_TEMP}/commits.tsv"
+            [ "${public_paths}" -eq 0 ] && [ "${foreign}" -eq 0 ] || exit 1
+          else
+            [ "${mirror_paths}" -eq 0 ] || exit 1
+          fi
+          echo "${AUTHOR}: ${mirror_paths} mirror-owned and ${public_paths} repository-owned paths, as allowed."
