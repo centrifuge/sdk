@@ -714,7 +714,7 @@ describe('OnOffRampManager through the real Centrifuge buildOnly and batch paths
   }
 
   async function hubAddress(centrifuge: Centrifuge) {
-    return (await centrifuge.protocolContext(hubCentrifugeId)).hub
+    return (await centrifuge.protocolContext({ poolId: hybPoolId, centrifugeId: hubCentrifugeId })).hub
   }
 
   function hybUpdateContract(payload: `0x${string}`) {

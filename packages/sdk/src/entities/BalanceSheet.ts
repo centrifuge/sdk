@@ -1,10 +1,9 @@
 import { combineLatest, defer, firstValueFrom, switchMap, throwError } from 'rxjs'
-import { encodeFunctionData, toHex, type PublicClient } from 'viem'
+import { encodeFunctionData, type PublicClient } from 'viem'
 import { ABIS_V3_3, builders, SHARE_REVOKE_EXTRA_GAS, STANDARD_ABIS } from '@centrifuge/protocol'
 import type { Centrifuge, SdkProtocolContext } from '../Centrifuge.js'
 import type { HexString } from '../types/index.js'
 import { Balance, Price } from '../utils/BigInt.js'
-import { isEIP1193ProviderLike } from '../utils/isEIP1193ProviderLike.js'
 import { MessageType, MessageTypeV3_3, messageV3_3, type MessageTypeWithSubType } from '../types/transaction.js'
 import {
   balanceSheetAbi,
@@ -17,7 +16,7 @@ import {
 } from '../utils/protocolVersion.js'
 import { repeatOnEvents } from '../utils/rx.js'
 import { spokeAssets } from '../utils/spokeAssets.js'
-import { doTransaction, wrapTransaction } from '../utils/transaction.js'
+import { doTransaction, sendCallsInOrder, wrapTransaction } from '../utils/transaction.js'
 import { AssetId } from '../utils/types.js'
 import { Entity } from './Entity.js'
 import type { Pool } from './Pool.js'
@@ -390,88 +389,29 @@ export class BalanceSheet extends Entity {
         tokenId
       )
 
-      const needsApproval = allowance < amount.toBigInt()
-
-      // Try batching using EIP-5792 for any EIP1193Provider (i.e. Safe or Coinbase wallets) when approval is needed.
-      // Using multicall only works on a single contract, and we need to call both the token contract and the balance sheet contract.
-      if (needsApproval && isEIP1193ProviderLike(ctx.signer)) {
-        const provider = ctx.signer
-
-        const approveTxData = () => {
-          if (tokenId) {
-            return encodeFunctionData({
+      if (allowance < amount.toBigInt()) {
+        const approve = tokenId
+          ? encodeFunctionData({
               abi: STANDARD_ABIS.ERC6909,
               functionName: 'approve',
               args: [balanceSheet, tokenId, amount.toBigInt()],
             })
-          }
-          return encodeFunctionData({
-            abi: STANDARD_ABIS.Currency,
-            functionName: 'approve',
-            args: [balanceSheet, amount.toBigInt()],
-          })
-        }
-
-        const depositTxData = encodeFunctionData({
+          : encodeFunctionData({
+              abi: STANDARD_ABIS.Currency,
+              functionName: 'approve',
+              args: [balanceSheet, amount.toBigInt()],
+            })
+        const deposit = encodeFunctionData({
           abi: balanceSheetAbi_,
           functionName: 'deposit',
           args: [self.pool.id.raw, self.shareClass.id.raw, assetAddress, tokenId, amount.toBigInt()],
         })
-
-        const calls = [
-          { to: assetAddress, data: approveTxData() },
-          { to: balanceSheet, data: depositTxData },
-        ]
-
-        // Try EIP-5792 wallet_sendCalls for batching approve + deposit
-        try {
-          const batchCallId = await provider.request({
-            method: 'wallet_sendCalls',
-            params: [
-              {
-                version: '1.0',
-                chainId: toHex(self.network.centrifugeId),
-                from: ctx.signingAddress,
-                calls,
-              },
-            ],
-          })
-          yield* doTransaction('Approve and Deposit', ctx, async () => batchCallId as HexString)
-          return
-        } catch (error) {
-          console.warn('Batching not supported, using sequential transactions:', error)
-        }
-
-        // Fallback to sequential transactions if batching fails
-        const callLabels = ['Approve', 'Deposit']
-        for (const [index, call] of calls.entries()) {
-          yield* doTransaction(`${callLabels[index]} (${index + 1}/${calls.length})`, ctx, () =>
-            ctx.walletClient.sendTransaction({
-              to: call.to,
-              data: call.data,
-            })
-          )
-        }
+        // The token and the balance sheet are two contracts, so a multicall cannot carry both.
+        yield* sendCallsInOrder('Approve and Deposit', ctx, [
+          { title: 'Approve', contract: assetAddress, data: [approve] },
+          { title: 'Deposit', contract: balanceSheet, data: [deposit] },
+        ])
         return
-      }
-
-      if (needsApproval) {
-        yield* doTransaction('Approve', ctx, () => {
-          if (tokenId) {
-            return ctx.walletClient.writeContract({
-              address: assetAddress,
-              abi: STANDARD_ABIS.ERC6909,
-              functionName: 'approve',
-              args: [balanceSheet, tokenId, amount.toBigInt()],
-            })
-          }
-          return ctx.walletClient.writeContract({
-            address: assetAddress,
-            abi: STANDARD_ABIS.Currency,
-            functionName: 'approve',
-            args: [balanceSheet, amount.toBigInt()],
-          })
-        })
       }
 
       yield* doTransaction('Deposit', ctx, () => {

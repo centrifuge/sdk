@@ -14,7 +14,9 @@ import { Pool } from './Pool.js'
 
 const pool33Id = PoolId.from(1, 33)
 const manager = '0x6bcb240d3e1f1c4321ecaffdacb45691dc03be5d' as HexString
-const hub33 = resolveProtocolContext(pool33Id.raw.toString(), '3.3', { environment: 'testnet' }).addresses.hub!
+const addresses33 = resolveProtocolContext(pool33Id.raw.toString(), '3.3', { environment: 'testnet' }).addresses
+const hub33 = addresses33.hub!
+const candidatePolicy = '0x1010101010101010101010101010101010101010' as HexString
 const call = encodeFunctionData({
   abi: ABIS_V3_3.Hub,
   functionName: 'updateHubManager',
@@ -44,7 +46,10 @@ function recordingWallet() {
 }
 
 /** A backend-mode client whose strategy records every action it is asked to prepare. */
-function backendCentrifuge() {
+function backendCentrifuge({
+  reads = {},
+  withCode = [],
+}: { reads?: Record<string, unknown>; withCode?: HexString[] } = {}) {
   const actions: PoolAction[] = []
   const strategy: TxStrategy = {
     prepare(action: PoolAction) {
@@ -67,9 +72,10 @@ function backendCentrifuge() {
     // The pool has no hub policy, so the pre-send check of a classified write ends at this read.
     readContract: async ({ functionName }: { functionName: string }) => {
       if (functionName === 'policy') return zeroAddress
+      if (functionName in reads) return reads[functionName]
       throw new Error(`unexpected read ${functionName}`)
     },
-    getCode: async () => undefined,
+    getCode: async ({ address }: { address: HexString }) => (withCode.includes(address) ? '0x60' : undefined),
     waitForTransactionReceipt: async ({ hash }: { hash: HexString }) => ({ status: 'success', hash }),
   })
   return { centrifuge, actions }
@@ -112,6 +118,30 @@ describe('Pool hub policy writes in backend mode', () => {
     expect(sent[0]!.data).to.equal(call)
   })
 
+  it('installs a policy in the client and sends one wallet transaction, with no action prepared by the backend', async () => {
+    const { centrifuge, actions } = backendCentrifuge({
+      reads: {
+        hub: hub33,
+        hubRegistry: addresses33.hubRegistry,
+        multiAdapter: addresses33.multiAdapter,
+        shareClassManager: addresses33.shareClassManager,
+      },
+      withCode: [candidatePolicy],
+    })
+    const pool = new Pool(centrifuge, pool33Id)
+    const { signer, sent } = recordingWallet()
+    centrifuge.setSigner(signer as any)
+
+    await firstValueFrom(pool.installHubPolicy(candidatePolicy).pipe(toArray()))
+
+    expect(actions).to.have.length(0)
+    expect(sent).to.have.length(1)
+    expect(sent[0]!.to.toLowerCase()).to.equal(hub33.toLowerCase())
+    expect(sent[0]!.data).to.equal(
+      encodeFunctionData({ abi: ABIS_V3_3.Hub, functionName: 'setPolicy', args: [pool33Id.raw, candidatePolicy] })
+    )
+  })
+
   it('has no row in the write routing table', () => {
     const routed = Object.keys(backendRoutingTable().writes)
 
@@ -119,5 +149,8 @@ describe('Pool hub policy writes in backend mode', () => {
     expect(routed).to.not.include('initiateAuthorization')
     expect(routed).to.not.include('cancelAuthorization')
     expect(routed).to.not.include('executeAuthorizations')
+    for (const name of ['installHubPolicy', 'setPolicy', 'deployHubPolicy', 'newHubPolicy']) {
+      expect(routed).to.not.include(name)
+    }
   })
 })

@@ -19,7 +19,8 @@ export const VAULT_FACTORY_ABI_V3_3 = GENERATED_ABIS_V3_3.AsyncVaultFactory;
  * on); the ERC-20, ERC-6909 and multicall interfaces are the v3.2 objects
  * (`STANDARD_ABIS`). `BalanceSheet` and `VaultRegistry` are gone (folded
  * into `Spoke` and `SpokeRegistry`), and the merkle-proof manager has no v3.3
- * factory, so none of the three appear. `SyncDepositVault` is in
+ * factory, so none of the three appear. `StdHubPolicy`, which `StdHubPolicyFactory`
+ * deploys, is not in the book's set, so no entry here carries its ABI. `SyncDepositVault` is in
  * `GENERATED_ABIS_V3_3` but kept out of this set and of {@link ALL_ABIS_V3_3}: its
  * `Deposit` shares a topic0 with `AsyncVault.Deposit` under a different
  * argument meaning, so it decodes from its own table.
@@ -56,6 +57,7 @@ export const ABIS_V3_3 = {
   OnOffRampFactory: GENERATED_ABIS_V3_3.OnOffRampFactory,
   OnchainPM: GENERATED_ABIS_V3_3.OnchainPM,
   OnchainPMFactory: GENERATED_ABIS_V3_3.OnchainPMFactory,
+  StdHubPolicyFactory: GENERATED_ABIS_V3_3.StdHubPolicyFactory,
   OracleValuation: GENERATED_ABIS_V3_3.OracleValuation,
   NAVManager: GENERATED_ABIS_V3_3.NAVManager,
   QueueManager: GENERATED_ABIS_V3_3.QueueManager,
@@ -112,6 +114,7 @@ export const ABI_SET_V3_3: AbiSet = {
   escrowFactory: ABIS_V3_3.EscrowFactory,
   onOffRampFactory: ABIS_V3_3.OnOffRampFactory,
   onchainPMFactory: ABIS_V3_3.OnchainPMFactory,
+  stdHubPolicyFactory: ABIS_V3_3.StdHubPolicyFactory,
   oracleValuation: ABIS_V3_3.OracleValuation,
   navManager: ABIS_V3_3.NAVManager,
   queueManager: ABIS_V3_3.QueueManager,

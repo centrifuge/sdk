@@ -10,6 +10,7 @@ import {
   DEFAULT_DEPLOYMENT_DATA,
   DEFAULT_CONTRACT_SCHEMAS,
   defaultDeploymentRegistry,
+  DEPLOYMENTS_V3_2,
   DEPLOYMENTS_V3_3,
 } from "./index";
 
@@ -59,10 +60,16 @@ describe("deployments read from the address book", () => {
     expect(CHAIN_NAMES.mainnet[17]).toBe("adi");
   });
 
-  it("has v3.3 on testnet only", () => {
-    expect(chainIds(DEPLOYMENTS_V3_3.mainnet)).toEqual([]);
+  it("has v3.3 on both networks, mainnet 15, 16 and 17 with no v3.2", () => {
+    expect(chainIds(DEPLOYMENTS_V3_3.mainnet)).toEqual([
+      1, 2, 3, 4, 5, 6, 9, 10, 11, 12, 13, 14, 15, 16, 17,
+    ]);
     expect(chainIds(DEPLOYMENTS_V3_3.testnet)).toEqual([1, 2, 3, 9]);
-    expect(Object.keys(DEFAULT_DEPLOYMENT_DATA.mainnet)).toEqual(["3.2"]);
+    expect(chainIds(DEPLOYMENTS_V3_2.mainnet)).not.toContain(15);
+    expect(Object.keys(DEFAULT_DEPLOYMENT_DATA.mainnet)).toEqual([
+      "3.2",
+      "3.3",
+    ]);
     expect(Object.keys(DEFAULT_DEPLOYMENT_DATA.testnet)).toEqual([
       "3.2",
       "3.3",

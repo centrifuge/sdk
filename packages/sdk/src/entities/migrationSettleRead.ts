@@ -4,6 +4,7 @@ import { encodeFunctionData, parseAbi, zeroAddress, type Abi, type PublicClient 
 import type { Centrifuge } from '../Centrifuge.js'
 import type { HexString } from '../types/index.js'
 import type { CentrifugeId } from '../utils/types.js'
+import { simulateCalls } from '../utils/simulateCalls.js'
 import { queryCrosschainMessages, type CrosschainMessage, type CrosschainMessageStatus } from './crosschainMessages.js'
 import {
   MigrationSettleError,
@@ -180,7 +181,7 @@ async function settleDriver(ctx: SettleContext, client: PublicClient, migrationA
       )
     },
     async retry(message, after) {
-      const { results } = await client.simulateCalls({
+      const { results } = await simulateCalls(client, {
         account: RETRY_ACCOUNT,
         calls: [...after, message].map((m) => ({ to: ctx.gateway, data: retryData(m) })),
       })

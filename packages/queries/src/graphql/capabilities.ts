@@ -411,9 +411,9 @@ export const PUBLIC_API_CAPABILITIES = {
       "`timestamp` is now index-backed by " +
       "`token_instance_snapshot_timestamp_idx` (backend#613). api-v3's " +
       "`trigger_ends_with: 'NewPeriod'` is dropped rather than replicated: " +
-      "the only writer of `chain_v1` snapshots is `DailySnapshotService`, " +
-      "which stamps every row `snapshot:DailySnapshotTrigger`, so every row " +
-      "already satisfies it",
+      "the only writer of `token_instance_snapshot` is " +
+      "`DailySnapshotService`, which stamps every row " +
+      "`snapshot:DailySnapshotTrigger`, so every row already satisfies it",
   },
   shareYieldsReport: {
     support: "ported",
@@ -436,6 +436,17 @@ export const PUBLIC_API_CAPABILITIES = {
       "collected: the same day-boundary series api-v3's " +
       "`trigger_ends_with: 'NewPeriod'` selects, with `limit` meaning the " +
       "same number of rows on both targets",
+  },
+  sharePriceUpdates: {
+    support: "ported",
+    reason:
+      "`filter: { id: { equalTo }, timestamp: { greaterThanOrEqualTo, " +
+      "lessThanOrEqualTo } }` plus `orderBy: PRIMARY_KEY_ASC` on " +
+      "`tokenSnapshots`, paged by cursor until the last page; the primary " +
+      "key leads with `timestamp`, so one share class comes back oldest " +
+      "first. `trigger` is not filterable, so every row of the range is " +
+      "returned with its `trigger` and the caller keeps the rows of the " +
+      "trigger it wants",
   },
 
   // ------------------------------------------------------------------ Basin

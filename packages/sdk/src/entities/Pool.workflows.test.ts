@@ -1,6 +1,6 @@
 import { ABIS_V3_2 } from '@centrifuge/protocol'
 import { expect } from 'chai'
-import { firstValueFrom, of } from 'rxjs'
+import { firstValueFrom, of, throwError } from 'rxjs'
 import sinon from 'sinon'
 import { Centrifuge } from '../Centrifuge.js'
 import type { HexString } from '../types/index.js'
@@ -45,9 +45,11 @@ function makePool(options: {
     scId?: HexString
     scriptHash?: HexString
     builtWith?: string
+    catalogCid?: string
   }[]
   strategist?: HexString
   catalog?: MarketplaceWorkflow[]
+  pinnedCatalogs?: Record<string, MarketplaceWorkflow[] | Error>
   /** centrifugeIds the pool is deployed on. */
   networks?: number[]
 }) {
@@ -70,7 +72,11 @@ function makePool(options: {
       ],
     }) as any
   )
-  sinon.stub(centrifuge, 'workflowMarketplace').returns(of(options.catalog ?? []) as any)
+  sinon.stub(centrifuge, 'workflowMarketplace').callsFake(((cid?: string) => {
+    const pinned = cid ? options.pinnedCatalogs?.[cid] : undefined
+    if (pinned instanceof Error) return throwError(() => pinned)
+    return of(pinned ?? options.catalog ?? [])
+  }) as any)
   // chainId → centrifugeId; the fixtures use chainId 100x the centrifugeId to keep them distinct.
   sinon.stub(centrifuge, 'id').callsFake((chainId: number) => of(chainId / 100) as any)
   sinon
@@ -311,6 +317,67 @@ describe('entities/Pool workflow orchestration', () => {
       expect((await pool.listWorkflows({ strategist: STRATEGIST })).map((row) => row.workflowRef)).to.deep.equal([
         'wf_a',
       ])
+    })
+
+    const OLD_CID = 'bafyoldcatalog'
+    const depositActions = [
+      {
+        target: '$router',
+        selector: 'function deposit(uint256)',
+        inputs: [{ parameter: 'uint256', input: ['$amount'] }],
+      },
+    ]
+    const routed = (router: string) =>
+      ({
+        ...withCatalogId('wf_a', 100, PINNED_ID),
+        template: 'deposit',
+        variables: { router },
+        actions: depositActions,
+        templates: {
+          deposit: {
+            variables: [
+              { name: 'router', kind: 'pinned' },
+              { name: 'amount', kind: 'runtime' },
+            ],
+            actions: depositActions,
+          },
+        },
+      }) as unknown as MarketplaceWorkflow
+    const ROUTER = '0x1111111111111111111111111111111111111111'
+    const MOVED = '0x2222222222222222222222222222222222222222'
+
+    it('refuses a workflow whose target moved under the same workflowId since the catalog it was pinned to', async () => {
+      const { pool } = makePool({
+        entries: [{ workflowRef: 'wf_a', workflowId: PINNED_ID, catalogCid: OLD_CID }],
+        catalog: [routed(MOVED)],
+        pinnedCatalogs: { [OLD_CID]: [routed(ROUTER)] },
+      })
+      let error: Error | undefined
+      await pool.listWorkflows({ strategist: STRATEGIST }).catch((e) => (error = e))
+      expect(error?.message).to.match(/changed in the catalog since it was whitelisted: its actions/)
+      expect(error?.message).to.match(/Re-pin it explicitly/)
+    })
+
+    it('resolves a workflow whose definition is unchanged in a newer catalog', async () => {
+      const { pool } = makePool({
+        entries: [{ workflowRef: 'wf_a', workflowId: PINNED_ID, catalogCid: OLD_CID }],
+        catalog: [routed(ROUTER)],
+        pinnedCatalogs: { [OLD_CID]: [routed(ROUTER)] },
+      })
+      expect((await pool.listWorkflows({ strategist: STRATEGIST })).map((row) => row.workflowRef)).to.deep.equal([
+        'wf_a',
+      ])
+    })
+
+    it('refuses rather than skips the check when the pinned catalog cannot be read', async () => {
+      const { pool } = makePool({
+        entries: [{ workflowRef: 'wf_a', workflowId: PINNED_ID, catalogCid: OLD_CID }],
+        catalog: [routed(ROUTER)],
+        pinnedCatalogs: { [OLD_CID]: new Error('gateway timeout') },
+      })
+      let error: Error | undefined
+      await pool.listWorkflows({ strategist: STRATEGIST }).catch((e) => (error = e))
+      expect(error?.message).to.match(/could not be read.*gateway timeout/)
     })
 
     it('lets an explicit re-pin through for the workflow being changed, but not its neighbours', async () => {

@@ -160,7 +160,6 @@ describe('hubCallMessages', () => {
       for (const [name, args] of [
         ['updateHoldingValue', [pool33Id.raw, scId33.raw, 1n]],
         ['updateJournal', [pool33Id.raw, [], []]],
-        ['setPolicy', [pool33Id.raw, who]],
         ['cancelAuthorization', [pool33Id.raw, '0x12345678']],
         ['initiateAuthorization', [pool33Id.raw, '0x12345678']],
         ['updateCurrency', [pool33Id.raw, 1n]],

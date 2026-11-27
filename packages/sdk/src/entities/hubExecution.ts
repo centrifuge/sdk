@@ -12,6 +12,7 @@ import {
   assetOf,
   deploysVault,
   isSetAdapters,
+  isSetPolicy,
   isSharePriceUpdate,
   shareClassOf,
 } from '../utils/hubExecutionRules.js'
@@ -34,7 +35,7 @@ export type PlannedCall = { data: HexString; messages: HubCallMessages }
 export type ExecutionPlan = {
   /** Sent first, each in its own transaction: the Hub refuses `setAdapters` inside a batch. */
   setAdapters: PlannedCall[]
-  /** The rest, in the order of the one transaction that sends them. */
+  /** The rest, in the order of the one transaction that sends them, a `setPolicy` call last. */
   calls: PlannedCall[]
   /** The messages of `calls`, per destination in call order. */
   messages: HubCallMessages
@@ -49,8 +50,9 @@ export type ParsedCall = ParsedHubCall & { data: HexString }
 
 /**
  * The checks of a group that read nothing: it is not empty, none of its calls is repeated, each is the calldata of one
- * call of the v3.3 Hub for this pool that an SDK entity builds, and no argument makes the transaction revert or
- * underfund its message.
+ * call of the v3.3 Hub for this pool that an SDK entity builds, no argument makes the transaction revert or
+ * underfund its message, and it holds at most one `setPolicy`, since the first install orphans the authorization of
+ * the next.
  *
  * @param method - The method the refusals name.
  * @throws Error naming the first call that fails a check.
@@ -59,7 +61,12 @@ export function parseGroup(pool: Pool, datas: readonly HexString[], method = MET
   if (datas.length === 0) throw new Error(`${method} needs at least one hub call`)
   datas.forEach((data) => assertAuthorizationCalldata(data, method))
   assertDistinctCalldata(datas, method)
-  return datas.map((data) => ({ data, ...refusing(method, () => parseHubCall(data, pool.id)) }))
+  const parsed = datas.map((data) => ({ data, ...refusing(method, () => parseHubCall(data, pool.id)) }))
+  const installs = parsed.filter(isSetPolicy)
+  if (installs.length > 1) {
+    throw new Error(`${method}: a group installs one policy, and it holds ${installs.length} setPolicy calls`)
+  }
+  return parsed
 }
 
 /**
@@ -98,8 +105,9 @@ export async function planGroup(
   group: readonly ScheduledCall[]
 ): Promise<ExecutionPlan> {
   const adapters = group.filter(isSetAdapters)
-  const scheduled = group.filter((call) => !isSetAdapters(call))
-  const calls = await withInstantCalls(root, pool, hubCtx, signer, scheduled)
+  const installs = group.filter(isSetPolicy)
+  const scheduled = group.filter((call) => !isSetAdapters(call) && !isSetPolicy(call))
+  const calls = [...(await withInstantCalls(root, pool, hubCtx, signer, scheduled)), ...installs.map(planned)]
   return {
     setAdapters: adapters.map(planned),
     calls,

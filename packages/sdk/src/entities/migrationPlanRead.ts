@@ -13,6 +13,7 @@ import { CentrifugeError } from '../errors.js'
 import type { HexString } from '../types/index.js'
 import { MessageTypeV3_3, messageV3_3 } from '../types/transaction.js'
 import { PoolId, type CentrifugeId } from '../utils/types.js'
+import { simulateCalls } from '../utils/simulateCalls.js'
 import {
   migrationInputsKey,
   type MigrationHubInputs,
@@ -325,7 +326,7 @@ export class LiveDriver implements MigrationPlanDriver {
     let results: unknown[]
     try {
       results = (
-        await client.simulateCalls({
+        await simulateCalls(client, {
           account: this.operator,
           calls: [...after, call].map((c) => ({ to: c.to, data: c.data, value: c.value })),
         })

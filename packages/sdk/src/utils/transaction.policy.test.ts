@@ -6,7 +6,7 @@ import { encodeFunctionData, zeroAddress } from 'viem'
 import { sepolia } from 'viem/chains'
 import { Centrifuge } from '../Centrifuge.js'
 import { Pool } from '../entities/Pool.js'
-import { randomAddress, stubChain, stubProjectedPools } from '../tests/utils.js'
+import { randomAddress, simulatingClient, stubChain, stubProjectedPools } from '../tests/utils.js'
 import type { HexString } from '../types/index.js'
 import { MessageType } from '../types/transaction.js'
 import type { OperationStatus, OutOfPolicyCall, TransactionContext } from '../types/transaction.js'
@@ -203,7 +203,7 @@ describe('wrapTransaction under a hub policy', () => {
     const building = makeCtx()
     ;(building.ctx as any).isBatching = true
     const simulating = makeCtx()
-    ;(simulating.ctx.publicClient as any).simulateCalls = sinon.stub().resolves({ results: [] })
+    Object.assign(simulating.ctx.publicClient, simulatingClient(sinon.stub().resolves({ results: [] })))
     const scoped = { contract: hub, data: first, policy: { poolId } }
 
     const returned = [
@@ -250,7 +250,7 @@ describe('wrapTransaction under a hub policy', () => {
 
   it('does not judge a simulation', async () => {
     const { ctx, classifyHubCalls } = makeCtx()
-    ;(ctx.publicClient as any).simulateCalls = sinon.stub().resolves({ results: ['ok'] })
+    Object.assign(ctx.publicClient, simulatingClient(sinon.stub().resolves({ results: ['ok'] })))
 
     const out = await drain(
       wrapTransaction('Simulate', ctx, { contract: hub, data: first, policy: { poolId } }, { simulate: true })

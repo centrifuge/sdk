@@ -33,6 +33,7 @@ import type {
 } from '../types/transaction.js'
 import { assertMessagesDoNotTargetDisabledChains } from './crosschainHotfix.js'
 import { deferredFlags } from './hubExecutionRules.js'
+import { simulateCalls } from './simulateCalls.js'
 import { CentrifugeId, type PoolId } from './types.js'
 
 class TransactionError extends Error {
@@ -251,7 +252,7 @@ export async function* wrapTransaction(
       data.length === 1 && !alwaysBatch
         ? { to: contract, data: data[0], value }
         : { to: contract, abi: ABI.Multicall, functionName: 'multicall', args: [data], value }
-    const { results } = await ctx.publicClient.simulateCalls({ account: ctx.signingAddress, calls: [call] })
+    const { results } = await simulateCalls(ctx.publicClient, { account: ctx.signingAddress, calls: [call] })
 
     yield { type: 'TransactionSimulation', title, result: results } satisfies OperationStatus
   }
@@ -346,7 +347,8 @@ export function assertNotBatching(title: string, ctx: Pick<TransactionContext, '
  * Sends calls that cannot share one transaction, in order: as one EIP-5792 `wallet_sendCalls` prompt when the
  * wallet reports batching capabilities for the chain, otherwise one transaction per call, each confirmed before the next is
  * signed. Support is decided before anything is signed, so a rejected or failed prompt is never re-sent as
- * separate transactions. Every call that names a pool is judged by that pool's hub policy before the first is
+ * separate transactions. A Safe's prompt is followed through the Safe transaction service, any other wallet's through
+ * its EIP-5792 call status. Every call that names a pool is judged by that pool's hub policy before the first is
  * signed. Returns the last call's confirmation, or the `OutOfPolicy` status it yielded when a call is not ready.
  */
 export async function* sendCallsInOrder(
@@ -381,6 +383,17 @@ export async function* sendCallsInOrder(
       chain: ctx.walletClient.chain,
       calls: prepared.map(({ to, data, value }) => ({ to, data, value })),
     })
+    // A Safe names the bundle by its safeTxHash and executes it once its owners have signed, which can outlast the
+    // wait below; its transaction service follows it, as `doTransaction` does for a single Safe transaction. On a
+    // chain that service does not cover, the wallet's call status is the only way left to follow it.
+    if (
+      TRANSACTION_HASH_PATTERN.test(bundleId) &&
+      safeApiCoversChain(await ctx.root._idToChain(ctx.centrifugeId)) &&
+      (await isSafe(ctx))
+    ) {
+      yield { id, type: 'TransactionPending', title, hash: bundleId as HexString }
+      return yield* waitForSafeTransaction(id, title, bundleId as HexString, ctx)
+    }
     // Polled here rather than with `waitForCallsStatus`, to report the first transaction as soon as the wallet
     // names it and to stop when the caller cancels.
     const deadline = Date.now() + CALL_BUNDLE_TIMEOUT_MS
@@ -392,20 +405,22 @@ export async function* sendCallsInOrder(
             `${bundleId}; check it there before sending again.`
         )
       }
-      const { status, receipts } = await getCallsStatus(ctx.walletClient, { id: bundleId })
+      const { status, statusCode, receipts } = await getCallsStatus(ctx.walletClient, { id: bundleId })
       const first = receipts?.[0]?.transactionHash as HexString | undefined
       if (first && !pending) {
         pending = first
         yield { id, type: 'TransactionPending', title, hash: first }
       }
       if (status === 'failure' || receipts?.some((r) => r.status !== 'success')) {
-        throw new Error(`"${title}" did not complete: the wallet reports call bundle ${bundleId} as failed`)
+        throw new Error(failedBundleMessage(title, bundleId, statusCode, receipts ?? [], prepared))
       }
       if (status === 'success') {
         const hash = receipts?.[receipts.length - 1]?.transactionHash as HexString | undefined
         if (!hash) throw new Error(`"${title}": the wallet reports call bundle ${bundleId} done without a receipt`)
         if (!pending) yield { id, type: 'TransactionPending', title, hash }
-        const receipt = await ctx.publicClient.getTransactionReceipt({ hash })
+        // Waited for, not read once: the wallet's node can be ahead of ours.
+        const receipt = await ctx.publicClient.waitForTransactionReceipt({ hash })
+        if (receipt.status === 'reverted') throw new TransactionError(receipt)
         const result = { id, type: 'TransactionConfirmed', title, hash, receipt } as const
         yield result
         return result
@@ -431,6 +446,39 @@ export async function* sendCallsInOrder(
 }
 
 const CALL_BUNDLE_TIMEOUT_MS = 60 * 60 * 1000
+
+/**
+ * Why a call bundle failed, naming what landed so the caller knows what not to send again. A wallet that runs the
+ * calls one by one (EIP-5792 status 600, partial failure) has one receipt per call, in order.
+ */
+function failedBundleMessage(
+  title: string,
+  bundleId: string,
+  statusCode: number | undefined,
+  receipts: readonly { status: string }[],
+  calls: readonly { title: string }[]
+): string {
+  const landed = receipts.map((receipt) => receipt.status === 'success')
+  const status = statusCode === undefined ? '' : ` (status ${statusCode})`
+  if (!landed.includes(true)) {
+    return `"${title}" did not complete: the wallet reports call bundle ${bundleId} as failed${status}; none of its calls landed.`
+  }
+  const which =
+    receipts.length === calls.length
+      ? `${calls
+          .filter((_, index) => landed[index])
+          .map((call) => `"${call.title}"`)
+          .join(', ')} landed and ` +
+        `${calls
+          .filter((_, index) => !landed[index])
+          .map((call) => `"${call.title}"`)
+          .join(', ')} did not`
+      : `${landed.filter(Boolean).length} of its ${receipts.length} transactions landed`
+  return (
+    `"${title}" partly completed: the wallet reports call bundle ${bundleId} as failed${status}; ${which}. ` +
+    `Check it in the wallet before sending again.`
+  )
+}
 
 /**
  * Whether the connected wallet takes `wallet_sendCalls` on the chain: it answers EIP-5792 `wallet_getCapabilities`
@@ -475,8 +523,7 @@ export async function* doTransaction(
   const hash = await transactionCallback()
   yield { id, type: 'TransactionPending', title, hash }
 
-  const code = await ctx.publicClient.getCode({ address: ctx.signingAddress })
-  if (code === SAFE_PROXY_BYTECODE) {
+  if (await isSafe(ctx)) {
     return yield* waitForSafeTransaction(id, title, hash, ctx)
   }
 
@@ -488,6 +535,11 @@ export async function* doTransaction(
   const result = { id, type: 'TransactionConfirmed', title, hash, receipt } as const
   yield result
   return result
+}
+
+/** Whether the signing address is a Safe proxy. */
+async function isSafe(ctx: TransactionContext): Promise<boolean> {
+  return (await ctx.publicClient.getCode({ address: ctx.signingAddress })) === SAFE_PROXY_BYTECODE
 }
 
 // TODO: maybe yield Safe Transaction updates as well
@@ -518,7 +570,14 @@ async function* waitForSafeTransaction(
     )
   }
 
+  // A Safe executes a failing inner call without reverting its own transaction; only the service's verdict says so.
+  if (safeTx.isSuccessful === false) {
+    throw new Error(
+      `"${title}" did not complete: Safe transaction ${hash} was executed in ${safeTx.transactionHash} but failed.`
+    )
+  }
   const receipt = await ctx.publicClient.waitForTransactionReceipt({ hash: safeTx.transactionHash as HexString })
+  if (receipt.status === 'reverted') throw new TransactionError(receipt)
   const result = { id, type: 'TransactionConfirmed', title, hash, receipt } as const
   yield result
   return result
@@ -602,17 +661,22 @@ export function parseEventLogs(parameters: {
     .filter(Boolean) as any
 }
 
-function safeApiNetworkName(chainId: number) {
-  const name = {
-    [mainnet.id]: 'mainnet',
-    [base.id]: 'base',
-    [arbitrum.id]: 'arbitrum',
-    [sepolia.id]: 'sepolia',
-    [baseSepolia.id]: 'base-sepolia',
-    [arbitrumSepolia.id]: 'arbitrum-sepolia',
-    [avalanche.id]: 'avalanche',
-  }[chainId]
+const SAFE_API_NETWORKS: Record<number, string> = {
+  [mainnet.id]: 'mainnet',
+  [base.id]: 'base',
+  [arbitrum.id]: 'arbitrum',
+  [sepolia.id]: 'sepolia',
+  [baseSepolia.id]: 'base-sepolia',
+  [arbitrumSepolia.id]: 'arbitrum-sepolia',
+  [avalanche.id]: 'avalanche',
+}
 
+function safeApiCoversChain(chainId: number): boolean {
+  return chainId in SAFE_API_NETWORKS
+}
+
+function safeApiNetworkName(chainId: number) {
+  const name = SAFE_API_NETWORKS[chainId]
   if (name) return name
   throw new Error(`Safe API does not support chainId "${chainId}"`)
 }

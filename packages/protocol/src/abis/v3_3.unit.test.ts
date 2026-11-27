@@ -1,5 +1,6 @@
+import { addressBook } from "@centrifuge/addressbook";
 import { describe, expect, it } from "vitest";
-import { encodeEventTopics, type Hex } from "viem";
+import { encodeEventTopics, getAddress, type Hex } from "viem";
 import {
   ABI_SET_V3_3,
   ABIS_V3_3,
@@ -99,6 +100,16 @@ describe("v3.3 ABI set", () => {
     expect(source.stackLabel).toBe("v3.3.0");
   });
 
+  it("keys the factory's ABI by its registry name, the book's own, and carries no StdHubPolicy", () => {
+    expect(ABIS_V3_3.StdHubPolicyFactory).toBe(
+      GENERATED_ABIS_V3_3.StdHubPolicyFactory,
+    );
+    expect(ABI_SET_V3_3.stdHubPolicyFactory).toBe(
+      ABIS_V3_3.StdHubPolicyFactory,
+    );
+    expect(ABIS_V3_3).not.toHaveProperty("StdHubPolicy");
+  });
+
   it("answers the v3.3 ABIs under the v3.2 contract names", () => {
     const abis = getContractAbis(PROTOCOL_VERSION_V3_3);
     expect(abis.Hub).toBe(ABIS_V3_3.Hub);
@@ -136,8 +147,17 @@ describe("v3.3 ABI set", () => {
 });
 
 describe("v3.3 address set", () => {
-  it("ships the four testnet chains of the layer and nothing on mainnet", () => {
-    expect(Object.keys(DEPLOYMENTS_V3_3.mainnet)).toEqual([]);
+  it("ships the four testnet chains of the layer and every mainnet chain with a v3.3.0 stack", () => {
+    expect(
+      Object.keys(DEPLOYMENTS_V3_3.mainnet)
+        .map(Number)
+        .sort((a, b) => a - b),
+    ).toEqual(
+      Object.entries(addressBook.networks.mainnet.chains)
+        .filter(([, chain]) => chain.stacks["v3.3.0"])
+        .map(([id]) => Number(id))
+        .sort((a, b) => a - b),
+    );
     expect(
       Object.keys(DEPLOYMENTS_V3_3.testnet)
         .map(Number)
@@ -147,12 +167,15 @@ describe("v3.3 address set", () => {
     expect(DEPLOYMENTS_V3_3.testnet[9]!.chainId).toBe(998);
   });
 
-  it("derives the schema from the layer: adapters are optional, everything else required", () => {
+  it("derives the schema from the layer: adapters and the hub policy factory are optional, everything else required", () => {
     expect(CONTRACT_SCHEMA_V3_3.optional).toEqual([
       "axelarAdapter",
       "chainlinkAdapter",
       "hyperlaneAdapter",
+      "layerZeroAdapter",
+      "stdHubPolicyFactory",
     ]);
+    expect(CONTRACT_SCHEMA_V3_3.required).not.toContain("layerZeroAdapter");
     expect(CONTRACT_SCHEMA_V3_3.required).toContain("spokeRegistry");
     expect(CONTRACT_SCHEMA_V3_3.required).toContain("shareTokenRegistrar");
     expect(CONTRACT_SCHEMA_V3_3.required).not.toContain("balanceSheet");
@@ -169,18 +192,21 @@ describe("v3.3 address set", () => {
     },
   );
 
-  it("is wired into the default registry on testnet only, beside 3.2", () => {
+  it("is wired into the default registry on both networks, beside 3.2", () => {
     const registry = defaultDeploymentRegistry();
-    expect(registry.versionsForChain("testnet", 1)).toEqual([
-      PROTOCOL_VERSION_V3_2,
-      PROTOCOL_VERSION_V3_3,
-    ]);
-    expect(registry.versionsForChain("mainnet", 1)).toEqual([
-      PROTOCOL_VERSION_V3_2,
-    ]);
-    expect(() =>
-      registry.getDeployment("mainnet", PROTOCOL_VERSION_V3_3, 1),
-    ).toThrow(UnknownProtocolVersionError);
+    for (const environment of ["testnet", "mainnet"] as const) {
+      expect(registry.versionsForChain(environment, 1)).toEqual([
+        PROTOCOL_VERSION_V3_2,
+        PROTOCOL_VERSION_V3_3,
+      ]);
+    }
+    expect(
+      registry.getDeployment("mainnet", PROTOCOL_VERSION_V3_3, 1).contracts.hub,
+    ).toBe(
+      getAddress(
+        addressBook.networks.mainnet.chains["1"]!.stacks["v3.3.0"]!.hub!,
+      ),
+    );
   });
 
   it("serves the 3.3 hub from the address book stack, apart from the 3.2 hub", () => {

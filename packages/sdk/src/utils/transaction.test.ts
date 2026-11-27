@@ -2,7 +2,7 @@ import { expect } from 'chai'
 import sinon from 'sinon'
 import { encodeFunctionData, parseAbi } from 'viem'
 import { mainnet, sepolia } from 'viem/chains'
-import { randomAddress } from '../tests/utils.js'
+import { randomAddress, simulatingClient } from '../tests/utils.js'
 import { HexString } from '../types/index.js'
 import { MessageType } from '../types/transaction.js'
 import type { OperationStatus, TransactionContext } from '../types/transaction.js'
@@ -168,7 +168,7 @@ describe('wrapTransaction broadcast path', () => {
   it('simulates a single call via the multicall(bytes[]) branch when alwaysBatch is set', async () => {
     const { ctx } = makeCtx()
     const simulateCalls = sinon.stub().resolves({ results: ['ok'] })
-    ;(ctx.publicClient as any).simulateCalls = simulateCalls
+    Object.assign(ctx.publicClient, simulatingClient(simulateCalls))
     const data = encodeFunctionData({ abi: ABI, functionName: 'setValue', args: [5n] })
 
     await drain(wrapTransaction('Simulate alwaysBatch', ctx, { contract, data, alwaysBatch: true }, { simulate: true }))
@@ -181,7 +181,7 @@ describe('wrapTransaction broadcast path', () => {
   it('simulates a single call directly (no multicall wrapper) and yields a TransactionSimulation', async () => {
     const { ctx } = makeCtx()
     const simulateCalls = sinon.stub().resolves({ results: ['ok'] })
-    ;(ctx.publicClient as any).simulateCalls = simulateCalls
+    Object.assign(ctx.publicClient, simulatingClient(simulateCalls))
     const data = encodeFunctionData({ abi: ABI, functionName: 'setValue', args: [7n] })
 
     const statuses = await drain(wrapTransaction('Simulate single', ctx, { contract, data }, { simulate: true }))

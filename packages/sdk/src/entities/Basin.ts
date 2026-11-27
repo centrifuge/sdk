@@ -44,7 +44,12 @@ export class Basin extends Entity {
   }
 
   private get _key() {
-    return { chainId: this.chainId, basinAddress: this.basinAddress, tokenId: this.tokenId }
+    return {
+      poolId: this.pool.id.toString(),
+      chainId: this.chainId,
+      basinAddress: this.basinAddress,
+      tokenId: this.tokenId,
+    }
   }
 
   /**
@@ -112,7 +117,7 @@ export class Basin extends Entity {
     const { redeemer, requestId, limit } = options
     return this._query(['redeemRequests', redeemer, requestId, limit], () =>
       this._root._queryData<BasinRedeemRequestRow[]>('basinRedeemRequests', {
-        basinAddress: this.basinAddress,
+        ...this._key,
         ...(redeemer === undefined ? {} : { redeemer }),
         ...(requestId === undefined ? {} : { requestId }),
         ...(limit === undefined ? {} : { limit }),

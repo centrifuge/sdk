@@ -19,6 +19,7 @@ import {
   emptyMessageV3_3,
   encodeAccountingTokenMinterPayload,
   encodeAdapterFailoverStewardPayload,
+  encodeBaseTransferHookPayload,
   encodeOnchainPMPolicyPayload,
   encodeOnOffRampPayload,
   encodeOracleValuationFeederPayload,
@@ -39,7 +40,7 @@ import { Pool } from './entities/Pool.js'
 import { PoolNetwork } from './entities/PoolNetwork.js'
 import { ShareClass } from './entities/ShareClass.js'
 import { Vault } from './entities/Vault.js'
-import { stubChain, stubMigrationRows, stubProjectedPools } from './tests/utils.js'
+import { stubChain, stubHubPoolSet, stubLayerZeroGlobalSet, stubMigrationRows, stubProjectedPools } from './tests/utils.js'
 import { AccountType } from './types/holdings.js'
 import type { HexString } from './types/index.js'
 import {
@@ -97,6 +98,8 @@ function setup(
   contracts: readonly HexString[] = []
 ) {
   const centrifuge = new Centrifuge({ environment: 'testnet', ...config })
+  stubLayerZeroGlobalSet()
+  stubHubPoolSet()
   sinon.stub(centrifuge as any, '_poolRows').returns(
     of([
       { id: pool33Id.toString(), protocolVersion: '3.3', migrationStatus: 'live' },
@@ -307,6 +310,67 @@ describe('v3.3 writes', () => {
         }).data
       )
       expect(built.messages).to.deep.equal({ [SPOKE]: [managerCallMessage(pool33Id)] })
+    })
+
+    describe('updateHookManager', () => {
+      const hook = '0x6666666666666666666666666666666666666666' as HexString
+      const hookReads = { shareToken: token, hook }
+
+      it('grants the HookManager role with a managerCall to the token hook on the spoke', async () => {
+        const { centrifuge, build } = setup(hookReads)
+        const built = await build(entities(centrifuge, pool33Id, scId33).shareClass.updateHookManager(SPOKE, who))
+        expect(built.to.toLowerCase()).to.equal(ctx(pool33Id, '3.3').addresses.hub!.toLowerCase())
+        expect(built.data).to.equal(
+          builders.hubManagerCall(ctx(pool33Id, '3.3'), {
+            poolId: pool33Id.raw.toString(),
+            centrifugeId: String(SPOKE),
+            target: hook,
+            payload: encodeBaseTransferHookPayload({
+              kind: 'updateHookManager',
+              scId: scId33.raw,
+              manager: who,
+              canManage: true,
+            }),
+            label: 'BaseTransferHook.UpdateHookManager',
+            refundAddress: signer,
+          }).data
+        )
+        expect(built.messages).to.deep.equal({ [SPOKE]: [managerCallMessage(pool33Id)] })
+      })
+
+      it('withdraws the HookManager role when canManage is false', async () => {
+        const { centrifuge, build } = setup(hookReads)
+        const built = await build(
+          entities(centrifuge, pool33Id, scId33).shareClass.updateHookManager(SPOKE, who, false)
+        )
+        const [, , target, payload] = decodeFunctionData({ abi: ABIS_V3_3.Hub, data: built.data }).args as readonly [
+          bigint,
+          number,
+          HexString,
+          HexString,
+        ]
+        expect(target).to.equal(addressToBytes32(hook))
+        expect(payload).to.equal(
+          encodeBaseTransferHookPayload({ kind: 'updateHookManager', scId: scId33.raw, manager: who, canManage: false })
+        )
+      })
+
+      it('refuses a HookManager grant on a v3.2 pool before reading the chain', async () => {
+        const { centrifuge, build, readContract } = setup(hookReads)
+        await expectRefusal(build(entities(centrifuge, pool32Id, scId32).shareClass.updateHookManager(SPOKE, who)))
+        expect(readContract.called).to.equal(false)
+      })
+
+      it('refuses a HookManager grant for a token without a hook', async () => {
+        const { centrifuge, build } = setup({ shareToken: token, hook: zeroAddress })
+        let error: unknown
+        try {
+          await build(entities(centrifuge, pool33Id, scId33).shareClass.updateHookManager(SPOKE, who))
+        } catch (e) {
+          error = e
+        }
+        expect((error as Error)?.message).to.match(/has no hook on centrifuge network 2/)
+      })
     })
 
     it('refuses the removed price ages and a liability holding', async () => {
@@ -1754,6 +1818,7 @@ describe('v3.3 writes', () => {
         },
       })
       stubProjectedPools(centrifuge, [pool33Id], '3.3')
+      stubHubPoolSet()
       const reads: Record<string, (args: readonly unknown[]) => unknown> = {
         manager: spokeReads(false).manager,
         requestManager: () => who,

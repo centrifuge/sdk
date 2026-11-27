@@ -25,6 +25,7 @@ import {
 import {
   ABIS_V3_3,
   builders,
+  encodeBaseTransferHookPayload,
   encodeBatchRequestManagerPayload,
   encodeShareTokenRegistrarPayload,
   encodeSyncManagerPayload,
@@ -37,6 +38,7 @@ import type {
   EpochInvestOrderRow,
   EpochRedeemOrderRow,
   HoldingEscrowRow,
+  HubTokenSnapshotPriceRow,
   InvestOrderRow,
   InvestOrderState,
   PageInfo,
@@ -96,6 +98,7 @@ import { Entity } from './Entity.js'
 import type { Pool } from './Pool.js'
 import { assetDecimalsByAssetId } from '../utils/assetDecimals.js'
 import { notifyAssetPriceCall, PoolNetwork, VaultManagerTrustedCall } from './PoolNetwork.js'
+import { SHARE_PRICE_UPDATES_POLL_INTERVAL, sharePriceUpdatesBound, toSharePriceUpdates } from './sharePriceUpdates.js'
 import { Vault } from './Vault.js'
 
 const GAS_LIMIT = 30_000_000n
@@ -388,6 +391,16 @@ export interface DirectIssuanceInFlight {
   status: ShareManagerCallRow['status']
   hubTxHash: HexString
   createdAt: Date
+}
+
+/** A price update the hub committed for a share class. */
+export interface SharePriceUpdate {
+  /** The pool-per-share price the update set. */
+  price: Price
+  /** The block time of the commit. */
+  committedAt: Date
+  /** When the manager said the price was computed; null when the indexer holds none. */
+  computedAt: Date | null
 }
 
 /**
@@ -775,6 +788,33 @@ export class ShareClass extends Entity {
             }))
           )
         )
+      )
+    )
+  }
+
+  /**
+   * The log of the price updates the hub committed for the share class, oldest first, read from the indexer: one entry
+   * per `UpdatePricePoolPerShare`, ordered by the block time of the commit, ties in the order the indexer returns them.
+   * A hub policy judges each commit, so a correction under one computed-at and a backdated computed-at are entries of
+   * their own. The log of a share class starts at its first `UpdatePricePoolPerShare`: the price commits of the pre-3.1
+   * hub (`UpdateShareClass`) carry no computed-at and no hub policy judged them, the daily snapshots repeat the price in
+   * force, and a snapshot without a price holds none, so none of them is an entry. The indexer keeps one snapshot per
+   * share class and block, so there is at most one entry per block; a policy treats a second commit in one block
+   * specially (`elapsed == 0`), which a replay cannot see here. For a daily series use `pool.reports.hubSharePrices`
+   * (hub snapshots) or `pool.reports.sharePrices` (per-network snapshots).
+   * @param range `from` and `to`, both optional and inclusive, bound the commit time.
+   * @returns A query: await it for the entries or subscribe to it for updates. Empty when the range holds none.
+   * @throws {RangeError} Synchronously, when `from` or `to` is an invalid `Date`.
+   */
+  sharePriceUpdates(range: { from?: Date; to?: Date } = {}): Query<SharePriceUpdate[]> {
+    const from = sharePriceUpdatesBound(range.from, 'from')
+    const to = sharePriceUpdatesBound(range.to, 'to')
+    return this._query(['sharePriceUpdates', from, to], () =>
+      this._root._queryData<HubTokenSnapshotPriceRow[], SharePriceUpdate[]>(
+        'sharePriceUpdates',
+        { tokenId: this.id.raw, ...(from !== undefined ? { from } : {}), ...(to !== undefined ? { to } : {}) },
+        toSharePriceUpdates,
+        SHARE_PRICE_UPDATES_POLL_INTERVAL
       )
     )
   }
@@ -3827,6 +3867,65 @@ export class ShareClass extends Entity {
   }
 
   /**
+   * Grant or withdraw the hook manager role on this share class's token on one network. A hook manager calls the
+   * token's hook (`updateMember`, `freeze`) directly, with no hub message per call. Sent as a v3.3 `Hub.managerCall`
+   * to the hook, which the hub policy delays, so the result can be `OutOfPolicy` (see `docs/sdk/hub-policies.md`).
+   * The token's hook must be a v3.3 hook; move a kept hook with `updateHook` first.
+   * @param centrifugeId - The network whose share token the role applies to
+   * @param manager - The address to grant or withdraw the role for
+   * @param canManage - `false` withdraws the role
+   */
+  updateHookManager(centrifugeId: CentrifugeId, manager: HexString, canManage = true) {
+    const self = this
+    return this._transact(async function* (ctx) {
+      assertCrosschainMessagingEnabled(centrifugeId)
+
+      const hubCtx = await self._root.protocolContext(self.pool.id)
+      if (!isV3_3(hubCtx)) {
+        throw new UnsupportedForProtocolVersionError(
+          'ShareClass.updateHookManager',
+          hubCtx.protocolVersion,
+          'a v3.2 hook manager is set by a ward with trustedCall'
+        )
+      }
+      // One-shot reads, not the cached `_restrictionManager` query, which also subscribes to chain events.
+      const [spokeCtx, client] = await Promise.all([
+        self._root.protocolContext({ poolId: self.pool.id, centrifugeId }),
+        firstValueFrom(self._root.getClient(centrifugeId)),
+      ])
+      const registry = spokeReadTarget(spokeCtx)
+      const token = await client.readContract({
+        address: registry.address,
+        abi: registry.abi,
+        functionName: 'shareToken',
+        args: [self.pool.id.raw, self.id.raw],
+      })
+      const hook = await client.readContract({ address: token, abi: STANDARD_ABIS.Currency, functionName: 'hook' })
+      if (hook.toLowerCase() === zeroAddress) {
+        throw new Error(`Share class ${self.id} has no hook on centrifuge network ${centrifugeId}`)
+      }
+
+      yield* wrapTransaction(canManage ? 'Grant hook manager' : 'Remove hook manager', ctx, {
+        contract: hubCtx.hub,
+        policy: { poolId: self.pool.id },
+        data: encodeHubManagerCall(hubCtx, {
+          centrifugeId,
+          target: hook,
+          payload: encodeBaseTransferHookPayload({
+            kind: 'updateHookManager',
+            scId: self.id.raw,
+            manager,
+            canManage,
+          }),
+          label: 'BaseTransferHook.UpdateHookManager',
+          refund: ctx.signingAddress,
+        }),
+        messages: { [centrifugeId]: [messageV3_3(MessageTypeV3_3.ManagerCallFromHub, self.pool.id)] },
+      })
+    }, this.pool.centrifugeId)
+  }
+
+  /**
    * Per-chain view of what still blocks cross-chain transfers of this share class, obtained by asking
    * each chain's share token the same question the protocol asks at transfer time:
    *  - outbound: `checkTransferRestriction(holder, address(uint160(destinationCentrifugeId)))` on the
@@ -4364,8 +4463,7 @@ export class ShareClass extends Entity {
    * route, sender, receiver and amount). `sender` is the transfer's owner as
    * the Spoke forwards it: the signer on both the direct and the TokenBridge
    * path. A hook that is not the address book's breaker cannot be judged: the
-   * transfer proceeds with a warning, as the migration gate does when it cannot
-   * judge.
+   * transfer proceeds with a warning.
    * @internal
    */
   async _assertBridgeLimit(

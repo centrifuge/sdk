@@ -1,4 +1,4 @@
-import { stubProjectedPools } from '../tests/utils.js'
+import { notMigrating, stubProjectedPools } from '../tests/utils.js'
 import { expect } from 'chai'
 import { firstValueFrom, of } from 'rxjs'
 import sinon from 'sinon'
@@ -85,11 +85,13 @@ function stubChain(centrifuge: Centrifuge) {
     .stub(centrifuge as any, 'getChainConfig')
     .callsFake((id: any) => thenable({ id: chainOf(Number(id)), name: 'test' }))
   sinon.stub(centrifuge as any, 'getClient').callsFake(() =>
-    thenable({
-      getCode: async () => undefined,
-      waitForTransactionReceipt: async ({ hash }: { hash: HexString }) => ({ status: 'success', hash }),
-      readContract: async () => undefined,
-    })
+    thenable(
+      notMigrating({
+        getCode: async () => undefined,
+        waitForTransactionReceipt: async ({ hash }: { hash: HexString }) => ({ status: 'success', hash }),
+        readContract: async () => undefined,
+      })
+    )
   )
 }
 

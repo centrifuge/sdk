@@ -339,6 +339,23 @@ export class RepayBatchError extends CentrifugeError {
 }
 
 /**
+ * A hub policy was asked for on a chain whose address book lists no `StdHubPolicyFactory`, so there is no address to
+ * preview or deploy it at. Raised before anything is signed. A policy that already exists can still be installed.
+ */
+export class StdHubPolicyFactoryMissingError extends CentrifugeError {
+  override name = 'StdHubPolicyFactoryMissingError'
+  /** The pool the policy was asked for. */
+  readonly poolId: string
+  /** The pool's hub chain, where the factory would be. */
+  readonly centrifugeId: CentrifugeId
+  constructor(message: string, details: { poolId: string; centrifugeId: CentrifugeId }) {
+    super(message)
+    this.poolId = details.poolId
+    this.centrifugeId = details.centrifugeId
+  }
+}
+
+/**
  * `deploy()` would make `AdapterFailover` the pool's adapter manager on a spoke
  * on another chain than its hub, and that chain's `ProtocolGuardian.safe()` is
  * the zero address, so the manager would have no steward to act through.

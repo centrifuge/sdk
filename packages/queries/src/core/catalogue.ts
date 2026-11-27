@@ -531,6 +531,7 @@ export const catalogue = {
     "basinRedeemRequests",
     z
       .object({
+        poolId: poolIdParam,
         basinAddress: addressParam,
         /**
          * Narrow to one redeemer. Optional because the endpoint's tenancy
@@ -558,7 +559,11 @@ export const catalogue = {
   basinRedeemOrder: defineQuery<BasinLinkedRedeemOrder | null>()(
     "basinRedeemOrder",
     z
-      .object({ basinAddress: addressParam, requestId: z.string().min(1) })
+      .object({
+        poolId: poolIdParam,
+        basinAddress: addressParam,
+        requestId: z.string().min(1),
+      })
       .strict(),
   ),
 

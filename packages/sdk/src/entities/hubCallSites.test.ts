@@ -18,6 +18,8 @@ const HUB_BUILDERS = new Set(['builders.setPoolMetadata', 'builders.shareManager
 const OTHER_BUILDERS = new Set(['buildMigrationOperation'])
 const OTHER_EXPRESSIONS = new Set([
   'self.address',
+  // The asset token a balance sheet deposit approves.
+  'assetAddress',
   'balanceSheet',
   'balanceSheetAddress(spokeCtx)',
   "'oracleValuation'",
@@ -28,6 +30,8 @@ const OTHER_EXPRESSIONS = new Set([
   'hubCtx.batchRequestManager',
   'spoke',
   'tokenBridge',
+  // The StdHubPolicyFactory is not the Hub: deploying a policy names no pool.
+  'stdHubPolicyFactory',
   // `Pool.migrationBundle` sends to the migration facade's `multicall`, as `migrationStep` does through `built.to`.
   'bundle.to',
 ])

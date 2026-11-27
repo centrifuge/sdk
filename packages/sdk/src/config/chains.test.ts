@@ -2,7 +2,7 @@ import { expect } from 'chai'
 import sinon from 'sinon'
 import { firstValueFrom } from 'rxjs'
 import { Centrifuge } from '../Centrifuge.js'
-import { arc, chains } from './chains.js'
+import { arc, chains, hyperliquidEvmTestnet } from './chains.js'
 
 const ARC_CHAIN_ID = 5042
 const ARC_CENTRIFUGE_ID = 14
@@ -24,8 +24,8 @@ describe('mainnet chain configuration', () => {
     expect(arc.rpcUrls.default.http).to.deep.equal([ARC_DEFAULT_RPC])
   })
 
-  it('declares Multicall3 on every mainnet chain so reads can be batched', () => {
-    const missing = chains.filter((chain) => !chain.testnet && !chain.contracts?.multicall3).map((chain) => chain.name)
+  it('declares Multicall3 on every chain, testnets included, so reads can be batched', () => {
+    const missing = chains.filter((chain) => !chain.contracts?.multicall3).map((chain) => chain.name)
     expect(missing).to.deep.equal([])
   })
 
@@ -33,6 +33,11 @@ describe('mainnet chain configuration', () => {
     const centrifuge = new Centrifuge({ environment: 'mainnet' })
     const client = await firstValueFrom(centrifuge.getClient(ARC_CENTRIFUGE_ID))
     expect(client.chain.contracts?.multicall3?.address).to.equal('0xcA11bde05977b3631167028862bE2a173976CA11')
+  })
+
+  it('declares Multicall3 on HyperEVM testnet, which viem leaves out, at the address deployed there', () => {
+    expect(hyperliquidEvmTestnet.id).to.equal(998)
+    expect(hyperliquidEvmTestnet.contracts?.multicall3?.address).to.equal('0xcA11bde05977b3631167028862bE2a173976CA11')
   })
 
   it('builds an Arc client without any configuration', () => {

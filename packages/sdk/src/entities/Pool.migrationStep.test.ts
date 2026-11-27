@@ -4,14 +4,14 @@ import sinon from 'sinon'
 import { ContractFunctionRevertedError, decodeFunctionData } from 'viem'
 import {
   migrationBuilders,
+  resolveMigrationChain,
   resolveMigrationContext,
   V33_MIGRATION_ABI_V3_3,
-  V33_MIGRATION_DEPLOYMENTS,
 } from '@centrifuge/protocol'
 import { Centrifuge } from '../Centrifuge.js'
 import { MessageTypeV3_3 } from '../types/transaction.js'
 import { HexString } from '../types/index.js'
-import { stubChain } from '../tests/utils.js'
+import { simulatingClient, stubChain } from '../tests/utils.js'
 import { PoolId } from '../utils/types.js'
 import { Pool } from './Pool.js'
 import {
@@ -43,7 +43,7 @@ function setup() {
   return { centrifuge, pool: new Pool(centrifuge, poolId), build }
 }
 
-const facade = V33_MIGRATION_DEPLOYMENTS.testnet[1]!.address
+const facade = resolveMigrationChain(1, { environment: 'testnet' }).migration
 
 describe('Pool.migrationStep', () => {
   afterEach(() => sinon.restore())
@@ -291,7 +291,7 @@ describe('Pool.migrationBundle', () => {
     sinon.stub(centrifuge as any, '_estimate').resolves(FEE)
     const simulateCalls = sinon.stub()
     results.forEach((answer, i) => simulateCalls.onCall(i).resolves({ results: answer }))
-    stubChain(centrifuge, { simulateCalls })
+    stubChain(centrifuge, simulatingClient(simulateCalls))
     const sent: { to: string; data: HexString; value: string }[] = []
     centrifuge.setSigner({
       request: async ({ method, params }: { method: string; params?: any[] }) => {

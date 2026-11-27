@@ -6,9 +6,14 @@ import {
   UnknownDeploymentError,
   UnknownProtocolVersionError,
 } from "../errors";
-import { PROTOCOL_VERSION_V3_2, type DeploymentRegistryData } from "../types";
+import {
+  PROTOCOL_VERSION_V3_2,
+  PROTOCOL_VERSION_V3_3,
+  type DeploymentRegistryData,
+} from "../types";
 import {
   CONTRACT_SCHEMA_V3_2,
+  CONTRACT_SCHEMA_V3_3,
   createDeploymentRegistry,
   DEFAULT_DEPLOYMENT_DATA,
   DEPLOYMENTS_V3_2,
@@ -170,6 +175,58 @@ describe("deployment registry", () => {
     });
   });
 
+  describe("StdHubPolicyFactory", () => {
+    const FACTORY = "0x2E62DE7f44Ba4a22BaB773e6c947A57ec515f905";
+
+    function testnetV33(factory: string | undefined): DeploymentRegistryData {
+      const bundled = DEFAULT_DEPLOYMENT_DATA.testnet[PROTOCOL_VERSION_V3_3]!;
+      const contracts: Record<string, string> = { ...bundled[1]!.contracts };
+      delete contracts.stdHubPolicyFactory;
+      if (factory) {
+        contracts.stdHubPolicyFactory = factory;
+      }
+      return {
+        mainnet: {},
+        testnet: {
+          [PROTOCOL_VERSION_V3_3]: {
+            1: { chainId: 11155111, name: "sepolia", contracts },
+          },
+        },
+      };
+    }
+
+    it("is an optional v3.3 contract, since a book release brings it chain by chain", () => {
+      expect(CONTRACT_SCHEMA_V3_3.optional).toContain("stdHubPolicyFactory");
+      expect(CONTRACT_SCHEMA_V3_3.required).not.toContain(
+        "stdHubPolicyFactory",
+      );
+    });
+
+    it("resolves the address a v3.3 stack lists", () => {
+      const registry = createDeploymentRegistry(testnetV33(FACTORY));
+
+      expect(
+        registry.getDeployment("testnet", PROTOCOL_VERSION_V3_3, 1).contracts
+          .stdHubPolicyFactory,
+      ).toBe(FACTORY);
+    });
+
+    it("leaves it absent where the stack lists none", () => {
+      const registry = createDeploymentRegistry(testnetV33(undefined));
+
+      expect(
+        registry.getDeployment("testnet", PROTOCOL_VERSION_V3_3, 1).contracts
+          .stdHubPolicyFactory,
+      ).toBeUndefined();
+    });
+
+    it("refuses a malformed address instead of dropping it", () => {
+      expect(() =>
+        createDeploymentRegistry(testnetV33("0xnot-an-address")),
+      ).toThrow(/testnet\.3\.3\.1\.contracts\.stdHubPolicyFactory/);
+    });
+  });
+
   describe("on/off-ramp factories", () => {
     const deployments = Object.entries(DEPLOYMENTS_V3_2).flatMap(
       ([environment, byCentrifugeId]) =>
@@ -290,6 +347,7 @@ describe("deployment registry", () => {
       // Both versions coexist per chain — never one row per chain.
       expect(registry.versionsForChain("mainnet", 1)).toEqual([
         PROTOCOL_VERSION_V3_2,
+        PROTOCOL_VERSION_V3_3,
         "9.9",
       ]);
       expect(

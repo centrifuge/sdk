@@ -34,6 +34,7 @@ const DERIVATIONS: Record<string, Derive> = {
   updateShareClassMetadata: none,
   createAccount: none,
   updateHubManager: none,
+  setPolicy: none,
   initializeHolding: none,
   updateSharePrice: none,
   notifySharePrice: ([, , centrifugeId], scope) =>

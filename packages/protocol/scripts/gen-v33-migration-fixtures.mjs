@@ -1,12 +1,12 @@
 #!/usr/bin/env node
 import { writeFileSync } from "node:fs";
+import { addressBook } from "@centrifuge/addressbook";
 import { getAddress } from "viem";
 import { resolve } from "node:path";
 import {
   listMigrationChains,
   migrationBuilders,
   resolveMigrationContext,
-  V33_MIGRATION_DEPLOYMENTS_SOURCE,
 } from "../dist/migration/index.js";
 
 const POOL_ID = "281474976710665";
@@ -213,7 +213,7 @@ writeFileSync(
   out,
   `${JSON.stringify(
     {
-      provenance: `Built against the V33Migration facade of the testnet registry head ${V33_MIGRATION_DEPLOYMENTS_SOURCE.testnet} (effective v3.3.0); regenerate with scripts/gen-v33-migration-fixtures.mjs after pnpm build.`,
+      provenance: `Built against the V33Migration facade of the testnet registry head ${addressBook.networks.testnet.head} (effective v3.3.0); regenerate with scripts/gen-v33-migration-fixtures.mjs after pnpm build.`,
       poolId: POOL_ID,
       hub: {
         centrifugeId: hub.centrifugeId,

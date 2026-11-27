@@ -10,6 +10,7 @@ import {
 import {
   emptyMessage as encodeEmptyMessage,
   emptyMessageV3_3,
+  isPoolDependentV3_3,
   MessageType,
   MessageTypeV3_3,
   PROTOCOL_VERSION_V3_3,
@@ -228,6 +229,16 @@ export type DeployedOnchainPMStatus = {
 }
 
 /**
+ * The hub policy of a config is at its address: deployed by the transaction that was just confirmed, or, when `skipped`
+ * is true, already there, so nothing was sent.
+ */
+export type DeployedHubPolicyStatus = {
+  type: 'DeployedHubPolicy'
+  address: HexString
+  skipped: boolean
+}
+
+/**
  * A confirmed transaction sent cross-chain messages that the next step depends on,
  * and the SDK is waiting for the destination chain to pick them up.
  */
@@ -421,6 +432,7 @@ export type OperationStatus =
   | OperationOutOfPolicyStatus
   | DeployedOnOfframpManagerStatus
   | DeployedOnchainPMStatus
+  | DeployedHubPolicyStatus
   | OperationAwaitingCrosschainDeliveryStatus
 
 export type EIP1193ProviderLike = {
@@ -607,7 +619,13 @@ export function emptyMessage(type: MessageTypeWithSubType, protocolVersion?: Pro
         `Message ${MessageTypeV3_3[type.type]} exists on protocol v3.3 only, but is priced for ${protocolVersion}`
       )
     }
-    return emptyMessageV3_3(type.type, type.poolId.raw.toString(), type.subtype, type.extraGasLimit)
+    const carriesPoolId = isPoolDependentV3_3(type.type) || type.type === MessageTypeV3_3.SetPoolAdapters
+    return emptyMessageV3_3(
+      type.type,
+      carriesPoolId ? type.poolId.raw.toString() : undefined,
+      type.subtype,
+      type.extraGasLimit
+    )
   }
 
   if (protocolVersion === PROTOCOL_VERSION_V3_3) {

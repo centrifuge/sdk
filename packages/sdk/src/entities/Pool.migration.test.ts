@@ -2,6 +2,7 @@ import { expect } from 'chai'
 import { of } from 'rxjs'
 import sinon from 'sinon'
 import type { CrosschainMessageRow, PoolMigrationRow, PoolMigrationStepRow } from '@centrifuge/queries/core'
+import { addressBook } from '@centrifuge/protocol'
 import { Centrifuge } from '../Centrifuge.js'
 import { PoolMigratingError } from '../errors.js'
 import { Balance } from '../utils/BigInt.js'
@@ -13,6 +14,7 @@ import {
   drainItemsOf,
   groupMessagesById,
   landStepsOfSpoke,
+  migrationFacadeOf,
 } from './PoolMigration.js'
 import type { MigrationSpokeCandidate } from './migrationSpokes.js'
 
@@ -182,10 +184,10 @@ function withReads(
   return { seen, readContract, multicall, getLogs, candidates }
 }
 
-function migrationRow(hubPhase: string, spokes: PoolMigrationRow['spokes']): PoolMigrationRow {
+function migrationRow(hubPhase: string, spokes: PoolMigrationRow['spokes'], poolId = POOL_ID): PoolMigrationRow {
   return {
     migrationId: '3.2->3.3',
-    poolId: POOL_ID,
+    poolId,
     targetVersion: '3.3',
     hubPhase,
     operator: '0xD5d2B48A4FDD2ca814c0d6c9d3BBc43D9265679D',
@@ -358,17 +360,56 @@ describe('Pool.migration', () => {
     expect(spoke.steps).to.have.length(1)
   })
 
+  describe('migrationFacadeOf', () => {
+    const MAINNET_FACADE = '0x3f1Eb2DC6B31a0f7defE5f39345fC575839D3429'
+
+    it('answers the facade the address book lists, and null for a chain with none', () => {
+      expect(migrationFacadeOf(1, 'mainnet')?.address).to.equal(MAINNET_FACADE)
+      expect(migrationFacadeOf(1, 'testnet')?.address).to.equal('0x25f4dA387f8154E78763Cac7e545a776c4D245C6')
+      expect(migrationFacadeOf(15, 'mainnet')).to.equal(null)
+      expect(migrationFacadeOf(99_999, 'mainnet')).to.equal(null)
+      expect(migrationFacadeOf(13, 'testnet')).to.equal(null)
+    })
+
+    it('refuses a facade the book lists without a deploy block rather than answer that there is none', () => {
+      const record = addressBook.networks.mainnet.chains['1']!.addresses[MAINNET_FACADE.toLowerCase() as `0x${string}`]!
+      const recorded = record.blockNumber
+      record.blockNumber = null
+      try {
+        expect(() => migrationFacadeOf(1, 'mainnet')).to.throw(/records no block for the migration facade/)
+      } finally {
+        record.blockNumber = recorded
+      }
+    })
+  })
+
   it('names a missing facade deployment on the spoke instead of failing or hiding it', async () => {
     const centrifuge = new Centrifuge({ environment: 'mainnet' })
+    // Mainnet chain 15 runs v3.3 only, and the address book lists no migration facade there.
+    const facadelessHub = PoolId.from(15, 9).toString()
     withReads(centrifuge, {
-      migration: migrationRow('Armed', [{ centrifugeId: SPOKE, phase: 'Armed', freezeGeneration: '0' }]),
+      migration: migrationRow('Armed', [{ centrifugeId: SPOKE, phase: 'Armed', freezeGeneration: '0' }], facadelessHub),
       steps: [],
       messages: [],
     })
-    const spoke = (await new Pool(centrifuge, POOL_ID).migration())!.spokes.find((s) => s.centrifugeId === 2)!
+    const spoke = (await new Pool(centrifuge, facadelessHub).migration())!.spokes.find((s) => s.centrifugeId === 2)!
     expect(spoke.facadeFreezeGeneration).to.equal(null)
     expect(spoke.facadeReadError).to.match(/^UnknownDeploymentError: /)
     expect(spoke.state).to.equal('P1')
+  })
+
+  it('reads the freeze generation from the facade the address book lists on the mainnet hub chain', async () => {
+    const centrifuge = new Centrifuge({ environment: 'mainnet' })
+    const { multicall } = withReads(centrifuge, {
+      migration: migrationRow('Armed', [{ centrifugeId: SPOKE, phase: 'Frozen', freezeGeneration: '1' }]),
+      steps: [stepRow(1, 1, PAIRS[1].hash)],
+      messages: [],
+    })
+    const spoke = (await new Pool(centrifuge, POOL_ID).migration())!.spokes.find((s) => s.centrifugeId === 2)!
+    expect(spoke.facadeReadError).to.equal(null)
+    expect(spoke.facadeFreezeGeneration).to.equal(1)
+    expect(multicall.firstCall.args[0].contracts[0].address).to.equal('0x3f1Eb2DC6B31a0f7defE5f39345fC575839D3429')
+    expect((centrifuge.getClient as sinon.SinonStub).calledWith(1)).to.equal(true)
   })
 
   it('reports no state for a spoke while the facade and the step history disagree on the freeze generation', async () => {

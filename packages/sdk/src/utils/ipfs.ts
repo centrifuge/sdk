@@ -27,37 +27,38 @@ export async function pinToApi(url: string, reqInit?: RequestInit) {
   return parseIPFSHash(uri).ipfsHash
 }
 
+/**
+ * The IPFS path (`<cid>` or `<cid>/<file>`) named by `uriOrHash`, or `''` when it names none.
+ * Accepts a bare hash, `ipfs://…`, `ipfs://ipfs/…` and a gateway URL (`https://host/ipfs/…`),
+ * whose host is dropped.
+ */
+export function ipfsPathFromHash(uriOrHash: string): string {
+  if (!uriOrHash) return ''
+  if (!uriOrHash.includes(':')) {
+    // string without protocol is assumed to be an IPFS hash
+    return uriOrHash.replace(/\/?(ipfs\/)/, '')
+  }
+  if (uriOrHash.startsWith('ipfs://ipfs/')) return uriOrHash.slice(12)
+  if (uriOrHash.startsWith('ipfs://')) return uriOrHash.slice(7)
+  // Some sources hand back an already-gateway-qualified URL
+  // (`https://some-gateway/ipfs/<hash>/...`) instead of an `ipfs://` URI.
+  const match = /\/ipfs\/([^?#]+)/.exec(uriOrHash)
+  return match ? match[1]! : ''
+}
+
 export function getUrlFromHash(uriOrHash: string, ipfsGateway: string) {
   if (!uriOrHash) return ''
 
   try {
     // `uriOrHash` can be on-chain metadata (e.g. a pool's `metadata` field),
-    // which is attacker-controlled data, not a trusted input. Every branch
-    // below resolves to a path appended onto the SDK's OWN configured
-    // `ipfsGateway` via `new URL(path, ipfsGateway)`, so the request's host is
-    // always the gateway — never a host named by `uriOrHash` itself. Without
-    // this, a `https://…` value would be fetched verbatim, and IPFS content
-    // is addressed by hash, so there is never a legitimate reason for the
+    // which is attacker-controlled data, not a trusted input. The path is
+    // appended onto the SDK's OWN configured `ipfsGateway` via
+    // `new URL(path, ipfsGateway)`, so the request's host is always the
+    // gateway — never a host named by `uriOrHash` itself. Without this, a
+    // `https://…` value would be fetched verbatim, and IPFS content is
+    // addressed by hash, so there is never a legitimate reason for the
     // reporter of that hash to also choose which host serves it.
-    let ipfsPath: string
-
-    if (!uriOrHash.includes(':')) {
-      // string without protocol is assumed to be an IPFS hash
-      ipfsPath = uriOrHash.replace(/\/?(ipfs\/)/, '')
-    } else if (uriOrHash.startsWith('ipfs://ipfs/')) {
-      ipfsPath = uriOrHash.slice(12)
-    } else if (uriOrHash.startsWith('ipfs://')) {
-      ipfsPath = uriOrHash.slice(7)
-    } else {
-      // Some sources hand back an already-gateway-qualified URL
-      // (`https://some-gateway/ipfs/<hash>/...`) instead of an `ipfs://` URI.
-      // Recover just the hash/path and re-resolve it against our own
-      // gateway — the source gateway named in the URL is never trusted.
-      const match = /\/ipfs\/([^?#]+)/.exec(uriOrHash)
-      if (!match) return ''
-      ipfsPath = match[1]!
-    }
-
+    const ipfsPath = ipfsPathFromHash(uriOrHash)
     if (!ipfsPath) return ''
 
     const newUrl = new URL(`ipfs/${ipfsPath}`, ipfsGateway)

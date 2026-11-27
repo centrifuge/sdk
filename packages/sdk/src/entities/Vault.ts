@@ -1,11 +1,5 @@
 import { combineLatest, defer, firstValueFrom, map, switchMap } from 'rxjs'
-import {
-  BaseError,
-  ContractFunctionRevertedError,
-  ContractFunctionZeroDataError,
-  encodeFunctionData,
-  getContract,
-} from 'viem'
+import { BaseError, encodeFunctionData, getContract } from 'viem'
 import {
   ABIS_V3_3,
   encodeSyncManagerPayload,
@@ -19,6 +13,7 @@ import {
 import type { Centrifuge } from '../Centrifuge.js'
 import type { HexString } from '../types/index.js'
 import { MessageType, MessageTypeV3_3, messageV3_3, type TransactionContext } from '../types/transaction.js'
+import { isNoAnswer } from '../utils/adapters.js'
 import { addressesEqual } from '../utils/addresses.js'
 import { Balance } from '../utils/BigInt.js'
 import { assertCrosschainMessagingEnabled } from '../utils/crosschainHotfix.js'
@@ -852,9 +847,7 @@ export class Vault extends Entity {
               return PROTOCOL_VERSION_V3_2
             } catch (error) {
               // Only the vault refusing the call says it is a v3.3 vault; a failed read is an error.
-              const reverted =
-                error instanceof BaseError &&
-                !!error.walk((e) => e instanceof ContractFunctionRevertedError || e instanceof ContractFunctionZeroDataError)
+              const reverted = error instanceof BaseError && !!error.walk(isNoAnswer)
               if (!reverted) throw error
               return ctx.protocolVersion
             }

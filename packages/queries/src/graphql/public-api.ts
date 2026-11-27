@@ -5,6 +5,7 @@ import type {
   AssetDetails,
   BasinLinkedRedeemOrderRow,
   HubPolicyRow,
+  HubTokenSnapshotPriceRow,
   InvestOrderRow,
   OrderAsset,
   OrderToken,
@@ -266,10 +267,11 @@ export const MAX = 1000;
 
 /**
  * The trigger `DailySnapshotService` stamps on the hub `token_snapshot` row it
- * writes at each UTC day boundary. The other writer,
- * `shareClassManager:UpdatePricePoolPerShare`, adds a row per price update
- * inside the day; api-v3 excludes those with `trigger_ends_with: 'NewPeriod'`
- * and `hubSharePricesReport` keeps the same series here.
+ * writes at each UTC day boundary. The other writers,
+ * `shareClassManager:UpdatePricePoolPerShare` (a row per price update inside
+ * the day) and `shareClassManager:UpdateShareClass`, add rows between the
+ * boundaries; api-v3 excludes those with `trigger_ends_with: 'NewPeriod'` and
+ * `hubSharePricesReport` keeps the same series here.
  */
 export const HUB_PERIOD_TRIGGER = "snapshot:DailySnapshotTrigger";
 
@@ -918,14 +920,16 @@ function toPayload(row: any) {
     ...(crosschainMessages
       ? {
           crosschainMessages: {
-            items: crosschainMessages.nodes.map((message: any) => ({
-              ...message,
-              status: enumFromPostgraphile(
-                MESSAGE_STATUS_BY_POSTGRAPHILE_NAME,
-                message.status,
-                "crosschain message status",
-              ),
-            })),
+            items: crosschainMessages.nodes
+              .filter((message: any) => message.poolId === payload.poolId)
+              .map((message: any) => ({
+                ...message,
+                status: enumFromPostgraphile(
+                  MESSAGE_STATUS_BY_POSTGRAPHILE_NAME,
+                  message.status,
+                  "crosschain message status",
+                ),
+              })),
           },
         }
       : {}),
@@ -2228,6 +2232,51 @@ export const PUBLIC_API_RESOLVERS: Partial<Record<SdkQueryName, Resolver>> = {
       }
     }
     return { tokenSnapshots: { items } };
+  },
+
+  /**
+   * Every hub `token_snapshot` row of one share class in a `timestamp` range,
+   * paged by cursor until the last page: a share class's history has no bound,
+   * so the cap is only the page size. The primary key leads with `timestamp`,
+   * so one share class's rows come back oldest first, in block order within one
+   * second.
+   *
+   * No `trigger` predicate: `trigger` is not filterable on public-api, so every
+   * trigger's rows are returned. A row's fields are returned as the wire gave
+   * them, null included.
+   */
+  sharePriceUpdates: async (exec, p, ctx) => {
+    const filter: Record<string, unknown> = { id: { equalTo: p.tokenId } };
+    if (p.from !== undefined || p.to !== undefined) {
+      filter.timestamp = {
+        ...(p.from !== undefined ? { greaterThanOrEqualTo: p.from } : {}),
+        ...(p.to !== undefined ? { lessThanOrEqualTo: p.to } : {}),
+      };
+    }
+    const nodes = await readAllPages<HubTokenSnapshotPriceRow>(
+      exec,
+      "tokenSnapshots",
+      `query ($first: Int!, $after: Cursor, $filter: TokenSnapshotFilter!) {
+        tokenSnapshots(
+          first: $first, after: $after,
+          filter: $filter, orderBy: PRIMARY_KEY_ASC
+        ) {
+          pageInfo { hasNextPage endCursor }
+          nodes {
+            timestamp trigger triggerBlockTimestamp tokenPrice tokenPriceComputedAt
+          }
+        }
+      }`,
+      { filter },
+      ctx.dimensionCap,
+    );
+    return nodes.map((row) => ({
+      timestamp: row.timestamp,
+      trigger: row.trigger,
+      triggerBlockTimestamp: nullableString(row.triggerBlockTimestamp),
+      tokenPrice: nullableString(row.tokenPrice),
+      tokenPriceComputedAt: nullableString(row.tokenPriceComputedAt),
+    }));
   },
 
   /**

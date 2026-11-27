@@ -8,7 +8,7 @@ import {
   bsc,
   bscTestnet,
   hyperEvm,
-  hyperliquidEvmTestnet,
+  hyperliquidEvmTestnet as hyperliquidEvmTestnetWithoutMulticall,
   mainnet,
   monad,
   optimism,
@@ -25,6 +25,14 @@ export const arc = defineChain({
   rpcUrls: { ...arcWithoutDefaultRpc.rpcUrls, default: { http: ['https://rpc.mainnet.arc.io'] } },
   // Preinstalled at genesis, so there is no deployment block. Without it viem cannot batch reads.
   contracts: { ...arcWithoutDefaultRpc.contracts, multicall3: { address: '0xcA11bde05977b3631167028862bE2a173976CA11' } },
+})
+
+export const hyperliquidEvmTestnet = defineChain({
+  ...hyperliquidEvmTestnetWithoutMulticall,
+  contracts: {
+    ...hyperliquidEvmTestnetWithoutMulticall.contracts,
+    multicall3: { address: '0xcA11bde05977b3631167028862bE2a173976CA11' },
+  },
 })
 
 export const pharos = defineChain({

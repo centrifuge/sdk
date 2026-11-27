@@ -27,9 +27,7 @@ function subject(centrifugeId: number) {
   stubProjectedPools(centrifuge, [poolId])
   const publicClient = {
     getCode: sinon.stub().resolves('0x'),
-    waitForTransactionReceipt: sinon
-      .stub()
-      .resolves({ status: 'success', logs: [] } as unknown as TransactionReceipt),
+    waitForTransactionReceipt: sinon.stub().resolves({ status: 'success', logs: [] } as unknown as TransactionReceipt),
     simulateContract: sinon.stub().resolves({ result: predictedManager }),
   }
   const walletClient = { writeContract: sinon.stub().resolves(`0x${'aa'.repeat(32)}`) }
@@ -59,9 +57,12 @@ describe('PoolNetwork on/off-ramp factory against the bundled registry', () => {
 
   for (const { centrifugeId, chainId, name } of BOTH_FACTORIES) {
     describe(`mainnet centrifugeId ${centrifugeId} (${name}, chain ${chainId})`, () => {
-      it('resolves a protocol context that carries both factories', async () => {
+      it("resolves the v3.2 pool's context, which carries both factories", async () => {
         const { poolNetwork } = subject(centrifugeId)
-        const context = await (poolNetwork.pool._root.protocolContext(centrifugeId) as any)
+        const context = await (poolNetwork.pool._root.protocolContext({
+          poolId: poolNetwork.pool.id,
+          centrifugeId,
+        }) as any)
 
         expect(context.onOffRampFactory).to.equal(onOffRampFactory)
         expect(context.onOfframpManagerFactory).to.equal(legacyFactory)

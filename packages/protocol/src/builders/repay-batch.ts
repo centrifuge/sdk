@@ -1,11 +1,18 @@
 import { encodeFunctionData } from "viem";
 
 import { BuilderArgumentMismatchError } from "../errors";
-import { batchKeyOf } from "../messages";
-import type {
-  BuiltProtocolCall,
-  ProtocolCall,
-  ProtocolContext,
+import {
+  batchKeyOf,
+  isPoolDependent,
+  isPoolDependentV3_3,
+  MessageType,
+  MessageTypeV3_3,
+} from "../messages";
+import {
+  PROTOCOL_VERSION_V3_3,
+  type BuiltProtocolCall,
+  type ProtocolCall,
+  type ProtocolContext,
 } from "../types";
 import { requireAddress } from "./create-holding";
 import { requireCentrifugeId } from "./vaults";
@@ -99,7 +106,7 @@ export function repayBatch(
         "names a batch the gateway cannot be holding.",
     );
   }
-  const batch = requireBatchForPool(args.batch, args.poolId);
+  const batch = requireBatchForPool(ctx, args.batch, args.poolId);
   const refund = requireAddress(args.refundAddress, "repayBatch.refundAddress");
 
   const call: ProtocolCall = {
@@ -132,7 +139,11 @@ export function repayBatch(
  * would revert `MalformedBatch`, but only after the transaction had been
  * signed, approved and broadcast.
  */
-function requireBatchForPool(batch: string, poolId: string): `0x${string}` {
+function requireBatchForPool(
+  ctx: ProtocolContext,
+  batch: string,
+  poolId: string,
+): `0x${string}` {
   let key: string;
   try {
     key = batchKeyOf(batch);
@@ -141,6 +152,19 @@ function requireBatchForPool(batch: string, poolId: string): `0x${string}` {
       `repayBatch.batch is not a well-formed cross-chain batch: ${
         err instanceof Error ? err.message : String(err)
       }`,
+    );
+  }
+
+  const type = Number.parseInt(batch.slice(2, 4), 16);
+  const poolDependent =
+    ctx.protocolVersion === PROTOCOL_VERSION_V3_3
+      ? MessageTypeV3_3[type] !== undefined &&
+        isPoolDependentV3_3(type as MessageTypeV3_3)
+      : MessageType[type] !== undefined && isPoolDependent(type as MessageType);
+  if (!poolDependent) {
+    throw new BuilderArgumentMismatchError(
+      `repayBatch.batch leads with message type ${type}, which carries no pool id: ` +
+        "no pool-scoped grant can authorize paying for it.",
     );
   }
 

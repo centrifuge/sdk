@@ -3,7 +3,14 @@ import { of } from 'rxjs'
 import sinon from 'sinon'
 import { DataSourceResponseError, type PoolMigrationRow, type PoolMigrationStepRow } from '@centrifuge/queries/core'
 import { UnsupportedQueryError } from '@centrifuge/queries/graphql'
-import { isActionAllowed, isAllowed, isBridgeAllowed, MIGRATION_ACTION, SPOKE_GATE_STATE } from '@centrifuge/protocol'
+import {
+  addressBook,
+  isActionAllowed,
+  isAllowed,
+  isBridgeAllowed,
+  MIGRATION_ACTION,
+  SPOKE_GATE_STATE,
+} from '@centrifuge/protocol'
 import { Centrifuge, type MigrationGateTarget } from './Centrifuge.js'
 import * as exported from './index.js'
 import { Pool } from './entities/Pool.js'
@@ -15,7 +22,7 @@ import type { PrepareOutcome, TxStrategy } from './tx/TxStrategy.js'
 import type { Transaction } from './types/transaction.js'
 import { wrapTransaction } from './utils/transaction.js'
 import { Balance } from './utils/BigInt.js'
-import { AssetId } from './utils/types.js'
+import { AssetId, PoolId } from './utils/types.js'
 
 const POOL_ID = '281474976710665'
 const HUB = 1
@@ -252,6 +259,71 @@ describe('migration gate', () => {
     )
     const error = await refusal(centrifuge._migrationGate(POOL_ID, 'requestDeposit', onSpoke))
     expect(error.gate!.reason).to.contain('facade on the hub chain could not be read').and.contain('rpc down')
+  })
+
+  describe('on mainnet', () => {
+    const MAINNET_FACADE = '0x3f1Eb2DC6B31a0f7defE5f39345fC575839D3429'
+
+    it('reads the pool hub phase from the facade the address book lists on the hub chain', async () => {
+      const centrifuge = new Centrifuge({ environment: 'mainnet' })
+      sinon.stub(centrifuge as any, '_queryData').throws(new Error('must not read'))
+      const readContract = sinon.stub().resolves(0)
+      const getClient = sinon.stub(centrifuge, 'getClient').returns(of({ readContract }) as any)
+
+      await centrifuge._migrationGate(POOL_ID, 'requestDeposit', onSpoke)
+
+      expect(getClient.calledOnceWithExactly(HUB)).to.equal(true)
+      expect(readContract.calledOnce).to.equal(true)
+      expect(readContract.firstCall.args[0]).to.deep.include({
+        address: MAINNET_FACADE,
+        functionName: 'hubPhase',
+        args: [BigInt(POOL_ID)],
+      })
+    })
+
+    it('refuses when the hub facade cannot be read, as it does on testnet', async () => {
+      const centrifuge = new Centrifuge({ environment: 'mainnet' })
+      sinon.stub(centrifuge as any, '_queryData').throws(new Error('must not read'))
+      sinon.stub(centrifuge, 'getClient').returns(
+        of({
+          readContract: async () => {
+            throw new Error('rpc down')
+          },
+        }) as any
+      )
+      const error = await refusal(centrifuge._migrationGate(POOL_ID, 'requestDeposit', onSpoke))
+      expect(error.gate!.reason).to.contain('facade on the hub chain could not be read').and.contain('rpc down')
+    })
+
+    it('refuses a pool whose hub facade the book records without a block, instead of throwing the book error', async () => {
+      const record = addressBook.networks.mainnet.chains['1']!.addresses[MAINNET_FACADE.toLowerCase() as `0x${string}`]!
+      const recorded = record.blockNumber
+      record.blockNumber = null
+      try {
+        const centrifuge = new Centrifuge({ environment: 'mainnet' })
+        sinon.stub(centrifuge as any, '_queryData').throws(new Error('must not read'))
+        const getClient = sinon.stub(centrifuge, 'getClient').throws(new Error('must not read'))
+
+        const error = await refusal(centrifuge._migrationGate(POOL_ID, 'requestDeposit', onSpoke))
+
+        expect(error.gate!.reason)
+          .to.contain('facade on the hub chain could not be read')
+          .and.contain('records no block')
+        expect(getClient.called).to.equal(false)
+      } finally {
+        record.blockNumber = recorded
+      }
+    })
+
+    it('passes a pool whose hub chain lists no facade without reading the chain', async () => {
+      const centrifuge = new Centrifuge({ environment: 'mainnet' })
+      sinon.stub(centrifuge as any, '_queryData').throws(new Error('must not read'))
+      const getClient = sinon.stub(centrifuge, 'getClient').throws(new Error('must not read'))
+
+      await centrifuge._migrationGate(PoolId.from(15, 9).toString(), 'requestDeposit', onSpoke)
+
+      expect(getClient.called).to.equal(false)
+    })
   })
 
   const table: [keyof typeof PHASES, string, 'allowed' | 'refused', string?][] = [

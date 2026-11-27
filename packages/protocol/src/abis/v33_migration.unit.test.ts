@@ -36,24 +36,24 @@ const events = V33_MIGRATION_ABI_V3_3.filter(
 );
 
 describe("V33Migration facade ABI", () => {
-  it("is folded from the testnet head the bundled book pins, a patch over the v3.3.0 layer and the earlier patch", () => {
-    expect(ABI_SOURCE_V33_MIGRATION.network).toBe("testnet");
+  it("is built from the mainnet head the bundled book pins and the layers below it that publish the facade", () => {
+    expect(ABI_SOURCE_V33_MIGRATION.network).toBe("mainnet");
+    expect(ABI_SOURCE_V33_MIGRATION.stackLabel).toBe("v3.3.0");
     expect(ABI_SOURCE_V33_MIGRATION.head).toBe(
-      addressBook.networks.testnet.head,
+      addressBook.networks.mainnet.head,
     );
     expect(ABI_SOURCE_V33_MIGRATION.layers[0]).toMatchObject({
-      version: null,
-      effectiveVersion: "v3.3.0",
-      ipfsHash: "bafkreicj6yedpygfbs6mctvgj6fxvjjwtjggccyhz6jbvy4bylgnlytjma",
+      version: "v3.3.0",
+      ipfsHash: "bafkreidi5pshzf3i4c7iytdhcanfu6vfzpp4qniuomugsrh6thojweu6zu",
     });
     expect(ABI_SOURCE_V33_MIGRATION.layers[1]).toMatchObject({
-      version: "v3.3.0",
-      ipfsHash: "bafkreih2et2a3tvh7rxvpjd7jxf6fg2pwrabcy4bsbg7sb3icijwvcwzvu",
-    });
-    expect(ABI_SOURCE_V33_MIGRATION.layers[2]).toMatchObject({
       version: null,
       effectiveVersion: "v3.3.0",
-      ipfsHash: "bafkreifwkz42zr3vxqo3767ifis32nuhsfbm4h7ubd5aei45wthawxdumm",
+      ipfsHash: "bafkreihqcq2xwtkgquzfb5lalildtbpqnqgkdrv57eeqoacm4ko4vuna2y",
+    });
+    expect(ABI_SOURCE_V33_MIGRATION.layers[2]).toMatchObject({
+      version: "v3.3.0",
+      ipfsHash: "bafybeidnk352zsuttmtoqslvayewipxnwal6g7ppppm2o6rcfa5fqo25wi",
     });
     expect(Object.keys(GENERATED_ABIS_V33_MIGRATION)).toEqual(["V33Migration"]);
   });

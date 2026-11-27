@@ -18,9 +18,9 @@ import type { CentrifugeId, PoolId } from './types.js'
 const ADAPTER_ENTRYPOINT_ABI = parseAbi(['function entrypoint() view returns (address)'])
 
 /**
- * The adapter addresses a protocol context lists. `layerZeroAdapter` is in every deployment; the others are
- * `undefined` where the registry lists none, which includes bridges it does not ship, such as v3.2's Wormhole, and
- * `hyperlaneAdapter` before v3.3.
+ * The adapter addresses a protocol context lists, each `undefined` where the registry lists none: bridges it does not
+ * ship, such as v3.2's Wormhole, `hyperlaneAdapter` before v3.3, and `layerZeroAdapter` on a chain without LayerZero,
+ * such as v3.3 ADI (cid 17).
  * @internal
  */
 export function deployedAdapterAddresses({
@@ -31,6 +31,63 @@ export function deployedAdapterAddresses({
   hyperlaneAdapter,
 }: ProtocolContracts) {
   return { axelarAdapter, wormholeAdapter, layerZeroAdapter, chainlinkAdapter, hyperlaneAdapter }
+}
+
+const ADAPTER_INDEXER_NAMES = {
+  layerZeroAdapter: 'layerZero',
+  hyperlaneAdapter: 'hyperlane',
+  chainlinkAdapter: 'chainlink',
+  axelarAdapter: 'axelar',
+  wormholeAdapter: 'wormhole',
+} as const
+
+export function adapterIndexerNames(
+  ctx: Partial<ProtocolContracts>,
+  addresses: readonly HexString[]
+): (string | null)[] {
+  const listed = Object.entries(ADAPTER_INDEXER_NAMES).flatMap(([key, name]) => {
+    const address = ctx[key as keyof typeof ADAPTER_INDEXER_NAMES]
+    return address ? [[address.toLowerCase(), name] as const] : []
+  })
+  const byAddress = new Map<string, string>(listed)
+  return addresses.map((address) => byAddress.get(address.toLowerCase()) ?? null)
+}
+
+export type GlobalAdapterSet = {
+  local: HexString[]
+  remote: HexString[]
+  threshold: number
+  recoveryIndex: number
+  names: (string | null)[]
+}
+
+export function requireCopyableGlobalSet(
+  set: GlobalAdapterSet,
+  hubCentrifugeId: CentrifugeId,
+  centrifugeId: CentrifugeId,
+  poolId: PoolId
+): string[] {
+  const route = `centrifugeId ${hubCentrifugeId} to centrifugeId ${centrifugeId}`
+  if (set.local.length === 0 || set.threshold === 0) {
+    throw new Error(
+      `The protocol has no global adapters from ${route}, so pool "${poolId}" cannot be connected to ` +
+        `centrifugeId ${centrifugeId}`
+    )
+  }
+  if (set.remote.length !== set.local.length) {
+    throw new Error(
+      `The global adapters from ${route} name ${set.local.length} adapter(s) on the hub but ` +
+        `${set.remote.length} on centrifugeId ${centrifugeId}, so pool "${poolId}" cannot copy them`
+    )
+  }
+  const unlisted = set.local.filter((_, i) => set.names[i] === null)
+  if (unlisted.length > 0) {
+    throw new Error(
+      `The global adapters from ${route} include ${unlisted.join(', ')}, which the registry does not list, so ` +
+        `their delivery to pool "${poolId}" cannot be confirmed by name`
+    )
+  }
+  return set.names as string[]
 }
 
 type AdapterUpdate = { centrifugeId: CentrifugeId; localAdapters: HexString[]; remoteAdapters: HexString[] }
@@ -153,8 +210,8 @@ function describe(m: AdapterMismatch, poolId: PoolId) {
   )
 }
 
-/** A call that reverted or returned no data: the contract answers no `entrypoint()`. */
-function isNoAnswer(error: unknown) {
+/** A call that reverted or returned no data: the contract has no such view. */
+export function isNoAnswer(error: unknown) {
   return error instanceof ContractFunctionRevertedError || error instanceof ContractFunctionZeroDataError
 }
 

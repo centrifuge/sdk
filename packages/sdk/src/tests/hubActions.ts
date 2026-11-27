@@ -1,5 +1,6 @@
 import { of } from 'rxjs'
 import sinon from 'sinon'
+import { zeroAddress } from 'viem'
 import type { Centrifuge } from '../Centrifuge.js'
 import { BalanceSheet } from '../entities/BalanceSheet.js'
 import { OnchainPM } from '../entities/OnchainPM.js'
@@ -59,7 +60,9 @@ export type HubAction = {
 }
 
 const ramp = '0x5555555555555555555555555555555555555555' as HexString
+const candidatePolicy = '0x1010101010101010101010101010101010101010' as HexString
 const oracleValuation = '0x6666666666666666666666666666666666666666' as HexString
+const transferHook = '0x7777777777777777777777777777777777777777' as HexString
 const accountingAssetId = AssetId.from(SPOKE, 7)
 const salt = `0x${'ab'.repeat(32)}` as HexString
 const members = [
@@ -182,6 +185,23 @@ export const HUB_ACTIONS: HubAction[] = [
         pool,
         write: () => pool.setAdapters([{ centrifugeId: SPOKE, localAdapters: [adapter], remoteAdapters: [adapter] }]),
       }
+    },
+  },
+  {
+    name: 'Pool.installHubPolicy',
+    covers: ['setPolicy'],
+    // A policy built for this pool answers its four dependencies with the pool's own, and none is installed yet.
+    reads: {
+      policy: zeroAddress,
+      hub: ctx(pool33Id, '3.3').addresses.hub,
+      hubRegistry: ctx(pool33Id, '3.3').addresses.hubRegistry,
+      multiAdapter: ctx(pool33Id, '3.3').addresses.multiAdapter,
+      shareClassManager: ctx(pool33Id, '3.3').addresses.shareClassManager,
+    },
+    contracts: [candidatePolicy],
+    setup(centrifuge) {
+      const pool = new Pool(centrifuge, pool33Id)
+      return { pool, write: () => pool.installHubPolicy(candidatePolicy) }
     },
   },
   {
@@ -462,6 +482,15 @@ export const HUB_ACTIONS: HubAction[] = [
     setup(centrifuge) {
       const { pool, shareClass } = entitiesOf(centrifuge)
       return { pool, write: () => shareClass.updateHook(HUB, who) }
+    },
+  },
+  {
+    name: 'ShareClass.updateHookManager',
+    covers: ['managerCall'],
+    reads: { shareToken: token, hook: transferHook },
+    setup(centrifuge) {
+      const { pool, shareClass } = entitiesOf(centrifuge)
+      return { pool, write: () => shareClass.updateHookManager(SPOKE, who) }
     },
   },
   {

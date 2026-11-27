@@ -79,6 +79,6 @@ describe("registry addresses against the data committed before the address book"
       testnet32: count("testnet 3.2 "),
       testnet33: count("testnet 3.3 "),
       mainnet33: count("mainnet 3.3 "),
-    }).toEqual({ mainnet32: 11, testnet32: 5, testnet33: 214, mainnet33: 0 });
+    }).toEqual({ mainnet32: 11, testnet32: 5, testnet33: 218, mainnet33: 847 });
   });
 });

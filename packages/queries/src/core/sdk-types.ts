@@ -759,3 +759,24 @@ export interface ShareManagerCallRow {
   createdAtTxHash: Hex;
   status: CrosschainMessageStatus;
 }
+
+/**
+ * The price fields of one hub `token_snapshot` row of a share class, with the
+ * trigger that wrote it. Only a row whose `trigger` is
+ * `shareClassManager:UpdatePricePoolPerShare` is a price commit.
+ */
+export interface HubTokenSnapshotPriceRow {
+  /**
+   * When the snapshot was written, ISO-8601 with a UTC offset: the block time
+   * of a price commit, the day boundary of a daily row.
+   */
+  timestamp: string;
+  /** What wrote the row, for example `shareClassManager:UpdatePricePoolPerShare`. */
+  trigger: string;
+  /** The block time of the transaction that triggered the snapshot, ISO-8601 with a UTC offset. */
+  triggerBlockTimestamp: string | null;
+  /** The D18 price as a decimal string. */
+  tokenPrice: string | null;
+  /** When the price was computed, ISO-8601 with a UTC offset. */
+  tokenPriceComputedAt: string | null;
+}

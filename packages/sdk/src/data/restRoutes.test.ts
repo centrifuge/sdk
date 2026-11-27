@@ -56,6 +56,11 @@ describe('rest routes', () => {
       // the bundled `@centrifuge/protocol` registry, so none of them is a
       // missing row.
       'assetRegistrations',
+      'basinDebt',
+      'basinDebtChanges',
+      'basinFees',
+      'basinRedeemRequests',
+      'basinSwaps',
       'blockchains',
       // All seven orders reads, here and below. Two SERVE (the epoch-level
       // lists) and five land on a route that answers 503 NOT_YET_PROJECTED,
@@ -147,6 +152,12 @@ describe('rest routes', () => {
         expect(table.reads[name as keyof typeof table.reads], `${name} falls back`).to.not.equal(undefined)
       }
     }
+    for (const [name, owner] of Object.entries(table.readOwners)) {
+      if (owner === 'basin') {
+        expect(table.reads[name as keyof typeof table.reads], `${name} falls back`).to.not.equal(undefined)
+      }
+    }
+    expect(Object.values(table.readOwners).filter((owner) => owner === 'basin')).to.have.length(5)
     // No pool-access entry is left on the fallback. `pool.details()` — the
     // other tokenizations method with no row — still has none, and correctly:
     // it consumes no catalogue entry at all, in either mode.

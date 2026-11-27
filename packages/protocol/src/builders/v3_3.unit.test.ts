@@ -25,6 +25,7 @@ import {
   decodeManagerCalls,
   encodeBatchCalldata,
   encodeAdapterFailoverStewardPayload,
+  encodeBaseTransferHookPayload,
   encodeBatchRequestManagerPayload,
   encodeOnchainPMPolicyPayload,
   encodeOnOffRampPayload,
@@ -433,6 +434,48 @@ describe("fromHub payload encoders match the targets' decode layouts", () => {
         }),
       ),
     ).toEqual([2, SC_ID, WHO, false]);
+  });
+
+  it("BaseTransferHook UpdateHookManager: (bytes16 scId, uint8 kind, bytes32 manager, bool canManage)", () => {
+    const layout = [
+      { type: "bytes16" },
+      { type: "uint8" },
+      { type: "bytes32" },
+      { type: "bool" },
+    ] as const;
+    expect(
+      decodeAbiParameters(
+        layout,
+        encodeBaseTransferHookPayload({
+          kind: "updateHookManager",
+          scId: SC_ID,
+          manager: WHO,
+          canManage: true,
+        }),
+      ),
+    ).toEqual([SC_ID, 0, bytes32(WHO), true]);
+    expect(
+      decodeAbiParameters(
+        layout,
+        encodeBaseTransferHookPayload({
+          kind: "updateHookManager",
+          scId: SC_ID,
+          manager: WHO,
+          canManage: false,
+        }),
+      ),
+    ).toEqual([SC_ID, 0, bytes32(WHO), false]);
+  });
+
+  it("BaseTransferHook UpdateHookManager refuses a manager that is not an address", () => {
+    expect(() =>
+      encodeBaseTransferHookPayload({
+        kind: "updateHookManager",
+        scId: SC_ID,
+        manager: "0x1234",
+        canManage: true,
+      }),
+    ).toThrow(BuilderArgumentMismatchError);
   });
 
   it("OnOffRamp: (uint8 kind, ...) with no share class", () => {

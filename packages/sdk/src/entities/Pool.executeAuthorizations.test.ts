@@ -788,7 +788,7 @@ describe('Pool.executeAuthorizations', () => {
       expect(subject.sent).to.deep.equal([])
     })
 
-    it('refuses a v3.2 pool on mainnet, whose address book lists no v3.3, with UnsupportedForProtocolVersionError', async () => {
+    it('refuses a v3.2 pool on mainnet, which also serves v3.3, with UnsupportedForProtocolVersionError', async () => {
       const centrifuge = new Centrifuge({ environment: 'mainnet' })
       const poolId = PoolId.from(1, 7)
       stubProjectedPools(centrifuge, [poolId], '3.2')

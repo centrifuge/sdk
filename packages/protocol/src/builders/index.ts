@@ -44,9 +44,11 @@ export type {
 } from "./contract-updates";
 export {
   ADAPTER_FAILOVER_HUB_CALL,
+  BASE_TRANSFER_HOOK_TRUSTED_CALL,
   BATCH_REQUEST_MANAGER_ACTION,
   encodeAccountingTokenMinterPayload,
   encodeAdapterFailoverStewardPayload,
+  encodeBaseTransferHookPayload,
   encodeBatchRequestManagerPayload,
   encodeOnchainPMPolicyPayload,
   encodeOnOffRampPayload,
@@ -63,6 +65,7 @@ export {
   SYNC_MANAGER_TRUSTED_CALL,
 } from "./manager-call";
 export type {
+  BaseTransferHookPayload,
   BatchRequestManagerPayload,
   HubManagerCallArgs,
   OnOffRampPayload,

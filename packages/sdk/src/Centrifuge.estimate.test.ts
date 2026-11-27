@@ -1,4 +1,4 @@
-import { ABIS_V3_2 } from '@centrifuge/protocol'
+import { ABIS_V3_2, emptyMessageV3_3 } from '@centrifuge/protocol'
 import { expect } from 'chai'
 import { of } from 'rxjs'
 import sinon from 'sinon'
@@ -87,5 +87,50 @@ describe('Centrifuge._estimate', () => {
     )
 
     expect(protocolContext.firstCall.args[0]).to.deep.equal({ poolId, centrifugeId: 1 })
+  })
+
+  function v3_3Route(centrifuge: Centrifuge) {
+    sinon.stub(centrifuge as any, 'protocolContext').returns(
+      of({
+        gasService: randomAddress(),
+        multiAdapter: randomAddress(),
+        contractAbis: ABIS_V3_2,
+        protocolVersion: '3.3',
+      } as any)
+    )
+    const readContract = sinon.stub()
+    readContract.withArgs(sinon.match({ functionName: 'messageOverallGasLimit' })).resolves(100n)
+    readContract.withArgs(sinon.match({ functionName: 'maxBatchGasLimit' })).resolves(500n)
+    readContract.withArgs(sinon.match({ functionName: 'estimate' })).resolves(777n)
+    sinon.stub(centrifuge as any, 'getClient').returns(of({ readContract } as any))
+    return readContract
+  }
+
+  function pricedPayload(readContract: sinon.SinonStub): string {
+    const call = readContract
+      .getCalls()
+      .find((c) => (c.args[0] as { functionName: string }).functionName === 'messageOverallGasLimit')
+    return (call!.args[0] as { args: unknown[] }).args[1] as string
+  }
+
+  it('prices a v3.3 RegisterAsset for a pool without putting the pool id in its payload', async () => {
+    const centrifuge = new Centrifuge({ environment: 'testnet' })
+    const readContract = v3_3Route(centrifuge)
+
+    const estimate = await centrifuge._estimate(1, 2, [messageV3_3(MessageTypeV3_3.RegisterAsset, poolId)])
+
+    expect(estimate > 0n).to.equal(true)
+    expect(pricedPayload(readContract)).to.equal(emptyMessageV3_3(MessageTypeV3_3.RegisterAsset))
+  })
+
+  it('keeps the pool id in a v3.3 SetPoolAdapters payload, which the gas service reads per pool', async () => {
+    const centrifuge = new Centrifuge({ environment: 'testnet' })
+    const readContract = v3_3Route(centrifuge)
+
+    await centrifuge._estimate(1, 2, [messageV3_3(MessageTypeV3_3.SetPoolAdapters, poolId)])
+
+    expect(pricedPayload(readContract)).to.equal(
+      emptyMessageV3_3(MessageTypeV3_3.SetPoolAdapters, poolId.raw.toString())
+    )
   })
 })

@@ -1,4 +1,4 @@
-import { stubProjectedPools } from '../tests/utils.js'
+import { notMigrating, stubLayerZeroGlobalSet, stubProjectedPools } from '../tests/utils.js'
 import { expect } from 'chai'
 import { firstValueFrom, isObservable, lastValueFrom, of, toArray, type Observable } from 'rxjs'
 import sinon from 'sinon'
@@ -98,15 +98,17 @@ function stubChain(centrifuge: Centrifuge) {
     .stub(centrifuge as any, 'getChainConfig')
     .callsFake((id: any) => thenable({ id: chainOf(Number(id)), name: 'test' }))
   sinon.stub(centrifuge as any, 'getClient').callsFake(() =>
-    thenable({
-      getCode: async () => undefined,
-      waitForTransactionReceipt: async ({ hash }: { hash: HexString }) => ({
-        status: 'success',
-        hash,
-        transactionHash: hash,
-      }),
-      readContract: (call: any) => chainRead(call),
-    })
+    thenable(
+      notMigrating({
+        getCode: async () => undefined,
+        waitForTransactionReceipt: async ({ hash }: { hash: HexString }) => ({
+          status: 'success',
+          hash,
+          transactionHash: hash,
+        }),
+        readContract: (call: any) => chainRead(call),
+      })
+    )
   )
 }
 
@@ -142,6 +144,7 @@ function stubDeployState(
   } = {}
 ) {
   stubDetails(network, opts.activeShareClasses ?? [{ id: SC_ID, vaults: [] }], opts.isActive ?? true)
+  stubLayerZeroGlobalSet()
 
   const isAsync = opts.isAsyncManagerSet ?? READY_NETWORK.isAsyncManagerSet
   const isSync = opts.isSyncManagerSet ?? READY_NETWORK.isSyncManagerSet
@@ -922,6 +925,62 @@ describe('vaults writes: first activation sends setAdapters with the pool messag
     expect(built.pendingPoolAdapters).to.deep.equal({
       [SPOKE_CENT_ID]: [protocolContext(HUB_CENT_ID).addresses.layerZeroAdapter],
     })
+  })
+
+  it("copies the protocol's global adapter set, every bridge and its threshold, rather than picking one bridge", async () => {
+    const centrifuge = localCentrifuge()
+    const { network } = entities(centrifuge)
+    const local = [
+      '0x1111111111111111111111111111111111111111',
+      '0x2222222222222222222222222222222222222222',
+    ] as HexString[]
+    const remote = [
+      '0x3333333333333333333333333333333333333333',
+      '0x4444444444444444444444444444444444444444',
+    ] as HexString[]
+    sinon.stub(PoolNetwork.prototype, '_globalAdapterSet').resolves({
+      local,
+      remote,
+      threshold: 2,
+      recoveryIndex: 2,
+      names: ['layerZero', 'axelar'],
+    })
+    stubDeployState(network, { isActive: false, activeShareClasses: [], poolAdapters: [] })
+
+    const built = await centrifuge.buildOnly(deployShareClass(network), { fromAddress: REFUND })
+
+    const outer = decodeFunctionData({ abi: ABI.Hub, data: built.data })
+    const setAdapters = decodeFunctionData({ abi: ABI.Hub, data: (outer.args![0] as readonly HexString[])[0]! })
+    expect(setAdapters.functionName).to.equal('setAdapters')
+    const [localArg, remoteArg, threshold, recoveryIndex] = setAdapters.args!.slice(2, 6) as [
+      HexString[],
+      HexString[],
+      number,
+      number,
+    ]
+    expect([localArg.map((a) => a.toLowerCase()), remoteArg, threshold, recoveryIndex]).to.deep.equal([
+      local,
+      remote.map((address) => `${address}${'0'.repeat(24)}`),
+      2,
+      2,
+    ])
+    expect(built.pendingPoolAdapters).to.deep.equal({ [SPOKE_CENT_ID]: local })
+  })
+
+  it('stops before building anything when the protocol has no global adapters toward the network', async () => {
+    const centrifuge = localCentrifuge()
+    const { network } = entities(centrifuge)
+    sinon
+      .stub(PoolNetwork.prototype, '_globalAdapterSet')
+      .resolves({ local: [], remote: [], threshold: 0, recoveryIndex: 0, names: [] })
+    stubDeployState(network, { isActive: false, activeShareClasses: [], poolAdapters: [] })
+
+    const error = await centrifuge
+      .buildOnly(deployShareClass(network), { fromAddress: REFUND })
+      .then(() => null)
+      .catch((e: Error) => e)
+
+    expect(error?.message).to.contain('has no global adapters')
   })
 
   it('signs the activation as one transaction, without waiting for the adapters to arrive', async () => {

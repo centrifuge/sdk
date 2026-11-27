@@ -20,7 +20,7 @@ export const FLAG_EXTENDED_COMMAND = 0x40 as const
 
 /** Sentinel value for unused input slots or a discarded return value. */
 export const UNUSED_SLOT = 0xff as const
-const _IDX_VALUE_MASK = 0x7f as const
+const IDX_VALUE_MASK = 0x7f as const
 
 /** Maximum number of state slots (stateBitmap is uint128). */
 export const MAX_STATE_SLOTS = 128
@@ -586,6 +586,9 @@ function encodeCommandWords(
  * ```solidity
  * (uint256(uint32(selector)) << 224) | (flags << 216) | (indices << 168) | (output << 160) | uint160(target)
  * ```
+ *
+ * Low level: it encodes the flags as given and does not check which slot a FLAG_RAW command reads.
+ * {@link buildScript} refuses a raw action unless it reads a pinned `rawcalldata` slot.
  */
 export function encodeCommand(
   selector: HexString, // 4 bytes
@@ -645,6 +648,32 @@ export function encodeCommand(
 // buildScript
 // ---------------------------------------------------------------------------
 
+const IDX_USE_STATE = 0xfe
+
+function assertRawActionReadsPinnedCalldata(workflow: WorkflowDefinition, actionIndex: number, stateBitmap: bigint) {
+  const action = workflow.actions[actionIndex]!
+  const describe = `buildScript: workflow "${workflow.workflowRef}" raw action ${actionIndex}`
+  const expectedInputs = action.callType === VALUECALL ? 2 : 1
+  if (action.inputs.length !== expectedInputs) {
+    throw new Error(
+      `${describe} has ${action.inputs.length} inputs — a raw ${action.callType === VALUECALL ? 'value call takes the ETH value and one' : 'call takes exactly one'} rawcalldata slot`
+    )
+  }
+
+  const slotIndex = action.inputs[expectedInputs - 1]! & IDX_VALUE_MASK
+  const slot = workflow.state[slotIndex]
+  if (slot?.type !== 'rawcalldata' || (stateBitmap & (1n << BigInt(slotIndex))) === 0n) {
+    throw new Error(`${describe} reads state slot ${slotIndex} as calldata, which is not a pinned rawcalldata slot`)
+  }
+
+  const writer = workflow.actions
+    .slice(0, actionIndex)
+    .findIndex(({ output }) => output === IDX_USE_STATE || (output !== UNUSED_SLOT && (output & IDX_VALUE_MASK) === slotIndex))
+  if (writer !== -1) {
+    throw new Error(`${describe} reads rawcalldata slot ${slotIndex}, which action ${writer} overwrites with its output`)
+  }
+}
+
 /**
  * Builds the weiroll commands array and initial state from a workflow
  * definition, resolving magic variables and configurable values.
@@ -657,6 +686,8 @@ export function encodeCommand(
  * @throws if a magic variable key is absent from `poolContext`
  * @throws if a configurable key is absent from `configurableValues`
  * @throws if the workflow has more than 128 state slots
+ * @throws if a raw-mode action does not read its calldata from a pinned `rawcalldata` slot that no
+ * earlier action overwrites
  */
 export function buildScript(
   workflow: WorkflowDefinition,
@@ -717,7 +748,8 @@ export function buildScript(
     }
   }
 
-  const commands = workflow.actions.flatMap((action) => {
+  const commands = workflow.actions.flatMap((action, actionIndex) => {
+    if (action.rawMode) assertRawActionReadsPinnedCalldata(workflow, actionIndex, stateBitmap)
     const target =
       typeof action.target === 'string'
         ? action.target

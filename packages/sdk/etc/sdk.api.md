@@ -64,6 +64,15 @@ import type { OffRampRelayerRow } from '@centrifuge/queries/core';
 import { OnboardHubArgs } from '@centrifuge/protocol';
 import { OnboardHubInput } from '@centrifuge/protocol';
 import { OnboardSpokeInput } from '@centrifuge/protocol';
+import { OPERATION_CATALOGUE } from '@centrifuge/protocol';
+import { operationByAuditAction } from '@centrifuge/protocol';
+import { operationByCall } from '@centrifuge/protocol';
+import { operationByEventKind } from '@centrifuge/protocol';
+import { operationByHookCall } from '@centrifuge/protocol';
+import { operationById } from '@centrifuge/protocol';
+import { operationByPoolAction } from '@centrifuge/protocol';
+import { OperationCall } from '@centrifuge/protocol';
+import { OperationEntry } from '@centrifuge/protocol';
 import { OpStackRpcBlock } from 'viem/chains';
 import { OpStackRpcTransaction } from 'viem/chains';
 import { OpStackRpcTransactionReceipt } from 'viem/chains';
@@ -769,7 +778,7 @@ class Centrifuge {
     adapters(centrifugeId: CentrifugeId): Query<{
         axelarAdapter: `0x${string}` | undefined;
         wormholeAdapter: `0x${string}` | undefined;
-        layerZeroAdapter: `0x${string}`;
+        layerZeroAdapter: `0x${string}` | undefined;
         chainlinkAdapter: `0x${string}` | undefined;
         hyperlaneAdapter: `0x${string}` | undefined;
     }>;
@@ -918,6 +927,60 @@ export const chains: ({
     sourceId?: number | undefined;
     supportsTransactionReplacementDetection?: boolean | undefined;
     testnet?: boolean | undefined;
+    custom?: Record<string, unknown> | undefined;
+    extendSchema?: Record<string, unknown> | undefined;
+    fees?: ChainFees<undefined> | undefined;
+    prepareTransactionRequest?: ((args: PrepareTransactionRequestParameters, options: {
+        client: Client_2;
+        phase: "beforeFillTransaction" | "beforeFillParameters" | "afterFillParameters";
+    }) => Promise<PrepareTransactionRequestParameters>) | [fn: ((args: PrepareTransactionRequestParameters, options: {
+        client: Client_2;
+        phase: "beforeFillTransaction" | "beforeFillParameters" | "afterFillParameters";
+    }) => Promise<PrepareTransactionRequestParameters>) | undefined, options: {
+        runAt: readonly ("beforeFillTransaction" | "beforeFillParameters" | "afterFillParameters")[];
+    }] | undefined;
+    serializers?: ChainSerializers<undefined, TransactionSerializable<bigint, number>> | undefined;
+    verifyHash?: ((client: Client_2, parameters: VerifyHashActionParameters) => Promise<VerifyHashActionReturnType>) | undefined;
+    readonly formatters?: undefined;
+} | {
+    blockExplorers?: {
+        [key: string]: {
+            name: string;
+            url: string;
+            apiUrl?: string | undefined;
+        };
+        default: {
+            name: string;
+            url: string;
+            apiUrl?: string | undefined;
+        };
+    } | undefined;
+    blockTime?: number | undefined;
+    contracts: {
+        readonly multicall3: {
+            readonly address: "0xcA11bde05977b3631167028862bE2a173976CA11";
+        };
+        readonly ensRegistry?: ChainContract | undefined;
+        readonly ensUniversalResolver?: ChainContract | undefined;
+        readonly erc6492Verifier?: ChainContract | undefined;
+    };
+    ensTlds?: readonly string[] | undefined;
+    id: 998;
+    name: "Hyperliquid EVM Testnet";
+    nativeCurrency: {
+        readonly name: "HYPE";
+        readonly symbol: "HYPE";
+        readonly decimals: 18;
+    };
+    experimental_preconfirmationTime?: number | undefined;
+    rpcUrls: {
+        readonly default: {
+            readonly http: readonly ["https://rpc.hyperliquid-testnet.xyz/evm"];
+        };
+    };
+    sourceId?: number | undefined;
+    supportsTransactionReplacementDetection?: boolean | undefined;
+    testnet: true;
     custom?: Record<string, unknown> | undefined;
     extendSchema?: Record<string, unknown> | undefined;
     fees?: ChainFees<undefined> | undefined;
@@ -1917,61 +1980,6 @@ export const chains: ({
     serializers?: ChainSerializers<undefined, TransactionSerializable> | undefined;
     verifyHash?: ((client: Client_2, parameters: VerifyHashActionParameters) => Promise<VerifyHashActionReturnType>) | undefined;
 } | {
-    blockExplorers?: {
-        [key: string]: {
-            name: string;
-            url: string;
-            apiUrl?: string | undefined;
-        };
-        default: {
-            name: string;
-            url: string;
-            apiUrl?: string | undefined;
-        };
-    } | undefined | undefined;
-    blockTime?: number | undefined | undefined;
-    contracts?: {
-        [x: string]: ChainContract | {
-            [sourceId: number]: ChainContract | undefined;
-        } | undefined;
-        ensRegistry?: ChainContract | undefined;
-        ensUniversalResolver?: ChainContract | undefined;
-        multicall3?: ChainContract | undefined;
-        erc6492Verifier?: ChainContract | undefined;
-    } | undefined;
-    ensTlds?: readonly string[] | undefined;
-    id: 998;
-    name: "Hyperliquid EVM Testnet";
-    nativeCurrency: {
-        readonly name: "HYPE";
-        readonly symbol: "HYPE";
-        readonly decimals: 18;
-    };
-    experimental_preconfirmationTime?: number | undefined | undefined;
-    rpcUrls: {
-        readonly default: {
-            readonly http: readonly ["https://rpc.hyperliquid-testnet.xyz/evm"];
-        };
-    };
-    sourceId?: number | undefined | undefined;
-    supportsTransactionReplacementDetection?: boolean | undefined | undefined;
-    testnet: true;
-    custom?: Record<string, unknown> | undefined;
-    extendSchema?: Record<string, unknown> | undefined;
-    fees?: ChainFees<undefined> | undefined;
-    formatters?: undefined;
-    prepareTransactionRequest?: ((args: PrepareTransactionRequestParameters, options: {
-        client: Client_2;
-        phase: "beforeFillTransaction" | "beforeFillParameters" | "afterFillParameters";
-    }) => Promise<PrepareTransactionRequestParameters>) | [fn: ((args: PrepareTransactionRequestParameters, options: {
-        client: Client_2;
-        phase: "beforeFillTransaction" | "beforeFillParameters" | "afterFillParameters";
-    }) => Promise<PrepareTransactionRequestParameters>) | undefined, options: {
-        runAt: readonly ("beforeFillTransaction" | "beforeFillParameters" | "afterFillParameters")[];
-    }] | undefined;
-    serializers?: ChainSerializers<undefined, TransactionSerializable> | undefined;
-    verifyHash?: ((client: Client_2, parameters: VerifyHashActionParameters) => Promise<VerifyHashActionReturnType>) | undefined;
-} | {
     blockExplorers: {
         readonly default: {
             readonly name: "Etherscan";
@@ -2601,7 +2609,9 @@ export function checkAddressLiterals(action: SelectorActionWithInputs, describe:
 variables?: Record<string, string>): RuleViolation[];
 
 // @public
-export function checkApprovalExactness(template: ApprovalTemplate, describe: (index: number) => string): RuleViolation[];
+export function checkApprovalExactness(template: ApprovalTemplate, describe: (index: number) => string, options?: {
+    runsAsScript?: boolean;
+}): RuleViolation[];
 
 // @public
 export function checkDuplicateWorkflowIds(workflows: CatalogWorkflowEntry[]): RuleViolation[];
@@ -2923,6 +2933,13 @@ export { defaultDeploymentRegistry }
 
 export { DeployedContractVersionError }
 
+// @public
+export type DeployedHubPolicyStatus = {
+    type: 'DeployedHubPolicy';
+    address: HexString;
+    skipped: boolean;
+};
+
 // @public (undocumented)
 export type DeployedOnchainPMStatus = {
     type: 'DeployedOnchainPM';
@@ -3153,9 +3170,59 @@ export interface HubExecutionPolicy {
 }
 
 // @public
+export interface HubPolicyAllowlistEntry {
+    caller: HexString;
+    poolId: bigint;
+    selectors: HexString[];
+}
+
+// @public
+export interface HubPolicyCommittedPrice {
+    computedAt: bigint;
+    price: Price;
+    shareClassId: ShareClassId;
+}
+
+// @public
+export interface HubPolicyConfig {
+    allowlist: HubPolicyAllowlistEntry[];
+    bridgingHook: HexString;
+    delay: bigint;
+    escalation: bigint;
+    expiry: bigint;
+    isRestrictionUpdateInstant: boolean;
+    maxAbsolutePriceDelta: bigint;
+    maxBrmPriceDeviation: bigint;
+    navManager: HexString;
+    onchainAccounting: boolean;
+    oracleValuation: HexString;
+    requestManager: HexString;
+    simplePriceManager: HexString;
+    thresholdPerSecond: bigint;
+}
+
+// @public
+export interface HubPolicyDependencies {
+    bridgingHook: HexString;
+    committedPrices: HubPolicyCommittedPrice[];
+    installedPolicy: HexString;
+    navManager: HexString;
+    oracleValuation: HexString;
+    requestManager: HexString;
+    simplePriceManager: HexString;
+    usesOnchainNav: boolean;
+}
+
+// @public
 export class HubPolicyPreflightError extends CentrifugeError {
     // (undocumented)
     name: string;
+}
+
+// @public
+export interface HubPolicyPreview {
+    address: HexString;
+    deployed: boolean;
 }
 
 // @public
@@ -4267,6 +4334,8 @@ export type OnOfframpManagerStatus = {
     crosschainInProgress: ManagerProgress;
 };
 
+export { OPERATION_CATALOGUE }
+
 // @public
 export type OperationApprovedStatus = {
     id: string;
@@ -4298,6 +4367,20 @@ export type OperationAwaitingCrosschainDeliveryStatus = {
     messageTypes: MessageTypeWithSubType[];
 };
 
+export { operationByAuditAction }
+
+export { operationByCall }
+
+export { operationByEventKind }
+
+export { operationByHookCall }
+
+export { operationById }
+
+export { operationByPoolAction }
+
+export { OperationCall }
+
 // @public (undocumented)
 export type OperationConfirmedStatus = {
     id: string;
@@ -4316,6 +4399,8 @@ export type OperationCustodialHandoffStatus = {
     signerType: 'fordefi';
     status: string;
 };
+
+export { OperationEntry }
 
 // @public
 export type OperationOutOfPolicyStatus = {
@@ -4375,7 +4460,7 @@ export type OperationSigningStatus = {
 };
 
 // @public (undocumented)
-export type OperationStatus = OperationSigningStatus | OperationSigningMessageStatus | OperationSignedMessageStatus | OperationPendingStatus | OperationConfirmedStatus | OperationSwitchChainStatus | OperationCustodialHandoffStatus | OperationQueuedStatus | OperationAwaitingApprovalsStatus | OperationApprovedStatus | OperationRejectedStatus | OperationTrackedConfirmedStatus | OperationUnknownTxStateStatus | SimulationStatus | OperationOutOfPolicyStatus | DeployedOnOfframpManagerStatus | DeployedOnchainPMStatus | OperationAwaitingCrosschainDeliveryStatus;
+export type OperationStatus = OperationSigningStatus | OperationSigningMessageStatus | OperationSignedMessageStatus | OperationPendingStatus | OperationConfirmedStatus | OperationSwitchChainStatus | OperationCustodialHandoffStatus | OperationQueuedStatus | OperationAwaitingApprovalsStatus | OperationApprovedStatus | OperationRejectedStatus | OperationTrackedConfirmedStatus | OperationUnknownTxStateStatus | SimulationStatus | OperationOutOfPolicyStatus | DeployedOnOfframpManagerStatus | DeployedOnchainPMStatus | DeployedHubPolicyStatus | OperationAwaitingCrosschainDeliveryStatus;
 
 // @public (undocumented)
 export type OperationStatusType = 'SwitchingChain' | 'SigningTransaction' | 'SigningMessage' | 'SignedMessage' | 'TransactionPending' | 'TransactionConfirmed' | 'CustodialHandoff' | 'Queued' | 'AwaitingApprovals' | 'Approved' | 'Rejected' | 'Confirmed' | 'UnknownTxState' | 'AwaitingCrosschainDelivery';
@@ -4630,10 +4715,11 @@ export class Pool extends Entity {
     deployedAdapters(centrifugeId: CentrifugeId): Query<{
         axelarAdapter: `0x${string}` | undefined;
         wormholeAdapter: `0x${string}` | undefined;
-        layerZeroAdapter: `0x${string}`;
+        layerZeroAdapter: `0x${string}` | undefined;
         chainlinkAdapter: `0x${string}` | undefined;
         hyperlaneAdapter: `0x${string}` | undefined;
     }>;
+    deployHubPolicy(config: HubPolicyConfig): Transaction;
     deployToNetworks(deployments: {
         centrifugeId: CentrifugeId;
         shareClasses: {
@@ -4698,9 +4784,11 @@ export class Pool extends Entity {
     }>;
     hasClaimsAfterExecution(datas: HexString[]): boolean;
     hubExecutionPolicy(): Query<HubExecutionPolicy | null>;
+    hubPolicyDependencies(): Query<HubPolicyDependencies>;
     // (undocumented)
     id: PoolId;
     initiateAuthorizations(datas: HexString[]): Transaction;
+    installHubPolicy(policy: HexString): Transaction;
     isAllowed(action: MigrationAction | PoolActionName, centrifugeId: CentrifugeId, options?: {
         destinationCentrifugeId?: CentrifugeId;
     }): Query<MigrationGateAnswer>;
@@ -4753,6 +4841,7 @@ export class Pool extends Entity {
     poolManagers(): Query<{
         address: `0x${string}`;
     }[]>;
+    previewHubPolicy(config: HubPolicyConfig): Query<HubPolicyPreview>;
     protocolVersion(): Query<string>;
     refreshHubPolicyReads(): void;
     remoteGlobalAdapters(centrifugeId: CentrifugeId): Query<{
@@ -5959,9 +6048,14 @@ export class ShareClass extends Entity {
     setMaxAssetPriceAge(assetId: AssetId, maxPriceAge: number): Transaction;
     // (undocumented)
     setMaxSharePriceAge(centrifugeId: CentrifugeId, maxPriceAge: number): Transaction;
+    sharePriceUpdates(range?: {
+        from?: Date;
+        to?: Date;
+    }): Query<SharePriceUpdate[]>;
     unfreezeMember(address: HexString, centrifugeId: CentrifugeId, options?: RestrictionWriteOptions): Transaction;
     updateHook(centrifugeId: CentrifugeId, hook: HexString): Transaction;
     updateHookAndValuation(centrifugeId: CentrifugeId, hook?: HexString, valuation?: HexString): Transaction;
+    updateHookManager(centrifugeId: CentrifugeId, manager: HexString, canManage?: boolean): Transaction;
     updateMember(address: HexString, validUntil: number, centrifugeId: CentrifugeId, options?: RestrictionWriteOptions): Transaction;
     updateMembers(members: {
         address: HexString;
@@ -6047,6 +6141,13 @@ export type SharePricesReportFilter = DataReportFilter & {
 };
 
 // @public
+export interface SharePriceUpdate {
+    committedAt: Date;
+    computedAt: Date | null;
+    price: Price;
+}
+
+// @public
 export interface SharePriceWriteOptions {
     refundAddress?: HexString;
     skipNetworks?: CentrifugeId[];
@@ -6112,6 +6213,18 @@ export { SpokeGateState }
 
 // @public
 export const STATICCALL: 2;
+
+// @public
+export class StdHubPolicyFactoryMissingError extends CentrifugeError {
+    constructor(message: string, details: {
+        poolId: string;
+        centrifugeId: CentrifugeId;
+    });
+    readonly centrifugeId: CentrifugeId;
+    // (undocumented)
+    name: string;
+    readonly poolId: string;
+}
 
 // @public
 export type TabBlock = TextBlock | TableBlock | ChartBlock | KpiGroupBlock;
@@ -6403,6 +6516,9 @@ export interface WorkflowDefinition {
     workflowRef: string;
 }
 
+// @public (undocumented)
+export function workflowDefinitionHash(workflow: MarketplaceWorkflow): HexString;
+
 // @public
 export interface WorkflowPolicy {
     // (undocumented)
@@ -6491,7 +6607,7 @@ export function worklistSnapshot(items: readonly MigrationDrainItem[]): Migratio
 // Warnings were encountered during analysis:
 //
 // src/types/poolInput.ts:36:3 - (ae-forgotten-export) The symbol "FileType_2" needs to be exported by the entry point index.d.ts
-// src/types/transaction.ts:127:3 - (ae-forgotten-export) The symbol "SimulationResult" needs to be exported by the entry point index.d.ts
+// src/types/transaction.ts:128:3 - (ae-forgotten-export) The symbol "SimulationResult" needs to be exported by the entry point index.d.ts
 
 // (No @packageDocumentation comment for this package)
 

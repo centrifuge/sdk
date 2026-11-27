@@ -11,8 +11,10 @@ import {
   deploymentRegistryFromAddressBook,
   deploymentsFromAddressBook,
   assertBookKeepsChainIds,
-  unservedStacks,
+  createDeploymentRegistry,
 } from "./index";
+import { stackDeployments } from "./address-book";
+import { CONTRACT_SCHEMA_V3_3, STACK_LABEL_V3_3 } from "./v3_3";
 
 const NEW_HUB = "0x1111111111111111111111111111111111111111" as const;
 
@@ -85,14 +87,6 @@ describe("deploymentDataFromAddressBook", () => {
   });
 });
 
-/** The baked book with the testnet v3.3.0 stack of chain 1 also on mainnet chain 1. */
-function bookWithMainnetV33(): AddressBook {
-  const book = structuredClone(addressBook);
-  book.networks.mainnet.chains["1"]!.stacks["v3.3.0"] =
-    book.networks.testnet.chains["1"]!.stacks["v3.3.0"]!;
-  return book;
-}
-
 const UNNAMED_CHAIN_ID = 990_001;
 
 /**
@@ -147,29 +141,20 @@ describe("a chain without a CHAIN_NAMES row", () => {
 });
 
 describe("served versions", () => {
-  it("serves only v3.2 on mainnet from a book that carries a mainnet v3.3.0 stack", () => {
-    const book = bookWithMainnetV33();
+  it("serves v3.2 and v3.3 on both networks from the bundled book", () => {
+    const data = deploymentDataFromAddressBook(addressBook);
+    const registry = deploymentRegistryFromAddressBook(addressBook);
 
-    const data = deploymentDataFromAddressBook(book);
-    const registry = deploymentRegistryFromAddressBook(book);
-
-    expect(Object.keys(data.mainnet!)).toEqual([PROTOCOL_VERSION_V3_2]);
-    expect(registry.versionsForChain("mainnet", 1)).toEqual([
-      PROTOCOL_VERSION_V3_2,
-    ]);
-    expect(Object.keys(data.testnet!)).toEqual([
-      PROTOCOL_VERSION_V3_2,
-      PROTOCOL_VERSION_V3_3,
-    ]);
-  });
-
-  it("reports the stacks it ignores", () => {
-    expect(unservedStacks(bookWithMainnetV33())).toEqual([
-      { environment: "mainnet", stackLabel: "v3.3.0" },
-    ]);
-    expect(unservedStacks(addressBook)).toEqual([
-      { environment: "mainnet", stackLabel: "v3.3.0" },
-    ]);
+    for (const environment of ["mainnet", "testnet"] as const) {
+      expect(Object.keys(data[environment]!)).toEqual([
+        PROTOCOL_VERSION_V3_2,
+        PROTOCOL_VERSION_V3_3,
+      ]);
+      expect(registry.versionsForChain(environment, 1)).toEqual([
+        PROTOCOL_VERSION_V3_2,
+        PROTOCOL_VERSION_V3_3,
+      ]);
+    }
   });
 });
 
@@ -302,5 +287,30 @@ describe("initializeDefaultDeploymentRegistry", () => {
       ),
     ).toThrow(/already in use/);
     expect(registry.defaultDeploymentRegistry()).toBe(used);
+  });
+});
+
+describe("the v3.3 contract schema", () => {
+  const ADI = 17;
+  const built = stackDeployments(
+    addressBook,
+    STACK_LABEL_V3_3,
+    CONTRACT_SCHEMA_V3_3,
+  );
+
+  it("validates every v3.3.0 stack of the bundled book on both networks, mainnet ADI with Chainlink alone included", () => {
+    const registry = createDeploymentRegistry({
+      mainnet: { [PROTOCOL_VERSION_V3_3]: built.mainnet },
+      testnet: { [PROTOCOL_VERSION_V3_3]: built.testnet },
+    });
+
+    expect(Object.keys(built.mainnet)).toContain(String(ADI));
+    const adi = registry.getDeployment(
+      "mainnet",
+      PROTOCOL_VERSION_V3_3,
+      ADI,
+    ).contracts;
+    expect(adi).not.toHaveProperty("layerZeroAdapter");
+    expect(adi).toHaveProperty("chainlinkAdapter");
   });
 });

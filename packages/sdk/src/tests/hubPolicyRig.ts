@@ -111,7 +111,11 @@ export function recordingWallet(sent: Sent[]) {
   }
 }
 
-export function rig(reads: Record<string, unknown> = {}, contracts: readonly HexString[] = []) {
+export function rig(
+  reads: Record<string, unknown> = {},
+  contracts: readonly HexString[] = [],
+  options: Omit<NonNullable<Parameters<typeof setupV33>[2]>, 'now'> = {}
+) {
   const chain: Chain = {
     installed: false,
     authorization: new Map(),
@@ -156,7 +160,7 @@ export function rig(reads: Record<string, unknown> = {}, contracts: readonly Hex
       return chain.expiry
     },
   }
-  const subject = setupV33({ ...reads, ...policyReads }, contracts, { now: NOW })
+  const subject = setupV33({ ...reads, ...policyReads }, contracts, { now: NOW, ...options })
   const { centrifuge } = subject
   const sent: Sent[] = []
   // A fee per message that depends on the destination and the adapters it is priced against, so equal values say
