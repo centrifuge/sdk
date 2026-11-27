@@ -13,6 +13,7 @@ import type {
   EpochRedeemOrderRow,
   HoldingEscrowRow,
   HubPolicyRow,
+  HubTokenSnapshotPriceRow,
   InvestOrderRow,
   InvestOrderState,
   InvestorPortfolioSources,
@@ -551,6 +552,27 @@ export const sdkCatalogue = {
   ),
 
   /**
+   * Every hub `token_snapshot` row of one share class whose `timestamp` lies
+   * in `from`..`to` (both inclusive, either optional), oldest first, as
+   * `timestamp`, `trigger`, `triggerBlockTimestamp`, `tokenPrice` and
+   * `tokenPriceComputedAt`.
+   *
+   * No `trigger` filter: it is not a filterable column on public-api, so the
+   * caller keeps the rows of the trigger it wants. `public-api`-only, like
+   * `shareYieldsReport`'s range.
+   */
+  sharePriceUpdates: defineQuery<HubTokenSnapshotPriceRow[]>()(
+    "sharePriceUpdates",
+    z
+      .object({
+        tokenId,
+        from: isoDateTime.optional(),
+        to: isoDateTime.optional(),
+      })
+      .strict(),
+  ),
+
+  /**
    * One Basin's debt position, or null when nothing has touched it yet.
    *
    * Null rather than an error: a basin with no projected debt is a real
@@ -567,6 +589,7 @@ export const sdkCatalogue = {
     "basinDebt",
     z
       .object({
+        poolId,
         chainId: basinChainId,
         basinAddress: address,
         tokenId: basinTokenId,
@@ -586,6 +609,7 @@ export const sdkCatalogue = {
     "basinDebtChanges",
     z
       .object({
+        poolId,
         chainId: basinChainId,
         basinAddress: address,
         tokenId: basinTokenId,
@@ -604,6 +628,7 @@ export const sdkCatalogue = {
     "basinFees",
     z
       .object({
+        poolId,
         chainId: basinChainId,
         basinAddress: address,
         tokenId: basinTokenId,
@@ -622,6 +647,7 @@ export const sdkCatalogue = {
     "basinSwaps",
     z
       .object({
+        poolId,
         chainId: basinChainId,
         basinAddress: address,
         tokenId: basinTokenId,
@@ -649,7 +675,10 @@ export const sdkCatalogue = {
     "basinRedeemRequests",
     z
       .object({
+        poolId,
+        chainId: basinChainId,
         basinAddress: address,
+        tokenId: basinTokenId,
         redeemer: address.optional(),
         requestId: z.string().optional(),
         limit: basinLedgerLimit,

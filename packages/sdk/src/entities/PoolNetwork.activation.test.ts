@@ -4,7 +4,7 @@ import sinon from 'sinon'
 import { decodeFunctionData, encodeFunctionData, zeroAddress } from 'viem'
 import { ABIS_V3_3, resolveProtocolContext } from '@centrifuge/protocol'
 import { Centrifuge } from '../Centrifuge.js'
-import { stubChain, stubMigrationRows } from '../tests/utils.js'
+import { stubChain, stubLayerZeroGlobalSet, stubMigrationRows } from '../tests/utils.js'
 import type { HexString } from '../types/index.js'
 import { addressToBytes32 } from '../utils/index.js'
 import { makeThenable } from '../utils/rx.js'
@@ -31,13 +31,20 @@ const LZ_LIVE = { name: 'layerZero', isEnabled: true, crosschainInProgress: null
 const thenable = <T>(value: T) => makeThenable(of(value))
 const hub33 = () => resolveProtocolContext(POOL_ID.raw.toString(), '3.3', { environment: 'testnet' })
 
-/** A testnet SDK that knows pool 33 as v3.3, with the pool's adapter rows per chain as the indexer reports them. */
+const STALE_LZ = '0x9537000000000000000000000000000000ee39' as HexString
+
+/**
+ * A testnet SDK that knows pool 33 as v3.3, with the pool's adapter rows per chain as the indexer reports them and the
+ * pool set the hub's MultiAdapter holds toward each network.
+ */
 function setup(
   poolAdapters: (localCentrifugeId: number) => (typeof LZ_LIVE)[],
   walletClient?: object,
-  signal?: AbortSignal
+  signal?: AbortSignal,
+  hubPoolSet: (centrifugeId: number) => HexString[] = () => [hub33().addresses.layerZeroAdapter!]
 ) {
   const centrifuge = new Centrifuge({ environment: 'testnet' })
+  stubLayerZeroGlobalSet()
   // Entities bind `_transact` at construction, so the signing stub goes in before any is built.
   const statuses = walletClient ? signWith(centrifuge, walletClient, signal) : []
   sinon
@@ -59,9 +66,18 @@ function setup(
     return poolAdapters(Number(vars.localCentrifugeId)).map((row) => ({ ...row, adapter: { name: row.name } }))
   }) as any)
   sinon.stub(centrifuge, '_estimate').returns(thenable(0n) as any)
+  const readMultiAdapter = sinon.stub(centrifuge, '_readMultiAdapter').callsFake(((
+    _on: unknown,
+    centrifugeId: number,
+    poolId: bigint
+  ) => {
+    if (poolId !== POOL_ID.raw) throw new Error(`unexpected MultiAdapter read for pool ${poolId}`)
+    const adapters = hubPoolSet(centrifugeId)
+    return of({ adapters, threshold: adapters.length })
+  }) as any)
   const network = new PoolNetwork(centrifuge, new Pool(centrifuge, POOL_ID), SPOKE)
   sinon.stub(network, 'details').returns(thenable({ isActive: false, activeShareClasses: [] }) as any)
-  return { centrifuge, network, statuses }
+  return { centrifuge, network, statuses, readMultiAdapter }
 }
 
 /**
@@ -278,7 +294,7 @@ describe('PoolNetwork first activation on v3.3', () => {
     }).addresses.layerZeroAdapter!
     expect(error?.message).to.contain(
       `pool.setAdapters([{ centrifugeId: ${SPOKE}, localAdapters: [${hub33().addresses.layerZeroAdapter}], ` +
-        `remoteAdapters: [${spokeLz}] }])`
+        `remoteAdapters: [${spokeLz}], threshold: 1 }])`
     )
   })
 
@@ -296,6 +312,64 @@ describe('PoolNetwork first activation on v3.3', () => {
     expect(batch).to.not.include('setAdapters')
     expect(batch[0]).to.equal('notifyPool')
     expect(built.pendingPoolAdapters).to.equal(undefined)
+  })
+
+  it('sends setAdapters when the hub holds no pool set, though the indexer keeps an enabled row on both sides', async () => {
+    const { client, requests } = wallet()
+    const { centrifuge, network } = setup(() => [LZ_LIVE], client, undefined, () => [])
+
+    await deployShareClass(network)
+
+    const sent = requests.filter((r) => r.method === 'wallet_sendCalls')
+    expect(sent).to.have.length(1)
+    const calls = sent[0]!.params[0].calls as { to: HexString; data: HexString }[]
+    expect(calls[0]!.data).to.equal(setAdaptersCall())
+    expect(hubBatch(calls[1]!.data)).to.not.include('setAdapters')
+    const estimate = centrifuge._estimate as unknown as sinon.SinonStub
+    expect(estimate.getCalls().map((call) => call.args[3])).to.deep.equal([
+      undefined,
+      [hub33().addresses.layerZeroAdapter],
+    ])
+  })
+
+  it('sends setAdapters over a stale in-flight row when the hub holds no pool set', async () => {
+    const inFlight = { name: 'layerZero', isEnabled: false, crosschainInProgress: 'Enabled' } as unknown as typeof LZ_LIVE
+    const { centrifuge, network } = setup((local) => (local === HUB ? [LZ_LIVE] : [inFlight]), undefined, undefined, () => [])
+
+    let error: Error | undefined
+    try {
+      await centrifuge.buildOnly(deployShareClass(network), { fromAddress: SIGNER })
+    } catch (e) {
+      error = e as Error
+    }
+
+    expect(error?.message).to.contain('reverts inside a Hub batch')
+  })
+
+  it('trusts the indexer rows and does not read the pool set when they already ask for setAdapters', async () => {
+    const { network, readMultiAdapter } = setup(() => [], wallet().client, undefined, () => [STALE_LZ])
+
+    await deployShareClass(network)
+
+    expect(readMultiAdapter.callCount).to.equal(0)
+  })
+
+  it('runs deployToNetworks one network at a time when a wired-looking network has no pool set on the hub', async () => {
+    const { centrifuge } = setup(() => [LZ_LIVE], wallet().client, undefined, (cid) => (cid === 3 ? [] : [STALE_LZ]))
+    const batchTransactions = sinon.stub(centrifuge, 'batchTransactions')
+    const deployed: number[] = []
+    sinon.stub(PoolNetwork.prototype, 'deploy').callsFake(function (this: PoolNetwork) {
+      deployed.push(this.centrifugeId)
+      return of({ type: 'TransactionConfirmed' }) as any
+    })
+
+    await new Pool(centrifuge, POOL_ID).deployToNetworks([
+      { centrifugeId: SPOKE, shareClasses: [{ id: SC_ID, hook: HOOK }] },
+      { centrifugeId: 3, shareClasses: [{ id: SC_ID, hook: HOOK }] },
+    ])
+
+    expect(batchTransactions.callCount).to.equal(0)
+    expect(deployed).to.deep.equal([SPOKE, 3])
   })
 
   it('runs deployToNetworks one network at a time when a network still needs its adapters', async () => {

@@ -742,6 +742,7 @@ export const API_V3_DOCUMENTS: Record<SdkQueryName, ApiV3Document> = {
   poolMigration: UNSUPPORTED_ON_API_V3,
   poolMigrationSteps: UNSUPPORTED_ON_API_V3,
   shareManagerCalls: UNSUPPORTED_ON_API_V3,
+  sharePriceUpdates: UNSUPPORTED_ON_API_V3,
   crosschainMessageRows: UNSUPPORTED_ON_API_V3,
   poolAuthorizationEvents: UNSUPPORTED_ON_API_V3,
   hubPolicies: UNSUPPORTED_ON_API_V3,
@@ -929,6 +930,14 @@ export const API_V3_VARIABLES: Record<
         "api-v3 shape to fall back to, so it is refused rather than guessed.",
     );
   },
+  sharePriceUpdates: () => {
+    throw new Error(
+      "sharePriceUpdates reads every token_snapshot row of a share class in a timestamp range, " +
+        "which api-v3's hubSharePricesReport document does not do and whose range operators are " +
+        "unverified on api-v3. It is only implemented for graphqlTarget: 'public-api'; there is " +
+        "no api-v3 shape to fall back to, so it is refused rather than guessed.",
+    );
+  },
   crosschainMessageRows: () => {
     throw new Error(
       "crosschainMessageRows reads chain_v1 crosschain_message rows by message id, " +
@@ -1093,6 +1102,7 @@ export const API_V3_UNWRAP: Record<SdkQueryName, (data: any) => unknown> = {
   poolMigration: (d) => d,
   poolMigrationSteps: (d) => d,
   shareManagerCalls: (d) => d,
+  sharePriceUpdates: (d) => d,
   crosschainMessageRows: (d) => d,
   poolAuthorizationEvents: (d) => d,
   hubPolicies: (d) => d,

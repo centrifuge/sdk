@@ -53,7 +53,7 @@ describe('Pool protocol version', () => {
     )
   })
 
-  it('re-resolves the pool context when the projected version changes', async () => {
+  it('re-resolves the pool context when the projected version changes, as a mainnet pool migrating to v3.3 does', async () => {
     const centrifuge = new Centrifuge({ environment: 'mainnet' })
     const rows = new BehaviorSubject([{ id: poolId.toString(), protocolVersion: '3.2', migrationStatus: 'live' }])
     sinon.stub(centrifuge as any, '_queryData').returns(rows.asObservable())
@@ -68,18 +68,28 @@ describe('Pool protocol version', () => {
     await new Promise((resolve) => setTimeout(resolve, 0))
     subscription.unsubscribe()
 
-    expect(resolved[0]).to.equal('3.2')
-    expect(resolved[1]).to.equal('error:ProtocolVersionResolutionError')
+    expect(resolved).to.deep.equal(['3.2', '3.3'])
   })
 
   it('excludes the system addresses of every version deployed on the chain, lowercased and deduped', async () => {
     const centrifuge = new Centrifuge({ environment: 'mainnet' })
     const addresses = await centrifuge._systemAddresses(1)
-    const context = await centrifuge.protocolContext({ centrifugeId: 1, protocolVersion: '3.2' })
+    const contexts = await Promise.all(
+      (['3.2', '3.3'] as const).map((protocolVersion) =>
+        centrifuge.protocolContext({ centrifugeId: 1, protocolVersion })
+      )
+    )
 
     expect(addresses).to.have.members([
-      ...new Set([context.balanceSheet!, context.asyncRequestManager, context.syncManager].map((a) => a.toLowerCase())),
+      ...new Set(
+        contexts.flatMap((context) =>
+          [context.balanceSheet ?? context.spoke, context.asyncRequestManager, context.syncManager].map((a) =>
+            a.toLowerCase()
+          )
+        )
+      ),
     ])
+    expect(addresses).to.have.length.greaterThan(3)
     expect(addresses.every((a) => a === a.toLowerCase())).to.equal(true)
   })
 

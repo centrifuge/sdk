@@ -1,0 +1,337 @@
+{
+  "variables": [
+    {
+      "name": "data",
+      "kind": "configurable"
+    },
+    {
+      "name": "collateralVault",
+      "kind": "param"
+    },
+    {
+      "name": "asset",
+      "kind": "param"
+    },
+    {
+      "name": "morpho",
+      "kind": "param"
+    },
+    {
+      "name": "oracle",
+      "kind": "param"
+    },
+    {
+      "name": "irm",
+      "kind": "param"
+    },
+    {
+      "name": "lltv",
+      "kind": "param"
+    },
+    {
+      "name": "flashMultiplier",
+      "kind": "param"
+    },
+    {
+      "name": "leverageFactor",
+      "kind": "param"
+    },
+    {
+      "name": "flashPremiumBps",
+      "kind": "param"
+    },
+    {
+      "name": "scriptHelpers",
+      "kind": "param"
+    },
+    {
+      "name": "flashLoanHelper",
+      "kind": "param"
+    },
+    {
+      "name": "amount",
+      "kind": "param"
+    }
+  ],
+  "actions": [
+    {
+      "target": "$scriptHelpers",
+      "targetName": "ScriptHelpers",
+      "name": "Compute flash loan amount (equity × flashMultiplier)",
+      "selector": "function mul(uint256,uint256)",
+      "valueNonZero": false,
+      "inputs": [
+        {
+          "parameter": "uint256",
+          "label": "Equity amount",
+          "input": ["$amount"]
+        },
+        {
+          "parameter": "uint256",
+          "label": "Flash multiplier",
+          "input": ["$flashMultiplier"]
+        }
+      ],
+      "returns": "$flashAmount"
+    },
+    {
+      "target": "$scriptHelpers",
+      "targetName": "ScriptHelpers",
+      "name": "Compute total deposit (equity × leverageFactor)",
+      "selector": "function mul(uint256,uint256)",
+      "valueNonZero": false,
+      "inputs": [
+        {
+          "parameter": "uint256",
+          "label": "Equity amount",
+          "input": ["$amount"]
+        },
+        {
+          "parameter": "uint256",
+          "label": "Leverage factor",
+          "input": ["$leverageFactor"]
+        }
+      ],
+      "returns": "$totalAmount"
+    },
+    {
+      "target": "$scriptHelpers",
+      "targetName": "ScriptHelpers",
+      "name": "Compute repayment (flash + premium)",
+      "selector": "function addBps(uint256,uint256)",
+      "valueNonZero": false,
+      "inputs": [
+        {
+          "parameter": "uint256",
+          "label": "Flash amount",
+          "input": ["$flashAmount"]
+        },
+        {
+          "parameter": "uint256",
+          "label": "Premium (bps)",
+          "input": ["$flashPremiumBps"]
+        }
+      ],
+      "returns": "$repaymentAmount"
+    },
+    {
+      "target": "$asset",
+      "targetName": "Token (ERC20)",
+      "name": "Approve vault to spend assets",
+      "selector": "function approve(address,uint256)",
+      "valueNonZero": false,
+      "inputs": [
+        {
+          "parameter": "address",
+          "label": "Spender",
+          "input": ["$collateralVault"]
+        },
+        {
+          "parameter": "uint256",
+          "label": "Amount",
+          "input": ["$totalAmount"]
+        }
+      ]
+    },
+    {
+      "target": "$collateralVault",
+      "targetName": "Vault (ERC-4626)",
+      "name": "Deposit into collateral vault",
+      "selector": "function deposit(uint256,address)",
+      "valueNonZero": false,
+      "inputs": [
+        {
+          "parameter": "uint256",
+          "label": "Assets",
+          "input": ["$totalAmount"]
+        },
+        {
+          "parameter": "address",
+          "label": "Receiver",
+          "input": ["$onchainPM"]
+        }
+      ],
+      "returns": "$shares"
+    },
+    {
+      "target": "$asset",
+      "targetName": "Token (ERC20)",
+      "name": "Clear residual asset allowance",
+      "selector": "function approve(address,uint256)",
+      "valueNonZero": false,
+      "inputs": [
+        {
+          "parameter": "address",
+          "label": "Spender",
+          "input": ["$collateralVault"]
+        },
+        {
+          "parameter": "uint256",
+          "label": "Amount",
+          "input": ["0"]
+        }
+      ]
+    },
+    {
+      "target": "$collateralVault",
+      "targetName": "Token (ERC20)",
+      "name": "Approve Morpho to spend vault shares",
+      "selector": "function approve(address,uint256)",
+      "valueNonZero": false,
+      "inputs": [
+        {
+          "parameter": "address",
+          "label": "Spender",
+          "input": ["$morpho"]
+        },
+        {
+          "parameter": "uint256",
+          "label": "Amount",
+          "input": ["$shares"]
+        }
+      ]
+    },
+    {
+      "target": "$morpho",
+      "targetName": "Morpho",
+      "name": "Supply collateral",
+      "selector": "function supplyCollateral((address,address,address,address,uint256),uint256,address,bytes)",
+      "valueNonZero": false,
+      "inputs": [
+        {
+          "parameter": "address",
+          "label": "Loan token",
+          "input": ["$asset"]
+        },
+        {
+          "parameter": "address",
+          "label": "Collateral token",
+          "input": ["$collateralVault"]
+        },
+        {
+          "parameter": "address",
+          "label": "Oracle",
+          "input": ["$oracle"]
+        },
+        {
+          "parameter": "address",
+          "label": "IRM",
+          "input": ["$irm"]
+        },
+        {
+          "parameter": "uint256",
+          "label": "LLTV",
+          "input": ["$lltv"]
+        },
+        {
+          "parameter": "uint256",
+          "label": "Collateral amount",
+          "input": ["$shares"]
+        },
+        {
+          "parameter": "address",
+          "label": "On behalf of",
+          "input": ["$onchainPM"]
+        },
+        {
+          "parameter": "bytes",
+          "label": "Data",
+          "input": ["$data"]
+        }
+      ]
+    },
+    {
+      "target": "$collateralVault",
+      "targetName": "Token (ERC20)",
+      "name": "Clear residual vault share allowance",
+      "selector": "function approve(address,uint256)",
+      "valueNonZero": false,
+      "inputs": [
+        {
+          "parameter": "address",
+          "label": "Spender",
+          "input": ["$morpho"]
+        },
+        {
+          "parameter": "uint256",
+          "label": "Amount",
+          "input": ["0"]
+        }
+      ]
+    },
+    {
+      "target": "$morpho",
+      "targetName": "Morpho",
+      "name": "Borrow to repay flash loan",
+      "selector": "function borrow((address,address,address,address,uint256),uint256,uint256,address,address)",
+      "valueNonZero": false,
+      "inputs": [
+        {
+          "parameter": "address",
+          "label": "Loan token",
+          "input": ["$asset"]
+        },
+        {
+          "parameter": "address",
+          "label": "Collateral token",
+          "input": ["$collateralVault"]
+        },
+        {
+          "parameter": "address",
+          "label": "Oracle",
+          "input": ["$oracle"]
+        },
+        {
+          "parameter": "address",
+          "label": "IRM",
+          "input": ["$irm"]
+        },
+        {
+          "parameter": "uint256",
+          "label": "LLTV",
+          "input": ["$lltv"]
+        },
+        {
+          "parameter": "uint256",
+          "label": "Borrow amount",
+          "input": ["$repaymentAmount"]
+        },
+        {
+          "parameter": "uint256",
+          "label": "Borrow shares",
+          "input": ["0"]
+        },
+        {
+          "parameter": "address",
+          "label": "On behalf of",
+          "input": ["$onchainPM"]
+        },
+        {
+          "parameter": "address",
+          "label": "Receiver",
+          "input": ["$onchainPM"]
+        }
+      ]
+    },
+    {
+      "target": "$asset",
+      "targetName": "Token (ERC20)",
+      "name": "Transfer repayment to FlashLoanHelper",
+      "selector": "function transfer(address,uint256)",
+      "valueNonZero": false,
+      "inputs": [
+        {
+          "parameter": "address",
+          "label": "FlashLoanHelper",
+          "input": ["$flashLoanHelper"]
+        },
+        {
+          "parameter": "uint256",
+          "label": "Repayment amount",
+          "input": ["$repaymentAmount"]
+        }
+      ]
+    }
+  ],
+  "id": "morpho_loop_deposit_callback"
+}

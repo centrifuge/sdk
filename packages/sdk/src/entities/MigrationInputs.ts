@@ -608,10 +608,51 @@ export class MigrationInputsDerivation {
     return found
   }
 
+  async linkedVaultsOnChain(poolId: PoolId, scIds: readonly ShareClassId[]): Promise<HexString[]> {
+    if (scIds.length === 0) return []
+    const { assetIds } = await this.registeredAssets(true, true)
+    const results = await this.reader.read(
+      scIds.flatMap((scId) =>
+        assetIds.map((assetId) => ({
+          address: this.v32.vaultRegistry,
+          abi: this.abis.VaultRegistry,
+          functionName: 'vault',
+          args: [poolId.raw, scId.raw, assetId.raw, this.v32.asyncRequestManager],
+        }))
+      )
+    )
+    return unique(
+      results
+        .map((result) => answered<HexString>(result, 'linkedVaultsOnChain: v3.2 VaultRegistry.vault'))
+        .filter((vault) => !isAddressEqual(vault, zeroAddress))
+    )
+  }
+
+  async assertEveryUnlinkedVaultKnown(poolId: PoolId, unlinked: readonly HexString[]): Promise<void> {
+    const migration = this.options.migration
+    if (!migration) return
+    const [count] = await this.reader.read([
+      {
+        address: migration,
+        abi: V33_MIGRATION_ABI_V3_3 as Abi,
+        functionName: 'unlinkedVaults',
+        args: [poolId.raw],
+      },
+    ])
+    const total = Number(answered<bigint | number>(count!, 'spokeInventory: V33Migration.unlinkedVaults'))
+    if (unlinked.length !== total) {
+      throw new MigrationInputsReadError(
+        'spokeInventory',
+        `${unlinked.length} of the candidates read as unlinked by the facade, expected ${total} (its unlinkedVaults ` +
+          'for the pool on this chain), so the onboard would re-register a different list than the offboard unlinked'
+      )
+    }
+  }
+
   async liveVaults(
     poolId: PoolId,
     candidates: readonly HexString[]
-  ): Promise<{ vaults: MigrationLiveVault[]; unknown: HexString[] }> {
+  ): Promise<{ vaults: MigrationLiveVault[]; unknown: HexString[]; unlinked: HexString[] }> {
     const details = await this.reader.read(
       candidates.map((vault) => ({
         address: this.v32.vaultRegistry,
@@ -644,6 +685,7 @@ export class MigrationInputsDerivation {
         )
       : []
     const vaults: MigrationLiveVault[] = []
+    const unlinkedByFacade: HexString[] = []
     known.forEach((vault, i) => {
       const { assetId, asset, isLinked } = answered<VaultDetails>(
         details[candidates.indexOf(vault)]!,
@@ -657,6 +699,7 @@ export class MigrationInputsDerivation {
       const wasUnlinked = migration
         ? Boolean(answered<boolean>(unlinked[i]!, 'liveVaults: V33Migration.vaultUnlinked'))
         : false
+      if (wasUnlinked) unlinkedByFacade.push(vault)
       vaults.push({
         vault,
         factory: isSync ? this.v33.syncDepositVaultFactory : this.v33.asyncVaultFactory,
@@ -667,7 +710,7 @@ export class MigrationInputsDerivation {
         isSync,
       })
     })
-    return { vaults, unknown }
+    return { vaults, unknown, unlinked: unlinkedByFacade }
   }
 
   async rotationAssets(
@@ -1058,7 +1101,11 @@ export class MigrationInputsDerivation {
     const { scIds, tokens } = await this.spokeClasses(poolId, hubClassCount)
     const { assetIds, assets } = await this.registeredAssets(true, false)
     const [{ vaults, unknown }, balanceSheetManagers, gatewayManagers] = await Promise.all([
-      this.liveVaults(poolId, unique(candidates.vaults)),
+      this.linkedVaultsOnChain(poolId, scIds).then(async (linked) => {
+        const live = await this.liveVaults(poolId, unique([...candidates.vaults, ...linked]))
+        await this.assertEveryUnlinkedVaultKnown(poolId, live.unlinked)
+        return live
+      }),
       this.liveManagers(poolId, this.v32.balanceSheet, [...candidates.managers, ...candidates.rampInstances]),
       this.liveManagers(poolId, this.v32.gateway, candidates.managers),
     ])

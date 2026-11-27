@@ -38,7 +38,7 @@ function bookWith(edit: (book: AddressBook) => void): AddressBook {
 
 /**
  * Mainnet chain 1 resolves `hub` to {@link REPLACED_HUB}, with other registry heads; the old address stays in the
- * book's history. Mainnet serves v3.2, so the hub replaced is the `v3.2.0` stack's; `current` (v3.3.0) is set to it too,
+ * book's history. The hub replaced is the `v3.2.0` stack's, which the tests name; `current` (v3.3.0) is set to it too,
  * so the book differs by an added address and a changed current address.
  */
 function bookWithReplacedHub(): AddressBook {
@@ -108,7 +108,7 @@ describe('address book option', () => {
     it('resolves from the bundled registry with no request and no warning', async () => {
       const centrifuge = new Centrifuge({ environment: 'mainnet' })
 
-      const ctx = await centrifuge.protocolContext(1)
+      const ctx = await centrifuge.protocolContext({ centrifugeId: 1, protocolVersion: '3.2' })
       await centrifuge._idToChain(1)
       await centrifuge._chains()
 
@@ -142,7 +142,7 @@ describe('address book option', () => {
       const book = bookWithReplacedHub()
       const centrifuge = new Centrifuge({ environment: 'mainnet', addressBook: { book, allowUnsafeMainnet: true } })
 
-      const ctx = await centrifuge.protocolContext(1)
+      const ctx = await centrifuge.protocolContext({ centrifugeId: 1, protocolVersion: '3.2' })
 
       expect(ctx.hub.toLowerCase()).to.equal(REPLACED_HUB)
       expect(ctx.hub).to.not.equal(BAKED_HUB)
@@ -174,7 +174,7 @@ describe('address book option', () => {
 
       await centrifuge.protocolContext(1)
       await centrifuge.protocolContext({ centrifugeId: 1, protocolVersion: '3.2' })
-      await centrifuge.protocolContext(PoolId.from(1, 1))
+      await centrifuge.protocolContext(PoolId.from(15, 1))
       await centrifuge._systemAddresses(1)
       await centrifuge._chains()
       await centrifuge._idToChain(1)

@@ -1,4 +1,4 @@
-import { stubProjectedPools } from '../tests/utils.js'
+import { notMigrating, stubProjectedPools } from '../tests/utils.js'
 import { expect } from 'chai'
 import { firstValueFrom, of, toArray } from 'rxjs'
 import sinon from 'sinon'
@@ -137,7 +137,7 @@ function stubChain(centrifuge: Centrifuge) {
   sinon
     .stub(centrifuge as any, 'getChainConfig')
     .callsFake((id: any) => thenable({ id: chainOf(Number(id)), name: 'test' }))
-  sinon.stub(centrifuge as any, 'getClient').callsFake(() => thenable(fakePublicClient()))
+  sinon.stub(centrifuge as any, 'getClient').callsFake(() => thenable(notMigrating(fakePublicClient())))
   sinon.stub(centrifuge as any, '_estimate').callsFake((from: any, to: any, types: any) => {
     estimates.push({
       from: Number(from),

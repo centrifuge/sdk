@@ -1,6 +1,5 @@
 export * from "./types";
 export * from "./constants";
-export * from "./deployments";
 export * from "./context";
 export * from "./builders";
 export * from "./message-id";

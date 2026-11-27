@@ -433,6 +433,7 @@ describe('PoolNetwork on/off-ramp registration with the accounting-token minter 
       const strategy: TxStrategy = { prepare: () => of({ route: 'custodial' } as unknown as PrepareOutcome) }
       const centrifuge = new Centrifuge({ environment: 'mainnet', txStrategy: strategy })
       sinon.stub(centrifuge as any, '_queryData').returns(of(null))
+      stubChain(centrifuge)
       const local = of({ type: 'Local' }) as any
 
       const routed = centrifuge._routeDeferredTransaction(
@@ -449,6 +450,7 @@ describe('PoolNetwork on/off-ramp registration with the accounting-token minter 
       )
 
       expect(await firstValueFrom(routed as any)).to.deep.equal({ type: 'Local' })
+      expect((centrifuge.getClient as sinon.SinonStub).calledWith(hubCentrifugeId)).to.equal(true)
     })
   })
 
@@ -843,9 +845,11 @@ describe('PoolNetwork on/off-ramp registration with the accounting-token minter 
     }
 
     for (const centrifugeId of [1, 2, 3, 10, 13, 14]) {
-      it(`centrifugeId ${centrifugeId}: builds register plus a grant aimed at the registry's accountingToken`, async () => {
+      it(`centrifugeId ${centrifugeId}: builds register plus a grant aimed at the v3.2 pool's accountingToken`, async () => {
         const { centrifuge, poolNetwork } = realRegistrySubject(centrifugeId)
-        const listed = (await (centrifuge.protocolContext(centrifugeId) as any)) as { accountingToken?: string }
+        const listed = (await (centrifuge.protocolContext({ poolId, centrifugeId }) as any)) as {
+          accountingToken?: string
+        }
 
         const built = await centrifuge.buildOnly(poolNetwork.registerOnOffRampManagerAsBSManager(ramp, scId), {
           fromAddress: signingAddress,

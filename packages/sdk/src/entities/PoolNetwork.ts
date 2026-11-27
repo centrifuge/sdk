@@ -1,6 +1,7 @@
 import { combineLatest, concat, defer, firstValueFrom, ignoreElements, map, of, switchMap } from 'rxjs'
 import { encodeAbiParameters, encodeFunctionData, maxUint128, parseAbi } from 'viem'
 import {
+  ABIS_V3_2,
   ABIS_V3_3,
   builders,
   encodeAccountingTokenMinterPayload,
@@ -26,6 +27,7 @@ import {
 } from '../types/transaction.js'
 import type { TransactionContext } from '../types/transaction.js'
 import { addMessageForEnabledTarget, assertCrosschainMessagingEnabled } from '../utils/crosschainHotfix.js'
+import { adapterIndexerNames, requireCopyableGlobalSet, type GlobalAdapterSet } from '../utils/adapters.js'
 import { addressesEqual } from '../utils/addresses.js'
 import { addressToBytes32, encode } from '../utils/index.js'
 import {
@@ -46,7 +48,13 @@ import {
 } from '../utils/protocolVersion.js'
 import { makeThenable, repeatOnEvents } from '../utils/rx.js'
 import { spokeAssets } from '../utils/spokeAssets.js'
-import { doTransaction, parseEventLogs, sendCallsInOrder, wrapTransaction } from '../utils/transaction.js'
+import {
+  doTransaction,
+  parseEventLogs,
+  sendCallsInOrder,
+  wrapTransaction,
+  type PendingPoolAdaptersByChain,
+} from '../utils/transaction.js'
 import type { Query } from '../types/query.js'
 import type { Transaction } from '../types/transaction.js'
 import { AssetId, CentrifugeId, PoolId, ShareClassId } from '../utils/types.js'
@@ -317,8 +325,13 @@ function requireSingleDeployableVault(
   return vault
 }
 
-/** The indexer's name for the LayerZero adapter, the only one `deploy` wires a pool through today. */
-const LAYER_ZERO_ADAPTER_NAME = 'layerZero'
+function refuseMismatchedDeploy(contract: string, simulated: HexString | null, deployed: HexString) {
+  if (simulated && !addressesEqual(simulated, deployed)) {
+    throw new Error(
+      `${contract} deploy confirmed ${deployed}, but the simulation before it answered ${simulated}; no roles were granted`
+    )
+  }
+}
 
 /**
  * Query and interact with a pool on a specific network.
@@ -716,11 +729,6 @@ export class PoolNetwork extends Entity {
         })
       )
 
-      if (precomputedAddress) {
-        managerAddress = precomputedAddress
-        return
-      }
-
       const events = parseEventLogs({
         logs: result.receipt.logs,
         eventName: 'DeployMerkleProofManager',
@@ -733,6 +741,7 @@ export class PoolNetwork extends Entity {
       if (!args?.manager) {
         throw new Error('DeployMerkleProofManager event not found')
       }
+      refuseMismatchedDeploy('MerkleProofManager', precomputedAddress, args.manager)
 
       managerAddress = args.manager
     }, self.centrifugeId)
@@ -1193,24 +1202,20 @@ export class PoolNetwork extends Entity {
         })
       )
 
-      let finalManagerAddress: HexString
-      if (isSafeWallet && precomputedAddress) {
-        finalManagerAddress = precomputedAddress
-      } else {
-        const events = parseEventLogs({
-          logs: result.receipt.logs,
-          eventName: ON_OFF_RAMP_DEPLOY_EVENTS,
-          address: factory,
-          protocolVersion,
-        })
+      const events = parseEventLogs({
+        logs: result.receipt.logs,
+        eventName: ON_OFF_RAMP_DEPLOY_EVENTS,
+        address: factory,
+        protocolVersion,
+      })
 
-        const deployEvent = events[0]
-        const args = deployEvent?.args as { manager?: HexString } | undefined
-        if (!args?.manager) {
-          throw new Error('DeployOnOfframpManager event not found')
-        }
-        finalManagerAddress = args.manager
+      const deployEvent = events[0]
+      const args = deployEvent?.args as { manager?: HexString } | undefined
+      if (!args?.manager) {
+        throw new Error('DeployOnOfframpManager event not found')
       }
+      const finalManagerAddress = args.manager
+      refuseMismatchedDeploy('OnOffRampManager', precomputedAddress, finalManagerAddress)
 
       managerAddress = finalManagerAddress
 
@@ -1371,24 +1376,31 @@ export class PoolNetwork extends Entity {
    * being reachable and in sync. While it shows no wiring, `setAdapters` is sent with the pool
    * messages, with no wait between them:
    *
+   * `setAdapters` installs the protocol's global (pool 0) adapter set for this route: the hub's adapters
+   * toward this network, this network's adapters toward the hub, and the global threshold (and, on v3.2,
+   * recovery index). It throws when the global set is empty, its two sides differ in size, or it holds an
+   * adapter the registry does not list.
+   *
    * - **v3.2:** one Hub batch, `setAdapters` first. Build mode builds it.
    * - **v3.3:** `Hub.setAdapters` reverts inside a Hub batch, so it is a call of its own followed by
    *   the Hub batch, both in one EIP-5792 `wallet_sendCalls` prompt when the wallet supports it and
    *   two transactions otherwise. Build mode refuses it.
    *
-   * The pool messages' fee is priced against the LayerZero adapter being installed: the hub's
+   * The pool messages' fee is priced against the adapters being installed: the hub's
    * MultiAdapter holds no set for the pool until `setAdapters` runs, and prices it at nothing. A
-   * built activation names that adapter in `pendingPoolAdapters`.
+   * built activation names them in `pendingPoolAdapters`.
    *
    * `setAdapters` travels over the global adapters and the pool messages over the pool's own, so the
    * pool messages can reach the destination before its adapter configuration and revert there with
-   * `InvalidAdapter()`. They stay undelivered at the bridge and are re-executed with
-   * {@link Centrifuge.retryLayerZeroDelivery} once the adapters have arrived;
-   * {@link Centrifuge.layerZeroDeliveries} reports them as `stuck` until then.
+   * `InvalidAdapter()`. They stay undelivered at each bridge of the set. Over LayerZero they are
+   * re-executed with {@link Centrifuge.retryLayerZeroDelivery} once the adapters have arrived, and
+   * {@link Centrifuge.layerZeroDeliveries} reports them as `stuck` until then. Over Axelar and Chainlink
+   * they are re-executed with that bridge's own manual execution; the SDK does not drive it, and a set
+   * whose threshold needs those bridges' votes waits for them.
    *
    * The hub's set is the authority: when it already holds one and the destination is still
    * receiving it, `setAdapters` is not sent again; when the hub holds a set other than the
-   * LayerZero 1/1 the SDK configures and the destination does not mirror it, the deployment stops
+   * global set the SDK configures and the destination does not mirror it, the deployment stops
    * rather than overwrite it.
    */
   deploy(
@@ -1509,9 +1521,23 @@ export class PoolNetwork extends Entity {
           })
         : true,
     ])
-    const adapterPlan: PoolAdapterPlan = adapterRows
-      ? planPoolAdapters(adapterRows.onHub, adapterRows.onSpoke, [LAYER_ZERO_ADAPTER_NAME])
+    let globalAdapterSet: GlobalAdapterSet | null = null
+    let adapterPlan: PoolAdapterPlan = adapterRows
+      ? planPoolAdapters(adapterRows.onHub, adapterRows.onSpoke, [])
       : { action: 'ready' }
+    if (adapterRows && adapterPlan.action !== 'send' && (await this._hubHoldsNoPoolSet(hubContext))) {
+      adapterPlan = { action: 'send' }
+    }
+    if (adapterRows && adapterPlan.action !== 'ready') {
+      globalAdapterSet = await this._globalAdapterSet(hubContext)
+      if (adapterPlan.action !== 'send') {
+        adapterPlan = planPoolAdapters(
+          adapterRows.onHub,
+          adapterRows.onSpoke,
+          globalAdapterSet.names.map((name) => name ?? UNKNOWN_ADAPTER_NAME)
+        )
+      }
+    }
     const needsNotifyPool = poolNeedsNotify(details)
     return {
       hubContext,
@@ -1521,9 +1547,35 @@ export class PoolNetwork extends Entity {
       isSyncManagerSetOnBalanceSheet,
       existingRequestManager,
       adapterPlan,
+      globalAdapterSet,
       needsNotifyPool,
       // Whoever made AdapterFailover the manager chose its stewards, so a spoke where it already is gets neither call.
       adapterFailoverToInstall: isAdapterFailoverManager ? null : adapterFailover,
+    }
+  }
+
+  /** @internal */
+  async _globalAdapterSet(hubContext: SdkProtocolContext): Promise<GlobalAdapterSet> {
+    const [onHub, onSpoke, recoveryIndex] = await Promise.all([
+      firstValueFrom(this.pool.globalAdapters(this.centrifugeId)),
+      firstValueFrom(this.pool.remoteGlobalAdapters(this.centrifugeId)),
+      isV3_3(hubContext)
+        ? 0
+        : this._root.getClient(hubContext.centrifugeId).then((client) =>
+            client.readContract({
+              address: hubContext.multiAdapter,
+              abi: ABIS_V3_2.MultiAdapter,
+              functionName: 'recoveryIndex',
+              args: [this.centrifugeId, 0n],
+            })
+          ),
+    ])
+    return {
+      local: onHub.adapters,
+      remote: onSpoke.adapters,
+      threshold: onHub.threshold,
+      recoveryIndex,
+      names: adapterIndexerNames(hubContext, onHub.adapters),
     }
   }
 
@@ -1601,7 +1653,19 @@ export class PoolNetwork extends Entity {
    */
   async _hasPoolAdapters(): Promise<boolean> {
     const rows = await this.#poolAdapterRows()
-    return rows === null || isPoolWired(rows.onHub, rows.onSpoke)
+    if (rows === null) return true
+    if (!isPoolWired(rows.onHub, rows.onSpoke)) return false
+    const hubContext = await firstValueFrom(this._root.protocolContext(this.pool.id))
+    return !(await this._hubHoldsNoPoolSet(hubContext))
+  }
+
+  /** @internal */
+  async _hubHoldsNoPoolSet(hubContext: SdkProtocolContext): Promise<boolean> {
+    if (!isV3_3(hubContext)) return false
+    const { adapters } = await firstValueFrom(
+      this._root._readMultiAdapter(of(hubContext), this.centrifugeId, this.pool.id.raw)
+    )
+    return adapters.length === 0
   }
 
   /**
@@ -1684,22 +1748,13 @@ export class PoolNetwork extends Entity {
       const { hubContext: hubCtx, spokeContext: spokeCtx } = deployState
       const v3_3 = isV3_3(hubCtx)
       const {
-        hubContext: {
-          hub,
-          contractAbis: ABI,
-          layerZeroAdapter: localLzAdapter,
-          // axelarAdapter: localAxelarAdapter, // TODO: hotfix - always use LayerZero 1/1
-          // wormholeAdapter: localWhAdapter,
-        },
+        hubContext: { hub, contractAbis: ABI },
         spokeContext: {
           syncDepositVaultFactory,
           asyncVaultFactory,
           syncManager,
           asyncRequestManager,
           batchRequestManager,
-          layerZeroAdapter: remoteLzAdapter,
-          // axelarAdapter: remoteAxelarAdapter, // TODO: hotfix - always use LayerZero 1/1
-          // wormholeAdapter: remoteWhAdapter,
         },
         details,
         isAsyncManagerSetOnBalanceSheet,
@@ -1716,7 +1771,8 @@ export class PoolNetwork extends Entity {
       // The destination's MultiAdapter rejects every message of a pool it has no adapters for, and
       // `setAdapters` travels over the global adapters while the pool messages travel over the pool's
       // own. Sent together, the pool messages can arrive first and revert at the bridge; they are then
-      // re-executed there once the adapters have arrived (`Centrifuge.retryLayerZeroDelivery`).
+      // re-executed there once the adapters have arrived (`Centrifuge.retryLayerZeroDelivery`, or the
+      // bridge's own manual execution for Axelar and Chainlink).
       if (plan.action === 'unnamed') {
         throw new Error(
           `The ${plan.side === 'hub' ? 'hub' : `network with centrifugeId ${self.centrifugeId}`} holds a pool ` +
@@ -1729,7 +1785,7 @@ export class PoolNetwork extends Entity {
         throw new Error(
           `Pool "${self.pool.id}" has adapters [${plan.onHub.join(', ')}] on the hub for centrifugeId ` +
             `${self.centrifugeId} but [${plan.onSpoke.join(', ') || 'none'}] on that network, with nothing in ` +
-            `flight. The SDK only wires LayerZero 1/1 and does not overwrite another configuration; set the ` +
+            `flight. The SDK only wires the protocol's global adapter set and does not overwrite another configuration; set the ` +
             `pool's adapters for this network through the protocol's admin instead.`
         )
       }
@@ -1740,28 +1796,27 @@ export class PoolNetwork extends Entity {
       // `wait`: an earlier transaction sent the set and it has not arrived yet. The pool messages go now
       // rather than after it, and are re-executed at the bridge if they arrive first.
       let setAdapters: HexString | null = null
+      let pendingPoolAdapters: PendingPoolAdaptersByChain | undefined
       const setAdaptersMessages: MessageTypeWithSubType[] = [
         { type: MessageType.SetPoolAdapters, poolId: self.pool.id },
       ]
       if (plan.action === 'send') {
-        if (!localLzAdapter || !remoteLzAdapter) {
-          throw new Error(
-            `No LayerZero adapter is deployed on both centrifugeId ${self.pool.centrifugeId} and ` +
-              `${self.centrifugeId}, so pool "${self.pool.id}" cannot be connected to this network`
-          )
-        }
+        const globalSet = deployState.globalAdapterSet
+        if (!globalSet) throw new Error(`Pool "${self.pool.id}" has no global adapter set read to copy`)
+        requireCopyableGlobalSet(globalSet, self.pool.centrifugeId, self.centrifugeId, self.pool.id)
+        const remoteAdapters = globalSet.remote.map((adapter) => addressToBytes32(adapter))
+        pendingPoolAdapters = { [self.centrifugeId]: globalSet.local }
         // v3.3 refuses `setAdapters` inside a Hub batch, so it cannot share the pool messages' transaction.
         if (v3_3 && ctx.isBatching) {
           throw new Error(
             `Pool "${self.pool.id}" has no adapters on centrifugeId ${self.centrifugeId} yet, and on protocol v3.3 ` +
               `setting them cannot be batched or built as one transaction with the deployment: Hub.setAdapters ` +
               `reverts inside a Hub batch. Either run this deployment with a signer, or build ` +
-              `pool.setAdapters([{ centrifugeId: ${self.centrifugeId}, localAdapters: [${localLzAdapter}], ` +
-              `remoteAdapters: [${remoteLzAdapter}] }]) first and, once the hub has executed it and the indexer ` +
+              `pool.setAdapters([{ centrifugeId: ${self.centrifugeId}, localAdapters: [${globalSet.local.join(', ')}], ` +
+              `remoteAdapters: [${globalSet.remote.join(', ')}], threshold: ${globalSet.threshold} }]) first and, once the hub has executed it and the indexer ` +
               `shows it, build this deployment again: it then carries only the pool messages.`
           )
         }
-        // TODO: hotfix - always use LayerZero 1/1; re-enable Axelar when multi-adapter support is restored
         setAdapters = v3_3
           ? // v3.3 dropped the recovery index.
             encodeFunctionData({
@@ -1770,9 +1825,9 @@ export class PoolNetwork extends Entity {
               args: [
                 self.pool.id.raw,
                 self.centrifugeId,
-                [localLzAdapter],
-                [addressToBytes32(remoteLzAdapter)],
-                1, // threshold: always 1/1 with LayerZero
+                globalSet.local,
+                remoteAdapters,
+                globalSet.threshold,
                 refundAddress,
               ],
             })
@@ -1782,10 +1837,10 @@ export class PoolNetwork extends Entity {
               args: [
                 self.pool.id.raw,
                 self.centrifugeId,
-                [localLzAdapter],
-                [addressToBytes32(remoteLzAdapter)],
-                1, // threshold: always 1/1 with LayerZero
-                1, // recovery index: always 1/1 with LayerZero
+                globalSet.local,
+                remoteAdapters,
+                globalSet.threshold,
+                globalSet.recoveryIndex,
                 refundAddress,
               ],
             })
@@ -2059,7 +2114,7 @@ export class PoolNetwork extends Entity {
             policy: { poolId: self.pool.id },
             data: batch,
             messages: { [self.centrifugeId]: messageTypes },
-            pendingPoolAdapters: { [self.centrifugeId]: [localLzAdapter] },
+            pendingPoolAdapters,
           },
         ])
         return
@@ -2070,7 +2125,7 @@ export class PoolNetwork extends Entity {
         contract: hub,
         policy: { poolId: self.pool.id },
         messages: { [self.centrifugeId]: messageTypes },
-        ...(setAdaptersInBatch ? { pendingPoolAdapters: { [self.centrifugeId]: [localLzAdapter] } } : {}),
+        ...(setAdaptersInBatch ? { pendingPoolAdapters } : {}),
       })
     }, this.pool.centrifugeId)
   }

@@ -6,8 +6,8 @@ import type { BuiltTransaction, Transaction } from '../types/transaction.js'
 /**
  * The protocol-neutral name of a pool action (e.g. `updatePoolMetadata`).
  *
- * Provisional: a free string until the protocol builders introduce the closed
- * action catalogue.
+ * A free string; the operation catalogue names every value, see
+ * `operationByPoolAction`.
  */
 export type PoolActionName = string
 

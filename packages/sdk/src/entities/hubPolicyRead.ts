@@ -1,7 +1,7 @@
 import { ABIS_V3_3 } from '@centrifuge/protocol'
 import type { HubPolicyRow, PoolAuthorizationEventRow } from '@centrifuge/queries/core'
 import { combineLatest, defer, filter, of, startWith, switchMap, type Observable } from 'rxjs'
-import { BaseError, ContractFunctionRevertedError, ContractFunctionZeroDataError, zeroAddress } from 'viem'
+import { BaseError, zeroAddress } from 'viem'
 import type { Centrifuge } from '../Centrifuge.js'
 import { AuthorizationFoldError } from '../errors.js'
 import type { HexString } from '../types/index.js'
@@ -12,6 +12,7 @@ import {
   policyNeedingExpiry,
   type PoolAuthorizationList,
 } from '../utils/authorizationFold.js'
+import { isNoAnswer } from '../utils/adapters.js'
 import { Price } from '../utils/BigInt.js'
 import { isV3_3 } from '../utils/protocolVersion.js'
 import { STD_HUB_POLICY_ABI } from '../utils/stdHubPolicy.js'
@@ -220,10 +221,6 @@ export function readAccountingGuard(root: Centrifuge, centrifugeId: CentrifugeId
     { observableCacheTime: Infinity }
   )
 }
-
-/** A call that reverted or returned no data: the contract has no such view. */
-const isNoAnswer = (error: unknown) =>
-  error instanceof ContractFunctionRevertedError || error instanceof ContractFunctionZeroDataError
 
 /** A numeric(78,0) column the API returns as a decimal string. */
 function numeric(value: string, name: string): bigint {

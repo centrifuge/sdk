@@ -73,7 +73,7 @@ export type RestRouteTable = {
  * Which vertical owns each entry's REST route.
  *
  * - `"tokenizations"`, `"holdings"`, `"vaults"`, `"pool-access"`, `"nav"`,
- *   `"investors"`, `"orders"`, `"on-off-ramp"` — the vertical whose endpoints
+ *   `"investors"`, `"orders"`, `"on-off-ramp"`, `"basin"` — the vertical whose endpoints
  *   serve the entry, and which carries its row in {@link REST_ROUTES}. An
  *   entry named here with no row in that table falls back to the graphql
  *   adapter, transparently, and the row is what the vertical still owes.
@@ -81,9 +81,10 @@ export type RestRouteTable = {
  *   than by omission: `deployments` is version-keyed registry data that lives
  *   on public-api, and the SDK reads it for display only, since the verified
  *   deployment registry it transacts against ships inside
- *   `@centrifuge/protocol`. `hubSharePricesReport` sits here too: backend
- *   mode delegates it to the graphql adapter per entry, like every unrouted
- *   entry, and the NAV vertical has no hub-series endpoint to route it to.
+ *   `@centrifuge/protocol`. `hubSharePricesReport` and `sharePriceUpdates`
+ *   sit here too: backend mode delegates them to the graphql adapter per
+ *   entry, like every unrouted entry, and the NAV vertical has no endpoint for
+ *   the hub `token_snapshot` rows.
  *
  * Exhaustive over the catalogue: adding an entry without classifying it is a
  * compile error, so which entries still fall back — and which vertical
@@ -98,6 +99,7 @@ export type RestRouteOwner =
   | "investors"
   | "orders"
   | "on-off-ramp"
+  | "basin"
   | "public-api";
 
 export const REST_ROUTE_OWNERS: Record<SdkQueryName, RestRouteOwner> = {
@@ -128,7 +130,9 @@ export const REST_ROUTE_OWNERS: Record<SdkQueryName, RestRouteOwner> = {
   // NAV: the two snapshot-backed reports.
   sharePricesReport: "nav",
   shareYieldsReport: "nav",
+  // Hub token_snapshot reads: no REST endpoint serves them, so they fall back to GraphQL.
   hubSharePricesReport: "public-api",
+  sharePriceUpdates: "public-api",
   // Investors: whitelist, holders, portfolios, statements.
   // Five of the six are routed below. `investorPortfolioSources` is the one
   // that is not, and it is a MISSING endpoint rather than a decision — see
@@ -155,15 +159,11 @@ export const REST_ROUTE_OWNERS: Record<SdkQueryName, RestRouteOwner> = {
   onOffRampManagers: "on-off-ramp",
   // Stays on public-api by decision: version-keyed registry data.
   deployments: "public-api",
-  // Basin (backend#629 Stage 2a). The private-api REST routes that #97 added
-  // for these reads are session-authed behind `PoolRolesGuard`, so they are
-  // not reachable from the SDK's credential-less surface; these five go to
-  // public-api. Stage 3 of that issue adds the authed `/backend` variants.
-  basinDebt: "public-api",
-  basinDebtChanges: "public-api",
-  basinFees: "public-api",
-  basinSwaps: "public-api",
-  basinRedeemRequests: "public-api",
+  basinDebt: "basin",
+  basinDebtChanges: "basin",
+  basinFees: "basin",
+  basinSwaps: "basin",
+  basinRedeemRequests: "basin",
 };
 
 /**
@@ -1666,4 +1666,33 @@ export const REST_ROUTES: RestRouteTable = {
       `/share-classes/${tokenId}/on-ramp-assets` +
       `?centrifugeId=${centrifugeId}`,
   },
+  basinDebt: {
+    path: (params) => basinLedgerPath("debt", params),
+  },
+  basinDebtChanges: {
+    path: (params) => basinLedgerPath("debt-changes", params),
+  },
+  basinFees: {
+    path: (params) => basinLedgerPath("fees", params),
+  },
+  basinSwaps: {
+    path: (params) => basinLedgerPath("swaps", params),
+  },
+  basinRedeemRequests: {
+    path: (params) => basinLedgerPath("redeem-requests", params),
+  },
 };
+
+function basinLedgerPath(
+  route: string,
+  params: { poolId: string } & Record<string, string | number | undefined>,
+): string {
+  const { poolId, ...rest } = params;
+  const query = new URLSearchParams();
+  for (const [key, value] of Object.entries(rest)) {
+    if (value !== undefined) {
+      query.set(key, String(value));
+    }
+  }
+  return `basin/pools/${poolId}/${route}?${query}`;
+}

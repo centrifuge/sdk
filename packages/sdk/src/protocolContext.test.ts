@@ -3,6 +3,7 @@ import { encodeFunctionData, parseAbi, toHex } from 'viem'
 import {
   ABIS_V3_2,
   ABIS_V3_2 as ABI,
+  ABIS_V3_3,
   builders,
   createDeploymentRegistry,
   DEFAULT_DEPLOYMENT_DATA,
@@ -16,6 +17,7 @@ import { BehaviorSubject, concat, defer, firstValueFrom, of, Subject, throwError
 import type { PoolMigrationRow } from '@centrifuge/queries/core'
 import { ApiV3UnsupportedError } from '@centrifuge/queries/graphql'
 import { Centrifuge } from './Centrifuge.js'
+import { pool32Id, pool33Id, setupV33, STD_HUB_POLICY_FACTORY } from './tests/hubGroup.js'
 import { PoolId } from './utils/types.js'
 
 function withProjectedPools(centrifuge: Centrifuge, rows: { id: string; protocolVersion: string | null }[]) {
@@ -34,18 +36,28 @@ describe('protocol context', () => {
   afterEach(() => sinon.restore())
 
   describe('protocolContext', () => {
-    it('resolves a chain-scoped context from the bundled registry (no indexer)', async () => {
+    it('resolves a chain-scoped context from the bundled registry (no indexer), at the newest version: v3.3 on mainnet', async () => {
       const centrifuge = new Centrifuge({ environment: 'mainnet' })
       const ctx = await centrifuge.protocolContext(1)
 
-      expect(ctx.protocolVersion).to.equal('3.2')
+      expect(ctx.protocolVersion).to.equal('3.3')
       expect(ctx.chainId).to.equal(1)
       expect(ctx.centrifugeId).to.equal(1)
-      expect(ctx.hub).to.equal('0xA4A7Bb3831958463b3FE3E27A6a160F764341953')
-      expect(ctx.hubRegistry).to.equal('0x19f46D8130e610C6C0f0116EA40Fb781dEFaDE93')
+      expect(ctx.hub).to.equal('0x85056A78e79E5D17A9b25a09377EaA310f69B743')
+      expect(ctx.hubRegistry).to.equal('0xC81236A945503DdA6eCC4E544A5060a554e58745')
       expect(ctx.abis.hub).to.exist
       // Chain-scoped targets carry no pure-builder context (no pool).
       expect(ctx.context).to.equal(undefined)
+    })
+
+    it("resolves the mainnet v3.3.0 hub when v3.3 is named, and v3.2's when v3.2 is", async () => {
+      const centrifuge = new Centrifuge({ environment: 'mainnet' })
+      const v33 = await centrifuge.protocolContext({ centrifugeId: 1, protocolVersion: '3.3' })
+      const v32 = await centrifuge.protocolContext({ centrifugeId: 1, protocolVersion: '3.2' })
+
+      expect(v33.hub).to.equal('0x85056A78e79E5D17A9b25a09377EaA310f69B743')
+      expect(v32.hub).to.equal('0xA4A7Bb3831958463b3FE3E27A6a160F764341953')
+      expect(v32.hubRegistry).to.equal('0x19f46D8130e610C6C0f0116EA40Fb781dEFaDE93')
     })
 
     it('resolves a pool-scoped context from the version the pools entry projects', async () => {
@@ -54,6 +66,8 @@ describe('protocol context', () => {
       withProjectedPools(centrifuge, [{ id: poolId.toString(), protocolVersion: '3.2' }])
       const ctx = await centrifuge.protocolContext(poolId)
 
+      expect(ctx.protocolVersion).to.equal('3.2')
+      expect(ctx.hub).to.equal('0xA4A7Bb3831958463b3FE3E27A6a160F764341953')
       expect(ctx.context).to.exist
       expect(ctx.context!.poolId).to.equal(poolId.raw.toString())
       expect(ctx.context!.protocolVersion).to.equal('3.2')
@@ -63,12 +77,25 @@ describe('protocol context', () => {
 
     it('resolves a pool-scoped context from the only deployed version while the pools entry does not know the pool', async () => {
       const centrifuge = new Centrifuge({ environment: 'mainnet' })
-      const poolId = PoolId.from(1, 1)
+      const poolId = PoolId.from(15, 1)
       withProjectedPools(centrifuge, [])
       const ctx = await centrifuge.protocolContext(poolId)
 
-      expect(ctx.protocolVersion).to.equal('3.2')
+      expect(ctx.protocolVersion).to.equal('3.3')
       expect(ctx.context!.poolId).to.equal(poolId.raw.toString())
+    })
+
+    it('refuses a pool-scoped context the pools entry does not know on a mainnet chain serving v3.2 and v3.3', async () => {
+      const centrifuge = new Centrifuge({ environment: 'mainnet' })
+      withProjectedPools(centrifuge, [])
+      let error: unknown
+      try {
+        await centrifuge.protocolContext(PoolId.from(1, 1))
+      } catch (e) {
+        error = e
+      }
+      expect((error as Error).name).to.equal('ProtocolVersionResolutionError')
+      expect((error as Error).message).to.contain('refusing to guess')
     })
 
     it('refuses a pool-scoped context when the pools entry carries no version', async () => {
@@ -87,8 +114,8 @@ describe('protocol context', () => {
 
     it('refuses a pool-scoped context when the projected version is not deployed on the chain', async () => {
       const centrifuge = new Centrifuge({ environment: 'mainnet' })
-      const poolId = PoolId.from(1, 1)
-      withProjectedPools(centrifuge, [{ id: poolId.toString(), protocolVersion: '3.3' }])
+      const poolId = PoolId.from(15, 1)
+      withProjectedPools(centrifuge, [{ id: poolId.toString(), protocolVersion: '3.2' }])
       let error: unknown
       try {
         await centrifuge.protocolContext(poolId)
@@ -96,7 +123,7 @@ describe('protocol context', () => {
         error = e
       }
       expect((error as Error).name).to.equal('ProtocolVersionResolutionError')
-      expect((error as Error).message).to.contain('"3.3" is not deployed')
+      expect((error as Error).message).to.contain('"3.2" is not deployed')
     })
 
     it('refuses a spoke-scoped context when the pool version is not deployed on that chain', async () => {
@@ -166,12 +193,12 @@ describe('protocol context', () => {
       expect((await centrifuge.adapters(1)).hyperlaneAdapter).to.equal(hyperlane)
     })
 
-    it('adapters() leaves hyperlaneAdapter undefined on v3.2 chains', async () => {
+    it('a v3.2 context leaves hyperlaneAdapter undefined on every mainnet chain', async () => {
       const centrifuge = new Centrifuge({ environment: 'mainnet' })
       const centrifugeIds = Object.keys(DEFAULT_DEPLOYMENT_DATA.mainnet['3.2'] ?? {}).map(Number)
       for (const centrifugeId of centrifugeIds) {
-        const adapters = await centrifuge.adapters(centrifugeId)
-        expect(adapters.hyperlaneAdapter, `chain ${centrifugeId}`).to.equal(undefined)
+        const v32 = await centrifuge.protocolContext({ centrifugeId, protocolVersion: '3.2' })
+        expect(v32.hyperlaneAdapter, `chain ${centrifugeId}`).to.equal(undefined)
       }
       const testnet = new Centrifuge({ environment: 'testnet' })
       const v32 = await testnet.protocolContext({ centrifugeId: 1, protocolVersion: '3.2' })
@@ -272,14 +299,54 @@ describe('protocol context', () => {
   })
 })
 
+describe('stdHubPolicyFactory on the context', () => {
+  afterEach(() => sinon.restore())
+
+  it("is the address the hub chain's v3.3 stack lists, for a v3.3 pool", async () => {
+    const { centrifuge } = setupV33({}, [], { stdHubPolicyFactory: STD_HUB_POLICY_FACTORY })
+
+    const ctx = await centrifuge.protocolContext(pool33Id)
+
+    expect(ctx.stdHubPolicyFactory).to.equal(STD_HUB_POLICY_FACTORY)
+  })
+
+  it('comes with the book’s ABI for it, keyed by its registry name', async () => {
+    const { centrifuge } = setupV33({}, [], { stdHubPolicyFactory: STD_HUB_POLICY_FACTORY })
+
+    const ctx = await centrifuge.protocolContext(pool33Id)
+
+    expect(ctx.abis.stdHubPolicyFactory).to.equal(ABIS_V3_3.StdHubPolicyFactory)
+  })
+
+  it('is absent where the stack lists none, and the context still resolves', async () => {
+    const { centrifuge } = setupV33({}, [], { stdHubPolicyFactory: null })
+
+    const ctx = await centrifuge.protocolContext(pool33Id)
+
+    expect(ctx.protocolVersion).to.equal('3.3')
+    expect(ctx.stdHubPolicyFactory).to.equal(undefined)
+  })
+
+  it('is absent from a v3.2 pool, whose stack never lists it', async () => {
+    const { centrifuge } = setupV33({}, [], { stdHubPolicyFactory: STD_HUB_POLICY_FACTORY })
+
+    const ctx = await centrifuge.protocolContext(pool32Id)
+
+    expect(ctx.protocolVersion).to.equal('3.2')
+    expect(ctx.stdHubPolicyFactory).to.equal(undefined)
+  })
+})
+
 describe('contract ABIs on the context', () => {
   afterEach(() => sinon.restore())
 
   it('exposes the typed ABI set of the resolved version', async () => {
     const centrifuge = new Centrifuge({ environment: 'mainnet' })
-    const ctx = await centrifuge.protocolContext(1)
-    expect(ctx.contractAbis).to.equal(ABIS_V3_2)
-    expect(ctx.contractAbis.Hub).to.equal(ABI.Hub)
+    const v33 = await centrifuge.protocolContext(1)
+    const v32 = await centrifuge.protocolContext({ centrifugeId: 1, protocolVersion: '3.2' })
+    expect((v33.contractAbis.Hub as unknown) === ABIS_V3_3.Hub, 'v3.3 Hub ABI').to.equal(true)
+    expect(v32.contractAbis).to.equal(ABIS_V3_2)
+    expect(v32.contractAbis.Hub).to.equal(ABI.Hub)
   })
 
   it('resolves a spoke-side context from the pool version with the spoke address set', async () => {
@@ -324,7 +391,8 @@ describe('spoke version during a pool migration', () => {
     sinon.stub(centrifuge as any, '_queryData').callsFake((...args: unknown[]) => {
       const name = args[0] as string
       reads.push(name)
-      if (name === 'pools') return of([{ id: poolId.toString(), protocolVersion: poolVersion, migrationStatus: 'live' }])
+      if (name === 'pools')
+        return of([{ id: poolId.toString(), protocolVersion: poolVersion, migrationStatus: 'live' }])
       if (name === 'poolMigration') return migration
       throw new Error(`unexpected catalogue read ${name}`)
     })
@@ -444,14 +512,20 @@ describe('spoke version during a pool migration', () => {
   })
 
   it('does not read the migration for a pool that still reads v3.2', async () => {
-    const { centrifuge, reads } = withMigration('3.2', throwError(() => new Error('must not be read')))
+    const { centrifuge, reads } = withMigration(
+      '3.2',
+      throwError(() => new Error('must not be read'))
+    )
     const spoke = await centrifuge.protocolContext({ poolId, centrifugeId: SPOKE })
     expect(spoke.protocolVersion).to.equal('3.2')
     expect(reads).to.not.include('poolMigration')
   })
 
   it('refuses a v3.3 spoke context whose migration cannot be read, naming the read', async () => {
-    const { centrifuge } = withMigration('3.3', throwError(() => new Error('indexer 502')))
+    const { centrifuge } = withMigration(
+      '3.3',
+      throwError(() => new Error('indexer 502'))
+    )
     const error = await errorOf(centrifuge.protocolContext({ poolId, centrifugeId: SPOKE }))
     expect(error.name).to.equal('ProtocolVersionResolutionError')
     expect(error.message).to.contain('its migration could not be read')
@@ -459,7 +533,10 @@ describe('spoke version during a pool migration', () => {
   })
 
   it('resolves the pool version on an api-v3 source, which has no migration projection', async () => {
-    const { centrifuge } = withMigration('3.3', throwError(() => new ApiV3UnsupportedError()))
+    const { centrifuge } = withMigration(
+      '3.3',
+      throwError(() => new ApiV3UnsupportedError())
+    )
     const spoke = await centrifuge.protocolContext({ poolId, centrifugeId: SPOKE })
     expect(spoke.protocolVersion).to.equal('3.3')
   })

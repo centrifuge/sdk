@@ -33,7 +33,6 @@ export const CONTRACT_SCHEMA_V3_3: ContractSchema = {
     "hubHandler",
     "hubRegistry",
     "identityValuation",
-    "layerZeroAdapter",
     "messageDispatcher",
     "messageProcessor",
     "multiAdapter",
@@ -63,5 +62,11 @@ export const CONTRACT_SCHEMA_V3_3: ContractSchema = {
     "tokenBridge",
     "vaultRouter",
   ],
-  optional: ["axelarAdapter", "chainlinkAdapter", "hyperlaneAdapter"],
+  optional: [
+    "axelarAdapter",
+    "chainlinkAdapter",
+    "hyperlaneAdapter",
+    "layerZeroAdapter",
+    "stdHubPolicyFactory",
+  ],
 };

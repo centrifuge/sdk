@@ -106,10 +106,11 @@ export type ActionRouteTable = Readonly<Partial<Record<PoolActionName, BackendRo
  * `LocalBuild` until one exists — the same position `pool.createAccounts()` and
  * `pool.planAccountingUpdate()` are in.
  *
- * `pool.initiateAuthorizations()`, `pool.scheduleOutOfPolicy()`, `pool.executeAuthorizations()` and
- * `pool.cancelAuthorization()` are in that position too: no `PoolAction`, so the connected wallet signs them in
- * backend mode as well. All four are manager-only on chain, so a pool whose managers sign through the backend (a
- * Fordefi vault) cannot schedule, execute or cancel from a browser wallet until an action exists.
+ * `pool.initiateAuthorizations()`, `pool.scheduleOutOfPolicy()`, `pool.executeAuthorizations()`,
+ * `pool.cancelAuthorization()` and `pool.installHubPolicy()` are in that position too: no `PoolAction`, so the
+ * connected wallet signs them in backend mode as well. All five are manager-only on chain, so a pool whose managers
+ * sign through the backend (a Fordefi vault) cannot schedule, execute, cancel or install from a browser wallet until an
+ * action exists. `pool.deployHubPolicy()` is permissionless and never needs the backend.
  *
  * ## The one deliberate behaviour change, stated rather than buried
  *

@@ -140,7 +140,7 @@ import { assertCidMatchesContent } from './utils/cid.js'
 import { assertCrosschainMessagingEnabled } from './utils/crosschainHotfix.js'
 import { addEstimateBuffer, estimateBatchBridgeFee } from './utils/gas.js'
 import { generateShareClassSalt, randomUint } from './utils/index.js'
-import { createPinning, getUrlFromHash, isTrustedGatewayUrl } from './utils/ipfs.js'
+import { createPinning, getUrlFromHash, ipfsPathFromHash, isTrustedGatewayUrl } from './utils/ipfs.js'
 import { hashKey } from './utils/query.js'
 import { bytes32ToAddress, LAYER_ZERO_ENDPOINT_ABI, readLayerZeroDeliveries } from './utils/layerZeroDelivery.js'
 import {
@@ -1297,7 +1297,7 @@ export class Centrifuge {
         ...new Map(
           contexts
             .map((context) => context.layerZeroAdapter)
-            .filter(Boolean)
+            .filter((adapter): adapter is HexString => adapter !== undefined)
             .map((adapter) => [adapter.toLowerCase(), adapter])
         ).values(),
       ])
@@ -1568,8 +1568,12 @@ export class Centrifuge {
         if (!res.ok) {
           throw new Error(`Error fetching IPFS hash ${hash}: ${res.statusText}`)
         }
-        const data = (await res.json()) as Result
-        return data
+        // The gateway, or anything between us and it, can serve any bytes, and pool metadata feeds
+        // policy edits, Merkle roots and the metadata migration. Use it only when it hashes to the
+        // CID the chain names; a path inside a directory CID cannot be checked and is refused.
+        const body = new Uint8Array(await res.arrayBuffer())
+        assertCidMatchesContent(ipfsPathFromHash(hash), body, 'IPFS metadata')
+        return JSON.parse(new TextDecoder().decode(body)) as Result
       })
     )
   }
@@ -2162,17 +2166,16 @@ export class Centrifuge {
 
   /**
    * Refuse a write the pool's migration phase does not allow on the spoke it
-   * targets, with {@link PoolMigratingError}. The row is read first, and a pool
-   * with no row or a hub phase of `none` passes without reading further; an
-   * armed pool's full migration is read once and kept warm for a minute. Each
-   * target resolves to its spoke with `spokeOfAction` and is judged once. The
+   * targets, with {@link PoolMigratingError}. The hub facade's `hubPhase` is read
+   * first, and a pool whose hub chain lists no facade or whose phase is `none`
+   * passes without reading the indexer; an armed pool's full migration is read
+   * afresh for every write. Each target resolves to its spoke with `spokeOfAction` and is judged once. The
    * hub chain without a row of its own is judged from the hub phase (P1, P4,
    * P6); any other network without a row is not part of the migration and
-   * passes. A spoke whose step history disagrees with the facade refuses; one
-   * whose facade could not be read passes with a warning, as does a migration
-   * that could not be read at all: the chain still refuses what it must, and an
-   * RPC or indexer failure must not freeze every pool. A name the gate table
-   * does not map passes without a read.
+   * passes. A spoke whose step history disagrees with the facade refuses. A read
+   * that fails (the hub phase, a spoke facade, the migration rows) refuses with
+   * no phase, on mainnet as on testnet: the write waits until the state can be
+   * known. A name the gate table does not map passes without a read.
    * @internal
    */
   async _migrationGate(poolId: string, actionName: PoolActionName, targets: readonly MigrationGateTarget[]) {
@@ -2191,7 +2194,7 @@ export class Centrifuge {
 
   /**
    * What {@link _migrationGate} would decide, as an answer instead of a throw;
-   * `pool.isAllowed` reads it. Same reads, same fallbacks.
+   * `pool.isAllowed` reads it. Same reads.
    * @internal
    */
   async _migrationGateAnswer(
@@ -2256,9 +2259,9 @@ export class Centrifuge {
     | { phase: undefined; error: string }
   > {
     const id = new PoolId(poolId)
-    const facade = migrationFacadeOf(id.centrifugeId, this.#config.environment)
-    if (!facade) return { phase: null, error: null }
     try {
+      const facade = migrationFacadeOf(id.centrifugeId, this.#config.environment)
+      if (!facade) return { phase: null, error: null }
       const client = (await firstValueFrom(this.getClient(id.centrifugeId))) as PublicClient
       const phase = await client.readContract({
         address: facade.address,

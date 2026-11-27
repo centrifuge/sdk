@@ -243,15 +243,15 @@ describe('PoolNetwork on/off-ramp factory resolution', () => {
       expect(walletClient.writeContract.called).to.equal(false)
     })
 
-    for (const [label, factories, expected] of [
-      ['onOffRampFactory', { onOffRampFactory: newFactory, accountingToken }, newFactory],
-      ['the legacy factory', { onOfframpManagerFactory: legacyFactory }, legacyFactory],
+    for (const [label, factories, expected, eventName] of [
+      ['onOffRampFactory', { onOffRampFactory: newFactory, accountingToken }, newFactory, 'DeployOnOffRamp'],
+      ['the legacy factory', { onOfframpManagerFactory: legacyFactory }, legacyFactory, 'DeployOnOfframpManager'],
     ] as const) {
       it(`on a Safe, precomputes and writes against ${label}, resolving the same factory for both`, async () => {
-        const precomputed = '0x7777777777777777777777777777777777777777'
         const { poolNetwork, publicClient, walletClient, protocolContext, register } = subject(factories, {
           isSafeWallet: true,
-          simulateResult: precomputed,
+          simulateResult: deployedManager,
+          receipt: deployReceipt(expected, eventName),
         })
 
         await deployAndRegister(poolNetwork)
@@ -260,9 +260,36 @@ describe('PoolNetwork on/off-ramp factory resolution', () => {
         expect(walletClient.writeContract.firstCall.args[0].address).to.equal(expected)
         // The pre-check reads the pool's and the network's entries; the deploy step reads the network's once.
         expect(protocolContext.callCount).to.equal(3)
-        expect(register.firstCall.args).to.deep.equal([precomputed, scId])
+        expect(register.firstCall.args).to.deep.equal([deployedManager, scId])
       })
     }
+
+    it('on a Safe, registers nothing when the simulated address is not the one the receipt deployed', async () => {
+      const simulated = '0x7777777777777777777777777777777777777777'
+      const { poolNetwork, register } = subject(
+        { onOffRampFactory: newFactory, accountingToken },
+        { isSafeWallet: true, simulateResult: simulated, receipt: deployReceipt(newFactory, 'DeployOnOffRamp') }
+      )
+
+      const error = await captureError(() => deployAndRegister(poolNetwork))
+
+      expect(error?.message).to.contain(deployedManager)
+      expect(error?.message).to.contain(simulated)
+      expect(error?.message).to.contain('no roles were granted')
+      expect(register.called).to.equal(false)
+    })
+
+    it('on a Safe, registers nothing when the receipt carries no deploy event', async () => {
+      const { poolNetwork, register } = subject(
+        { onOffRampFactory: newFactory, accountingToken },
+        { isSafeWallet: true, simulateResult: deployedManager }
+      )
+
+      const error = await captureError(() => deployAndRegister(poolNetwork))
+
+      expect(error?.message).to.equal('DeployOnOfframpManager event not found')
+      expect(register.called).to.equal(false)
+    })
   })
 })
 

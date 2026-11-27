@@ -5,6 +5,7 @@ import {
 } from "@centrifuge/addressbook";
 import type { Hex } from "viem";
 import { describe, expect, it } from "vitest";
+import { DEFAULT_ABI_SETS } from "../abis";
 import { abiDigest } from "../abis/digest";
 import { ABIS_V3_2 } from "../abis/v3_2";
 import { ABIS_V3_3 } from "../abis/v3_3";
@@ -97,29 +98,30 @@ describe("assertDeployedContractVersion against the bundled book", () => {
     );
   });
 
-  it("compares a v3.3 call with the v3.3 ABI", () => {
-    const error = refusal(() =>
-      assertDeployedContractVersion(feeder(1, PROTOCOL_VERSION_V3_3)),
-    );
-
-    expect(error.buildDigest).toBe(abiDigest(ABIS_V3_3.OracleValuation));
-  });
-
-  it("refuses a v3.3 call on mainnet, which serves only v3.2, though the book's v3.3.0 record carries the v3.3 digest", () => {
+  it("accepts a v3.3 call on mainnet, whose book v3.3.0 record carries the v3.3 digest", () => {
     const stack = addressBook.networks.mainnet.chains["1"]!.stacks["v3.3.0"]!;
     const address = stack.oracleValuation!.toLowerCase() as Hex;
     expect(
       addressBook.networks.mainnet.chains["1"]!.addresses[address]!.abi?.digest,
     ).toBe(abiDigest(ABIS_V3_3.OracleValuation));
 
-    const error = refusal(() =>
+    expect(() =>
       assertDeployedContractVersion(feeder(1, PROTOCOL_VERSION_V3_3)),
+    ).not.toThrow();
+  });
+
+  it("refuses a call for a protocol version the registry does not serve, though an ABI is built for it", () => {
+    const error = refusal(() =>
+      assertDeployedContractVersion(feeder(1, "9.9"), addressBook, {
+        ...DEFAULT_ABI_SETS,
+        "9.9": { oracleValuation: ABIS_V3_3.OracleValuation },
+      }),
     );
 
     expect(error).toMatchObject({ served: false, address: null });
     expect(error.message).toBe(
       "Pool.updateOracleValuationFeeder is not available on mainnet centrifugeId 1 (ethereum): " +
-        "protocol 3.3 is not served on mainnet",
+        "protocol 9.9 is not served on mainnet",
     );
   });
 

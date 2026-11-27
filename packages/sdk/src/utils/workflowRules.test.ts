@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs'
 import { expect } from 'chai'
 import type { CatalogAction, CatalogTemplate } from '../types/workflow.js'
 import {
@@ -754,6 +755,77 @@ describe('utils/workflowRules', () => {
       }
       expect(checkApprovalExactness(template, describe_)).to.deep.equal([])
     })
+
+    it('checks a callback template reached through useTemplate, though it declares param variables', () => {
+      const callback = {
+        variables: [
+          { name: 'spender', kind: 'param' as const },
+          { name: 'amount', kind: 'param' as const },
+        ],
+        actions: [approve('$spender', '$amount')],
+      }
+      expect(rules(checkApprovalExactness(callback, describe_, { runsAsScript: true }))).to.deep.equal([
+        'approval-not-exact',
+      ])
+    })
+
+    it('flags a residual approval inside a callback reached only through useTemplate, through validateCatalogWorkflow', () => {
+      const templates: Record<string, CatalogTemplate> = {
+        loop: {
+          id: 'loop',
+          variables: [{ name: 'lender', kind: 'pinned' }],
+          actions: [
+            action({
+              target: '$lender',
+              selector: 'function flashLoan(bytes)',
+              inputs: [{ parameter: 'bytes', input: [], useTemplate: { template: 'callback' } }],
+            }),
+          ],
+        },
+        callback: {
+          id: 'callback',
+          variables: [
+            { name: 'vault', kind: 'param' },
+            { name: 'amount', kind: 'param' },
+          ],
+          actions: [approve('$vault', '$amount')],
+        },
+      }
+      const violations = validateCatalogWorkflow(
+        { id: 'w', template: 'loop', variables: { lender: '0x1111111111111111111111111111111111111111' } },
+        templates
+      )
+      expect(rules(violations)).to.include('approval-not-exact')
+    })
+
+    it('passes the published morpho loop callback, every approval consumed or reset to zero', () => {
+      const callback = JSON.parse(
+        readFileSync(new URL('./__fixtures__/morpho_loop_deposit_callback.json', import.meta.url), 'utf8')
+      ) as CatalogTemplate
+      expect(checkApprovalExactness(callback, describe_, { runsAsScript: true })).to.deep.equal([])
+
+      const withoutDeposit = { ...callback, actions: callback.actions.filter((a) => !a.selector.includes('deposit(')) }
+      expect(rules(checkApprovalExactness(withoutDeposit, describe_, { runsAsScript: true }))).to.include(
+        'approval-not-exact'
+      )
+    })
+
+    it('treats an approval to zero as safe, since it leaves no allowance', () => {
+      const template = { actions: [approve('$vault', '0')] }
+      expect(checkApprovalExactness(template, describe_)).to.deep.equal([])
+    })
+
+    for (const selector of [
+      'function approve(address spender, uint256 amount)',
+      'function approve(address,uint)',
+      'function approve(address,uint256) external returns (bool)',
+      'approve(address,uint256)',
+    ]) {
+      it(`recognises the approval written as "${selector}", which encodes as approve(address,uint256)`, () => {
+        const template = { actions: [{ ...approve('$vault', '$amount'), selector }] }
+        expect(rules(checkApprovalExactness(template, describe_))).to.deep.equal(['approval-not-exact'])
+      })
+    }
 
     it('reads the amount from the last slot of an ERC-6909 approval', () => {
       // approve(spender, id, amount) — taking inputs[1] would compare the token id instead.

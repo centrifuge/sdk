@@ -14,6 +14,7 @@ import { Centrifuge } from '../Centrifuge.js'
 import { backendRoutingTable } from '../data/routing.js'
 import type { HexString } from '../types/index.js'
 import type { PoolAction, PrepareOutcome, TxStrategy } from '../tx/TxStrategy.js'
+import { notMigrating } from '../tests/utils.js'
 import { makeThenable } from '../utils/rx.js'
 import { PoolId, ShareClassId } from '../utils/types.js'
 import { Pool } from './Pool.js'
@@ -77,15 +78,17 @@ function stubChain(centrifuge: Centrifuge) {
     .stub(centrifuge as any, 'getChainConfig')
     .callsFake((id: any) => thenable({ id: chainOf(Number(id)), name: 'test', nativeCurrency: {}, rpcUrls: {} }))
   sinon.stub(centrifuge as any, 'getClient').callsFake(() =>
-    thenable({
-      getCode: async () => undefined,
-      readContract: async () => undefined,
-      waitForTransactionReceipt: async ({ hash }: { hash: HexString }) => ({
-        status: 'success',
-        transactionHash: hash,
-        logs: receiptLogs,
-      }),
-    })
+    thenable(
+      notMigrating({
+        getCode: async () => undefined,
+        readContract: async () => undefined,
+        waitForTransactionReceipt: async ({ hash }: { hash: HexString }) => ({
+          status: 'success',
+          transactionHash: hash,
+          logs: receiptLogs,
+        }),
+      })
+    )
   )
   // The cross-chain fee is a chain read (`MultiAdapter.estimate`) and is not
   // what any case here is about: the CALLDATA parity cases run through

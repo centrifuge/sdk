@@ -193,6 +193,18 @@ const report = await pool.reports.sharePrices({
 })
 ```
 
+The price reports (`pool.reports.hubSharePrices`, `pool.reports.sharePrices`) return one price per `groupBy` period, a day by default. To read the log of the price updates the hub committed for a share class, one entry per commit, oldest first:
+
+```typescript
+// A query: await it, or subscribe to it for updates. `from` and `to` are optional and bound the commit time;
+// an invalid Date throws a RangeError.
+const updates = await shareClass.sharePriceUpdates({
+  from: new Date('2026-01-01T00:00:00Z'),
+  to: new Date('2026-01-31T00:00:00Z'),
+})
+// [{ price: Price, committedAt: Date, computedAt: Date | null }, ...]
+```
+
 ### Developer Guide
 
 #### Development Mode

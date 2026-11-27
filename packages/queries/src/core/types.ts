@@ -1447,10 +1447,9 @@ export interface ShareYields {
  * A different table from {@link SharePriceSnapshot}, and deliberately so:
  * yields live on the share-class-level `token_snapshot`, not the per-network
  * `token_instance_snapshot`, and they are written on price-update events
- * (`shareClassManager:UpdatePricePoolPerShare:*`) as well as on the daily
- * boundary. Verified live: 5938 of 9986 mainnet `token_snapshot` rows are daily
- * boundaries and the remaining 4048 are price updates, while all 14523
- * `token_instance_snapshot` rows are daily boundaries.
+ * (`shareClassManager:UpdatePricePoolPerShare`) and share class updates
+ * (`shareClassManager:UpdateShareClass`) as well as on the daily boundary,
+ * while every `token_instance_snapshot` row is a daily boundary.
  *
  * Rows are returned newest-first, which the SDK's `_process` depends on: it
  * keeps the FIRST row it sees for a `(date, id)` pair as that day's figure.

@@ -464,6 +464,7 @@ export const PRECHECK_ABI = parseAbi([
   'function vaultDetails(address vault) view returns (uint128 assetId, address asset, uint256 tokenId, bool isLinked)',
   'event UpdateManager(uint64 indexed poolId, address indexed who, bool canManage)',
   'event Rely(address indexed user)',
+  'error ShareTokenDoesNotExist()',
 ])
 
 const HUB_ASSET_DECIMALS_ABI = parseAbi(['function decimals(uint128 assetId) view returns (uint8)'])
@@ -2235,7 +2236,7 @@ export class MigrationPreCheck {
     const { scIds, tokens } = await this.spokeClasses(site, hubCount)
     await this.spokeHooks(site, scIds, tokens)
     const candidates = await this.candidates.spoke(cid, scIds)
-    const vaults = await this.spokeVaults(site, candidates)
+    const vaults = await this.spokeVaults(site, scIds, candidates)
     await this.spokeClaimables(site, scIds, vaults)
     const { assetIds, assets } = await this.spokeEscrow(site, scIds)
     await this.spokeForeignShareTokens(site, scIds, tokens, assets)
@@ -2390,10 +2391,15 @@ export class MigrationPreCheck {
     )
   }
 
-  private async spokeVaults(site: PreCheckSite, candidates: MigrationSpokeCandidates): Promise<MigrationLiveVault[]> {
+  private async spokeVaults(
+    site: PreCheckSite,
+    scIds: readonly ShareClassId[],
+    candidates: MigrationSpokeCandidates
+  ): Promise<MigrationLiveVault[]> {
     const section = 'spoke.vaults'
     const cid = site.centrifugeId
-    const { vaults, unknown } = await site.inputs.liveVaults(this.poolId, unique(candidates.vaults))
+    const linked = await site.inputs.linkedVaultsOnChain(this.poolId, scIds)
+    const { vaults, unknown } = await site.inputs.liveVaults(this.poolId, unique([...candidates.vaults, ...linked]))
     const registry = site.v33?.spokeRegistry ?? null
     const links = registry
       ? await this.read(
@@ -2691,7 +2697,8 @@ export class MigrationPreCheck {
     const hubCount = this.hub ? await this.classCount(this.hub) : 0
     const { scIds } = await site.inputs.spokeClasses(this.poolId, hubCount)
     const candidates = await this.candidates.spoke(centrifugeId, scIds)
-    const { vaults } = await site.inputs.liveVaults(this.poolId, unique(candidates.vaults))
+    const linked = await site.inputs.linkedVaultsOnChain(this.poolId, scIds)
+    const { vaults } = await site.inputs.liveVaults(this.poolId, unique([...candidates.vaults, ...linked]))
     const { states, gaps } = await this.claimableStates(site, scIds, vaults)
     const items = states.flatMap((state): MigrationClaimable[] => {
       const base = {

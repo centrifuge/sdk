@@ -7,8 +7,8 @@ settings:
 catalogs:
   default:
     '@centrifuge/addressbook':
-      specifier: gh:8.0.0-sha-8d735b8
-      version: 8.0.0-sha-8d735b8
+      specifier: gh:10.0.0-sha-ceebe7b
+      version: 10.0.0-sha-ceebe7b
 
 overrides:
   rxjs: 7.8.2
@@ -28,7 +28,7 @@ importers:
     dependencies:
       '@centrifuge/addressbook':
         specifier: 'catalog:'
-        version: gh:8.0.0-sha-8d735b8(supports-color@10.2.2)(typescript@5.9.3)(zod@4.6.7)
+        version: gh:10.0.0-sha-ceebe7b(supports-color@10.2.2)(typescript@5.9.3)(zod@4.6.7)
       viem:
         specifier: 2.56.0
         version: 2.56.0(typescript@5.9.3)(zod@4.6.7)
@@ -197,8 +197,8 @@ packages:
     resolution: {integrity: sha512-6zABk/ECA/QYSCQ1NGiVwwbQerUCZ+TQbp64Q3AgmfNvurHH0j8TtXa1qbShXA6qqkpAj4V5W8pP6mLe1mcMqA==}
     engines: {node: '>=18'}
 
-  '@centrifuge/addressbook@gh:8.0.0-sha-8d735b8':
-    resolution: {integrity: sha512-uqU75IIcl+qkvwlm6KYjg61KVXphX2lEI4O5PJi+yewnk6SmJ8fEHJZ/wE29CFmjSabCwVdS6jYvx76pyr5XFQ==, tarball: https://npm.pkg.github.com/download/@centrifuge/addressbook/8.0.0-sha-8d735b8/ecb92f3fdab0de6ab7f0360bc6e415f3dd4e071d}
+  '@centrifuge/addressbook@gh:10.0.0-sha-ceebe7b':
+    resolution: {integrity: sha512-qPpcfjBkGSmF9m1sm6M5kNrY9rdCWgqTxmvw6uXFhbrRhYnlaoSF/yhJgm5SurTrmO4h8YBEMBrcnLO92qDeAw==, tarball: https://npm.pkg.github.com/download/@centrifuge/addressbook/10.0.0-sha-ceebe7b/f79f9c7d24ec5452271489b85baaad849295b944}
     engines: {node: '>=22.12'}
     hasBin: true
 
@@ -3281,7 +3281,7 @@ snapshots:
   '@bcoe/v8-coverage@1.0.2':
     optional: true
 
-  '@centrifuge/addressbook@gh:8.0.0-sha-8d735b8(supports-color@10.2.2)(typescript@5.9.3)(zod@4.6.7)':
+  '@centrifuge/addressbook@gh:10.0.0-sha-ceebe7b(supports-color@10.2.2)(typescript@5.9.3)(zod@4.6.7)':
     dependencies:
       ipfs-unixfs-importer: 17.1.1(supports-color@10.2.2)
       multiformats: 14.0.5

@@ -460,6 +460,18 @@ const APPROVE_SELECTORS = new Set(['approve(address,uint256)', 'approve(address,
 /** `type(uint256).max` — the canonical infinite allowance. */
 const MAX_UINT256 = (2n ** 256n - 1n).toString()
 
+function canonicalSignature(selector: string): string | null {
+  try {
+    const item = parseAbiItem(selector.trim().startsWith('function') ? selector : `function ${selector}`)
+    return item.type === 'function' ? `${item.name}(${item.inputs.map(renderParameter).join(',')})` : null
+  } catch {
+    return null
+  }
+}
+
+const isApproveSelector = (selector: string) =>
+  APPROVE_SELECTORS.has(canonicalSignature(selector) ?? selector.replace(/^function\s+/, '').replace(/\s+/g, ''))
+
 /** The single value pinned into an input slot, or undefined when the slot is missing, empty or a list. */
 function soleInput(input: { input?: unknown[] } | undefined): string | undefined {
   const values = input?.input ?? []
@@ -484,25 +496,28 @@ function soleInput(input: { input?: unknown[] } | undefined): string | undefined
  * this way must set `guards.allowance` and keep the runtime check. Both `centrifuge/workflows`
  * (before publishing) and the SDK (over a catalog it fetched) apply it.
  *
- * Not applied to use-only fragments — a template declaring `param` variables is inlined into
- * its callers, where the approval and its consumer are checked together. `erc20_approve` is
- * nothing but an approval, and is safe precisely because it never executes alone.
+ * A `use` fragment — a template declaring `param` variables — is inlined into its callers,
+ * where the approval and its consumer are checked together, so an authoring check skips it.
+ * A template reached through `useTemplate` declares `param` variables too, but runs as its own
+ * callback script and is never inlined: `runsAsScript` checks it like any other.
+ * `erc20_approve` is nothing but an approval, and is safe precisely because it never executes alone.
  */
 export function checkApprovalExactness(
   template: ApprovalTemplate,
-  describe: (index: number) => string
+  describe: (index: number) => string,
+  options: { runsAsScript?: boolean } = {}
 ): RuleViolation[] {
   if (template.guards?.allowance) return []
   // A fragment's consumer lives in the caller; checking it standalone would flag every
   // approve helper in the catalog for the crime of being a helper.
-  if ((template.variables ?? []).some((variable) => variable.kind === 'param')) return []
+  if (!options.runsAsScript && (template.variables ?? []).some((variable) => variable.kind === 'param')) return []
 
   const actions = (template.actions ?? []) as CatalogAction[]
   const violations: RuleViolation[] = []
 
   for (const [index, action] of actions.entries()) {
     if (typeof action.selector !== 'string') continue
-    if (!APPROVE_SELECTORS.has(action.selector.replace(/^function\s+/, '').replace(/\s+/g, ''))) continue
+    if (!isApproveSelector(action.selector)) continue
 
     const inputs = action.inputs ?? []
     const spender = soleInput(inputs[0])
@@ -516,6 +531,8 @@ export function checkApprovalExactness(
       })
       continue
     }
+
+    if (amount === '0') continue
 
     if (amount === MAX_UINT256) {
       violations.push({
@@ -694,7 +711,7 @@ function templateViolations(templateName: string, template: CatalogTemplate): Ru
     ...checkRawCalldataTaint(template, {
       describe: (action) => `template "${templateName}" action "${action.name ?? action.selector}"`,
     }),
-    ...checkApprovalExactness(template, describeAction),
+    ...checkApprovalExactness(template, describeAction, { runsAsScript: true }),
   ]
 
   for (const [index, action] of (template.actions ?? []).entries()) {

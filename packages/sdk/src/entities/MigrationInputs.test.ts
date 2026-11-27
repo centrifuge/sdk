@@ -1,5 +1,6 @@
 import { ABIS_V3_2 } from '@centrifuge/protocol'
 import { expect } from 'chai'
+import sinon from 'sinon'
 import { BaseError, ContractFunctionRevertedError, zeroAddress, encodeFunctionData } from 'viem'
 import type { HexString } from '../types/index.js'
 import { AssetId, PoolId, ShareClassId } from '../utils/types.js'
@@ -150,6 +151,127 @@ describe('MigrationInputsDerivation', () => {
   it('treats any other share-token failure as a failed read', async () => {
     const { d } = derivation({ shareToken: () => new Fail() })
     await rejects(d.spokeClasses(POOL, 1), /absent-key revert/)
+  })
+
+  const onChainLinked = addr(0xd7)
+  const positionVault = addr(0xd8)
+  const chainScript = {
+    idToAsset: (_: HexString, [id]: readonly unknown[]) => {
+      const counter = Number(BigInt(id as bigint) & 0xffffffffffffffffn)
+      if (counter === 1) return [usdc, 0n]
+      if (counter === 2) return [addr(0x69), 7n]
+      return new Revert('UnknownAsset')
+    },
+    vault: (address: HexString, args: readonly unknown[]) => {
+      if (!same(address, v32.vaultRegistry)) return new Fail()
+      const [, scId, assetId, manager] = args as [bigint, HexString, bigint, HexString]
+      if (!same(manager, v32.asyncRequestManager)) return new Fail()
+      if (scId === sc1.raw && assetId === AssetId.from(SPOKE, 1).raw) return onChainLinked
+      if (scId === sc2.raw && assetId === AssetId.from(SPOKE, 2).raw) return positionVault
+      return zeroAddress
+    },
+  }
+
+  it("reads every class and registered asset, ERC-6909 included, under the stack's ARM", async () => {
+    const { d, reader } = derivation(chainScript)
+
+    const linked = await d.linkedVaultsOnChain(POOL, [sc1, sc2])
+
+    expect(linked).to.deep.equal([onChainLinked, positionVault])
+    const lookups = reader.calls.filter((call) => call.functionName === 'vault')
+    expect(lookups).to.have.length(2 * 2)
+  })
+
+  it('asks for nothing when the spoke has no share classes', async () => {
+    const { d, reader } = derivation(chainScript)
+    expect(await d.linkedVaultsOnChain(POOL, [])).to.deep.equal([])
+    expect(reader.calls).to.have.length(0)
+  })
+
+  it('unlinks a vault the chain holds linked even when the indexer returns no vaults at all', async () => {
+    const { d } = derivation({
+      ...chainScript,
+      vaultDetails: () => ({ assetId: AssetId.from(SPOKE, 1).raw, asset: usdc, tokenId: 0n, isLinked: true }),
+      poolId: (address) => (same(address, onChainLinked) || same(address, positionVault) ? POOL.raw : new Fail()),
+      scId: () => sc1.raw,
+      syncDepositManager: () => new Fail(),
+    })
+    sinon.stub(d, 'spokeClasses').resolves({ scIds: [sc1, sc2], tokens: [addr(0x51), addr(0x52)] })
+    sinon.stub(d, 'liveManagers').resolves([])
+    sinon.stub(d, 'rotationAssets').resolves([])
+    sinon.stub(d, 'v32Ramps').resolves([])
+    sinon.stub(d, 'syncReserveKeys').resolves([])
+    sinon.stub(d, 'registeredAssetPriceKeys').resolves([])
+    sinon.stub(d, 'hookGrants').resolves([])
+
+    const inventory = await d.spokeInventory(POOL, 2, {
+      vaults: [],
+      managers: [],
+      rampInstances: [],
+      ramp: { relayers: [], offrampAssets: [], offrampReceivers: [] },
+    })
+    const offboard = d.offboardInput(inventory, [])
+
+    expect(offboard.vaults.map((key) => key.vault)).to.deep.equal([onChainLinked, positionVault])
+    expect(offboard.totalVaults).to.equal('2')
+  })
+
+  const facade = addr(0xfa)
+  const afterOffboard = (unlinkedCount: number, unlinked: HexString[]) => {
+    const { d, reader } = derivation(
+      {
+        ...chainScript,
+        vault: (_, args) => {
+          const [, , assetId] = args as [bigint, HexString, bigint]
+          if (assetId === AssetId.from(SPOKE, 1).raw) return addr(0xd1)
+          if (assetId === AssetId.from(SPOKE, 2).raw) return addr(0xd2)
+          return zeroAddress
+        },
+        vaultDetails: () => ({ assetId: AssetId.from(SPOKE, 1).raw, asset: usdc, tokenId: 0n, isLinked: false }),
+        poolId: () => POOL.raw,
+        scId: () => sc1.raw,
+        syncDepositManager: () => new Fail(),
+        vaultUnlinked: (_, [, vault]) => unlinked.some((known) => same(known, vault as HexString)),
+        unlinkedVaults: () => unlinkedCount,
+      },
+      { migration: facade }
+    )
+    sinon.stub(d, 'spokeClasses').resolves({ scIds: [sc1], tokens: [addr(0x51)] })
+    sinon.stub(d, 'liveManagers').resolves([])
+    sinon.stub(d, 'rotationAssets').resolves([])
+    sinon.stub(d, 'v32Ramps').resolves([])
+    sinon.stub(d, 'syncReserveKeys').resolves([])
+    sinon.stub(d, 'registeredAssetPriceKeys').resolves([])
+    sinon.stub(d, 'hookGrants').resolves([])
+    return { d, reader }
+  }
+  const indexed = (vaults: HexString[]) => ({
+    vaults,
+    managers: [],
+    rampInstances: [],
+    ramp: { relayers: [], offrampAssets: [], offrampReceivers: [] },
+  })
+
+  it("seeds the onboard with every vault the facade unlinked from the ARM slot the offboard leaves, with no indexer vaults", async () => {
+    const { d } = afterOffboard(2, [addr(0xd1), addr(0xd2)])
+
+    const inventory = await d.spokeInventory(POOL, 1, indexed([]))
+    const seeds = d.onboardSpokeInput(inventory, [], { seeds: [], configs: [] }).registerVaults
+
+    expect(seeds.map((seed) => seed.vault)).to.deep.equal([addr(0xd1), addr(0xd2)])
+    expect(seeds.every((seed) => seed.link)).to.equal(true)
+  })
+
+  it('refuses to build after the offboard when the facade unlinked a vault neither the registry nor the indexer names', async () => {
+    const { d } = afterOffboard(3, [addr(0xd1), addr(0xd2)])
+
+    await rejects(d.spokeInventory(POOL, 1, indexed([])), /2 of the candidates read as unlinked by the facade, expected 3/)
+  })
+
+  it('does not ask the facade for its count when no facade is configured', async () => {
+    const { d, reader } = derivation({ unlinkedVaults: () => new Fail() })
+    await d.assertEveryUnlinkedVaultKnown(POOL, [])
+    expect(reader.calls).to.have.length(0)
   })
 
   it('walks the spoke asset ids until the first unknown one and keeps the ERC-20s only', async () => {

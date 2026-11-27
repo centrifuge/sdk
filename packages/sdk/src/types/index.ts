@@ -185,7 +185,7 @@ export type ProtocolContracts = {
   oracleValuation?: HexString
   navManager: HexString
   simplePriceManager: HexString
-  layerZeroAdapter: HexString
+  layerZeroAdapter?: HexString
   chainlinkAdapter?: HexString
   /**
    * v3.3 only: the Hyperlane adapter the MultiAdapter's adapter sets list, the address book's
@@ -216,4 +216,9 @@ export type ProtocolContracts = {
    * `submitQueuedShares` sends them to the hub. On v3.2 the queue lives on `BalanceSheet`.
    */
   snapshotQueue?: HexString
+  /**
+   * v3.3 only: deploys a pool's `StdHubPolicy` at an address derived from its configuration. Absent where the address
+   * book lists none.
+   */
+  stdHubPolicyFactory?: HexString
 }

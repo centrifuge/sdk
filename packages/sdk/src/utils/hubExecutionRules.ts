@@ -19,6 +19,12 @@ export const isSharePriceUpdate = ({ functionName }: { functionName: string | nu
 /** The Hub refuses `setAdapters` inside a batch (`CannotSetAdaptersWhileBatching`), so it has a transaction of its own. */
 export const isSetAdapters = ({ functionName }: ParsedHubCall) => functionName === 'setAdapters'
 
+/**
+ * `HubRegistry.setPolicy` bumps the pool's authorization nonce, which orphans every authorization still pending, so an
+ * install is moved last in the group's multicall: only a call after it would lose its authorization.
+ */
+export const isSetPolicy = ({ functionName }: ParsedHubCall) => functionName === 'setPolicy'
+
 /** The network a `notifyPool` notifies; null for any other call. */
 export const notifiedNetwork = ({ functionName, args }: ParsedHubCall) =>
   functionName === 'notifyPool' ? (args[1] as CentrifugeId) : null

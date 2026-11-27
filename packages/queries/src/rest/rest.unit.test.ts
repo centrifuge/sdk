@@ -45,6 +45,11 @@ describe("rest route table", () => {
       // of its read list is RPC and the bundled protocol registry, so there
       // is nothing else to route.
       "assetRegistrations",
+      "basinDebt",
+      "basinDebtChanges",
+      "basinFees",
+      "basinRedeemRequests",
+      "basinSwaps",
       // Tokenizations.
       "blockchains",
       // Orders: all seven of the vertical's catalogue-consuming reads, here
@@ -777,6 +782,59 @@ describe("rest route table", () => {
         REST_ROUTES.epochInvestOrders?.decode?.(body as never, {} as never),
       ).toThrow(/items/);
     }
+  });
+
+  it("leaves no Basin ledger entry on the graphql fallback, so backend mode never reads it from the open public-api", () => {
+    const owned = (Object.keys(REST_ROUTE_OWNERS) as SdkQueryName[]).filter(
+      (name) => REST_ROUTE_OWNERS[name] === "basin",
+    );
+    expect(owned.sort()).toEqual([
+      "basinDebt",
+      "basinDebtChanges",
+      "basinFees",
+      "basinRedeemRequests",
+      "basinSwaps",
+    ]);
+    for (const name of owned) {
+      expect(REST_ROUTES, `${name} still falls back to graphql`).toHaveProperty(
+        name,
+      );
+    }
+  });
+
+  it("puts the pool in the path of every Basin ledger route and the basin key in its query", () => {
+    const key = {
+      poolId: "281474976710662",
+      chainId: 1,
+      basinAddress: "0xf08943f817e1f902debc884c7b19ea5764594ac9",
+      tokenId: "0x00010000000000060000000000000001",
+    };
+    const keyQuery =
+      "chainId=1&basinAddress=0xf08943f817e1f902debc884c7b19ea5764594ac9" +
+      "&tokenId=0x00010000000000060000000000000001";
+
+    expect(REST_ROUTES.basinDebt?.path(key)).toBe(
+      `basin/pools/281474976710662/debt?${keyQuery}`,
+    );
+    expect(REST_ROUTES.basinFees?.path(key)).toBe(
+      `basin/pools/281474976710662/fees?${keyQuery}`,
+    );
+    expect(REST_ROUTES.basinDebtChanges?.path({ ...key, limit: 50 })).toBe(
+      `basin/pools/281474976710662/debt-changes?${keyQuery}&limit=50`,
+    );
+    expect(REST_ROUTES.basinSwaps?.path({ ...key, limit: 50 })).toBe(
+      `basin/pools/281474976710662/swaps?${keyQuery}&limit=50`,
+    );
+    expect(
+      REST_ROUTES.basinRedeemRequests?.path({
+        ...key,
+        redeemer: "0x7c5ce1a1d50a6cb3da97c9e202b3e7cd8e5b5b6c",
+        limit: 50,
+      }),
+    ).toBe(
+      `basin/pools/281474976710662/redeem-requests?${keyQuery}` +
+        "&redeemer=0x7c5ce1a1d50a6cb3da97c9e202b3e7cd8e5b5b6c&limit=50",
+    );
   });
 
   it("scopes every Basin route to the pool the guard authorises on", () => {

@@ -3,8 +3,12 @@ import { decodeFunctionData, encodePacked, toHex } from "viem";
 import { ABIS_V3_2 } from "../abis/v3_2";
 import { resolveProtocolContext } from "../context";
 import { BuilderArgumentMismatchError } from "../errors";
-import { MessageType } from "../messages";
-import { PROTOCOL_VERSION_V3_2, type ProtocolContext } from "../types";
+import { MessageType, MessageTypeV3_3 } from "../messages";
+import {
+  PROTOCOL_VERSION_V3_2,
+  PROTOCOL_VERSION_V3_3,
+  type ProtocolContext,
+} from "../types";
 import { builders, repayBatch } from "./index";
 
 /** Pool 1 on centrifugeId 1 (Ethereum mainnet in the bundled registry). */
@@ -25,7 +29,10 @@ function hubContext(): ProtocolContext {
  * it is the field `MultiAdapter.estimate` resolves the adapter set from and the
  * one the builder's tenancy check reads.
  */
-function batchFor(poolId: string, type = MessageType.RequestCallback): string {
+function batchFor(
+  poolId: string,
+  type: MessageType | MessageTypeV3_3 = MessageType.RequestCallback,
+): string {
   return encodePacked(
     ["uint8", "uint64", "bytes"],
     [type, BigInt(poolId), toHex(0, { size: 16 })],
@@ -115,6 +122,58 @@ describe("repayBatch", () => {
           refundAddress: REFUND,
         }),
       ).toThrow(/GLOBAL batch/);
+    });
+
+    it("refuses a pool-independent message whose bytes 1..9 happen to spell the pool id", () => {
+      expect(() =>
+        repayBatch(hubContext(), {
+          poolId: POOL_ID,
+          toCentrifugeId: "2",
+          batch: batchFor(POOL_ID, MessageType.RegisterAsset),
+          refundAddress: REFUND,
+        }),
+      ).toThrow(/carries no pool id/);
+    });
+
+    it("reads the type byte with the pool's own protocol version's numbering", () => {
+      const v3_3 = { ...hubContext(), protocolVersion: PROTOCOL_VERSION_V3_3 };
+      const args = {
+        poolId: POOL_ID,
+        toCentrifugeId: "2",
+        refundAddress: REFUND,
+      };
+
+      expect(() =>
+        repayBatch(v3_3, {
+          ...args,
+          batch: batchFor(POOL_ID, MessageTypeV3_3.NotifyPool),
+        }),
+      ).not.toThrow();
+      expect(() =>
+        repayBatch(hubContext(), {
+          ...args,
+          batch: batchFor(POOL_ID, MessageType.SetPoolAdapters),
+        }),
+      ).toThrow(/carries no pool id/);
+      expect(MessageTypeV3_3.NotifyPool).toBe(MessageType.SetPoolAdapters);
+    });
+
+    it("refuses a type byte past the last message type, which no gateway batch can hold", () => {
+      const args = {
+        poolId: POOL_ID,
+        toCentrifugeId: "2",
+        refundAddress: REFUND,
+      };
+      const v3_3 = { ...hubContext(), protocolVersion: PROTOCOL_VERSION_V3_3 };
+
+      for (const ctx of [hubContext(), v3_3]) {
+        expect(() =>
+          repayBatch(ctx, {
+            ...args,
+            batch: batchFor(POOL_ID, 0xff as MessageType),
+          }),
+        ).toThrow(/carries no pool id/);
+      }
     });
 
     it("refuses a pool id that disagrees with the resolved context", () => {

@@ -578,6 +578,111 @@ describe('utils/weiroll', () => {
         /depends on a runtime value/
       )
     })
+
+    const PINNED_RAW_SLOT: WorkflowDefinition['state'][number] = {
+      type: 'rawcalldata',
+      selector: SELECTOR,
+      parameterTypes: ['uint256'],
+      sourceSlots: [0],
+      actionIndex: 0,
+    }
+    const AMOUNT = `0x${'0'.repeat(63)}1` as const
+
+    function rawWorkflow(
+      actions: WorkflowDefinition['actions'],
+      state: WorkflowDefinition['state'] = [{ type: 'literal', value: AMOUNT }, PINNED_RAW_SLOT]
+    ): WorkflowDefinition {
+      return { workflowRef: 'raw-guard', actions, state }
+    }
+
+    function build(workflow: WorkflowDefinition) {
+      return buildScript(workflow, { poolContext: {}, configurableValues: {} })
+    }
+
+    it('refuses a raw action that reads a runtime slot as its calldata', () => {
+      // The executor fills an unpinned slot, so it would choose the whole call, selector included.
+      const workflow: WorkflowDefinition = {
+        workflowRef: 'raw-runtime',
+        actions: [
+          { target: TARGET_A, selector: SELECTOR, callType: CALL, inputs: [0], output: UNUSED_SLOT, rawMode: true },
+        ],
+        state: [{ type: 'runtime', key: 'calldata', parameter: 'bytes' }],
+        runtimeVariables: ['calldata'],
+      }
+
+      expect(() => build(workflow)).to.throw(/raw action 0 reads state slot 0 as calldata, which is not a pinned/)
+    })
+
+    it('refuses a raw action that reads a literal slot as its calldata', () => {
+      const workflow = rawWorkflow([
+        { target: TARGET_A, selector: SELECTOR, callType: CALL, inputs: [0], output: UNUSED_SLOT, rawMode: true },
+      ])
+
+      expect(() => build(workflow)).to.throw(/raw action 0 reads state slot 0 as calldata, which is not a pinned/)
+    })
+
+    it('refuses a raw action whose variable-length specifier masks to a runtime slot', () => {
+      const workflow = rawWorkflow(
+        [{ target: TARGET_A, selector: SELECTOR, callType: CALL, inputs: [0x82], output: UNUSED_SLOT, rawMode: true }],
+        [{ type: 'literal', value: AMOUNT }, PINNED_RAW_SLOT, { type: 'runtime', key: 'calldata' }]
+      )
+
+      expect(() => build(workflow)).to.throw(/reads state slot 2 as calldata/)
+    })
+
+    it('refuses a raw call with no input or with two inputs', () => {
+      for (const inputs of [[], [1, 0]]) {
+        const workflow = rawWorkflow([
+          { target: TARGET_A, selector: SELECTOR, callType: CALL, inputs, output: UNUSED_SLOT, rawMode: true },
+        ])
+        expect(() => build(workflow)).to.throw(/raw action 0 has \d inputs/)
+      }
+    })
+
+    it('refuses a raw value call without exactly the ETH value and one calldata slot', () => {
+      const workflow = rawWorkflow([
+        { target: TARGET_A, selector: SELECTOR, callType: VALUECALL, inputs: [1], output: UNUSED_SLOT, rawMode: true },
+      ])
+
+      expect(() => build(workflow)).to.throw(/raw action 0 has 1 inputs/)
+    })
+
+    for (const [name, output] of [
+      ['a plain output index', 1],
+      ['a variable-length 0x80|idx output', 0x81],
+      ['0xfe, which replaces the whole state', 0xfe],
+    ] as const) {
+      it(`refuses a raw action whose calldata slot an earlier action overwrites through ${name}`, () => {
+        const workflow = rawWorkflow([
+          { target: TARGET_B, selector: SELECTOR, callType: CALL, inputs: [], output },
+          { target: TARGET_A, selector: SELECTOR, callType: CALL, inputs: [1], output: UNUSED_SLOT, rawMode: true },
+        ])
+        expect(() => build(workflow)).to.throw(/raw action 1 reads rawcalldata slot 1, which action 0/)
+      })
+    }
+
+    it('builds a raw call and a raw value call that read a pinned rawcalldata slot', () => {
+      const call = build(
+        rawWorkflow([
+          { target: TARGET_A, selector: SELECTOR, callType: CALL, inputs: [1], output: 0, rawMode: true },
+        ])
+      )
+      expect(call.commands).to.deep.equal([`0xaabbccdd2101ffffffffff00${TARGET_A.slice(2)}`])
+      expect(call.state[1]).to.equal(concat([SELECTOR, AMOUNT]))
+      expect(call.stateBitmap).to.equal(0b11n)
+
+      const valueCall = build(
+        rawWorkflow(
+          [{ target: TARGET_A, selector: SELECTOR, callType: VALUECALL, inputs: [2, 1], output: UNUSED_SLOT, rawMode: true }],
+          [
+            { type: 'literal', value: AMOUNT },
+            PINNED_RAW_SLOT,
+            { type: 'runtime', key: '__sdk_payable_value:0', parameter: 'uint256', system: 'payableValue' },
+          ]
+        )
+      )
+      expect(valueCall.commands).to.deep.equal([`0xaabbccdd230201ffffffffff${TARGET_A.slice(2)}`])
+    })
   })
 
   describe('getWorkflowAbiParameter', () => {

@@ -76,17 +76,3 @@ export function stackDeployments(
   }
   return built;
 }
-
-/** The environments whose chains have a non-empty `stackLabel` stack in `book`. */
-export function environmentsWithStack(
-  book: AddressBook,
-  stackLabel: string,
-): ChainEnvironment[] {
-  const { stackAddresses } = createViews(book);
-  return ENVIRONMENTS.filter((environment) =>
-    Object.keys(book.networks[environment].chains).some(
-      (id) =>
-        Object.keys(stackAddresses(environment, id, stackLabel)).length > 0,
-    ),
-  );
-}

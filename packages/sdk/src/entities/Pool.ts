@@ -52,6 +52,8 @@ import {
 } from '../utils/authorizationCalldata.js'
 import type { PoolAuthorizationList } from '../utils/authorizationFold.js'
 import { NATIONAL_CURRENCY_METADATA } from '../utils/currencies.js'
+import { simulateCalls } from '../utils/simulateCalls.js'
+import { workflowDefinitionHash } from '../utils/workflowDefinitionHash.js'
 import { migratePoolMetadataToV2, parsePoolMetadataV2 } from '../utils/poolMetadataMigration.js'
 import {
   addMessageForEnabledTarget,
@@ -84,6 +86,18 @@ import { Basin } from './Basin.js'
 import { Entity } from './Entity.js'
 import { CLAIMS_METHOD, noSettlementError, planClaims } from './claimsAfterExecution.js'
 import { describeGroup, parseGroup, planGroup } from './hubExecution.js'
+import {
+  assertDeployable,
+  assertGroupInstalls,
+  assertInstallable,
+  deployedPolicyOf,
+  encodeNewHubPolicy,
+  previewHubPolicyAt,
+  readHubPolicyDependencies,
+  type HubPolicyConfig,
+  type HubPolicyDependencies,
+  type HubPolicyPreview,
+} from './hubPolicyInstall.js'
 import { parseSchedule, planSchedule } from './hubScheduling.js'
 import {
   readAuthorizations,
@@ -252,11 +266,8 @@ function pinnedArtifactDrift(entry: WorkflowPolicyEntry, workflow: MarketplaceWo
   return null
 }
 
-function assertPinnedArtifact(entry: WorkflowPolicyEntry, workflow: MarketplaceWorkflow): void {
-  const drift = pinnedArtifactDrift(entry, workflow)
-  if (drift) {
-    throw new Error(`${drift} Re-pin it explicitly with an update before changing this policy.`)
-  }
+function repinRequired(drift: string): Error {
+  return new Error(`${drift} Re-pin it explicitly with an update before changing this policy.`)
 }
 
 export class Pool extends Entity {
@@ -679,6 +690,36 @@ export class Pool extends Entity {
     })
   }
 
+  async #pinnedDefinitionDrift(entry: WorkflowPolicyEntry, workflow: MarketplaceWorkflow): Promise<string | null> {
+    const pinnedCid = entry.catalogCid
+    if (!pinnedCid || pinnedCid === this._root.workflowMarketplaceCid()) return null
+    let pinnedCatalog: MarketplaceWorkflow[]
+    try {
+      pinnedCatalog = await firstValueFrom(this._root.workflowMarketplace(pinnedCid))
+    } catch (error) {
+      const reason = error instanceof Error ? error.message : String(error)
+      return (
+        `Workflow "${entry.workflowRef}": the catalog it was whitelisted from (${pinnedCid}) could not be read, ` +
+        `so its definition cannot be compared with the current one. ${reason}`
+      )
+    }
+    const pinned = pinnedCatalog.find((candidate) => candidate.workflowRef === entry.workflowRef)
+    if (!pinned) {
+      return `Workflow "${entry.workflowRef}" is not in the catalog it was whitelisted from (${pinnedCid}).`
+    }
+    if (workflowDefinitionHash(pinned) !== workflowDefinitionHash(workflow)) {
+      return (
+        `Workflow "${entry.workflowRef}" changed in the catalog since it was whitelisted: its actions, targets ` +
+        `or variables differ from catalog ${pinnedCid}, even where the workflowId is the same.`
+      )
+    }
+    return null
+  }
+
+  async #catalogDrift(entry: WorkflowPolicyEntry, workflow: MarketplaceWorkflow): Promise<string | null> {
+    return pinnedArtifactDrift(entry, workflow) ?? (await this.#pinnedDefinitionDrift(entry, workflow))
+  }
+
   /**
    * Resolve a strategist's whitelisted workflows (pool policy metadata joined with the
    * marketplace catalog), grouped per chain. Chain is derived from each workflow's catalog
@@ -716,8 +757,8 @@ export class Pool extends Entity {
       if (!workflow) continue
       // The proof tree this builds has to be the whitelisted one, or a generated proof simply
       // won't verify against the on-chain root — better to say why than to fail at execution.
-      const drift = options?.collectDrift ? pinnedArtifactDrift(entry, workflow) : null
-      if (!options?.collectDrift) assertPinnedArtifact(entry, workflow)
+      const drift = await this.#catalogDrift(entry, workflow)
+      if (drift && !options?.collectDrift) throw repinRequired(drift)
       let centrifugeId = idCache.get(workflow.chainId)
       if (centrifugeId == null) {
         centrifugeId = await firstValueFrom(this._root.id(workflow.chainId))
@@ -1078,7 +1119,10 @@ export class Pool extends Entity {
       if (!workflow) continue
       // Every *other* entry has to still be the artifact it was approved as: this root re-signs
       // them all, and only `affectedWorkflowRef` is the one the operator is deliberately changing.
-      if (entry.workflowRef !== affectedWorkflowRef) assertPinnedArtifact(entry, workflow)
+      if (entry.workflowRef !== affectedWorkflowRef) {
+        const drift = await this.#catalogDrift(entry, workflow)
+        if (drift) throw repinRequired(drift)
+      }
       let cid = idCache.get(workflow.chainId)
       if (cid == null) {
         cid = await firstValueFrom(this._root.id(workflow.chainId))
@@ -2000,7 +2044,9 @@ export class Pool extends Entity {
    * @param datas - The calldata of each hub call to authorize, at least one, none twice: whole-byte hex that starts
    * with a function selector and is not a multicall wrapper.
    * @throws UnsupportedForProtocolVersionError on a pool that runs protocol v3.2, which has no policies.
-   * @throws Error when `datas` is empty, an entry is not the calldata of one hub call, or an entry repeats.
+   * @throws Error when `datas` is empty, an entry is not the calldata of one hub call, or an entry repeats, and, after the
+   * pool's version is read, when an entry is a `setPolicy` for a nonzero address that {@link Pool.installHubPolicy}
+   * would refuse. A `setPolicy` for the zero address removes the policy and passes.
    */
   initiateAuthorizations(datas: HexString[]) {
     const self = this
@@ -2011,6 +2057,8 @@ export class Pool extends Entity {
       }
       datas.forEach((data) => assertAuthorizationCalldata(data, 'Pool.initiateAuthorizations'))
       assertDistinctCalldata(datas, 'Pool.initiateAuthorizations')
+      const calls = datas.flatMap((data) => peekHubCall(data) ?? [])
+      await assertGroupInstalls('Pool.initiateAuthorizations', self, hubCtx, ctx.publicClient, calls)
 
       yield* wrapTransaction('Schedule authorizations', ctx, {
         contract: hubCtx.hub,
@@ -2050,15 +2098,19 @@ export class Pool extends Entity {
    * @throws Error before anything is read when the status is not an `OutOfPolicy` status with its calls and batch, a
    * call of it is not a call of the v3.3 Hub for this pool that an SDK entity builds, a call's `deferred` is not what
    * the rules give for the batch, a call is `forbidden`, `pending`, `expired` or `undetermined`, no call needs an
-   * authorization, a ready `setAdapters` (the Hub refuses it inside a batch), a ready deployment leg bound for a
-   * network whose `notifyPool` the batch leaves to the execution, or the same calldata would be scheduled twice.
-   * @throws Error after the pool's version is read when the messages of a call cannot be derived.
+   * authorization, a ready `setAdapters` (the Hub refuses it inside a batch), a ready `setPolicy` next to a call to
+   * schedule (it would orphan the authorizations the transaction schedules), a ready deployment leg bound for a network
+   * whose `notifyPool` the batch leaves to the execution, or the same calldata would be scheduled twice.
+   * @throws Error after the pool's version is read when a `setPolicy` call names a nonzero address that
+   * {@link Pool.installHubPolicy} would refuse (the zero address removes the policy and passes), and when the messages
+   * of a call cannot be derived.
    */
   scheduleOutOfPolicy(status: OperationOutOfPolicyStatus) {
     const self = this
     return this._transact(async function* (ctx) {
       const entries = parseSchedule(self, status)
       const hubCtx = await self.#hubPolicyContext('Pool.scheduleOutOfPolicy')
+      await assertGroupInstalls('Pool.scheduleOutOfPolicy', self, hubCtx, ctx.publicClient, entries)
       const plan = planSchedule(self, hubCtx, entries)
 
       yield* wrapTransaction('Schedule out-of-policy action', ctx, {
@@ -2073,8 +2125,8 @@ export class Pool extends Entity {
   /**
    * Execute a matured group of hub calls that {@link Pool.scheduleOutOfPolicy} or {@link Pool.initiateAuthorizations}
    * scheduled: the scheduled calldata goes to the Hub unchanged, in one transaction (a `Hub.multicall` when it has
-   * several calls), and the cross-chain fees of what the calls send are paid with it. The signer must be a pool
-   * manager.
+   * several calls, a `setPolicy` call moved last), and the cross-chain fees of what the calls send are paid with it.
+   * The signer must be a pool manager.
    *
    * Pass the `data` of the items of one group, which share a `txHash`, in the order {@link Pool.authorizations} lists
    * them. Every item must be ready on the chain when it is sent; for a scheduled call that means `matured`. One that
@@ -2082,8 +2134,10 @@ export class Pool extends Entity {
    * depends on are rebuilt against the chain as it is now and refunded to the signer: a `notifySharePrice` per notified
    * network after each `updateSharePrice`, a `notifyPool` where the group deploys to a network the pool is not on, and a
    * `notifyAssetPrice` before each `updateVault` that deploys a vault, none of them when the group holds that call
-   * itself. A `setAdapters` call is sent first, in a transaction of its own. The rules, the refusals and the fee are in
-   * `docs/sdk/hub-policies.md`, "Executing a group".
+   * itself. A `setAdapters` call is sent first, in a transaction of its own. A `setPolicy` call is moved last in the
+   * multicall, since the install orphans the authorization of any call after it, and its address is checked as
+   * {@link Pool.installHubPolicy} checks it, the zero address excepted. The rules, the refusals and the fee are in `docs/sdk/hub-policies.md`,
+   * "Executing a group".
    *
    * It does not send the investors' claim notifications that follow an issue or a revoke: they are no Hub call and
    * cannot share this transaction. When {@link Pool.hasClaimsAfterExecution} says the group has claims, call
@@ -2094,9 +2148,12 @@ export class Pool extends Entity {
    * builds are refused.
    * @throws UnsupportedForProtocolVersionError on a pool that runs protocol v3.2, which has no policies.
    * @throws Error before anything is read when `datas` is empty, an entry repeats, an entry is not a call of the v3.3
-   * Hub for this pool that an SDK entity builds, it carries a local value or extra gas the SDK cannot send, or the group
-   * has a `setAdapters` call and is built or batched: it is several transactions. A group without one builds as a
-   * single transaction.
+   * Hub for this pool that an SDK entity builds, it carries a local value or extra gas the SDK cannot send, the group
+   * holds more than one `setPolicy` call, or the group has a `setAdapters` call and is built or batched: it is several
+   * transactions. A group without one builds as a single transaction.
+   * @throws Error after the pool's version is read, before anything is signed, when a `setPolicy` call names a nonzero
+   * address that {@link Pool.installHubPolicy} would refuse. A `setPolicy` for the zero address removes the policy and
+   * passes.
    * @throws Error after the pool's version is read when the messages of a call cannot be derived, and when a call sends
    * a message to a chain whose cross-chain messaging is disabled.
    */
@@ -2107,6 +2164,7 @@ export class Pool extends Entity {
       const parsed = parseGroup(self, datas)
       if (parsed.some(isSetAdapters)) assertNotBatching(title, ctx)
       const hubCtx = await self.#hubPolicyContext('Pool.executeAuthorizations')
+      await assertGroupInstalls('Pool.executeAuthorizations', self, hubCtx, ctx.publicClient, parsed)
       const group = describeGroup(self, hubCtx, parsed)
       const plan = await planGroup(self._root, self, hubCtx, ctx.signingAddress, group)
       const calls = plan.calls.map(({ data }) => data)
@@ -2244,6 +2302,136 @@ export class Pool extends Entity {
   }
 
   /**
+   * What a hub policy for this pool is built from, read from its hub chain at the time of the call: the request manager
+   * and bridging hook the hub registry holds for the pool, the chain's NAV manager, price manager and oracle valuation
+   * (the zero address where it lists none), whether the pool's NAV hook is the price manager, the price every share class
+   * last committed, and the policy installed now (`Hub.policy`, the zero address for none). No value comes from the
+   * indexer, which only resolves the pool's protocol version. Pass these into the {@link HubPolicyConfig} of
+   * {@link Pool.previewHubPolicy} and {@link Pool.deployHubPolicy}.
+   *
+   * The read is not cached: call it again for a fresh answer.
+   *
+   * @throws UnsupportedForProtocolVersionError on a pool that runs protocol v3.2, which has no policies, before the
+   * hub chain is read.
+   */
+  hubPolicyDependencies(): Query<HubPolicyDependencies> {
+    return this._query(null, () =>
+      defer(async () => {
+        const hubCtx = await this.#hubPolicyContext('Pool.hubPolicyDependencies')
+        return readHubPolicyDependencies(this, hubCtx, await this._root.getClient(this.centrifugeId))
+      })
+    )
+  }
+
+  /**
+   * The address the hub chain's `StdHubPolicyFactory` derives from `config`, and whether a policy is deployed there
+   * already. Refuses what {@link Pool.deployHubPolicy} refuses, so an address shown is one that can be deployed. The
+   * read is not cached: call it again after a deployment.
+   *
+   * @throws UnsupportedForProtocolVersionError on a pool that runs protocol v3.2, which has no policies, before the
+   * hub chain is read.
+   * @throws StdHubPolicyFactoryMissingError where the address book lists no factory.
+   * @throws Error when the config is refused (`docs/sdk/hub-policies.md`, "Deploying and installing a policy").
+   */
+  previewHubPolicy(config: HubPolicyConfig): Query<HubPolicyPreview> {
+    return this._query(null, () =>
+      defer(async () => {
+        const hubCtx = await this.#hubPolicyContext('Pool.previewHubPolicy')
+        const client = await this._root.getClient(this.centrifugeId)
+        const factory = await assertDeployable('Pool.previewHubPolicy', this, hubCtx, client, config)
+        return previewHubPolicyAt(client, factory, config)
+      })
+    )
+  }
+
+  /**
+   * Deploy the policy of `config` through the hub chain's `StdHubPolicyFactory`, at the address
+   * {@link Pool.previewHubPolicy} gives. Permissionless: anyone may deploy, and the policy does nothing until a pool
+   * manager installs it with {@link Pool.installHubPolicy}. A policy already at that address is not deployed again:
+   * nothing is sent and the transaction ends in `{ type: 'DeployedHubPolicy', address, skipped: true }`. A deployment
+   * ends in the same status with `skipped: false`, once the receipt's `DeployHubPolicy` event names the address that was
+   * previewed. The call is the factory's, not the Hub's: no pool policy judges it and the migration gate does not see it.
+   *
+   * @throws UnsupportedForProtocolVersionError on a pool that runs protocol v3.2, which has no policies, before the
+   * hub chain is read.
+   * @throws StdHubPolicyFactoryMissingError where the address book lists no factory.
+   * @throws Error before anything is signed when the config is refused (`docs/sdk/hub-policies.md`, "Deploying and
+   * installing a policy") and when `centrifuge.buildOnly` is given a config already deployed, which has nothing to
+   * build; after the transaction when its receipt does not hold the event.
+   */
+  deployHubPolicy(config: HubPolicyConfig) {
+    const self = this
+    return this._transact(async function* (ctx) {
+      const title = 'Deploy hub policy'
+      const hubCtx = await self.#hubPolicyContext('Pool.deployHubPolicy')
+      const stdHubPolicyFactory = await assertDeployable('Pool.deployHubPolicy', self, hubCtx, ctx.publicClient, config)
+      const { address, deployed } = await previewHubPolicyAt(ctx.publicClient, stdHubPolicyFactory, config)
+      if (deployed && ctx.isBuilding) {
+        throw new Error(`Pool.deployHubPolicy: the policy is already deployed at ${address}, nothing to build`)
+      }
+      if (deployed) {
+        yield { type: 'DeployedHubPolicy', address, skipped: true } as const
+        return
+      }
+
+      const result = yield* wrapTransaction(title, ctx, {
+        contract: stdHubPolicyFactory,
+        data: encodeNewHubPolicy(config),
+      })
+      // A build or a simulation sends nothing, so there is no receipt to read.
+      if (result?.type !== 'TransactionConfirmed') return
+      const policy = deployedPolicyOf(
+        'Pool.deployHubPolicy',
+        result.receipt.logs,
+        stdHubPolicyFactory,
+        address,
+        result.hash
+      )
+      yield { type: 'DeployedHubPolicy', address: policy, skipped: false } as const
+    }, this.centrifugeId)
+  }
+
+  /**
+   * Install the policy at `policy` on this pool's hub: `Hub.setPolicy`, judged by the pool's policy like any hub call.
+   * With none installed it is sent. Replacing a policy is delayed by the installed policy's `escalation`, so the
+   * transaction ends in `OutOfPolicy` with nothing signed: schedule it with {@link Pool.scheduleOutOfPolicy} and
+   * execute the group with {@link Pool.executeAuthorizations} once it matured. Every install orphans the pending
+   * authorizations, which is why the address installed now is refused.
+   *
+   * Refuses the zero address, which names no policy. To remove a policy, schedule a raw `setPolicy(poolId, 0)` with
+   * {@link Pool.initiateAuthorizations} or {@link Pool.scheduleOutOfPolicy} and send it with
+   * {@link Pool.executeAuthorizations}.
+   *
+   * Manager-only on chain, and without a `PoolAction`: in backend mode the connected wallet signs it, so a pool whose
+   * managers sign through the backend (a Fordefi vault) cannot install from a browser wallet. It names no cross-chain
+   * message, so the migration gate does not see it.
+   *
+   * Refused before anything is signed unless the address holds code, is not the policy installed now, and the policy's
+   * `hub()`, `hubRegistry()`, `multiAdapter()` and `shareClassManager()` are this pool's on its hub chain.
+   *
+   * @param policy - A policy deployed by the hub chain's factory, for instance the address {@link Pool.deployHubPolicy}
+   * ended with.
+   * @throws UnsupportedForProtocolVersionError on a pool that runs protocol v3.2, which has no policies, before the
+   * hub chain is read.
+   * @throws Error before anything is signed when `policy` is not an address or has a wrong checksum (lower and upper case
+   * pass, and the checksummed address is sent), is the zero address, has no code, is installed already, fails to answer
+   * any one of the four views, or was built for another deployment of the protocol.
+   */
+  installHubPolicy(policy: HexString) {
+    const self = this
+    return this._transact(async function* (ctx) {
+      const hubCtx = await self.#hubPolicyContext('Pool.installHubPolicy')
+      const address = await assertInstallable('Pool.installHubPolicy', self, hubCtx, ctx.publicClient, policy)
+
+      yield* wrapTransaction('Install hub policy', ctx, {
+        contract: hubCtx.hub,
+        policy: { poolId: self.id },
+        data: encodeFunctionData({ abi: ABIS_V3_3.Hub, functionName: 'setPolicy', args: [self.id.raw, address] }),
+      })
+    }, this.centrifugeId)
+  }
+
+  /**
    * The policy installed on this pool's hub with the parameters its contract was deployed with, or `null` when the pool
    * runs protocol v3.2 or has no policy: no install, or the latest install is the zero address.
    *
@@ -2370,8 +2558,8 @@ export class Pool extends Entity {
    * The adapter addresses the registry lists for this pool's protocol version on a network, which is the hub's, so a
    * spoke between the hub's `Activated` and its own `Onboarded` answers its v3.3 adapters; the pool-scoped
    * counterpart of `centrifuge.adapters(centrifugeId)`, which answers the network's newest version. Use it to name
-   * adapters. `layerZeroAdapter` is in every deployment; the others are `undefined` where the registry lists none,
-   * which includes adapters a MultiAdapter holds but the registry does not ship (v3.2's Wormhole). For the
+   * adapters. Each is `undefined` where the registry lists none, which includes adapters a MultiAdapter holds but the
+   * registry does not ship (v3.2's Wormhole) and LayerZero on v3.3 ADI (cid 17). For the
    * addresses a route can use, read {@link Pool.globalAdapters} and {@link Pool.remoteGlobalAdapters}. Throws
    * `ProtocolVersionResolutionError` when the hub's version is not deployed there.
    *
@@ -2528,7 +2716,7 @@ export class Pool extends Entity {
           built.value,
           Object.keys(messages).length > 0 ? messages : undefined
         )
-        const { results } = await ctx.publicClient.simulateCalls({
+        const { results } = await simulateCalls(ctx.publicClient, {
           account: ctx.signingAddress,
           calls: [{ to: built.to, data: built.data, value }],
         })
@@ -2605,7 +2793,7 @@ export class Pool extends Entity {
       )
       const bundle = encodeMigrationBundle({ environment, poolId: self.id, entries })
       if (!ctx.isBatching && !ctx.isBuilding) {
-        const alone = await ctx.publicClient.simulateCalls({
+        const alone = await simulateCalls(ctx.publicClient, {
           account: ctx.signingAddress,
           calls: entries.map(({ to, data, value }) => ({ to, data, value })),
         })
@@ -2616,7 +2804,7 @@ export class Pool extends Entity {
             count: entries.length,
           })
         }
-        const { results } = await ctx.publicClient.simulateCalls({
+        const { results } = await simulateCalls(ctx.publicClient, {
           account: ctx.signingAddress,
           calls: [{ to: bundle.to, data: bundle.data, value: bundle.value }],
         })
@@ -2832,7 +3020,7 @@ export class Pool extends Entity {
               'migrationSettle: the message is no longer parked on this spoke (retried already, or cleared); read the settle report again'
             )
           }
-          const { results } = await ctx.publicClient.simulateCalls({
+          const { results } = await simulateCalls(ctx.publicClient, {
             account: ctx.signingAddress,
             calls: [{ to: ctx33.gateway, data }],
           })

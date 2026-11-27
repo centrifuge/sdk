@@ -14,7 +14,6 @@ import {
   type DeploymentRegistry,
 } from "./index";
 import { STACK_LABEL_V3_2 } from "./v3_2";
-import { STACK_LABEL_V3_3 } from "./v3_3";
 
 const DOC = "docs/architecture/protocol-deployment-addresses.md";
 
@@ -49,37 +48,6 @@ function servedAddresses(
   };
 }
 
-/**
- * The addresses to hold against `current`: the newest served version, or the
- * chain's v3.3.0 stack where the registry does not serve v3.3 in that
- * environment yet (mainnet), since `current` is the book's newest stack.
- */
-function comparedAddresses(
-  registry: DeploymentRegistry,
-  environment: ChainEnvironment,
-  centrifugeId: number,
-) {
-  const served = servedAddresses(registry, environment, centrifugeId);
-  const stack =
-    addressBook.networks[environment].chains[String(centrifugeId)]?.stacks[
-      STACK_LABEL_V3_3
-    ];
-  if (!stack || served?.version === PROTOCOL_VERSION_V3_3) {
-    return served;
-  }
-  const schema = DEFAULT_CONTRACT_SCHEMAS[PROTOCOL_VERSION_V3_3]!;
-  const names = new Set([...schema.required, ...schema.optional]);
-  return {
-    version: PROTOCOL_VERSION_V3_3,
-    names,
-    contracts: Object.fromEntries(
-      Object.entries(stack)
-        .filter(([name]) => names.has(name))
-        .map(([name, address]) => [name, getAddress(address)]),
-    ),
-  };
-}
-
 /** Names whose served address differs from `current`, as `name: served != current`. */
 function divergences(
   served: NonNullable<ReturnType<typeof servedAddresses>>,
@@ -106,16 +74,16 @@ describe("registry addresses against the book's current addresses", () => {
   );
 
   it.each(chains)(
-    "%s %i: the schema names of the newest served version, or of an unserved v3.3.0 stack, equal the book's current addresses",
+    "%s %i: the schema names of the newest served version equal the book's current addresses",
     (environment, centrifugeId) => {
-      const served = comparedAddresses(
+      const served = servedAddresses(
         defaultDeploymentRegistry(),
         environment,
         centrifugeId,
       );
       expect(
         served,
-        `${environment} ${centrifugeId}: the book lists this chain, the registry serves no version of it and it has no v3.3.0 stack; see ${DOC}`,
+        `${environment} ${centrifugeId}: the book lists this chain and the registry serves no version of it; see ${DOC}`,
       ).toBeDefined();
 
       expect(
@@ -125,37 +93,34 @@ describe("registry addresses against the book's current addresses", () => {
     },
   );
 
-  /** Chains whose `current` is an unserved v3.3.0 stack, so the test above does not see the served v3.2 set. */
-  const servingV32BelowCurrent = chains.filter(
-    ([environment, centrifugeId]) => {
-      const served = servedAddresses(
-        defaultDeploymentRegistry(),
-        environment,
-        centrifugeId,
-      );
-      return (
-        served?.version === PROTOCOL_VERSION_V3_2 &&
-        addressBook.networks[environment].chains[String(centrifugeId)]?.stacks[
-          STACK_LABEL_V3_3
-        ] !== undefined
-      );
-    },
+  /** Chains serving v3.2 below v3.3, so the test above does not see the served v3.2 set. */
+  const servingV32BelowV33 = chains.filter(([environment, centrifugeId]) =>
+    [PROTOCOL_VERSION_V3_2, PROTOCOL_VERSION_V3_3].every((version) =>
+      defaultDeploymentRegistry()
+        .versionsForChain(environment, centrifugeId)
+        .includes(version),
+    ),
   );
 
-  it("finds the mainnet chains that serve v3.2 below a v3.3.0 current", () => {
+  it("finds chains on both networks that serve v3.2 below v3.3", () => {
     expect(
-      servingV32BelowCurrent.map(([environment]) => environment),
-    ).toContain("mainnet");
+      new Set(servingV32BelowV33.map(([environment]) => environment)),
+    ).toEqual(new Set(["mainnet", "testnet"]));
   });
 
-  it.each(servingV32BelowCurrent)(
+  it.each(servingV32BelowV33)(
     "%s %i: the served v3.2 addresses equal the book's v3.2.0 stack",
     (environment, centrifugeId) => {
-      const served = servedAddresses(
-        defaultDeploymentRegistry(),
-        environment,
-        centrifugeId,
-      )!;
+      const schema = DEFAULT_CONTRACT_SCHEMAS[PROTOCOL_VERSION_V3_2]!;
+      const served = {
+        version: PROTOCOL_VERSION_V3_2,
+        names: new Set([...schema.required, ...schema.optional]),
+        contracts: defaultDeploymentRegistry().getDeployment(
+          environment,
+          PROTOCOL_VERSION_V3_2,
+          centrifugeId,
+        ).contracts,
+      };
       const stack =
         addressBook.networks[environment].chains[String(centrifugeId)]!.stacks[
           STACK_LABEL_V3_2

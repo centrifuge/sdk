@@ -4,7 +4,14 @@ import { firstValueFrom, isObservable, of, Subject, throwError, type Observable 
 import sinon from 'sinon'
 import type { PoolMigrationRow } from '@centrifuge/queries/core'
 import { Centrifuge } from '../Centrifuge.js'
-import { BaseError, ContractFunctionRevertedError, encodeFunctionData, zeroAddress, type Abi } from 'viem'
+import {
+  BaseError,
+  ContractFunctionRevertedError,
+  encodeErrorResult,
+  encodeFunctionData,
+  zeroAddress,
+  type Abi,
+} from 'viem'
 import type { HexString } from '../types/index.js'
 import { AssetId, PoolId, ShareClassId, type CentrifugeId } from '../utils/types.js'
 import { MigrationInputsDerivation, MigrationInputsReadError, type MigrationInputsReader } from './MigrationInputs.js'
@@ -80,10 +87,17 @@ class Fail {}
 
 type Script = (address: HexString, functionName: string, args: readonly unknown[]) => unknown
 
-function revertError(errorName: string) {
-  const inner = new ContractFunctionRevertedError({ abi: [], functionName: 'x' })
-  ;(inner as any).data = { errorName }
-  return new BaseError('reverted', { cause: inner })
+type AbiError = Extract<Abi[number], { type: 'error' }>
+
+const KNOWN_ERRORS = Object.values(ABIS_V3_2).flatMap((abi) =>
+  (abi as Abi).filter((item): item is AbiError => item.type === 'error')
+)
+
+function revertError(errorName: string, abi: Abi, functionName: string) {
+  const error = KNOWN_ERRORS.find((item) => item.name === errorName && item.inputs.length === 0)
+  if (!error) throw new Error(`no zero-argument error ${errorName} in the v3.2 ABIs`)
+  const data = encodeErrorResult({ abi: [error], errorName })
+  return new BaseError('reverted', { cause: new ContractFunctionRevertedError({ abi, data, functionName }) })
 }
 
 const same = (a: HexString, b: HexString) => a.toLowerCase() === b.toLowerCase()
@@ -247,6 +261,9 @@ function scriptFor(w: World, cid: CentrifugeId): Script {
       }
       case 'poolEscrow':
         return zeroAddress
+      case 'vault':
+        if (same(address, v32.vaultRegistry)) return zeroAddress
+        return new Fail()
       case 'vaultDetails':
         return w.vaults.some((vault) => same(vault, args[0] as HexString))
           ? { assetId: USDC_ID.raw, asset: USDC, tokenId: 0n, isLinked: true }
@@ -344,7 +361,8 @@ function reader(w: World, cid: CentrifugeId): MigrationInputsReader & { calls: s
         calls.push(call.functionName)
         encodeFunctionData({ abi: call.abi, functionName: call.functionName, args: call.args ?? [] })
         const value = script(call.address, call.functionName, call.args ?? [])
-        if (value instanceof Revert) return { status: 'failure', error: revertError(value.errorName) }
+        if (value instanceof Revert)
+          return { status: 'failure', error: revertError(value.errorName, call.abi, call.functionName) }
         if (value instanceof Fail) return { status: 'failure', error: new Error('failed') }
         return { status: 'success', result: value }
       })
@@ -705,6 +723,13 @@ describe('MigrationPreCheck', () => {
     expect(unsized.amount!.inPoolCurrency).to.equal(undefined)
     const surplus = await run(world({ escrowBalance: 12n, ledger: [10n, 0n] }))
     expect(inSection(surplus.rows, 'spoke.escrow')[0]!.message).to.match(/recordedSurplus/)
+  })
+
+  it("reads another pool's empty share class slot as absent, so the foreign-token probe finishes instead of stopping the spoke", async () => {
+    const report = await run(world({ otherPools: [OTHER_POOL] }))
+    expect(report.rows.filter((row) => row.code === 'spoke.report.stopped')).to.deep.equal([])
+    const probe = report.notes.find((note) => note.code === 'spoke.foreignShareTokens.probeSource')!
+    expect(probe.text).to.match(/\(1 other pools' tokens\)/)
   })
 
   it("holds the arm on another pool's live membership under a mapped FullRestrictions hook (AS38)", async () => {

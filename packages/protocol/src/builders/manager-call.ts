@@ -356,6 +356,45 @@ export function encodeSyncManagerPayload(
   );
 }
 
+/** `BaseTransferHook.fromHub` discriminants (`TrustedCall` at v3.3.0). */
+export const BASE_TRANSFER_HOOK_TRUSTED_CALL = {
+  updateHookManager: 0,
+} as const;
+
+export interface BaseTransferHookPayload {
+  readonly kind: keyof typeof BASE_TRANSFER_HOOK_TRUSTED_CALL;
+  readonly scId: string;
+  /** The address that may then call the hook's `updateMember` and `freeze` for this share token directly. */
+  readonly manager: string;
+  /** `false` withdraws the role. */
+  readonly canManage: boolean;
+}
+
+/**
+ * `abi.encode(bytes16 scId, uint8 kind, bytes32 manager, bool canManage)` as
+ * `BaseTransferHook.fromHub` decodes it: the `scId` comes first, unlike the
+ * registrar and request-manager payloads.
+ */
+export function encodeBaseTransferHookPayload(
+  payload: BaseTransferHookPayload,
+  field = "encodeBaseTransferHookPayload",
+): Hex {
+  return encodeAbiParameters(
+    [
+      { type: "bytes16" },
+      { type: "uint8" },
+      { type: "bytes32" },
+      { type: "bool" },
+    ],
+    [
+      requireBytes16(payload.scId, `${field}.scId`),
+      BASE_TRANSFER_HOOK_TRUSTED_CALL[payload.kind],
+      addressToBytes32(requireAddress(payload.manager, `${field}.manager`)),
+      payload.canManage,
+    ],
+  );
+}
+
 /** `OnOffRamp.fromHub` discriminants (`TrustedCall` at v3.3.0). */
 export const ON_OFF_RAMP_TRUSTED_CALL = {
   onramp: 0,

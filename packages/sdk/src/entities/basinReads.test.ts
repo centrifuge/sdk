@@ -64,6 +64,7 @@ describe('Basin reads', () => {
     for (const name of ['basinDebt', 'basinFees', 'basinDebtChanges']) {
       const call = asked.find((a) => a.name === name)
       expect(call, `${name} was not asked for`).to.not.equal(undefined)
+      expect(call!.params.poolId).to.equal(POOL_ID.toString())
       expect(call!.params.chainId).to.equal(CHAIN_ID)
       expect(call!.params.basinAddress).to.equal(BASIN)
       expect(call!.params.tokenId).to.equal(TOKEN_ID)
@@ -85,22 +86,17 @@ describe('Basin reads', () => {
     expect(asked.find((a) => a.name === 'basinSwaps')!.params.limit).to.equal(25)
   })
 
-  it('sends only basinAddress for redeem requests, plus set narrowing', async () => {
+  it('sends the pool and the full basin key for redeem requests, plus set narrowing', async () => {
     const b = basin()
     await firstValueFrom(b.redeemRequests())
+    const key = { poolId: POOL_ID.toString(), chainId: CHAIN_ID, basinAddress: BASIN, tokenId: TOKEN_ID }
     const bare = asked.find((a) => a.name === 'basinRedeemRequests')!
-    // `basin_redeem_request` is keyed `(basinAddress, requestId)` and carries
-    // no chainId column, so sending one would be rejected as a surplus key.
-    expect(bare.params).to.deep.equal({ basinAddress: BASIN })
+    expect(bare.params).to.deep.equal(key)
 
     asked = []
     await firstValueFrom(b.redeemRequests({ redeemer: REDEEMER, limit: 5 }))
     const narrowed = asked.find((a) => a.name === 'basinRedeemRequests')!
-    expect(narrowed.params).to.deep.equal({
-      basinAddress: BASIN,
-      redeemer: REDEEMER,
-      limit: 5,
-    })
+    expect(narrowed.params).to.deep.equal({ ...key, redeemer: REDEEMER, limit: 5 })
   })
 
   it('caches per argument, so a different limit is a different query', async () => {

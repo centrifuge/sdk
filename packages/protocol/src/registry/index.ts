@@ -35,7 +35,6 @@ import {
 } from "../types";
 import {
   ENVIRONMENTS,
-  environmentsWithStack,
   stackDeployments,
   type DeploymentsByEnvironment,
   type UnnamedChainNamer,
@@ -75,8 +74,9 @@ export const DEFAULT_CONTRACT_SCHEMAS: ContractSchemasByVersion = {
  * The versions the registry serves and where, whatever stacks a book carries:
  * a stack for a version in an environment not listed here is ignored. Adding an
  * environment is a hand edit and changes behaviour, because chain-scoped
- * resolution answers the newest version on a chain: serving v3.3 on mainnet
- * moves every pool-less mainnet flow to v3.3, as it does on testnet.
+ * resolution answers the newest version on a chain: every pool-less flow
+ * resolves v3.3 on a chain that has a v3.3.0 stack, while a pool keeps the
+ * version its `pools` entry projects.
  */
 const SERVED_VERSIONS: readonly {
   readonly version: ProtocolVersion;
@@ -94,7 +94,7 @@ const SERVED_VERSIONS: readonly {
     version: PROTOCOL_VERSION_V3_3,
     stackLabel: STACK_LABEL_V3_3,
     schema: CONTRACT_SCHEMA_V3_3,
-    environments: ["testnet"],
+    environments: ENVIRONMENTS,
   },
 ];
 
@@ -234,21 +234,6 @@ export function deploymentDataFromAddressBook(
     );
   }
   return data;
-}
-
-/**
- * The stacks `book` carries for a version the registry does not serve in that
- * environment (`{ environment: "mainnet", stackLabel: "v3.3.0" }`). The
- * registry ignores them; a caller that loaded the book reports them.
- */
-export function unservedStacks(
-  book: AddressBook,
-): { environment: ChainEnvironment; stackLabel: string }[] {
-  return SERVED_VERSIONS.flatMap(({ stackLabel, environments }) =>
-    environmentsWithStack(book, stackLabel)
-      .filter((environment) => !environments.includes(environment))
-      .map((environment) => ({ environment, stackLabel })),
-  );
 }
 
 /**

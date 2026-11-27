@@ -20,13 +20,13 @@ describe("SDK query catalogue", () => {
     }
   });
 
-  it("covers all 43 catalogue entries", () => {
+  it("covers all 44 catalogue entries", () => {
     // One entry per read the SDK makes. `closedInvestments` and
     // `closedRedemptions` each issue two documents (epoch and per-investor), so
     // they count twice; `Centrifuge._deployments` reads two collections in one
     // document and counts once. A new entry changes this count and gets a
     // resolver and a capability row.
-    expect(entryNames).toHaveLength(43);
+    expect(entryNames).toHaveLength(44);
   });
 
   it("rejects unknown params on every entry (.strict())", () => {
@@ -232,6 +232,46 @@ describe("api-v3 adapter", () => {
     });
     expect(full).toContain("pool { id name }");
     expect(full).toContain("crosschainMessages {");
+  });
+
+  it("never attaches another pool's message to a public-api payload", async () => {
+    const message = (id: string, poolId: string | null) => ({
+      id,
+      index: 0,
+      poolId,
+      status: "EXECUTED",
+    });
+    const exec = vi.fn().mockResolvedValue({
+      crosschainPayloads: {
+        totalCount: 1,
+        pageInfo: {},
+        nodes: [
+          {
+            id: "0xp1",
+            index: 0,
+            poolId: "281474976710657",
+            status: "COMPLETED",
+            crosschainMessages: {
+              nodes: [
+                message("0xown", "281474976710657"),
+                message("0xother", "281474976710658"),
+                message("0xglobal", null),
+              ],
+            },
+          },
+        ],
+      },
+    });
+
+    const page = (await PUBLIC_API_RESOLVERS.crosschainMessages!(
+      exec,
+      { filter: {}, include: { innerMessages: true }, limit: 10 } as any,
+      { entry: "crosschainMessages", dimensionCap: 1000 },
+    )) as any;
+
+    expect(
+      page.items[0].crosschainMessages.items.map((m: any) => m.id),
+    ).toEqual(["0xown"]);
   });
 
   it("selects createdAtBlock on both on/off-ramp manager documents", async () => {
@@ -1329,5 +1369,277 @@ describe("public-api crosschainMessageRows", () => {
     await expect(
       query("crosschainMessageRows", { ids: [`0x${"c1".repeat(32)}`] }),
     ).rejects.toThrow('crosschain_payload.status "LOST"');
+  });
+});
+
+describe("sharePriceUpdates", () => {
+  const SHARE_CLASS = "0x000100000000000f0000000000000001";
+  const OTHER_SHARE_CLASS = "0x00010000000000100000000000000001";
+
+  const DAILY = "snapshot:DailySnapshotTrigger";
+  const UPDATE = "shareClassManager:UpdatePricePoolPerShare";
+  const SHARE_CLASS_UPDATE = "shareClassManager:UpdateShareClass";
+
+  const row = (
+    id: string,
+    timestamp: string,
+    tokenPriceComputedAt: string | null,
+    trigger = UPDATE,
+    triggerBlockTimestamp = timestamp,
+  ) => ({
+    id,
+    timestamp,
+    trigger,
+    triggerBlockTimestamp,
+    tokenPrice: tokenPriceComputedAt === null ? "0" : "1006159296891391412",
+    tokenPriceComputedAt,
+  });
+
+  /**
+   * A `tokenSnapshots` table behind the connection the document asks for: it
+   * applies the document's own `filter`, `first` and `after` and orders by
+   * timestamp, as the primary key does within one share class, so a resolver
+   * that drops the token filter, the bounds or a page changes the answer.
+   */
+  function snapshotsTable(table: ReturnType<typeof row>[]) {
+    return vi.fn(async (_document: string, variables: any) => {
+      const { filter, first, after } = variables;
+      const matching = table
+        .filter((r) => r.id === filter.id.equalTo)
+        .filter(
+          (r) =>
+            filter.timestamp?.greaterThanOrEqualTo === undefined ||
+            Date.parse(r.timestamp) >=
+              Date.parse(filter.timestamp.greaterThanOrEqualTo),
+        )
+        .filter(
+          (r) =>
+            filter.timestamp?.lessThanOrEqualTo === undefined ||
+            Date.parse(r.timestamp) <=
+              Date.parse(filter.timestamp.lessThanOrEqualTo),
+        )
+        .sort((a, b) => Date.parse(a.timestamp) - Date.parse(b.timestamp));
+      const start = after === null ? 0 : Number(after);
+      const page = matching.slice(start, start + first);
+      const end = start + page.length;
+      return {
+        tokenSnapshots: {
+          pageInfo: {
+            hasNextPage: end < matching.length,
+            endCursor: String(end),
+          },
+          nodes: page.map(({ id: _id, ...node }) => node),
+        },
+      };
+    });
+  }
+
+  const table = [
+    row(
+      SHARE_CLASS,
+      "2026-08-27T00:00:00.000000+00:00",
+      "2026-08-25T12:00:00.000000+00:00",
+      DAILY,
+      "2026-08-27T00:38:23.000000+00:00",
+    ),
+    row(
+      SHARE_CLASS,
+      "2026-08-27T21:20:47.000000+00:00",
+      "2026-08-26T12:00:00.000000+00:00",
+    ),
+    row(
+      SHARE_CLASS,
+      "2026-08-28T00:00:00.000000+00:00",
+      "2026-08-26T12:00:00.000000+00:00",
+      DAILY,
+      "2026-08-28T00:44:47.000000+00:00",
+    ),
+    row(
+      SHARE_CLASS,
+      "2026-08-29T00:00:00.000000+00:00",
+      null,
+      SHARE_CLASS_UPDATE,
+    ),
+    row(
+      OTHER_SHARE_CLASS,
+      "2026-08-27T12:00:00.000000+00:00",
+      "2026-08-27T11:00:00.000000+00:00",
+    ),
+  ];
+
+  it("rejects an unknown param, a malformed token id and a bound that is not an ISO instant", () => {
+    const { params } = sdkCatalogue.sharePriceUpdates;
+
+    expect(params.safeParse({ tokenId: SHARE_CLASS }).success).toBe(true);
+    expect(
+      params.safeParse({
+        tokenId: SHARE_CLASS,
+        from: "2026-08-27T00:00:00Z",
+        to: "2026-08-28T00:00:00Z",
+      }).success,
+    ).toBe(true);
+    expect(params.safeParse({ tokenId: SHARE_CLASS, limit: 10 }).success).toBe(
+      false,
+    );
+    expect(params.safeParse({ tokenId: "0x1234" }).success).toBe(false);
+    expect(
+      params.safeParse({ tokenId: SHARE_CLASS, from: "2026-08-27" }).success,
+    ).toBe(false);
+  });
+
+  it("is refused on api-v3 rather than answered from a document that cannot express it", async () => {
+    const execute = vi.fn();
+    const query = createGraphqlQueries({ execute, target: "api-v3" });
+
+    await expect(
+      query("sharePriceUpdates", { tokenId: SHARE_CLASS }),
+    ).rejects.toThrow(/api-v3/);
+    expect(execute).not.toHaveBeenCalled();
+  });
+
+  it("asks for one share class's rows oldest first and selects the five fields the SDK reads", async () => {
+    const execute = snapshotsTable(table);
+    const query = createGraphqlQueries({ execute, target: "public-api" });
+
+    await query("sharePriceUpdates", { tokenId: SHARE_CLASS });
+
+    const document = execute.mock.calls[0]![0] as string;
+    expect(document).toContain("tokenSnapshots(");
+    expect(document).toContain("orderBy: PRIMARY_KEY_ASC");
+    expect(document).toContain("pageInfo { hasNextPage endCursor }");
+    for (const field of [
+      "timestamp",
+      "trigger",
+      "triggerBlockTimestamp",
+      "tokenPrice",
+      "tokenPriceComputedAt",
+    ]) {
+      expect(document).toMatch(new RegExp(`nodes \\{[^}]*\\b${field}\\b`));
+    }
+    expect(execute.mock.calls[0]![1]).toMatchObject({
+      filter: { id: { equalTo: SHARE_CLASS } },
+    });
+    expect((execute.mock.calls[0]![1] as any).filter.timestamp).toBeUndefined();
+  });
+
+  it("returns every row of the share class whatever trigger wrote it, with its trigger and block time, nothing of another share class", async () => {
+    const query = createGraphqlQueries({
+      execute: snapshotsTable(table),
+      target: "public-api",
+    });
+
+    const rows = (await query("sharePriceUpdates", {
+      tokenId: SHARE_CLASS,
+    })) as any[];
+
+    expect(rows.map((r) => [r.timestamp, r.trigger])).toEqual([
+      ["2026-08-27T00:00:00.000000+00:00", DAILY],
+      ["2026-08-27T21:20:47.000000+00:00", UPDATE],
+      ["2026-08-28T00:00:00.000000+00:00", DAILY],
+      ["2026-08-29T00:00:00.000000+00:00", SHARE_CLASS_UPDATE],
+    ]);
+    expect(rows[1]).toEqual({
+      timestamp: "2026-08-27T21:20:47.000000+00:00",
+      trigger: UPDATE,
+      triggerBlockTimestamp: "2026-08-27T21:20:47.000000+00:00",
+      tokenPrice: "1006159296891391412",
+      tokenPriceComputedAt: "2026-08-26T12:00:00.000000+00:00",
+    });
+    expect(rows[3].tokenPriceComputedAt).toBeNull();
+  });
+
+  it("bounds the range on timestamp, inclusive at both ends, when from and to are given", async () => {
+    const execute = snapshotsTable(table);
+    const query = createGraphqlQueries({ execute, target: "public-api" });
+
+    const bounded = (await query("sharePriceUpdates", {
+      tokenId: SHARE_CLASS,
+      from: "2026-08-27T21:20:47.000Z",
+      to: "2026-08-28T00:00:00.000Z",
+    })) as any[];
+
+    expect(bounded.map((r) => r.timestamp)).toEqual([
+      "2026-08-27T21:20:47.000000+00:00",
+      "2026-08-28T00:00:00.000000+00:00",
+    ]);
+    expect((execute.mock.calls[0]![1] as any).filter.timestamp).toEqual({
+      greaterThanOrEqualTo: "2026-08-27T21:20:47.000Z",
+      lessThanOrEqualTo: "2026-08-28T00:00:00.000Z",
+    });
+
+    const fromOnly = (await query("sharePriceUpdates", {
+      tokenId: SHARE_CLASS,
+      from: "2026-08-28T00:00:00.000Z",
+    })) as any[];
+    expect(fromOnly).toHaveLength(2);
+    expect((execute.mock.calls[1]![1] as any).filter.timestamp).toEqual({
+      greaterThanOrEqualTo: "2026-08-28T00:00:00.000Z",
+    });
+
+    const toOnly = (await query("sharePriceUpdates", {
+      tokenId: SHARE_CLASS,
+      to: "2026-08-27T00:00:00.000Z",
+    })) as any[];
+    expect(toOnly).toHaveLength(1);
+    expect((execute.mock.calls[2]![1] as any).filter.timestamp).toEqual({
+      lessThanOrEqualTo: "2026-08-27T00:00:00.000Z",
+    });
+  });
+
+  it("follows the cursor past the page size instead of truncating at it", async () => {
+    const execute = snapshotsTable(table);
+    const query = createGraphqlQueries({
+      execute,
+      target: "public-api",
+      dimensionCap: 3,
+    });
+
+    const rows = (await query("sharePriceUpdates", {
+      tokenId: SHARE_CLASS,
+    })) as any[];
+
+    expect(rows).toHaveLength(4);
+    expect(execute).toHaveBeenCalledTimes(2);
+    expect(execute.mock.calls[0]![1]).toMatchObject({ first: 3, after: null });
+    expect(execute.mock.calls[1]![1]).toMatchObject({ first: 3, after: "3" });
+  });
+
+  it("answers an empty list for a share class with no rows", async () => {
+    const query = createGraphqlQueries({
+      execute: snapshotsTable([]),
+      target: "public-api",
+    });
+
+    expect(await query("sharePriceUpdates", { tokenId: SHARE_CLASS })).toEqual(
+      [],
+    );
+  });
+
+  it("keeps a null price field null rather than the string 'null'", async () => {
+    const execute = vi.fn().mockResolvedValue({
+      tokenSnapshots: {
+        pageInfo: { hasNextPage: false, endCursor: null },
+        nodes: [
+          {
+            timestamp: "2026-08-27T00:00:00.000000+00:00",
+            trigger: DAILY,
+            triggerBlockTimestamp: null,
+            tokenPrice: null,
+            tokenPriceComputedAt: null,
+          },
+        ],
+      },
+    });
+    const query = createGraphqlQueries({ execute, target: "public-api" });
+
+    expect(await query("sharePriceUpdates", { tokenId: SHARE_CLASS })).toEqual([
+      {
+        timestamp: "2026-08-27T00:00:00.000000+00:00",
+        trigger: DAILY,
+        triggerBlockTimestamp: null,
+        tokenPrice: null,
+        tokenPriceComputedAt: null,
+      },
+    ]);
   });
 });

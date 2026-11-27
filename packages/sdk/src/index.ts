@@ -139,6 +139,7 @@ export {
   PoolMigratingError,
   RepayBatchError,
   RetryMessageError,
+  StdHubPolicyFactoryMissingError,
   TxConfirmationError,
   TxConfirmationTargetError,
   TxPreparationError,
@@ -176,6 +177,7 @@ export type {
   BuildOnlyOptions,
   BuiltCall,
   BuiltTransaction,
+  DeployedHubPolicyStatus,
   DeployedOnOfframpManagerStatus,
   DeployedOnchainPMStatus,
   EIP1193ProviderLike,
@@ -253,7 +255,25 @@ export type {
   SpokeGateState,
 } from '@centrifuge/protocol'
 export type { MigrationGateAnswer } from './utils/migrationGate.js'
+// One name per operation (pool action, Hub function, audit action), shared with the backend and the apps.
+export {
+  OPERATION_CATALOGUE,
+  operationByAuditAction,
+  operationByCall,
+  operationByEventKind,
+  operationByHookCall,
+  operationById,
+  operationByPoolAction,
+} from '@centrifuge/protocol'
+export type { OperationCall, OperationEntry } from '@centrifuge/protocol'
 export type { HubExecutionPolicy } from './entities/hubPolicyRead.js'
+export type {
+  HubPolicyAllowlistEntry,
+  HubPolicyCommittedPrice,
+  HubPolicyConfig,
+  HubPolicyDependencies,
+  HubPolicyPreview,
+} from './entities/hubPolicyInstall.js'
 export type {
   AuthorizationStatus,
   PoolAuthorization,
@@ -294,6 +314,7 @@ export type { Callback } from './utils/scriptHash.js'
 export { MAGIC_VARIABLE_KEYS, resolveMagicVariables, resolveVariableLabel } from './utils/variables.js'
 export type { MagicVariableContext, MagicVariableKey } from './utils/variables.js'
 export { buildWorkflowDefinitionFromCatalog, parseMarketplaceCatalog } from './utils/catalog.js'
+export { workflowDefinitionHash } from './utils/workflowDefinitionHash.js'
 export type { BuildWorkflowDefinitionFromCatalogOptions } from './utils/catalog.js'
 export { assertCidMatchesContent, canonicalCids, cidMatchesContent } from './utils/cid.js'
 export {

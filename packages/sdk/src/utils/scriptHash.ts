@@ -38,6 +38,9 @@ export interface Callback {
  * invalidating the Merkle proof.
  *
  * Pass `callbacks = []` for standard (non-callback) workflows.
+ *
+ * Hashes the commands as given, without validating them; `buildScript` is where a raw
+ * action's calldata slot is checked.
  */
 export function computeScriptHash(
   commands: HexString[],

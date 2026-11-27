@@ -7,7 +7,13 @@ import {
   encodeInitiateAuthorization,
 } from '../utils/authorizationCalldata.js'
 import { parseHubCall, type HubCallMessages } from '../utils/hubCallMessages.js'
-import { deferredOf, deploymentTarget, isSetAdapters, notifiedNetwork } from '../utils/hubExecutionRules.js'
+import {
+  deferredOf,
+  deploymentTarget,
+  isSetAdapters,
+  isSetPolicy,
+  notifiedNetwork,
+} from '../utils/hubExecutionRules.js'
 import { mergeMessages, type PoolPolicyScope } from '../utils/transaction.js'
 import type { CentrifugeId } from '../utils/types.js'
 import { describeGroup, refusing, type ParsedCall } from './hubExecution.js'
@@ -118,11 +124,25 @@ function whyNotScheduled(entry: BatchEntry, calls: readonly OutOfPolicyCall[]): 
         'expired: cancel it with Pool.cancelAuthorization, then run the action again for a new status'
       )
     default:
-      return isIndependentSetAdapters(entry)
-        ? `${call} is ready, and the Hub refuses setAdapters inside a batch, so it cannot be sent with the scheduling ` +
-            'transaction: send it on its own first, then run the action again for a new status'
-        : null
+      return whyReadyCallCannotBeSent(entry, call)
   }
+}
+
+/** Why a call that is ready cannot go in the scheduling transaction; null when it can. */
+function whyReadyCallCannotBeSent(entry: BatchEntry, call: string): string | null {
+  if (isIndependentSetAdapters(entry)) {
+    return (
+      `${call} is ready, and the Hub refuses setAdapters inside a batch, so it cannot be sent with the scheduling ` +
+      'transaction: send it on its own first, then run the action again for a new status'
+    )
+  }
+  if (isIndependentSetPolicy(entry)) {
+    return (
+      `${call} is ready, and installing a policy orphans the authorizations this transaction schedules, so it cannot ` +
+      'be sent with them: send it on its own first, then run the action again for a new status'
+    )
+  }
+  return null
 }
 
 /** The networks whose `notifyPool` the scheduling transaction leaves to the execution. */
@@ -146,3 +166,6 @@ function whyOutrunsNotifyPool(entry: BatchEntry, unnotified: ReadonlySet<Centrif
 
 /** A `setAdapters` the batch would send rather than schedule: the Hub refuses it inside a multicall. */
 const isIndependentSetAdapters = (entry: BatchEntry) => isSetAdapters(entry) && !isScheduled(entry)
+
+/** A `setPolicy` the batch would send rather than schedule: it would orphan what the same transaction schedules. */
+const isIndependentSetPolicy = (entry: BatchEntry) => isSetPolicy(entry) && !isScheduled(entry)
